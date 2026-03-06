@@ -703,3 +703,67 @@ export const seedFebruaryData = async (): Promise<{ success: boolean; count: num
     return { success: false, count: 0, errors: [error.message] };
   }
 };
+
+export const removeDuplicateProjects = async (): Promise<{ success: boolean; message: string; count: number }> => {
+  try {
+    const { projects } = await fetchAppState();
+    const duplicates: ProjectSession[] = [];
+    const seen = new Map<string, ProjectSession>();
+
+    // Identify duplicates based on NS and Client Name
+    for (const p of projects) {
+        if (!p.ns) continue; 
+        
+        // Normalize key
+        const key = `${p.ns.trim()}-${p.clientName.trim()}`.toLowerCase();
+        
+        if (seen.has(key)) {
+            const existing = seen.get(key)!;
+            
+            // Compare to see which one to keep
+            // Prefer the one with more time logged, or if equal, the one with the most recent start time
+            const existingScore = existing.totalActiveSeconds + (new Date(existing.startTime).getTime() / 10000000000000);
+            const currentScore = p.totalActiveSeconds + (new Date(p.startTime).getTime() / 10000000000000);
+
+            if (currentScore > existingScore) {
+                // New one is better, mark existing as duplicate and keep new one
+                duplicates.push(existing);
+                seen.set(key, p);
+            } else {
+                // Existing is better or equal, mark new one as duplicate
+                duplicates.push(p);
+            }
+        } else {
+            seen.set(key, p);
+        }
+    }
+
+    if (duplicates.length === 0) {
+        return { success: true, message: "Nenhum projeto duplicado encontrado.", count: 0 };
+    }
+
+    console.log(`Found ${duplicates.length} duplicates. Deleting...`);
+
+    // Delete duplicates
+    let deletedCount = 0;
+    for (const dup of duplicates) {
+        // We use the raw supabase delete here to avoid fetching app state on every delete (too slow)
+        // But we must respect the deleteProject logic (delete relations first)
+        
+        // 1. Issues
+        await supabase.from('issues').delete().eq('project_id', dup.id);
+        // 2. Innovations
+        await supabase.from('innovations').delete().eq('project_id', dup.id);
+        // 3. Project
+        const { error } = await supabase.from('projects').delete().eq('id', dup.id);
+        
+        if (!error) deletedCount++;
+    }
+
+    return { success: true, message: `Removidos ${deletedCount} projetos duplicados.`, count: deletedCount };
+
+  } catch (error: any) {
+    console.error("Failed to remove duplicates", error);
+    return { success: false, message: error.message, count: 0 };
+  }
+};
