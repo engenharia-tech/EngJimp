@@ -23,8 +23,9 @@ import {
   seedFebruaryData
 } from './services/storageService';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord } from './types';
+import logoImg from './assets/logo.png';
 
-const COMPANY_LOGO_URL = '/logo.png';
+const COMPANY_LOGO_URL = logoImg;
 
 import { ToastProvider, useToast } from './components/Toast';
 
