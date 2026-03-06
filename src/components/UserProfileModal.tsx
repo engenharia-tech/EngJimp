@@ -1,0 +1,167 @@
+import React, { useState } from 'react';
+import { User, UserRole } from '../types';
+import { updateUser } from '../services/storageService';
+import { useToast } from './Toast';
+import { User as UserIcon, Mail, Phone, Lock, Save, X, Loader2, Shield } from 'lucide-react';
+
+interface UserProfileModalProps {
+  user: User;
+  onClose: () => void;
+  onUpdateUser: (updatedUser: User) => void;
+}
+
+export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClose, onUpdateUser }) => {
+  const { addToast } = useToast();
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (newPassword && newPassword !== confirmPassword) {
+      addToast('As senhas não coincidem.', 'error');
+      return;
+    }
+
+    setIsSaving(true);
+    
+    // Create updated user object
+    // Only password is changeable by the user here
+    const updatedUser: User = {
+      ...user,
+      password: newPassword || user.password
+    };
+
+    const result = await updateUser(updatedUser);
+
+    if (result.success) {
+      addToast('Perfil atualizado com sucesso!', 'success');
+      onUpdateUser(updatedUser);
+      onClose();
+    } else {
+      addToast(result.message || 'Erro ao atualizar perfil.', 'error');
+    }
+    setIsSaving(false);
+  };
+
+  const getRoleLabel = (role: UserRole) => {
+      switch(role) {
+          case 'GESTOR': return 'Gestor';
+          case 'CEO': return 'CEO';
+          case 'COORDENADOR': return 'Coordenador';
+          default: return 'Projetista';
+      }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="bg-indigo-600 p-6 text-white flex justify-between items-start">
+            <div>
+                <h2 className="text-2xl font-bold flex items-center">
+                    <UserIcon className="w-6 h-6 mr-2" />
+                    Meu Perfil
+                </h2>
+                <p className="text-indigo-100 text-sm mt-1">Gerencie suas informações de acesso.</p>
+            </div>
+            <button 
+                onClick={onClose}
+                className="text-white/70 hover:text-white hover:bg-white/10 p-1 rounded-full transition-colors"
+            >
+                <X className="w-6 h-6" />
+            </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto space-y-6">
+            {/* Read-Only Info */}
+            <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 space-y-3">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-2 mb-2">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Informações Pessoais</span>
+                    <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full flex items-center">
+                        <Shield className="w-3 h-3 mr-1" />
+                        {getRoleLabel(user.role)}
+                    </span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Nome</label>
+                        <div className="font-medium text-gray-800">{user.name}</div>
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Sobrenome</label>
+                        <div className="font-medium text-gray-800">{user.surname || '-'}</div>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="text-xs text-gray-500 block mb-1 flex items-center">
+                        <Mail className="w-3 h-3 mr-1" /> E-mail
+                    </label>
+                    <div className="font-medium text-gray-800">{user.email || '-'}</div>
+                </div>
+
+                <div>
+                    <label className="text-xs text-gray-500 block mb-1 flex items-center">
+                        <Phone className="w-3 h-3 mr-1" /> Celular
+                    </label>
+                    <div className="font-medium text-gray-800">{user.phone || '-'}</div>
+                </div>
+                
+                <div className="text-[10px] text-gray-400 italic mt-2 text-center">
+                    * Para alterar estes dados, contate o Gestor.
+                </div>
+            </div>
+
+            {/* Change Password */}
+            <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center">
+                    <Lock className="w-4 h-4 mr-2 text-indigo-600" />
+                    Alterar Senha
+                </h3>
+                <div className="space-y-3">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Nova Senha</label>
+                        <input 
+                            type="password" 
+                            value={newPassword}
+                            onChange={e => setNewPassword(e.target.value)}
+                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                            placeholder="Digite a nova senha"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Confirmar Nova Senha</label>
+                        <input 
+                            type="password" 
+                            value={confirmPassword}
+                            onChange={e => setConfirmPassword(e.target.value)}
+                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                            placeholder="Confirme a nova senha"
+                        />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+            <button 
+                onClick={onClose}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium text-sm transition-colors"
+            >
+                Cancelar
+            </button>
+            <button 
+                onClick={handleSave}
+                disabled={isSaving || (!!newPassword && newPassword !== confirmPassword)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors flex items-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                Salvar Alterações
+            </button>
+        </div>
+      </div>
+    </div>
+  );
+};

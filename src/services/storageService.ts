@@ -334,6 +334,9 @@ export const fetchUsers = async (): Promise<User[]> => {
       username: u.username,
       password: u.password,
       name: u.name,
+      surname: u.surname,
+      email: u.email,
+      phone: u.phone,
       role: u.role,
       salary: Number(u.salary) || 0
     }));
@@ -359,6 +362,9 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
     const { error } = await supabase.from('users').insert([{
       id: user.id,
       name: user.name,
+      surname: user.surname,
+      email: user.email,
+      phone: user.phone,
       username: user.username,
       password: user.password,
       role: user.role,
@@ -383,6 +389,9 @@ export const updateUser = async (user: User): Promise<{ success: boolean; messag
       .from('users')
       .update({
         name: user.name,
+        surname: user.surname,
+        email: user.email,
+        phone: user.phone,
         username: user.username,
         password: user.password,
         role: user.role,

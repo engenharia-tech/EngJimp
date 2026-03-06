@@ -51,13 +51,16 @@ export enum CalculationType {
   ONE_TIME = 'Valor Único / Fixo'
 }
 
-export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'QUALIDADE' | 'PROCESSOS' | 'COORDENADOR';
+export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'COORDENADOR';
 
 export interface User {
   id: string;
   username: string;
   password: string; // In a real app, this should be hashed. Storing plain for local prototype.
   name: string;
+  surname?: string;
+  email?: string;
+  phone?: string;
   role: UserRole;
   salary?: number;
 }

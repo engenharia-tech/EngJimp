@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit } from 'lucide-react';
+import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X } from 'lucide-react';
 import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
+import { getWorkingSeconds } from '../utils/timeUtils';
+import { fetchUsers } from '../services/storageService';
 
 // SUBSTITUA ISSO PELA SUA URL DO WEBHOOK DO TEAMS
 const TEAMS_WEBHOOK_URL = "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL_HERE";
@@ -18,6 +20,8 @@ interface EngJimpTrackerProps {
 export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects, onCreate, onUpdate, isVisible, onNavigateBack, currentUser }) => {
   const [activeProject, setActiveProject] = useState<ProjectSession | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedProjectDetails, setSelectedProjectDetails] = useState<ProjectSession | null>(null);
 
   // Form Data (Start)
   const [ns, setNs] = useState('');
@@ -55,6 +59,10 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
   ].includes(implementType);
 
   useEffect(() => {
+    fetchUsers().then(setUsers);
+  }, []);
+
+  useEffect(() => {
     const updateTimer = () => {
       if (!activeProject) {
         setElapsedSeconds(0);
@@ -65,24 +73,40 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
       const lastPause = activeProject.pauses.length > 0 ? activeProject.pauses[activeProject.pauses.length - 1] : null;
       const isCurrentlyPaused = lastPause && lastPause.durationSeconds === -1;
 
-      const start = new Date(activeProject.startTime).getTime();
+      const start = new Date(activeProject.startTime);
+      const now = new Date();
       
-      // Calculate total duration of PREVIOUS closed pauses only
-      const totalClosedPauses = activeProject.pauses.reduce((acc, p) => {
-        return acc + (p.durationSeconds > 0 ? p.durationSeconds : 0);
-      }, 0);
+      // 1. Calculate Total Working Time from Start to Now (ignoring pauses)
+      // If currently paused, we stop counting at the pause start time
+      const effectiveEnd = isCurrentlyPaused ? new Date(lastPause.timestamp) : now;
+      const totalWorkingSeconds = getWorkingSeconds(start, effectiveEnd);
 
-      if (isCurrentlyPaused) {
-        // If paused, time shouldn't move. It stays fixed at (PauseStart - ProjectStart - ClosedPauses)
-        const pauseStart = new Date(lastPause.timestamp).getTime();
-        const fixedDiff = Math.floor((pauseStart - start) / 1000);
-        setElapsedSeconds(Math.max(0, fixedDiff - totalClosedPauses));
-      } else {
-        // If running, calculate based on Now
-        const now = Date.now();
-        const diffTotal = Math.floor((now - start) / 1000);
-        setElapsedSeconds(Math.max(0, diffTotal - totalClosedPauses));
-      }
+      // 2. Calculate Total Working Time consumed by CLOSED pauses
+      // We must calculate the "working seconds" for each pause duration to subtract correctly
+      // (e.g. a pause during lunch shouldn't subtract working time because it didn't add any)
+      let totalPauseWorkingSeconds = 0;
+      
+      activeProject.pauses.forEach(p => {
+          if (p.durationSeconds > 0) {
+              // Closed pause: Calculate overlap with working hours
+              const pStart = new Date(p.timestamp);
+              // We don't store pEnd, we store duration. 
+              // This is tricky because the stored duration might be "wall clock" duration from old logic.
+              // However, going forward, we should probably calculate pause overlap dynamically.
+              // BUT, for simplicity and backward compatibility:
+              // If the pause was created with the OLD logic, durationSeconds is wall clock.
+              // If we want strict "working hours" accounting, we should ideally store pauseEnd.
+              // Given the constraint, let's assume manual pauses subtract from the working time 
+              // ONLY if they overlapped with working hours.
+              // Approximation: pEnd = pStart + durationSeconds.
+              const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
+              totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd);
+          }
+      });
+
+      // 3. Net Elapsed = Total Working Time - Working Time spent in Pauses
+      const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
+      setElapsedSeconds(netSeconds);
     };
 
     if (activeProject && !showPauseModal) {
@@ -141,9 +165,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
     // Logic to close open pause if needed
     const lastPauseIndex = project.pauses.length - 1;
     if (lastPauseIndex >= 0 && project.pauses[lastPauseIndex].durationSeconds === -1) {
-       const pauseStart = new Date(project.pauses[lastPauseIndex].timestamp).getTime();
-       const now = Date.now();
-       const duration = Math.floor((now - pauseStart) / 1000);
+       const pauseStart = new Date(project.pauses[lastPauseIndex].timestamp);
+       const now = new Date();
+       
+       // Calculate wall-clock duration for the record (standard practice for "duration")
+       // But for accounting, we'll use getWorkingSeconds in the timer logic
+       const duration = Math.floor((now.getTime() - pauseStart.getTime()) / 1000);
 
        const updatedPauses = [...project.pauses];
        updatedPauses[lastPauseIndex] = {
@@ -164,14 +191,24 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
   const confirmPauseAndExit = () => {
     if (!activeProject) return;
 
+    // We need to save the current "Active Seconds" state to the project
+    // So that the dashboard shows correct progress even when paused
+    // However, totalActiveSeconds is usually final. 
+    // Let's just update the pause record.
+    
     const newPause: PauseRecord = {
       reason: pauseReason || 'Pausa',
       timestamp: new Date().toISOString(),
       durationSeconds: -1 // Flag for "Open/Ongoing" pause
     };
 
+    // Calculate current active seconds to update the snapshot
+    // This helps with dashboard accuracy without needing to re-calc everything there
+    const currentActive = elapsedSeconds; 
+
     const updatedProject = {
       ...activeProject,
+      totalActiveSeconds: currentActive, // Snapshot
       pauses: [...activeProject.pauses, newPause]
     };
 
@@ -199,11 +236,24 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
   const confirmFinish = async () => {
     if (!activeProject) return;
 
-    const now = Date.now();
-    const start = new Date(activeProject.startTime).getTime();
-    const totalClosedPauses = activeProject.pauses.reduce((acc, p) => acc + (p.durationSeconds > 0 ? p.durationSeconds : 0), 0);
-    const finalSeconds = Math.floor((now - start) / 1000) - totalClosedPauses;
+    // Final Calculation using Working Hours
+    const start = new Date(activeProject.startTime);
+    const now = new Date();
+    
+    // 1. Total Working Time
+    const totalWorkingSeconds = getWorkingSeconds(start, now);
 
+    // 2. Subtract Working Time spent in Pauses
+    let totalPauseWorkingSeconds = 0;
+    activeProject.pauses.forEach(p => {
+        if (p.durationSeconds > 0) {
+            const pStart = new Date(p.timestamp);
+            const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
+            totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd);
+        }
+    });
+
+    const finalSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
     const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
 
     const finishedProject: ProjectSession = {
@@ -351,6 +401,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  {pendingProjects.map(p => {
                     const isPaused = p.pauses.length > 0 && p.pauses[p.pauses.length - 1].durationSeconds === -1;
+                    const pUser = users.find(u => u.id === p.userId);
                     return (
                      <div key={p.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-all bg-gray-50 group">
                         <div className="flex justify-between items-start mb-2">
@@ -358,20 +409,37 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                             <div className="font-bold text-gray-800 text-lg">{p.ns}</div>
                             <div className="text-sm text-gray-500">{p.clientName}</div>
                             <div className="text-xs text-gray-400 mt-1">{p.type} • {p.implementType}</div>
+                            <div className="text-xs text-gray-500 mt-2 flex items-center">
+                                <span className="font-semibold mr-1">Responsável:</span>
+                                {pUser ? pUser.name : 'Não atribuído'}
+                            </div>
                           </div>
                           <span className={`px-2 py-1 rounded text-xs font-bold ${isPaused ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
                              {isPaused ? 'PAUSADO' : 'ABERTO'}
                           </span>
                         </div>
-                        {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') && (
-                            <button 
-                              onClick={() => handleResumeFromList(p)}
-                              className="w-full bg-white border border-blue-200 text-blue-600 font-bold py-2 rounded hover:bg-blue-50 transition-colors flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white shadow-sm mt-2"
-                            >
-                              <Play className="w-4 h-4 mr-2" />
-                              {isPaused ? 'Retomar Timer' : 'Continuar'}
-                            </button>
-                        )}
+                        
+                        <div className="flex gap-2 mt-3">
+                            {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') && (
+                                <button 
+                                  onClick={() => handleResumeFromList(p)}
+                                  className="flex-1 bg-white border border-blue-200 text-blue-600 font-bold py-2 rounded hover:bg-blue-50 transition-colors flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white shadow-sm"
+                                >
+                                  <Play className="w-4 h-4 mr-2" />
+                                  {isPaused ? 'Retomar Timer' : 'Continuar'}
+                                </button>
+                            )}
+
+                            {['CEO', 'COORDENADOR'].includes(currentUser?.role || '') && (
+                                <button 
+                                    onClick={() => setSelectedProjectDetails(p)}
+                                    className="px-3 bg-white border border-gray-200 text-gray-600 font-bold py-2 rounded hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+                                    title="Ver Detalhes"
+                                >
+                                    <Info className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
                      </div>
                    );
                  })}
@@ -716,6 +784,112 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                          </tbody>
                      </table>
                  </div>
+            </div>
+        </div>
+      )}
+
+      {/* Project Details Modal (CEO/COORDENADOR) */}
+      {selectedProjectDetails && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                    <h3 className="text-xl font-bold text-gray-800 flex items-center">
+                        <Info className="w-6 h-6 mr-2 text-blue-600" />
+                        Detalhes do Projeto
+                    </h3>
+                    <button 
+                        onClick={() => setSelectedProjectDetails(null)}
+                        className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+                
+                <div className="p-6 space-y-6">
+                    {/* Header Info */}
+                    <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <div>
+                            <span className="text-xs text-gray-500 uppercase font-bold block">NS</span>
+                            <span className="text-lg font-mono font-bold text-gray-800">{selectedProjectDetails.ns}</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 uppercase font-bold block">Cliente</span>
+                            <span className="text-lg font-medium text-gray-800">{selectedProjectDetails.clientName}</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 uppercase font-bold block">Responsável</span>
+                            <span className="text-sm font-medium text-gray-800">
+                                {users.find(u => u.id === selectedProjectDetails.userId)?.name || 'Não atribuído'}
+                            </span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 uppercase font-bold block">Status</span>
+                            <span className={`text-sm font-bold ${selectedProjectDetails.status === 'IN_PROGRESS' ? 'text-blue-600' : 'text-green-600'}`}>
+                                {selectedProjectDetails.status === 'IN_PROGRESS' ? 'EM ANDAMENTO' : 'FINALIZADO'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Context (Para que) */}
+                    <div>
+                        <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center">
+                            <Briefcase className="w-4 h-4 mr-2 text-gray-500" />
+                            Contexto / Observações (Para que)
+                        </h4>
+                        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 text-gray-700 text-sm whitespace-pre-wrap">
+                            {selectedProjectDetails.notes || "Nenhuma observação registrada."}
+                        </div>
+                    </div>
+
+                    {/* History (O que) */}
+                    <div>
+                        <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center">
+                            <Layers className="w-4 h-4 mr-2 text-gray-500" />
+                            Histórico de Variações (O que)
+                        </h4>
+                        {selectedProjectDetails.variations.length > 0 ? (
+                            <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-gray-100 text-gray-600 font-semibold">
+                                        <tr>
+                                            <th className="p-3">De (Antigo)</th>
+                                            <th className="p-3">Para (Novo)</th>
+                                            <th className="p-3">Descrição</th>
+                                            <th className="p-3">Tipo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {selectedProjectDetails.variations.map(v => (
+                                            <tr key={v.id} className="hover:bg-gray-50">
+                                                <td className="p-3 font-mono text-gray-500">{v.oldCode || '-'}</td>
+                                                <td className="p-3 font-mono text-blue-600 font-bold">{v.newCode || '-'}</td>
+                                                <td className="p-3 text-gray-800">{v.description}</td>
+                                                <td className="p-3">
+                                                    <span className={`px-2 py-0.5 rounded text-xs ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 text-gray-700'}`}>
+                                                        {v.type}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200 text-gray-400 italic">
+                                Nenhuma variação registrada.
+                            </div>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end">
+                    <button 
+                        onClick={() => setSelectedProjectDetails(null)}
+                        className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-lg transition-colors"
+                    >
+                        Fechar
+                    </button>
+                </div>
             </div>
         </div>
       )}

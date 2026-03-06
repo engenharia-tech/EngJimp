@@ -4,7 +4,11 @@ import { User, UserRole } from '../types';
 import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues } from '../services/storageService';
 import { useToast } from './Toast';
 
-export const UserManagement: React.FC = () => {
+interface UserManagementProps {
+    currentUser: User;
+}
+
+export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) => {
   const { addToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loadingList, setLoadingList] = useState(false);
@@ -12,6 +16,9 @@ export const UserManagement: React.FC = () => {
   
   // Form State
   const [name, setName] = useState('');
+  const [surname, setSurname] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('PROJETISTA');
@@ -38,6 +45,9 @@ export const UserManagement: React.FC = () => {
     const userPayload: User = {
       id: editingUserId || crypto.randomUUID(),
       name,
+      surname,
+      email,
+      phone,
       username,
       password,
       role,
@@ -104,6 +114,9 @@ export const UserManagement: React.FC = () => {
 
   const resetForm = () => {
     setName('');
+    setSurname('');
+    setEmail('');
+    setPhone('');
     setUsername('');
     setPassword('');
     setSalary(0);
@@ -113,6 +126,9 @@ export const UserManagement: React.FC = () => {
 
   const handleEdit = (user: User) => {
     setName(user.name);
+    setSurname(user.surname || '');
+    setEmail(user.email || '');
+    setPhone(user.phone || '');
     setUsername(user.username);
     setPassword(user.password);
     setRole(user.role);
@@ -125,12 +141,12 @@ export const UserManagement: React.FC = () => {
       switch(role) {
           case 'GESTOR': return <Shield className="w-3 h-3 text-blue-600" />;
           case 'CEO': return <Briefcase className="w-3 h-3 text-yellow-600" />;
-          case 'PROCESSOS': return <Activity className="w-3 h-3 text-purple-600" />;
-          case 'QUALIDADE': return <Eye className="w-3 h-3 text-red-600" />;
           case 'COORDENADOR': return <Eye className="w-3 h-3 text-teal-600" />;
           default: return <UserIcon className="w-3 h-3 text-gray-600" />;
       }
   };
+
+  const canEditOrDelete = currentUser.role === 'GESTOR';
 
   return (
     <div className="space-y-6">
@@ -153,13 +169,51 @@ export const UserManagement: React.FC = () => {
 
         <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome (Primeiro Nome)</label>
             <input 
               type="text" 
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
               className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
               required
+              placeholder="Somente letras"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sobrenome</label>
+            <input 
+              type="text" 
+              value={surname}
+              onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              placeholder="Somente letras"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+            <input 
+              type="email" 
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              placeholder="exemplo@exemplo.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Celular</label>
+            <input 
+              type="text" 
+              value={phone}
+              onChange={e => {
+                  // Simple mask logic or just raw input with validation on blur?
+                  // User asked for xx-xxxxx-xxxx format.
+                  // Let's just allow typing and maybe format it.
+                  setPhone(e.target.value);
+              }}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              placeholder="xx-xxxxx-xxxx"
+              pattern="\d{2}-\d{5}-\d{4}"
+              title="Formato: xx-xxxxx-xxxx"
             />
           </div>
           <div>
@@ -193,8 +247,6 @@ export const UserManagement: React.FC = () => {
               <option value="PROJETISTA">Projetista</option>
               <option value="GESTOR">Gestor</option>
               <option value="CEO">CEO</option>
-              <option value="PROCESSOS">Processos</option>
-              <option value="QUALIDADE">Qualidade</option>
               <option value="COORDENADOR">Coordenador</option>
             </select>
           </div>
@@ -236,7 +288,7 @@ export const UserManagement: React.FC = () => {
               <th className="p-4">Usuário</th>
               <th className="p-4">Função</th>
               <th className="p-4">Salário</th>
-              <th className="p-4 text-center">Ações</th>
+              {canEditOrDelete && <th className="p-4 text-center">Ações</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -258,75 +310,78 @@ export const UserManagement: React.FC = () => {
                 <td className="p-4 text-gray-600">
                   {u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-'}
                 </td>
-                <td className="p-4 text-center flex items-center justify-center gap-2">
-                  <button
-                    onClick={() => handleEdit(u)}
-                    className="text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded transition"
-                    title="Editar Usuário"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(u)}
-                    className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-2 rounded transition"
-                    title="Excluir Usuário"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </td>
+                {canEditOrDelete && (
+                  <td className="p-4 text-center flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => handleEdit(u)}
+                      className="text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded transition"
+                      title="Editar Usuário"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(u)}
+                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-2 rounded transition"
+                      title="Excluir Usuário"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
             {!loadingList && users.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-4 text-center text-gray-400">Nenhum usuário encontrado.</td>
+                <td colSpan={canEditOrDelete ? 5 : 4} className="p-4 text-center text-gray-400">Nenhum usuário encontrado.</td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-      {/* Data Maintenance Section */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-orange-100 mt-8">
-        <h3 className="font-bold text-gray-800 mb-4 flex items-center">
-          <Shield className="w-5 h-5 mr-2 text-orange-600" />
-          Manutenção de Dados & Permissões
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Clear Issues */}
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <h4 className="font-semibold text-gray-700 mb-2">Limpeza de Dados</h4>
-                <p className="text-sm text-gray-500 mb-4">
-                    A tabela de "Problemas" (Issues) foi descontinuada. Use este botão para limpar todos os registros antigos do banco de dados.
-                </p>
-                <button 
-                    onClick={async () => {
-                        if(!window.confirm("ATENÇÃO: Isso apagará TODOS os registros da tabela 'issues'. Tem certeza?")) return;
-                        setIsCleaning(true);
-                        const res = await deleteAllIssues();
-                        setIsCleaning(false);
-                        if(res.success) alert(res.message);
-                        else alert("Erro: " + res.message);
-                    }}
-                    disabled={isCleaning}
-                    className="bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
-                >
-                    {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                    Limpar Tabela de Problemas
-                </button>
-            </div>
+      {/* Data Maintenance Section - GESTOR ONLY */}
+      {currentUser.role === 'GESTOR' && (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-orange-100 mt-8">
+            <h3 className="font-bold text-gray-800 mb-4 flex items-center">
+            <Shield className="w-5 h-5 mr-2 text-orange-600" />
+            Manutenção de Dados & Permissões
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Clear Issues */}
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-gray-700 mb-2">Limpeza de Dados</h4>
+                    <p className="text-sm text-gray-500 mb-4">
+                        A tabela de "Problemas" (Issues) foi descontinuada. Use este botão para limpar todos os registros antigos do banco de dados.
+                    </p>
+                    <button 
+                        onClick={async () => {
+                            if(!window.confirm("ATENÇÃO: Isso apagará TODOS os registros da tabela 'issues'. Tem certeza?")) return;
+                            setIsCleaning(true);
+                            const res = await deleteAllIssues();
+                            setIsCleaning(false);
+                            if(res.success) alert(res.message);
+                            else alert("Erro: " + res.message);
+                        }}
+                        disabled={isCleaning}
+                        className="bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
+                    >
+                        {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                        Limpar Tabela de Problemas
+                    </button>
+                </div>
 
-            {/* Fix RLS */}
-            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                <h4 className="font-bold text-red-700 mb-2 flex items-center">
-                    <AlertCircle className="w-5 h-5 mr-2" />
-                    CORREÇÃO DE ERROS DE BANCO DE DADOS
-                </h4>
-                <p className="text-sm text-red-600 mb-4">
-                    Se você está vendo erros como <strong>"violates check constraint"</strong>, <strong>"policy violated"</strong> ou não consegue salvar/excluir nada, é OBRIGATÓRIO rodar este script no Supabase.
-                </p>
-                <button 
-                    onClick={() => {
-                        const sql = `
+                {/* Fix RLS */}
+                <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                    <h4 className="font-bold text-red-700 mb-2 flex items-center">
+                        <AlertCircle className="w-5 h-5 mr-2" />
+                        CORREÇÃO DE ERROS DE BANCO DE DADOS
+                    </h4>
+                    <p className="text-sm text-red-600 mb-4">
+                        Se você está vendo erros como <strong>"violates check constraint"</strong>, <strong>"policy violated"</strong> ou não consegue salvar/excluir nada, é OBRIGATÓRIO rodar este script no Supabase.
+                    </p>
+                    <button 
+                        onClick={() => {
+                            const sql = `
 -- 1. Habilitar RLS (Segurança) em todas as tabelas
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
@@ -363,10 +418,10 @@ ALTER TABLE public.innovations ADD CONSTRAINT innovations_author_id_fkey FOREIGN
 ALTER TABLE public.issues DROP CONSTRAINT IF EXISTS issues_reported_by_fkey;
 ALTER TABLE public.issues ADD CONSTRAINT issues_reported_by_fkey FOREIGN KEY (reported_by) REFERENCES public.users(id) ON DELETE SET NULL;
 
--- 4. Atualizar Constraint de Cargos (Adicionar COORDENADOR)
+-- 4. Atualizar Constraint de Cargos (Adicionar COORDENADOR, Remover PROCESSOS/QUALIDADE)
 -- Isso corrige o erro "violates check constraint users_role_check"
 ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE public.users ADD CONSTRAINT users_role_check CHECK (role IN ('PROJETISTA', 'GESTOR', 'CEO', 'PROCESSOS', 'QUALIDADE', 'COORDENADOR'));
+ALTER TABLE public.users ADD CONSTRAINT users_role_check CHECK (role IN ('PROJETISTA', 'GESTOR', 'CEO', 'COORDENADOR'));
 
 -- 5. Garantir que project_code não seja obrigatório
 ALTER TABLE public.projects ALTER COLUMN project_code DROP NOT NULL;
@@ -398,21 +453,23 @@ BEGIN
     END IF;
 END $$;
 
--- 8. Forçar permissões de DELETE para todos (caso RLS esteja bloqueando)
-DROP POLICY IF EXISTS "Enable delete for users" ON public.projects;
-CREATE POLICY "Enable delete for users" ON public.projects FOR DELETE USING (true);
+-- 9. Adicionar colunas de Perfil (Nome, Sobrenome, Email, Celular)
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS surname TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
 `;
-                        navigator.clipboard.writeText(sql);
-                        addToast("SQL Completo copiado! Cole no SQL Editor do Supabase e execute.", 'success');
-                    }}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg text-sm font-bold transition-colors flex items-center justify-center shadow-md"
-                >
-                    <Shield className="w-5 h-5 mr-2" />
-                    COPIAR SCRIPT DE CORREÇÃO (SQL)
-                </button>
+                            navigator.clipboard.writeText(sql);
+                            addToast("SQL Completo copiado! Cole no SQL Editor do Supabase e execute.", 'success');
+                        }}
+                        className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg text-sm font-bold transition-colors flex items-center justify-center shadow-md"
+                    >
+                        <Shield className="w-5 h-5 mr-2" />
+                        COPIAR SCRIPT DE CORREÇÃO (SQL)
+                    </button>
+                </div>
             </div>
         </div>
-      </div>
+      )}
       {/* Delete Confirmation Modal */}
       {deleteConfirmationUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
