@@ -259,11 +259,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Salário (R$) {(!isGestor) && <span className="text-xs text-gray-400">(Somente Gestor)</span>}</label>
             <input 
-              type="number"
-              min="0"
-              step="0.01"
-              value={salary}
-              onChange={e => setSalary(Number(e.target.value))}
+              type="text"
+              value={salary === 0 ? '' : salary}
+              onChange={e => {
+                  const val = e.target.value.replace(/[^0-9.]/g, '');
+                  setSalary(Number(val));
+              }}
               disabled={!isGestor}
               className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
               placeholder="Ex: 5000.00"
