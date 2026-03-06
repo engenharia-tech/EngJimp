@@ -352,7 +352,7 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
     const { data: existing } = await supabase
       .from('users')
       .select('id')
-      .eq('username', user.username)
+      .ilike('username', user.username)
       .single();
 
     if (existing) {
@@ -474,7 +474,7 @@ export const authenticateUser = async (username: string, password: string): Prom
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('username', username)
+      .ilike('username', username)
       .eq('password', password)
       .single();
 

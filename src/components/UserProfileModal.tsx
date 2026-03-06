@@ -16,18 +16,32 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  const [name, setName] = useState(user.name);
+  const [surname, setSurname] = useState(user.surname || '');
+  const [email, setEmail] = useState(user.email || '');
+  const [phone, setPhone] = useState(user.phone || '');
+
   const handleSave = async () => {
     if (newPassword && newPassword !== confirmPassword) {
       addToast('As senhas não coincidem.', 'error');
       return;
     }
 
+    // Email validation
+    if (email && !email.includes('@')) {
+        addToast('O e-mail deve conter "@".', 'error');
+        return;
+    }
+
     setIsSaving(true);
     
     // Create updated user object
-    // Only password is changeable by the user here
     const updatedUser: User = {
       ...user,
+      name,
+      surname,
+      email,
+      phone,
       password: newPassword || user.password
     };
 
@@ -73,7 +87,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
         </div>
 
         <div className="p-6 overflow-y-auto space-y-6">
-            {/* Read-Only Info */}
+            {/* Editable Info */}
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 space-y-3">
                 <div className="flex items-center justify-between border-b border-gray-200 pb-2 mb-2">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Informações Pessoais</span>
@@ -86,11 +100,21 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="text-xs text-gray-500 block mb-1">Nome</label>
-                        <div className="font-medium text-gray-800">{user.name}</div>
+                        <input 
+                            type="text" 
+                            value={name}
+                            onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
+                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                        />
                     </div>
                     <div>
                         <label className="text-xs text-gray-500 block mb-1">Sobrenome</label>
-                        <div className="font-medium text-gray-800">{user.surname || '-'}</div>
+                        <input 
+                            type="text" 
+                            value={surname}
+                            onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
+                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                        />
                     </div>
                 </div>
 
@@ -98,18 +122,25 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                     <label className="text-xs text-gray-500 block mb-1 flex items-center">
                         <Mail className="w-3 h-3 mr-1" /> E-mail
                     </label>
-                    <div className="font-medium text-gray-800">{user.email || '-'}</div>
+                    <input 
+                        type="email" 
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                    />
                 </div>
 
                 <div>
                     <label className="text-xs text-gray-500 block mb-1 flex items-center">
                         <Phone className="w-3 h-3 mr-1" /> Celular
                     </label>
-                    <div className="font-medium text-gray-800">{user.phone || '-'}</div>
-                </div>
-                
-                <div className="text-[10px] text-gray-400 italic mt-2 text-center">
-                    * Para alterar estes dados, contate o Gestor.
+                    <input 
+                        type="text" 
+                        value={phone}
+                        onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
+                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                        placeholder="Somente números"
+                    />
                 </div>
             </div>
 
