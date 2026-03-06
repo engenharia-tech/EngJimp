@@ -38,8 +38,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser }) => {
   const [selectedDesignerForReleases, setSelectedDesignerForReleases] = useState<string>('ALL');
   const [selectedInterruptionDesigner, setSelectedInterruptionDesigner] = useState<string>('ALL');
 
-  const isRestrictedRole = currentUser.role === 'QUALIDADE' || currentUser.role === 'PROCESSOS';
-
   useEffect(() => {
     // Load users for the manager chart
     const load = async () => {
@@ -432,7 +430,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser }) => {
             </div>
           )}
         </div>
-        {!isRestrictedRole && (
           <button 
             onClick={handleExportCSV}
             className="flex items-center text-sm font-medium text-gray-600 hover:text-gray-900 bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors ml-auto md:ml-0"
@@ -440,11 +437,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser }) => {
             <Download className="w-4 h-4 mr-2" />
             CSV
           </button>
-        )}
       </div>
 
       {/* KPI Section */}
-      {!isRestrictedRole && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {averageTimes.length > 0 && averageTimes.map((stat) => (
             <div key={stat.type} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
@@ -468,10 +463,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser }) => {
               </div>
             </div>
         </div>
-      )}
 
       {/* AI Insights Section */}
-      {!isRestrictedRole && (
         <div className="bg-gradient-to-r from-indigo-50 to-blue-50 p-6 rounded-xl border border-indigo-100">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-indigo-900 flex items-center">
@@ -497,10 +490,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser }) => {
             </p>
           )}
         </div>
-      )}
 
       {/* NOVO: Gráfico Horas Realizadas vs Meta Mensal */}
-      {!isRestrictedRole && (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 min-h-[400px]">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
             <div className="flex flex-col">
@@ -566,7 +557,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser }) => {
             )}
           </div>
         </div>
-      )}
 
       {/* NOVO: Ranking do Mês (CEO/GESTOR) */}
       {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR') && (
@@ -695,8 +685,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser }) => {
         
         {/* Removed: Issue Distribution (Pie Chart) */}
 
-        {/* Releases per Month (Bar Chart) - HIDDEN FOR QUALITY & PROCESSES */}
-        {!isRestrictedRole && (
+        {/* Releases per Month (Bar Chart) */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 min-h-[350px] col-span-1 md:col-span-2">
             <div className="flex justify-between items-center mb-4">
                 <div className="flex flex-col">
@@ -747,10 +736,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser }) => {
                 )}
             </div>
             </div>
-        )}
 
-        {/* Innovations Chart - HIDDEN FOR QUALITY */}
-        {currentUser.role !== 'QUALIDADE' && (
+        {/* Innovations Chart */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 min-h-[350px]">
             <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center">
                 <Lightbulb className="w-5 h-5 mr-2 text-yellow-500" />
@@ -771,7 +758,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser }) => {
                 </ResponsiveContainer>
             </div>
             </div>
-        )}
 
         {/* Implement Type (Pie Chart) - REMOVED AS REQUESTED */}
 

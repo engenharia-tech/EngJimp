@@ -4,12 +4,13 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { Dashboard } from './components/Dashboard';
 import { ProjectHistory } from './components/ProjectHistory';
 import { UserManagement } from './components/UserManagement';
 import { InnovationManager } from './components/InnovationManager';
+import { UserProfileModal } from './components/UserProfileModal';
 import { Login } from './components/Login';
 import { 
   fetchAppState, 
@@ -47,6 +48,7 @@ const AppContent: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Load data when user logs in or mounts
   useEffect(() => {
@@ -70,12 +72,8 @@ const AppContent: React.FC = () => {
   // Auto-redirect based on role logic
   useEffect(() => {
       if (currentUser) {
-          if (currentUser.role === 'PROCESSOS') {
-              setActiveTab('innovations');
-          } else {
-              // GESTOR, CEO, PROJETISTA default to dashboard
-              setActiveTab('dashboard');
-          }
+          // GESTOR, CEO, PROJETISTA, COORDENADOR default to dashboard
+          setActiveTab('dashboard');
       }
   }, [currentUser]);
 
@@ -89,18 +87,18 @@ const AppContent: React.FC = () => {
 
   const canUseTracker = useMemo(() => {
       if (!currentUser) return false;
-      // Quality and Process CANNOT use tracker or see history
-      return ['PROJETISTA', 'GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role);
+      // CEO cannot use tracker
+      return ['PROJETISTA', 'GESTOR', 'COORDENADOR'].includes(currentUser.role);
   }, [currentUser]);
 
-  // Who can manage Innovations? (CEO, Processes, Manager, Designer, Coordinator)
+  // Who can manage Innovations? (CEO, Manager, Designer, Coordinator)
   const canSeeInnovations = useMemo(() => {
       if (!currentUser) return false;
-      return ['GESTOR', 'CEO', 'PROCESSOS', 'PROJETISTA', 'COORDENADOR'].includes(currentUser.role);
+      return ['GESTOR', 'CEO', 'PROJETISTA', 'COORDENADOR'].includes(currentUser.role);
   }, [currentUser]);
   
   // Who can see Dashboard? (Everyone)
-  // Who can see Team? (Manager)
+  // Who can see Team? (Manager, Coordinator)
 
   // Filter Data based on User Role
   const displayData = useMemo(() => {
@@ -109,17 +107,8 @@ const AppContent: React.FC = () => {
     const role = currentUser.role;
 
     // "Super Viewers" - See everything in DB
-    if (['GESTOR', 'CEO', 'PROCESSOS', 'COORDENADOR'].includes(role)) {
+    if (['GESTOR', 'CEO', 'COORDENADOR'].includes(role)) {
       return data;
-    }
-
-    // QUALITY - Sees all Issues (to analyze), All Projects (for context in charts), No Innovations
-    if (role === 'QUALIDADE') {
-        return {
-            projects: data.projects, // Needed for charts context
-            issues: data.issues,
-            innovations: [] // Not relevant
-        };
     }
 
     // PROJETISTA - Sees own data + All Innovations (usually shared knowledge)
@@ -133,7 +122,7 @@ const AppContent: React.FC = () => {
   // --- HANDLERS ---
 
   const handleProjectCreate = async (project: ProjectSession) => {
-    const allowedRoles = ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
       addToast('Você não tem permissão para criar projetos.', 'error');
       return;
@@ -160,7 +149,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleProjectUpdate = async (project: ProjectSession) => {
-    const allowedRoles = ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
       addToast('Você não tem permissão para editar projetos.', 'error');
       return;
@@ -339,7 +328,16 @@ const AppContent: React.FC = () => {
           <div className="flex items-center text-slate-500 text-xs mb-1 uppercase tracking-wider font-semibold">
             Painel de Controle
           </div>
-          <p className="text-sm font-medium text-slate-200 truncate">{currentUser.name}</p>
+          <div className="flex items-center justify-between group">
+            <p className="text-sm font-medium text-slate-200 truncate">{currentUser.name}</p>
+            <button 
+                onClick={() => setIsProfileOpen(true)}
+                className="text-slate-500 hover:text-white transition-colors p-1 rounded hover:bg-slate-800"
+                title="Meu Perfil"
+            >
+                <UserCog className="w-4 h-4" />
+            </button>
+          </div>
           <div className="flex items-center mt-2 gap-2">
             <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full inline-block">
                 {currentUser.role}
@@ -361,7 +359,7 @@ const AppContent: React.FC = () => {
              <NavItem id="innovations" label="Inovações & Custos" icon={Lightbulb} />
           )}
           
-          {currentUser.role === 'GESTOR' && (
+          {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
             <NavItem id="team" label="Gestão de Equipe" icon={Users} />
           )}
         </nav>
@@ -388,9 +386,17 @@ const AppContent: React.FC = () => {
                 Eng <span className="text-blue-500">Jimp</span>
             </span>
         </div>
-        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-slate-300 hover:text-white transition-colors">
-          {isMobileMenuOpen ? <X /> : <Menu />}
-        </button>
+        <div className="flex items-center gap-3">
+            <button 
+                onClick={() => setIsProfileOpen(true)}
+                className="text-slate-300 hover:text-white p-2"
+            >
+                <UserCog className="w-5 h-5" />
+            </button>
+            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-slate-300 hover:text-white transition-colors">
+              {isMobileMenuOpen ? <X /> : <Menu />}
+            </button>
+        </div>
       </div>
 
       {/* Mobile Menu Overlay */}
@@ -407,7 +413,7 @@ const AppContent: React.FC = () => {
             {canSeeInnovations && (
                 <NavItem id="innovations" label="Inovações & Custos" icon={Lightbulb} />
             )}
-            {currentUser.role === 'GESTOR' && (
+            {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
                <NavItem id="team" label="Gestão de Equipe" icon={Users} />
             )}
             <div className="mt-auto p-6 border-t border-slate-800">
@@ -499,13 +505,13 @@ const AppContent: React.FC = () => {
              />
           )}
 
-          {activeTab === 'team' && currentUser.role === 'GESTOR' && (
+          {activeTab === 'team' && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
              <div className="space-y-6">
                 <div className="mb-6">
                   <h2 className="text-2xl font-bold text-gray-800">Gestão de Equipe</h2>
                   <p className="text-gray-500">Adicione novos membros e gerencie permissões de acesso.</p>
                 </div>
-                <UserManagement />
+                <UserManagement currentUser={currentUser} />
              </div>
           )}
 
@@ -533,6 +539,15 @@ const AppContent: React.FC = () => {
                     </div>
                 </div>
             </div>
+          )}
+
+          {/* User Profile Modal */}
+          {isProfileOpen && currentUser && (
+            <UserProfileModal 
+                user={currentUser} 
+                onClose={() => setIsProfileOpen(false)} 
+                onUpdateUser={(updated) => setCurrentUser(updated)} 
+            />
           )}
 
           {/* Footer */}

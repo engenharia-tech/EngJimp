@@ -1,10 +1,17 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { ProjectSession, IssueRecord } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 export const analyzePerformance = async (projects: ProjectSession[], issues: IssueRecord[]) => {
   try {
+    const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+    
+    if (!apiKey) {
+      console.warn("Gemini API Key is missing. Skipping analysis.");
+      return "Análise indisponível: Chave de API não configurada.";
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+
     const projectSummary = projects.slice(0, 10).map(p => 
       `- NS: ${p.ns} (${p.type}): ${(p.totalActiveSeconds / 60).toFixed(1)} mins`
     ).join('\n');

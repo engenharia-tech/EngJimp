@@ -4,6 +4,7 @@ import { AppState, ProjectType, User, VariationRecord, ProjectSession, Implement
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { fetchUsers, supabase } from '../services/storageService';
 import { useToast } from './Toast';
+import { getWorkingSeconds } from '../utils/timeUtils';
 
 interface ProjectHistoryProps {
   data: AppState;
@@ -141,22 +142,29 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         for (const project of data.projects) {
             if (project.status !== 'COMPLETED' || !project.startTime || !project.endTime) continue;
 
-            const start = new Date(project.startTime).getTime();
-            const end = new Date(project.endTime).getTime();
+            const start = new Date(project.startTime);
+            const end = new Date(project.endTime);
 
-            if (isNaN(start) || isNaN(end)) {
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
                 console.warn(`Invalid dates for project ${project.id}: Start=${project.startTime}, End=${project.endTime}`);
                 continue;
             }
 
-            // Calculate correct duration
-            const grossSeconds = Math.floor((end - start) / 1000);
-            const totalPausedSeconds = (project.pauses || []).reduce((acc: number, p: any) => {
-                const dur = Number(p.durationSeconds);
-                return acc + (dur > 0 ? dur : 0);
-            }, 0);
+            // Calculate correct duration using Working Hours
+            const totalWorkingSeconds = getWorkingSeconds(start, end);
             
-            const netSeconds = Math.max(0, grossSeconds - totalPausedSeconds);
+            // Subtract Working Time spent in Pauses
+            let totalPauseWorkingSeconds = 0;
+            (project.pauses || []).forEach((p: any) => {
+                const dur = Number(p.durationSeconds);
+                if (dur > 0) {
+                    const pStart = new Date(p.timestamp);
+                    const pEnd = new Date(pStart.getTime() + dur * 1000);
+                    totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd);
+                }
+            });
+            
+            const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
 
             // If different, queue update
             // We use a threshold of 60 seconds to avoid minor drifts if any, or just exact match
@@ -212,24 +220,29 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             return { gross: 0, pauses: 0, net: 0, valid: false };
         }
 
-        const start = new Date(`${editForm.startDate}T${editForm.startTime}`).getTime();
-        const end = new Date(`${editForm.endDate}T${editForm.endTime}`).getTime();
+        const start = new Date(`${editForm.startDate}T${editForm.startTime}`);
+        const end = new Date(`${editForm.endDate}T${editForm.endTime}`);
         
-        if (isNaN(start) || isNaN(end)) return { gross: 0, pauses: 0, net: 0, valid: false };
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return { gross: 0, pauses: 0, net: 0, valid: false };
         if (end < start) return { gross: 0, pauses: 0, net: 0, valid: false, error: "Data Fim anterior ao Início" };
 
-        const grossSeconds = Math.floor((end - start) / 1000);
+        const totalWorkingSeconds = getWorkingSeconds(start, end);
         
-        const totalPausedSeconds = (editingProject?.pauses || []).reduce((acc, p) => {
+        let totalPauseWorkingSeconds = 0;
+        (editingProject?.pauses || []).forEach((p: any) => {
             const dur = Number(p.durationSeconds);
-            return acc + (dur > 0 ? dur : 0);
-        }, 0);
+            if (dur > 0) {
+                const pStart = new Date(p.timestamp);
+                const pEnd = new Date(pStart.getTime() + dur * 1000);
+                totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd);
+            }
+        });
 
-        const netSeconds = Math.max(0, grossSeconds - totalPausedSeconds);
+        const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
 
         return { 
-            gross: grossSeconds, 
-            pauses: totalPausedSeconds, 
+            gross: totalWorkingSeconds, // Showing "Working Hours" as Gross now, which makes more sense in this context
+            pauses: totalPauseWorkingSeconds, 
             net: netSeconds, 
             valid: true 
         };
