@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle } from 'lucide-react';
 import { User, UserRole } from '../types';
-import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues } from '../services/storageService';
+import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects } from '../services/storageService';
 import { useToast } from './Toast';
 
 interface UserManagementProps {
@@ -387,6 +387,28 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     >
                         {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
                         Limpar Tabela de Problemas
+                    </button>
+                </div>
+
+                {/* Remove Duplicates */}
+                <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
+                    <h4 className="font-semibold text-orange-700 mb-2">Remover Projetos Duplicados</h4>
+                    <p className="text-sm text-orange-600 mb-4">
+                        Localiza e apaga projetos com o mesmo NS e Cliente, mantendo o mais recente.
+                    </p>
+                    <button 
+                        onClick={async () => {
+                            if(!window.confirm("Isso apagará projetos duplicados. Tem certeza?")) return;
+                            setIsCleaning(true);
+                            const res = await removeDuplicateProjects();
+                            setIsCleaning(false);
+                            alert(res.message);
+                        }}
+                        disabled={isCleaning}
+                        className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
+                    >
+                        {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                        Apagar Duplicatas
                     </button>
                 </div>
 
