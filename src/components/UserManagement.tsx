@@ -146,16 +146,28 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       }
   };
 
-  const canEditOrDelete = currentUser.role === 'GESTOR';
+  const isGestor = currentUser.role === 'GESTOR';
+  const isCoordenador = currentUser.role === 'COORDENADOR';
+  // Gestor can do everything. Coordenador can view. Everyone can edit themselves.
+  
+  const canCreateUser = isGestor;
+  const canDeleteUser = isGestor;
+  
+  const canEditUser = (targetUser: User) => {
+      if (isGestor) return true;
+      if (currentUser.id === targetUser.id) return true;
+      return false;
+  };
 
   return (
     <div className="space-y-6">
-      {/* Create User Form */}
+      {/* Create/Edit User Form */}
+      {(canCreateUser || editingUserId) && (
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold flex items-center text-gray-800">
             <UserPlus className="w-6 h-6 mr-2 text-indigo-600" />
-            {editingUserId ? 'Editar Usuário' : 'Cadastrar Novo Usuário'}
+            {editingUserId ? (currentUser.id === editingUserId ? 'Editar Meu Perfil' : 'Editar Usuário') : 'Cadastrar Novo Usuário'}
           </h2>
           {editingUserId && (
             <button 
@@ -204,16 +216,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             <input 
               type="text" 
               value={phone}
-              onChange={e => {
-                  // Simple mask logic or just raw input with validation on blur?
-                  // User asked for xx-xxxxx-xxxx format.
-                  // Let's just allow typing and maybe format it.
-                  setPhone(e.target.value);
-              }}
+              onChange={e => setPhone(e.target.value)}
               className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
               placeholder="xx-xxxxx-xxxx"
-              pattern="\d{2}-\d{5}-\d{4}"
-              title="Formato: xx-xxxxx-xxxx"
             />
           </div>
           <div>
@@ -229,7 +234,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
             <input 
-              type="text" // Visible for ease of creation
+              type="text" 
               value={password}
               onChange={e => setPassword(e.target.value)}
               className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -238,11 +243,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Função</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Função {(!isGestor) && <span className="text-xs text-gray-400">(Somente Gestor)</span>}</label>
             <select 
               value={role}
               onChange={e => setRole(e.target.value as UserRole)}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              disabled={!isGestor}
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
             >
               <option value="PROJETISTA">Projetista</option>
               <option value="GESTOR">Gestor</option>
@@ -251,14 +257,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Salário (R$)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Salário (R$) {(!isGestor) && <span className="text-xs text-gray-400">(Somente Gestor)</span>}</label>
             <input 
               type="number"
               min="0"
               step="0.01"
               value={salary}
               onChange={e => setSalary(Number(e.target.value))}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              disabled={!isGestor}
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
               placeholder="Ex: 5000.00"
             />
           </div>
@@ -274,6 +281,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           </div>
         </form>
       </div>
+      )}
 
       {/* Users List */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -288,17 +296,22 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               <th className="p-4">Usuário</th>
               <th className="p-4">Função</th>
               <th className="p-4">Salário</th>
-              {canEditOrDelete && <th className="p-4 text-center">Ações</th>}
+              <th className="p-4 text-center">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {users.map((u) => (
-              <tr key={u.id} className="hover:bg-gray-50">
+            {users.map((u) => {
+              const canEditThisUser = canEditUser(u);
+              const canDeleteThisUser = canDeleteUser; // Only Gestor
+              const showActions = canEditThisUser || canDeleteThisUser;
+
+              return (
+              <tr key={u.id} className={`hover:bg-gray-50 ${currentUser.id === u.id ? 'bg-blue-50/50' : ''}`}>
                 <td className="p-4 font-medium text-gray-800 flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold">
                     {u.name.charAt(0)}
                   </div>
-                  {u.name}
+                  {u.name} {currentUser.id === u.id && <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full ml-2">Você</span>}
                 </td>
                 <td className="p-4 text-gray-600">{u.username}</td>
                 <td className="p-4">
@@ -308,10 +321,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                   </span>
                 </td>
                 <td className="p-4 text-gray-600">
-                  {u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-'}
+                  {/* Only show salary if user is GESTOR or viewing their own salary */}
+                  {(isGestor || currentUser.id === u.id) 
+                    ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
+                    : '***'}
                 </td>
-                {canEditOrDelete && (
-                  <td className="p-4 text-center flex items-center justify-center gap-2">
+                <td className="p-4 text-center flex items-center justify-center gap-2">
+                    {canEditThisUser && (
                     <button
                       onClick={() => handleEdit(u)}
                       className="text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded transition"
@@ -319,6 +335,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     >
                       <Edit className="w-4 h-4" />
                     </button>
+                    )}
+                    {canDeleteThisUser && (
                     <button
                       onClick={() => handleDelete(u)}
                       className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-2 rounded transition"
@@ -326,13 +344,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </td>
-                )}
+                    )}
+                    {!showActions && <span className="text-gray-300">-</span>}
+                </td>
               </tr>
-            ))}
+            )})}
             {!loadingList && users.length === 0 && (
               <tr>
-                <td colSpan={canEditOrDelete ? 5 : 4} className="p-4 text-center text-gray-400">Nenhum usuário encontrado.</td>
+                <td colSpan={5} className="p-4 text-center text-gray-400">Nenhum usuário encontrado.</td>
               </tr>
             )}
           </tbody>
