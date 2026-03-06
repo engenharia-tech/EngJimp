@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock, User as UserIcon, LogIn, Loader2 } from 'lucide-react';
 import { authenticateUser } from '../services/storageService';
 import { User } from '../types';
-import logoImg from '../assets/logo.svg';
+import logoImg from '../assets/logo.png';
 
 interface LoginProps {
   onLogin: (user: User) => void;
