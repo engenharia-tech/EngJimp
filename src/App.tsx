@@ -23,7 +23,7 @@ import {
   seedFebruaryData
 } from './services/storageService';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord } from './types';
-import logoImg from './assets/logo.png';
+import logoImg from './assets/logo.svg';
 
 const COMPANY_LOGO_URL = logoImg;
 
