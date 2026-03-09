@@ -4,6 +4,7 @@ import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecor
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { getWorkingSeconds } from '../utils/timeUtils';
 import { fetchUsers } from '../services/storageService';
+import { triggerExcelUpdate } from '../services/webhookService';
 
 // SUBSTITUA ISSO PELA SUA URL DO WEBHOOK DO TEAMS
 const TEAMS_WEBHOOK_URL = "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL_HERE";
@@ -266,6 +267,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
 
     onUpdate(finishedProject);
     sendTeamsNotification(finishedProject);
+    
+    // Trigger Excel Integration
+    triggerExcelUpdate(finishedProject, currentUser).then(() => {
+        console.log("Excel update triggered");
+    });
+
     setActiveProject(null);
     setShowFinishModal(false);
     

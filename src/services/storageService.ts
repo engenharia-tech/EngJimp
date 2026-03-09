@@ -704,66 +704,147 @@ export const seedFebruaryData = async (): Promise<{ success: boolean; count: num
   }
 };
 
-export const removeDuplicateProjects = async (): Promise<{ success: boolean; message: string; count: number }> => {
+export interface DuplicateGroup {
+    keep: ProjectSession;
+    discard: ProjectSession;
+}
+
+export const findDuplicateProjects = async (): Promise<{ success: boolean; duplicates: DuplicateGroup[]; message?: string }> => {
   try {
-    const { projects } = await fetchAppState();
-    const duplicates: ProjectSession[] = [];
+    // Fetch ALL projects (up to 5000)
+    const { data: projectsData, error: projectsError } = await supabase
+      .from('projects')
+      .select('*')
+      .order('start_time', { ascending: false })
+      .range(0, 4999);
+
+    if (projectsError) throw projectsError;
+
+    // Map manually to avoid fetchAppState overhead/limit
+    const projects: ProjectSession[] = (projectsData || []).map((p: any) => ({
+      id: p.id,
+      ns: p.ns,
+      clientName: p.client_name,
+      flooringType: p.flooring_type,
+      projectCode: p.project_code,
+      type: p.type,
+      implementType: p.implement_type,
+      startTime: p.start_time,
+      endTime: p.end_time,
+      totalActiveSeconds: p.total_active_seconds,
+      pauses: typeof p.pauses === 'string' ? JSON.parse(p.pauses) : (p.pauses || []),
+      variations: typeof p.variations === 'string' ? JSON.parse(p.variations) : (p.variations || []),
+      status: p.status,
+      notes: p.notes,
+      userId: p.user_id,
+      estimatedSeconds: p.estimated_seconds
+    }));
+
+    console.log(`Scanning ${projects.length} projects for duplicates...`);
+
     const seen = new Map<string, ProjectSession>();
 
-    // Identify duplicates based on NS and Client Name
-    for (const p of projects) {
-        if (!p.ns) continue; 
-        
-        // Normalize key
-        const key = `${p.ns.trim()}-${p.clientName.trim()}`.toLowerCase();
-        
-        if (seen.has(key)) {
-            const existing = seen.get(key)!;
-            
-            // Compare to see which one to keep
-            // Prefer the one with more time logged, or if equal, the one with the most recent start time
-            const existingScore = existing.totalActiveSeconds + (new Date(existing.startTime).getTime() / 10000000000000);
-            const currentScore = p.totalActiveSeconds + (new Date(p.startTime).getTime() / 10000000000000);
+    // Helper to normalize strings for comparison
+    const normalize = (str: string) => str ? str.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
 
-            if (currentScore > existingScore) {
-                // New one is better, mark existing as duplicate and keep new one
-                duplicates.push(existing);
-                seen.set(key, p);
-            } else {
-                // Existing is better or equal, mark new one as duplicate
-                duplicates.push(p);
+    // Identify duplicates based on NS and Client Name
+    const groups = new Map<string, ProjectSession[]>();
+
+    for (const p of projects) {
+        if (!p.ns) continue;
+        
+        // Normalize key: use NS + normalized client name
+        const clientKey = p.clientName ? normalize(p.clientName) : 'unknown';
+        const nsKey = normalize(p.ns);
+        const key = `${nsKey}-${clientKey}`;
+        
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key)!.push(p);
+    }
+
+    const duplicateGroups: DuplicateGroup[] = [];
+
+    // Process groups to find duplicates
+    for (const [key, groupProjects] of groups.entries()) {
+        if (groupProjects.length > 1) {
+            // Sort by score (time + recency) descending
+            groupProjects.sort((a, b) => {
+                const scoreA = (a.totalActiveSeconds || 0) + (new Date(a.startTime).getTime() / 10000000000000);
+                const scoreB = (b.totalActiveSeconds || 0) + (new Date(b.startTime).getTime() / 10000000000000);
+                return scoreB - scoreA;
+            });
+
+            // The first one is the "keeper"
+            const keep = groupProjects[0];
+
+            // All others are duplicates to discard
+            for (let i = 1; i < groupProjects.length; i++) {
+                duplicateGroups.push({
+                    keep: keep,
+                    discard: groupProjects[i]
+                });
             }
-        } else {
-            seen.set(key, p);
         }
     }
 
-    if (duplicates.length === 0) {
-        return { success: true, message: "Nenhum projeto duplicado encontrado.", count: 0 };
-    }
-
-    console.log(`Found ${duplicates.length} duplicates. Deleting...`);
-
-    // Delete duplicates
-    let deletedCount = 0;
-    for (const dup of duplicates) {
-        // We use the raw supabase delete here to avoid fetching app state on every delete (too slow)
-        // But we must respect the deleteProject logic (delete relations first)
-        
-        // 1. Issues
-        await supabase.from('issues').delete().eq('project_id', dup.id);
-        // 2. Innovations
-        await supabase.from('innovations').delete().eq('project_id', dup.id);
-        // 3. Project
-        const { error } = await supabase.from('projects').delete().eq('id', dup.id);
-        
-        if (!error) deletedCount++;
-    }
-
-    return { success: true, message: `Removidos ${deletedCount} projetos duplicados.`, count: deletedCount };
+    return { success: true, duplicates: duplicateGroups };
 
   } catch (error: any) {
-    console.error("Failed to remove duplicates", error);
-    return { success: false, message: error.message, count: 0 };
+    console.error("Failed to find duplicates", error);
+    return { success: false, duplicates: [], message: error.message };
   }
+};
+
+export const deleteProjectById = async (projectId: string, ns?: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+        console.log(`Deleting project ${projectId} (NS: ${ns})`);
+        
+        // 1. Issues (by NS if available, to catch orphans or non-FK linked issues)
+        if (ns) {
+            const { error: nsError } = await supabase.from('issues').delete().eq('project_ns', ns);
+            if (nsError) console.warn("Error deleting issues by NS:", nsError);
+        }
+
+        // 2. Issues (by ID, for FK consistency)
+        const { error: idError } = await supabase.from('issues').delete().eq('project_id', projectId);
+        if (idError) console.warn("Error deleting issues by ID:", idError);
+        
+        // 3. Innovations
+        const { error: innError } = await supabase.from('innovations').delete().eq('project_id', projectId);
+        if (innError) console.warn("Error deleting innovations:", innError);
+        
+        // 4. Project
+        const { error } = await supabase
+            .from('projects')
+            .delete()
+            .eq('id', projectId);
+        
+        if (error) {
+            console.error("Supabase delete error:", error);
+            throw error;
+        }
+
+        // Assume success if no error was thrown. 
+        // We removed the select() check because some RLS policies allow DELETE but not SELECT on the deleted row.
+        return { success: true };
+    } catch (error: any) {
+        console.error("Failed to delete project by ID", error);
+        return { success: false, message: error.message || "Erro desconhecido ao excluir." };
+    }
+};
+
+export const removeDuplicateProjects = async (): Promise<{ success: boolean; message: string; count: number }> => {
+  // Legacy wrapper for backward compatibility if needed, but we will switch to findDuplicateProjects
+  const result = await findDuplicateProjects();
+  if (!result.success) return { success: false, message: result.message || "Error", count: 0 };
+  
+  let deletedCount = 0;
+  for (const group of result.duplicates) {
+      const delRes = await deleteProjectById(group.discard.id);
+      if (delRes.success) deletedCount++;
+  }
+  
+  return { success: true, message: `Removidos ${deletedCount} duplicatas.`, count: deletedCount };
 };
