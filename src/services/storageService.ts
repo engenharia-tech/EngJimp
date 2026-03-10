@@ -294,6 +294,31 @@ export const updateInnovationStatus = async (id: string, status: string): Promis
   }
 };
 
+export const updateInnovation = async (innovation: InnovationRecord): Promise<AppState> => {
+  try {
+    const { error } = await supabase
+      .from('innovations')
+      .update({
+        title: innovation.title,
+        description: innovation.description,
+        type: innovation.type,
+        calculation_type: innovation.calculationType,
+        unit_savings: innovation.unitSavings,
+        quantity: innovation.quantity,
+        total_annual_savings: innovation.totalAnnualSavings,
+        investment_cost: innovation.investmentCost,
+        status: innovation.status,
+      })
+      .eq('id', innovation.id);
+
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("Failed to update innovation", error);
+    throw error;
+  }
+};
+
 export const deleteInnovation = async (id: string): Promise<AppState> => {
   try {
     const { error, data } = await supabase

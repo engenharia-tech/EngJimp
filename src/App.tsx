@@ -19,6 +19,7 @@ import {
   deleteProject,
   addInnovation, 
   updateInnovationStatus,
+  updateInnovation,
   deleteInnovation,
   seedFebruaryData
 } from './services/storageService';
@@ -209,8 +210,9 @@ const AppContent: React.FC = () => {
   };
 
   const handleInnovationAdd = async (innovation: InnovationRecord) => {
-    if (currentUser?.role !== 'GESTOR') {
-      addToast('Apenas o GESTOR pode adicionar inovações.', 'error');
+    const allowedRoles = ['GESTOR', 'COORDENADOR'];
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      addToast('Você não tem permissão para adicionar inovações.', 'error');
       return;
     }
     setIsLoading(true);
@@ -235,8 +237,9 @@ const AppContent: React.FC = () => {
   };
 
   const handleInnovationStatusChange = async (id: string, status: string) => {
-    if (currentUser?.role !== 'GESTOR') {
-      addToast('Apenas o GESTOR pode alterar status de inovações.', 'error');
+    const allowedRoles = ['GESTOR', 'COORDENADOR'];
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      addToast('Você não tem permissão para alterar status de inovações.', 'error');
       return;
     }
     setIsLoading(true);
@@ -251,9 +254,29 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleInnovationUpdate = async (innovation: InnovationRecord) => {
+    const allowedRoles = ['GESTOR', 'COORDENADOR'];
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      addToast('Você não tem permissão para editar inovações.', 'error');
+      return;
+    }
+    setIsLoading(true);
+    try {
+        const updatedData = await updateInnovation(innovation);
+        setData(updatedData);
+        addToast('Inovação atualizada com sucesso!', 'success');
+    } catch (e) {
+        console.error(e);
+        addToast('Erro ao atualizar inovação.', 'error');
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
   const handleInnovationDelete = async (id: string) => {
-    if (currentUser?.role !== 'GESTOR') {
-      addToast('Apenas o GESTOR pode excluir inovações.', 'error');
+    const allowedRoles = ['GESTOR', 'COORDENADOR'];
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      addToast('Você não tem permissão para excluir inovações.', 'error');
       return;
     }
     
@@ -499,6 +522,7 @@ const AppContent: React.FC = () => {
              <InnovationManager 
                 innovations={displayData.innovations} 
                 onAdd={handleInnovationAdd}
+                onUpdate={handleInnovationUpdate}
                 onStatusChange={handleInnovationStatusChange}
                 onDelete={handleInnovationDelete}
                 currentUser={currentUser}
