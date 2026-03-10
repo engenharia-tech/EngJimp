@@ -1,18 +1,21 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Lightbulb, Plus, TrendingDown, TrendingUp, DollarSign, Calendar, User as UserIcon, Check, X, PlayCircle, Trash2, Calculator, ArrowRight } from 'lucide-react';
+import { Lightbulb, Plus, TrendingDown, TrendingUp, DollarSign, Calendar, User as UserIcon, Check, X, PlayCircle, Trash2, Calculator, ArrowRight, Eye, Edit, Info } from 'lucide-react';
 import { InnovationType, InnovationRecord, User, AppState, CalculationType } from '../types';
 import { fetchUsers } from '../services/storageService';
 
 interface InnovationManagerProps {
   innovations: InnovationRecord[];
   onAdd: (innovation: InnovationRecord) => void;
+  onUpdate: (innovation: InnovationRecord) => void;
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
   currentUser: User;
 }
 
-export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovations, onAdd, onStatusChange, onDelete, currentUser }) => {
+export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovations, onAdd, onUpdate, onStatusChange, onDelete, currentUser }) => {
   const [showForm, setShowForm] = useState(false);
+  const [editingInnovation, setEditingInnovation] = useState<InnovationRecord | null>(null);
+  const [viewingInnovation, setViewingInnovation] = useState<InnovationRecord | null>(null);
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
 
@@ -24,6 +27,29 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [unitSavings, setUnitSavings] = useState<string>(''); // R$ value
   const [quantity, setQuantity] = useState<string>(''); // Qty
   const [investmentCost, setInvestmentCost] = useState<string>(''); // R$ Investment
+
+  const canManage = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
+
+  useEffect(() => {
+    if (editingInnovation) {
+        setTitle(editingInnovation.title);
+        setDescription(editingInnovation.description);
+        setType(editingInnovation.type);
+        setCalculationType(editingInnovation.calculationType);
+        setUnitSavings(editingInnovation.unitSavings.toString());
+        setQuantity(editingInnovation.quantity.toString());
+        setInvestmentCost((editingInnovation.investmentCost || 0).toString());
+        setShowForm(true);
+    } else {
+        setTitle('');
+        setDescription('');
+        setType(InnovationType.PRODUCT_IMPROVEMENT);
+        setCalculationType(CalculationType.RECURRING_MONTHLY);
+        setUnitSavings('');
+        setQuantity('');
+        setInvestmentCost('');
+    }
+  }, [editingInnovation]);
 
   useEffect(() => {
     const load = async () => {
@@ -75,31 +101,41 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         total = unit * qty;
     }
 
-    const newRecord: InnovationRecord = {
-      id: crypto.randomUUID(),
-      title,
-      description,
-      type,
-      
-      calculationType,
-      unitSavings: unit,
-      quantity: calculationType === CalculationType.ONE_TIME ? 1 : qty,
-      totalAnnualSavings: total,
-      investmentCost: invest,
+    if (editingInnovation) {
+        const updatedRecord: InnovationRecord = {
+            ...editingInnovation,
+            title,
+            description,
+            type,
+            calculationType,
+            unitSavings: unit,
+            quantity: calculationType === CalculationType.ONE_TIME ? 1 : qty,
+            totalAnnualSavings: total,
+            investmentCost: invest,
+        };
+        onUpdate(updatedRecord);
+        setEditingInnovation(null);
+    } else {
+        const newRecord: InnovationRecord = {
+            id: crypto.randomUUID(),
+            title,
+            description,
+            type,
+            
+            calculationType,
+            unitSavings: unit,
+            quantity: calculationType === CalculationType.ONE_TIME ? 1 : qty,
+            totalAnnualSavings: total,
+            investmentCost: invest,
 
-      status: 'PENDING',
-      authorId: currentUser.id,
-      createdAt: new Date().toISOString()
-    };
-
-    onAdd(newRecord);
+            status: 'PENDING',
+            authorId: currentUser.id,
+            createdAt: new Date().toISOString()
+        };
+        onAdd(newRecord);
+    }
     
     // Reset form
-    setTitle('');
-    setDescription('');
-    setUnitSavings('');
-    setQuantity('');
-    setInvestmentCost('');
     setShowForm(false);
   };
 
@@ -160,9 +196,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
       {/* Action Bar */}
       <div className="flex justify-end">
-        {currentUser.role === 'GESTOR' && (
+        {canManage && (
             <button 
-              onClick={() => setShowForm(!showForm)}
+              onClick={() => {
+                  setEditingInnovation(null);
+                  setShowForm(!showForm);
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center transition-colors shadow-sm"
             >
               <Plus className="w-5 h-5 mr-2" />
@@ -176,7 +215,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         <div className="bg-white p-6 rounded-xl shadow-lg border border-blue-100 animate-in fade-in slide-in-from-top-4 duration-300">
           <h3 className="font-bold text-lg mb-6 text-gray-800 flex items-center border-b pb-4">
             <Calculator className="w-5 h-5 mr-2 text-blue-600" />
-            Calculadora de Economia
+            {editingInnovation ? 'Editar Inovação' : 'Calculadora de Economia'}
           </h3>
           <form onSubmit={handleSubmit} className="space-y-6">
             
@@ -316,7 +355,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             <div className="flex justify-end gap-3 pt-4 border-t">
                <button 
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={() => {
+                      setShowForm(false);
+                      setEditingInnovation(null);
+                  }}
                   className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors font-medium"
                 >
                   Cancelar
@@ -325,7 +367,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   type="submit"
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-lg transition-colors shadow-lg shadow-blue-500/30"
                 >
-                  Registrar Inovação
+                  {editingInnovation ? 'Salvar Alterações' : 'Registrar Inovação'}
                 </button>
             </div>
           </form>
@@ -341,7 +383,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
               <th className="p-4">Cálculo</th>
               <th className="p-4">Status</th>
               <th className="p-4 text-right">Impacto Anual</th>
-              {currentUser.role === 'GESTOR' && <th className="p-4 text-right">Gestão</th>}
+              <th className="p-4 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -392,46 +434,64 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                       <div className="text-xs text-red-400 mt-1">Inv: -{formatCurrency(inv.investmentCost)}</div>
                   )}
                 </td>
-                {currentUser.role === 'GESTOR' && (
-                    <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                            {inv.status === 'PENDING' && (
-                                <>
-                                    <button 
-                                        onClick={() => onStatusChange(inv.id, 'APPROVED')}
-                                        title="Aprovar"
-                                        className="p-1.5 bg-green-50 text-green-600 rounded-md border border-green-200 hover:bg-green-100 hover:border-green-300 transition shadow-sm"
-                                    >
-                                        <Check className="w-4 h-4" />
-                                    </button>
-                                    <button 
-                                        onClick={() => onStatusChange(inv.id, 'REJECTED')}
-                                        title="Rejeitar"
-                                        className="p-1.5 bg-red-50 text-red-600 rounded-md border border-red-200 hover:bg-red-100 hover:border-red-300 transition shadow-sm"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                </>
-                            )}
-                            {inv.status === 'APPROVED' && (
-                                 <button 
-                                    onClick={() => onStatusChange(inv.id, 'IMPLEMENTED')}
-                                    className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition flex items-center shadow-sm"
+                <td className="p-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                        <button 
+                            onClick={() => setViewingInnovation(inv)}
+                            title="Ver Detalhes"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+                        >
+                            <Eye className="w-4 h-4" />
+                        </button>
+
+                        {canManage && (
+                            <>
+                                <button 
+                                    onClick={() => setEditingInnovation(inv)}
+                                    title="Editar"
+                                    className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition"
                                 >
-                                    <PlayCircle className="w-3 h-3 mr-1" />
-                                    Implementar
+                                    <Edit className="w-4 h-4" />
                                 </button>
-                            )}
-                            <button 
-                                onClick={() => setDeleteConfirmationId(inv.id)}
-                                title="Excluir"
-                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition ml-2"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </button>
-                        </div>
-                    </td>
-                )}
+
+                                {inv.status === 'PENDING' && (
+                                    <>
+                                        <button 
+                                            onClick={() => onStatusChange(inv.id, 'APPROVED')}
+                                            title="Aprovar"
+                                            className="p-1.5 bg-green-50 text-green-600 rounded-md border border-green-200 hover:bg-green-100 hover:border-green-300 transition shadow-sm"
+                                        >
+                                            <Check className="w-4 h-4" />
+                                        </button>
+                                        <button 
+                                            onClick={() => onStatusChange(inv.id, 'REJECTED')}
+                                            title="Rejeitar"
+                                            className="p-1.5 bg-red-50 text-red-600 rounded-md border border-red-200 hover:bg-red-100 hover:border-red-300 transition shadow-sm"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </>
+                                )}
+                                {inv.status === 'APPROVED' && (
+                                     <button 
+                                        onClick={() => onStatusChange(inv.id, 'IMPLEMENTED')}
+                                        className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition flex items-center shadow-sm"
+                                    >
+                                        <PlayCircle className="w-3 h-3 mr-1" />
+                                        Implementar
+                                    </button>
+                                )}
+                                <button 
+                                    onClick={() => setDeleteConfirmationId(inv.id)}
+                                    title="Excluir"
+                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition ml-2"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </td>
               </tr>
             ))}
             {sortedInnovations.length === 0 && (
@@ -447,6 +507,59 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
           </tbody>
         </table>
       </div>
+
+      {/* View Details Modal */}
+      {viewingInnovation && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
+                  <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+                      <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                          <Info className="w-6 h-6 mr-2 text-blue-600" />
+                          Detalhes da Melhoria
+                      </h3>
+                      <button onClick={() => setViewingInnovation(null)} className="text-gray-400 hover:text-gray-600">
+                          <X className="w-6 h-6" />
+                      </button>
+                  </div>
+                  <div className="p-6 space-y-6">
+                      <div>
+                          <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Título</h4>
+                          <p className="text-lg font-bold text-gray-800">{viewingInnovation.title}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Tipo</h4>
+                              <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-bold border border-blue-100">
+                                  {viewingInnovation.type}
+                              </span>
+                          </div>
+                          <div>
+                              <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Impacto Anual</h4>
+                              <p className="text-lg font-mono font-bold text-emerald-600">{formatCurrency(viewingInnovation.totalAnnualSavings)}</p>
+                          </div>
+                      </div>
+                      <div>
+                          <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Descrição / Detalhes Técnicos</h4>
+                          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-gray-700 whitespace-pre-wrap leading-relaxed">
+                              {viewingInnovation.description}
+                          </div>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-gray-400 pt-4 border-t">
+                          <span>Registrado em: {new Date(viewingInnovation.createdAt).toLocaleString()}</span>
+                          <span>Autor: {usersMap[viewingInnovation.authorId || ''] || '...'}</span>
+                      </div>
+                  </div>
+                  <div className="p-4 bg-gray-50 border-t flex justify-end">
+                      <button 
+                        onClick={() => setViewingInnovation(null)}
+                        className="px-6 py-2 bg-gray-800 text-white rounded-lg font-bold hover:bg-gray-900 transition-colors"
+                      >
+                          Fechar
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmationId && (
