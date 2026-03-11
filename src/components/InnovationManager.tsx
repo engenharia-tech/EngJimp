@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Lightbulb, Plus, TrendingDown, TrendingUp, DollarSign, Calendar, User as UserIcon, Check, X, PlayCircle, Trash2, Calculator, ArrowRight, Eye, Edit, Info } from 'lucide-react';
-import { InnovationType, InnovationRecord, User, AppState, CalculationType } from '../types';
+import { Lightbulb, Plus, TrendingDown, TrendingUp, DollarSign, Calendar, User as UserIcon, Check, X, PlayCircle, Trash2, Calculator, ArrowRight, Eye, Edit, Info, MinusCircle, PlusCircle, Settings, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
+import { InnovationType, InnovationRecord, User, AppState, CalculationType, InnovationMaterial, InnovationMachine } from '../types';
 import { fetchUsers } from '../services/storageService';
 
 interface InnovationManagerProps {
@@ -19,6 +19,16 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
 
+  // Filter State
+  const [filterText, setFilterText] = useState('');
+  const [filterType, setFilterType] = useState<string>('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Sorting State
+  const [sortKey, setSortKey] = useState<string>('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
   // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -27,6 +37,20 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [unitSavings, setUnitSavings] = useState<string>(''); // R$ value
   const [quantity, setQuantity] = useState<string>(''); // Qty
   const [investmentCost, setInvestmentCost] = useState<string>(''); // R$ Investment
+
+  // New Form State
+  const [materials, setMaterials] = useState<InnovationMaterial[]>([]);
+  const [machine, setMachine] = useState<InnovationMachine | null>(null);
+
+  // Material Input State
+  const [matName, setMatName] = useState('');
+  const [matCost, setMatCost] = useState('');
+  const [matType, setMatType] = useState<'ADD' | 'REMOVE'>('ADD');
+
+  // Machine Input State
+  const [macName, setMacName] = useState('');
+  const [macCost, setMacCost] = useState('');
+  const [macDepYears, setMacDepYears] = useState('');
 
   const canManage = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
 
@@ -39,6 +63,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setUnitSavings(editingInnovation.unitSavings.toString());
         setQuantity(editingInnovation.quantity.toString());
         setInvestmentCost((editingInnovation.investmentCost || 0).toString());
+        setMaterials(editingInnovation.materials || []);
+        setMachine(editingInnovation.machine || null);
         setShowForm(true);
     } else {
         setTitle('');
@@ -48,6 +74,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setUnitSavings('');
         setQuantity('');
         setInvestmentCost('');
+        setMaterials([]);
+        setMachine(null);
     }
   }, [editingInnovation]);
 
@@ -60,10 +88,55 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     load();
   }, []);
 
-  // Sort innovations by date descending
+  // Sort innovations
   const sortedInnovations = useMemo(() => {
-    return [...innovations].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [innovations]);
+    const filtered = innovations.filter(inv => {
+      const matchText = inv.title.toLowerCase().includes(filterText.toLowerCase()) || 
+                        inv.description.toLowerCase().includes(filterText.toLowerCase());
+      const matchType = filterType ? inv.type === filterType : true;
+      
+      let matchDate = true;
+      if (startDate || endDate) {
+        const iDate = new Date(inv.createdAt).getTime();
+        const start = startDate ? new Date(startDate).getTime() : 0;
+        const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
+        matchDate = iDate >= start && iDate <= end;
+      }
+
+      return matchText && matchType && matchDate;
+    });
+
+    return filtered.sort((a, b) => {
+      let valA: any;
+      let valB: any;
+
+      switch (sortKey) {
+        case 'createdAt':
+          valA = new Date(a.createdAt).getTime();
+          valB = new Date(b.createdAt).getTime();
+          break;
+        case 'title':
+          valA = a.title.toLowerCase();
+          valB = b.title.toLowerCase();
+          break;
+        case 'status':
+          valA = a.status;
+          valB = b.status;
+          break;
+        case 'totalAnnualSavings':
+          valA = a.totalAnnualSavings;
+          valB = b.totalAnnualSavings;
+          break;
+        default:
+          valA = 0;
+          valB = 0;
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [innovations, sortKey, sortDirection]);
 
   // Calculate totals - ONLY APPROVED or IMPLEMENTED
   const totalStats = useMemo(() => {
@@ -83,23 +156,65 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     const unit = parseFloat(unitSavings) || 0;
     const qty = parseFloat(quantity) || 0;
     
-    if (calculationType === CalculationType.ONE_TIME) return unit;
-    return unit * qty;
-  }, [unitSavings, quantity, calculationType]);
+    let base = 0;
+    if (calculationType === CalculationType.ONE_TIME) {
+        base = unit;
+    } else if (calculationType === CalculationType.ADD_EXPENSE) {
+        base = -unit;
+    } else {
+        base = unit * qty;
+    }
+
+    // Material Impact
+    const materialImpact = materials.reduce((acc, m) => {
+        const mCost = m.cost * (calculationType === CalculationType.ONE_TIME ? 1 : qty);
+        if (m.type === 'REMOVE') return acc + mCost;
+        return acc - mCost;
+    }, 0);
+
+    // Machine Impact (Depreciation is annual)
+    const machineImpact = machine ? -machine.annualDepreciation : 0;
+
+    return base + materialImpact + machineImpact;
+  }, [unitSavings, quantity, calculationType, materials, machine]);
+
+  const addMaterial = () => {
+    if (matName.trim() === '' || matCost === '') return;
+    const newMat: InnovationMaterial = {
+        id: crypto.randomUUID(),
+        name: matName.trim(),
+        cost: parseFloat(matCost) || 0,
+        type: matType
+    };
+    setMaterials([...materials, newMat]);
+    setMatName('');
+    setMatCost('');
+  };
+
+  const removeMaterial = (id: string) => {
+    setMaterials(materials.filter(m => m.id !== id));
+  };
+
+  const updateMachine = () => {
+    if (!macName || !macCost || !macDepYears) {
+        setMachine(null);
+        return;
+    }
+    const cost = parseFloat(macCost) || 0;
+    const years = parseFloat(macDepYears) || 1;
+    setMachine({
+        name: macName,
+        cost,
+        depreciationYears: years,
+        annualDepreciation: cost / years
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const unit = parseFloat(unitSavings) || 0;
-    const qty = parseFloat(quantity) || 0;
+    const total = previewAnnualSavings;
     const invest = parseFloat(investmentCost) || 0;
-    let total = 0;
-
-    if (calculationType === CalculationType.ONE_TIME) {
-        total = unit;
-    } else {
-        total = unit * qty;
-    }
 
     if (editingInnovation) {
         const updatedRecord: InnovationRecord = {
@@ -108,10 +223,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             description,
             type,
             calculationType,
-            unitSavings: unit,
-            quantity: calculationType === CalculationType.ONE_TIME ? 1 : qty,
+            unitSavings: parseFloat(unitSavings) || 0,
+            quantity: calculationType === CalculationType.ONE_TIME ? 1 : (parseFloat(quantity) || 0),
             totalAnnualSavings: total,
             investmentCost: invest,
+            materials,
+            machine: machine || undefined
         };
         onUpdate(updatedRecord);
         setEditingInnovation(null);
@@ -123,10 +240,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             type,
             
             calculationType,
-            unitSavings: unit,
-            quantity: calculationType === CalculationType.ONE_TIME ? 1 : qty,
+            unitSavings: parseFloat(unitSavings) || 0,
+            quantity: calculationType === CalculationType.ONE_TIME ? 1 : (parseFloat(quantity) || 0),
             totalAnnualSavings: total,
             investmentCost: invest,
+            materials,
+            machine: machine || undefined,
 
             status: 'PENDING',
             authorId: currentUser.id,
@@ -163,11 +282,26 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
   const getCalculationLabel = (type: CalculationType) => {
       switch(type) {
-          case CalculationType.PER_UNIT: return 'unidades/ano';
-          case CalculationType.RECURRING_MONTHLY: return 'meses/ano';
+          case CalculationType.PER_UNIT: 
+          case CalculationType.RECURRING_MONTHLY: 
+              return 'unidades/ano';
           default: return '';
       }
   }
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
+  };
+
+  const SortIcon = ({ columnKey }: { columnKey: string }) => {
+    if (sortKey !== columnKey) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-30" />;
+    return sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 ml-1 text-blue-600" /> : <ArrowDown className="w-3 h-3 ml-1 text-blue-600" />;
+  };
 
   return (
     <div className="space-y-6">
@@ -194,20 +328,83 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         </div>
       </div>
 
-      {/* Action Bar */}
-      <div className="flex justify-end">
-        {canManage && (
-            <button 
-              onClick={() => {
-                  setEditingInnovation(null);
-                  setShowForm(!showForm);
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center transition-colors shadow-sm"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              Nova Ideia / Melhoria
-            </button>
-        )}
+      {/* Action Bar & Filters */}
+      <div className="flex flex-col space-y-4">
+        <div className="flex flex-col md:flex-row justify-between gap-4">
+          <div className="flex flex-1 gap-4">
+              <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                  <input 
+                      type="text"
+                      placeholder="Buscar inovações..."
+                      value={filterText}
+                      onChange={e => setFilterText(e.target.value)}
+                      className="w-full pl-10 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm"
+                  />
+              </div>
+              <select 
+                  value={filterType}
+                  onChange={e => setFilterType(e.target.value)}
+                  className="p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm text-sm"
+              >
+                  <option value="">Todos os Tipos</option>
+                  <option value={InnovationType.PRODUCT_IMPROVEMENT}>Melhoria de Produto</option>
+                  <option value={InnovationType.PROCESS_OPTIMIZATION}>Otimização de Processos</option>
+                  <option value={InnovationType.NEW_PROJECT}>Novo Projeto</option>
+              </select>
+          </div>
+
+          {canManage && (
+              <button 
+                onClick={() => {
+                    setEditingInnovation(null);
+                    setShowForm(!showForm);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg flex items-center transition-colors shadow-md"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Nova Ideia / Melhoria
+              </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
+            <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gray-400" />
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Filtrar por Data:</span>
+            </div>
+            <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">De:</span>
+                <input 
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="p-1.5 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+            </div>
+            <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">Até:</span>
+                <input 
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="p-1.5 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+            </div>
+            {(startDate || endDate || filterText || filterType) && (
+                <button 
+                    onClick={() => {
+                        setStartDate('');
+                        setEndDate('');
+                        setFilterText('');
+                        setFilterType('');
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium ml-auto flex items-center"
+                >
+                    <X className="w-3 h-3 mr-1" /> Limpar Filtros
+                </button>
+            )}
+        </div>
       </div>
 
       {/* Form */}
@@ -241,7 +438,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                 >
                   <option value={InnovationType.PRODUCT_IMPROVEMENT}>Melhoria de Produto</option>
-                  <option value={InnovationType.PROCESS_OPTIMIZATION}>Otimização de Processo</option>
+                  <option value={InnovationType.PROCESS_OPTIMIZATION}>Otimização de Processos</option>
                   <option value={InnovationType.NEW_PROJECT}>Novo Projeto</option>
                 </select>
               </div>
@@ -264,7 +461,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
             {/* Calculation Logic */}
             <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-                <h4 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">Cálculo de Impacto Financeiro</h4>
+                <h4 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">Cálculo de Impacto Financeiro (Base)</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-1">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Método de Cálculo</label>
@@ -276,6 +473,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             <option value={CalculationType.RECURRING_MONTHLY}>Recorrente (Mensal)</option>
                             <option value={CalculationType.PER_UNIT}>Por Unidade Produzida</option>
                             <option value={CalculationType.ONE_TIME}>Valor Único / Fixo</option>
+                            <option value={CalculationType.ADD_EXPENSE}>Adicionar Gasto</option>
                         </select>
                     </div>
 
@@ -283,6 +481,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                              {calculationType === CalculationType.PER_UNIT ? 'Economia por Unidade' : 
                               calculationType === CalculationType.RECURRING_MONTHLY ? 'Economia por Mês' : 
+                              calculationType === CalculationType.ADD_EXPENSE ? 'Valor do Gasto' :
                               'Valor da Economia'}
                         </label>
                         <div className="relative">
@@ -300,43 +499,196 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     </div>
 
                     <div className="md:col-span-1">
-                        {calculationType !== CalculationType.ONE_TIME ? (
+                        {calculationType !== CalculationType.ONE_TIME && calculationType !== CalculationType.ADD_EXPENSE ? (
                             <>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    {calculationType === CalculationType.PER_UNIT ? 'Qtd. Produzida/Ano' : 'Meses Ativos/Ano'}
+                                    Qtd. Produzida/Ano
                                 </label>
                                 <input 
                                     type="number" 
                                     value={quantity}
                                     onChange={e => setQuantity(e.target.value)}
                                     className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder={calculationType === CalculationType.PER_UNIT ? "Ex: 500" : "Ex: 12"}
+                                    placeholder="Ex: 500"
                                     required
                                 />
                             </>
                         ) : (
                              <div className="flex items-center h-full pt-6 text-gray-400 text-sm italic">
-                                Cálculo de valor único.
+                                {calculationType === CalculationType.ADD_EXPENSE ? 'Cálculo de gasto único.' : 'Cálculo de valor único.'}
                              </div>
                         )}
                     </div>
                 </div>
+            </div>
 
-                {/* Preview Banner */}
-                <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                        <div className="text-xs text-blue-600 font-bold uppercase">Impacto Anual Estimado</div>
-                        <div className="text-sm text-blue-800 mt-1">
-                            {calculationType === CalculationType.ONE_TIME 
-                                ? "Valor Fixo Único"
-                                : `${formatCurrency(parseFloat(unitSavings) || 0)} x ${parseFloat(quantity) || 0} ${getCalculationLabel(calculationType)}`
-                            }
+            {/* Materials Section */}
+            <div className="bg-white p-6 rounded-lg border border-gray-200">
+                <h4 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider flex items-center">
+                    <PlusCircle className="w-4 h-4 mr-2 text-emerald-500" />
+                    Materiais (Adicionar ou Retirar)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                    <div className="md:col-span-1">
+                        <input 
+                            type="text" 
+                            placeholder="Nome do Material"
+                            value={matName}
+                            onChange={e => setMatName(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addMaterial();
+                                }
+                            }}
+                            className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                    </div>
+                    <div className="md:col-span-1">
+                        <div className="relative">
+                            <span className="absolute left-2 top-2 text-gray-400 text-xs">R$</span>
+                            <input 
+                                type="number" 
+                                placeholder="Custo"
+                                value={matCost}
+                                onChange={e => setMatCost(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        addMaterial();
+                                    }
+                                }}
+                                className="w-full pl-7 p-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                            />
                         </div>
                     </div>
-                    <div className="flex items-center text-2xl font-bold text-blue-700">
-                        <ArrowRight className="w-5 h-5 mr-2 text-blue-400" />
-                        {formatCurrency(previewAnnualSavings)}
+                    <div className="md:col-span-1">
+                        <select 
+                            value={matType}
+                            onChange={e => setMatType(e.target.value as 'ADD' | 'REMOVE')}
+                            className="w-full p-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                        >
+                            <option value="REMOVE">Retirar (Ganha)</option>
+                            <option value="ADD">Adicionar (Gasta)</option>
+                        </select>
                     </div>
+                    <div className="md:col-span-1">
+                        <button 
+                            type="button"
+                            onClick={addMaterial}
+                            disabled={!matName.trim() || matCost === ''}
+                            className={`w-full p-2 rounded-lg flex items-center justify-center font-bold transition-all shadow-sm ${
+                                !matName.trim() || matCost === '' 
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                                : matType === 'ADD' 
+                                    ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-200' 
+                                    : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-200'
+                            }`}
+                        >
+                            <Plus className="w-4 h-4 mr-1" /> 
+                            {matType === 'ADD' ? 'Adicionar Gasto' : 'Adicionar Ganho'}
+                        </button>
+                    </div>
+                </div>
+
+                {materials.length > 0 && (
+                    <div className="space-y-2">
+                        {materials.map(m => (
+                            <div key={m.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100 text-sm">
+                                <div className="flex items-center">
+                                    {m.type === 'REMOVE' ? <TrendingUp className="w-4 h-4 mr-2 text-emerald-500" /> : <TrendingDown className="w-4 h-4 mr-2 text-red-500" />}
+                                    <span className="font-medium">{m.name}</span>
+                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${m.type === 'REMOVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                        {m.type === 'REMOVE' ? 'RETIRADO' : 'ADICIONADO'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="text-right">
+                                        <div className="font-mono font-bold">
+                                            {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost * (calculationType === CalculationType.ONE_TIME || calculationType === CalculationType.ADD_EXPENSE ? 1 : (parseFloat(quantity) || 0)))}
+                                        </div>
+                                        {calculationType !== CalculationType.ONE_TIME && calculationType !== CalculationType.ADD_EXPENSE && (
+                                            <div className="text-[10px] text-gray-400">
+                                                {formatCurrency(m.cost)} x {quantity || 0} un
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button onClick={() => removeMaterial(m.id)} className="text-gray-400 hover:text-red-500">
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Machine Section */}
+            <div className="bg-white p-6 rounded-lg border border-gray-200">
+                <h4 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider flex items-center">
+                    <Settings className="w-4 h-4 mr-2 text-blue-500" />
+                    Máquina e Depreciação
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="md:col-span-1">
+                        <input 
+                            type="text" 
+                            placeholder="Nome da Máquina"
+                            value={macName}
+                            onChange={e => {
+                                setMacName(e.target.value);
+                                // Update machine object on change
+                            }}
+                            onBlur={updateMachine}
+                            className="w-full p-2 border rounded-lg text-sm"
+                        />
+                    </div>
+                    <div className="md:col-span-1">
+                        <div className="relative">
+                            <span className="absolute left-2 top-2 text-gray-400 text-xs">R$</span>
+                            <input 
+                                type="number" 
+                                placeholder="Custo Máquina"
+                                value={macCost}
+                                onChange={e => setMacCost(e.target.value)}
+                                onBlur={updateMachine}
+                                className="w-full pl-7 p-2 border rounded-lg text-sm"
+                            />
+                        </div>
+                    </div>
+                    <div className="md:col-span-1">
+                        <input 
+                            type="number" 
+                            placeholder="Anos Depreciação"
+                            value={macDepYears}
+                            onChange={e => setMacDepYears(e.target.value)}
+                            onBlur={updateMachine}
+                            className="w-full p-2 border rounded-lg text-sm"
+                        />
+                    </div>
+                    <div className="md:col-span-1 flex items-center">
+                        {machine && (
+                            <div className="text-xs text-blue-600 font-bold">
+                                Depreciação: {formatCurrency(machine.annualDepreciation)}/ano
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Final Preview Banner */}
+            <div className={`mt-6 border rounded-lg p-6 flex items-center justify-between shadow-sm ${previewAnnualSavings < 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                <div>
+                    <div className={`text-xs font-bold uppercase tracking-widest ${previewAnnualSavings < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {previewAnnualSavings < 0 ? 'Impacto Anual Final (Custo)' : 'Impacto Anual Final (Líquido)'}
+                    </div>
+                    <div className={`text-sm mt-1 ${previewAnnualSavings < 0 ? 'text-red-800' : 'text-emerald-800'}`}>
+                        Considerando base + materiais + depreciação
+                    </div>
+                </div>
+                <div className={`flex items-center text-3xl font-bold ${previewAnnualSavings < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                    <ArrowRight className={`w-6 h-6 mr-2 ${previewAnnualSavings < 0 ? 'text-red-400' : 'text-emerald-400'}`} />
+                    {formatCurrency(previewAnnualSavings)}
                 </div>
             </div>
 
@@ -379,10 +731,16 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-100">
             <tr>
-              <th className="p-4">Melhoria</th>
+              <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('title')}>
+                <div className="flex items-center">Melhoria <SortIcon columnKey="title" /></div>
+              </th>
               <th className="p-4">Cálculo</th>
-              <th className="p-4">Status</th>
-              <th className="p-4 text-right">Impacto Anual</th>
+              <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('status')}>
+                <div className="flex items-center">Status <SortIcon columnKey="status" /></div>
+              </th>
+              <th className="p-4 text-right cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('totalAnnualSavings')}>
+                <div className="flex items-center justify-end">Impacto Anual <SortIcon columnKey="totalAnnualSavings" /></div>
+              </th>
               <th className="p-4 text-right">Ações</th>
             </tr>
           </thead>
@@ -408,12 +766,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   </div>
                 </td>
                 <td className="p-4 text-gray-600">
-                   {inv.calculationType === CalculationType.ONE_TIME ? (
-                       <span className="text-xs bg-gray-100 px-2 py-1 rounded">Fixo</span>
+                   {inv.calculationType === CalculationType.ONE_TIME || inv.calculationType === CalculationType.ADD_EXPENSE ? (
+                       <span className={`text-xs px-2 py-1 rounded ${inv.calculationType === CalculationType.ADD_EXPENSE ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-gray-100 text-gray-600'}`}>
+                           {inv.calculationType === CalculationType.ADD_EXPENSE ? 'Gasto Único' : 'Fixo'}
+                       </span>
                    ) : (
                        <div className="flex flex-col text-xs">
                            <span className="font-medium text-gray-700">{formatCurrency(inv.unitSavings)}</span>
-                           <span className="text-gray-400">x {inv.quantity} {inv.calculationType === CalculationType.PER_UNIT ? 'un' : 'meses'}</span>
+                           <span className="text-gray-400">x {inv.quantity} un</span>
                        </div>
                    )}
                 </td>
@@ -544,6 +904,53 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                               {viewingInnovation.description}
                           </div>
                       </div>
+
+                      {/* Materials & Machine Details */}
+                      {(viewingInnovation.materials?.length || viewingInnovation.machine) && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                              {viewingInnovation.materials && viewingInnovation.materials.length > 0 && (
+                                  <div>
+                                      <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Materiais Impactados</h4>
+                                      <div className="space-y-1">
+                                          {viewingInnovation.materials.map(m => (
+                                              <div key={m.id} className="flex justify-between items-center text-xs p-1.5 bg-gray-50 rounded border border-gray-100">
+                                                  <div className="flex flex-col">
+                                                      <span className="flex items-center font-medium">
+                                                          {m.type === 'REMOVE' ? <TrendingUp className="w-3 h-3 mr-1 text-emerald-500" /> : <TrendingDown className="w-3 h-3 mr-1 text-red-500" />}
+                                                          {m.name}
+                                                      </span>
+                                                      {viewingInnovation.calculationType !== CalculationType.ONE_TIME && viewingInnovation.calculationType !== CalculationType.ADD_EXPENSE && (
+                                                          <span className="text-[10px] text-gray-400 ml-4">
+                                                              {formatCurrency(m.cost)} x {viewingInnovation.quantity} un
+                                                          </span>
+                                                      )}
+                                                  </div>
+                                                  <span className={`font-bold ${m.type === 'REMOVE' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                      {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost * (viewingInnovation.calculationType === CalculationType.ONE_TIME || viewingInnovation.calculationType === CalculationType.ADD_EXPENSE ? 1 : viewingInnovation.quantity))}
+                                                  </span>
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+                              )}
+                              {viewingInnovation.machine && (
+                                  <div>
+                                      <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Máquina / Equipamento</h4>
+                                      <div className="p-2 bg-blue-50 rounded border border-blue-100 text-xs">
+                                          <div className="font-bold text-blue-800">{viewingInnovation.machine.name}</div>
+                                          <div className="flex justify-between mt-1 text-blue-600">
+                                              <span>Custo: {formatCurrency(viewingInnovation.machine.cost)}</span>
+                                              <span>{viewingInnovation.machine.depreciationYears} anos</span>
+                                          </div>
+                                          <div className="mt-1 font-bold text-blue-700 border-t border-blue-200 pt-1">
+                                              Depreciação: {formatCurrency(viewingInnovation.machine.annualDepreciation)}/ano
+                                          </div>
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
+                      )}
+
                       <div className="flex items-center justify-between text-xs text-gray-400 pt-4 border-t">
                           <span>Registrado em: {new Date(viewingInnovation.createdAt).toLocaleString()}</span>
                           <span>Autor: {usersMap[viewingInnovation.authorId || ''] || '...'}</span>

@@ -42,13 +42,14 @@ export enum IssueType {
 export enum InnovationType {
   NEW_PROJECT = 'Novo Projeto',
   PRODUCT_IMPROVEMENT = 'Melhoria de Produto',
-  PROCESS_OPTIMIZATION = 'Otimização de Processo'
+  PROCESS_OPTIMIZATION = 'Otimização de Processos'
 }
 
 export enum CalculationType {
   PER_UNIT = 'Por Unidade Produzida',
   RECURRING_MONTHLY = 'Recorrente (Mensal)',
-  ONE_TIME = 'Valor Único / Fixo'
+  ONE_TIME = 'Valor Único / Fixo',
+  ADD_EXPENSE = 'Adicionar Gasto'
 }
 
 export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'COORDENADOR';
@@ -108,6 +109,20 @@ export interface IssueRecord {
   reportedBy?: string; // Track who reported
 }
 
+export interface InnovationMaterial {
+  id: string;
+  name: string;
+  cost: number;
+  type: 'ADD' | 'REMOVE';
+}
+
+export interface InnovationMachine {
+  name: string;
+  cost: number;
+  depreciationYears: number;
+  annualDepreciation: number;
+}
+
 export interface InnovationRecord {
   id: string;
   title: string;
@@ -120,6 +135,10 @@ export interface InnovationRecord {
   quantity: number; // Multiplier (e.g., units per year, or 12 months)
   totalAnnualSavings: number; // The calculated total: unitSavings * quantity (if recurring/unit)
   investmentCost?: number; // Cost to implement (optional)
+
+  // New Fields
+  materials?: InnovationMaterial[];
+  machine?: InnovationMachine;
 
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'IMPLEMENTED';
   authorId?: string;

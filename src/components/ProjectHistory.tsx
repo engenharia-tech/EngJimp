@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Filter, Calendar, Search, Clock, Hash, User as UserIcon, Truck, Trash2, Layers, Box, Eye, X, FileCheck, FileX, AlertTriangle, Edit, Timer, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
+import { Filter, Calendar, Search, Clock, Hash, User as UserIcon, Truck, Trash2, Layers, Box, Eye, X, FileCheck, FileX, AlertTriangle, Edit, Timer, RefreshCw, AlertCircle, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { AppState, ProjectType, User, VariationRecord, ProjectSession, ImplementType } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, DuplicateGroup } from '../services/storageService';
@@ -25,6 +25,10 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [showRecalculateConfirm, setShowRecalculateConfirm] = useState(false);
   const [recalculateProgress, setRecalculateProgress] = useState({ current: 0, total: 0 });
+
+  // Sorting State
+  const [sortKey, setSortKey] = useState<string>('startTime');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Duplicate Management State
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
@@ -83,7 +87,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   }, []);
 
   const filteredProjects = useMemo(() => {
-    return data.projects.filter(p => {
+    const filtered = data.projects.filter(p => {
       const matchNs = p.ns.toLowerCase().includes(filterNs.toLowerCase());
       const matchType = filterType ? p.type === filterType : true;
       
@@ -105,8 +109,51 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       }
 
       return matchNs && matchType && matchDate && matchSuspicious;
-    }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-  }, [data.projects, filterNs, filterType, startDate, endDate, filterSuspicious]);
+    });
+
+    return filtered.sort((a, b) => {
+      let valA: any;
+      let valB: any;
+
+      switch (sortKey) {
+        case 'startTime':
+          valA = new Date(a.startTime).getTime();
+          valB = new Date(b.startTime).getTime();
+          break;
+        case 'ns':
+          valA = a.ns.toLowerCase();
+          valB = b.ns.toLowerCase();
+          break;
+        case 'clientName':
+          valA = (a.clientName || '').toLowerCase();
+          valB = (b.clientName || '').toLowerCase();
+          break;
+        case 'totalActiveSeconds':
+          valA = a.totalActiveSeconds;
+          valB = b.totalActiveSeconds;
+          break;
+        case 'status':
+          valA = a.status;
+          valB = b.status;
+          break;
+        case 'type':
+          valA = a.type;
+          valB = b.type;
+          break;
+        case 'userId':
+          valA = (usersMap[a.userId || '']?.name || '').toLowerCase();
+          valB = (usersMap[b.userId || '']?.name || '').toLowerCase();
+          break;
+        default:
+          valA = 0;
+          valB = 0;
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [data.projects, filterNs, filterType, startDate, endDate, filterSuspicious, sortKey, sortDirection, usersMap]);
 
   const handleOpenEdit = (project: ProjectSession) => {
       setEditingProject(project);
@@ -331,6 +378,20 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   const isGestor = currentUser.role === 'GESTOR';
 
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
+  };
+
+  const SortIcon = ({ columnKey }: { columnKey: string }) => {
+    if (sortKey !== columnKey) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-30" />;
+    return sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 ml-1 text-blue-600" /> : <ArrowDown className="w-3 h-3 ml-1 text-blue-600" />;
+  };
+
   return (
     <div className="space-y-6">
       {/* Filters Section */}
@@ -506,14 +567,28 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-100">
               <tr>
                 <th className="p-4 text-center w-24">Ações</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Projetista</th>
-                <th className="p-4">Cliente</th>
-                <th className="p-4">NS / Cód.</th>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('status')}>
+                  <div className="flex items-center">Status <SortIcon columnKey="status" /></div>
+                </th>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('userId')}>
+                  <div className="flex items-center">Projetista <SortIcon columnKey="userId" /></div>
+                </th>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('clientName')}>
+                  <div className="flex items-center">Cliente <SortIcon columnKey="clientName" /></div>
+                </th>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('ns')}>
+                  <div className="flex items-center">NS / Cód. <SortIcon columnKey="ns" /></div>
+                </th>
                 <th className="p-4">Variações (Total)</th>
-                <th className="p-4">Tipo / Impl.</th>
-                <th className="p-4">Início / Fim</th>
-                <th className="p-4">Tempo (Est. / Real)</th>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('type')}>
+                  <div className="flex items-center">Tipo / Impl. <SortIcon columnKey="type" /></div>
+                </th>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('startTime')}>
+                  <div className="flex items-center">Início / Fim <SortIcon columnKey="startTime" /></div>
+                </th>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('totalActiveSeconds')}>
+                  <div className="flex items-center">Tempo (Est. / Real) <SortIcon columnKey="totalActiveSeconds" /></div>
+                </th>
                 {isGestor && <th className="p-4">Custo</th>}
               </tr>
             </thead>
