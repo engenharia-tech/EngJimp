@@ -226,9 +226,13 @@ const AppContent: React.FC = () => {
       const updatedData = await addInnovation(innovation);
       setData(updatedData);
       addToast('Inovação registrada com sucesso!', 'success');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      addToast('Erro ao salvar inovação.', 'error');
+      if (e.message?.includes('violates check constraint') || e.message?.includes('innovations_type_check')) {
+          addToast('ERRO: O banco de dados não aceita este tipo de inovação. Vá em "Gestão de Equipe" e rode a correção SQL.', 'error');
+      } else {
+          addToast('Erro ao salvar inovação.', 'error');
+      }
       const revertedData = await fetchAppState();
       setData(revertedData);
     } finally {
@@ -265,9 +269,13 @@ const AppContent: React.FC = () => {
         const updatedData = await updateInnovation(innovation);
         setData(updatedData);
         addToast('Inovação atualizada com sucesso!', 'success');
-    } catch (e) {
+    } catch (e: any) {
         console.error(e);
-        addToast('Erro ao atualizar inovação.', 'error');
+        if (e.message?.includes('violates check constraint') || e.message?.includes('innovations_type_check')) {
+            addToast('ERRO: O banco de dados não aceita este tipo de inovação. Vá em "Gestão de Equipe" e rode a correção SQL.', 'error');
+        } else {
+            addToast('Erro ao atualizar inovação.', 'error');
+        }
     } finally {
         setIsLoading(false);
     }

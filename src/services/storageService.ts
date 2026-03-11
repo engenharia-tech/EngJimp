@@ -84,7 +84,11 @@ export const fetchAppState = async (): Promise<AppState> => {
 
       status: inv.status,
       authorId: inv.author_id,
-      createdAt: inv.created_at
+      createdAt: inv.created_at,
+      
+      // New fields
+      materials: typeof inv.materials === 'string' ? JSON.parse(inv.materials) : (inv.materials || []),
+      machine: typeof inv.machine === 'string' ? JSON.parse(inv.machine) : (inv.machine || undefined)
     }));
 
     return { projects, issues, innovations };
@@ -262,6 +266,9 @@ export const addInnovation = async (innovation: InnovationRecord): Promise<AppSt
       quantity: innovation.quantity,
       total_annual_savings: innovation.totalAnnualSavings,
       investment_cost: innovation.investmentCost,
+      
+      materials: innovation.materials,
+      machine: innovation.machine,
 
       status: innovation.status,
       author_id: innovation.authorId,
@@ -307,6 +314,8 @@ export const updateInnovation = async (innovation: InnovationRecord): Promise<Ap
         quantity: innovation.quantity,
         total_annual_savings: innovation.totalAnnualSavings,
         investment_cost: innovation.investmentCost,
+        materials: innovation.materials,
+        machine: innovation.machine,
         status: innovation.status,
       })
       .eq('id', innovation.id);

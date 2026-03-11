@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, AlertTriangle, Calendar, User as UserIcon, Trash2 } from 'lucide-react';
+import { Search, AlertTriangle, Calendar, User as UserIcon, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { AppState, IssueType, User } from '../types';
 import { ISSUE_TYPES } from '../constants';
 import { fetchUsers } from '../services/storageService';
@@ -13,7 +13,12 @@ interface IssueHistoryProps {
 export const IssueHistory: React.FC<IssueHistoryProps> = ({ data, currentUser, onDelete }) => {
   const [filterNs, setFilterNs] = useState('');
   const [filterType, setFilterType] = useState<string>('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
+
+  // Sorting State
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     const load = async () => {
@@ -25,12 +30,27 @@ export const IssueHistory: React.FC<IssueHistoryProps> = ({ data, currentUser, o
   }, []);
 
   const filteredIssues = useMemo(() => {
-    return data.issues.filter(issue => {
+    const filtered = data.issues.filter(issue => {
       const matchNs = issue.projectNs.toLowerCase().includes(filterNs.toLowerCase());
       const matchType = filterType ? issue.type === filterType : true;
-      return matchNs && matchType;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [data.issues, filterNs, filterType]);
+      
+      let matchDate = true;
+      if (startDate || endDate) {
+        const iDate = new Date(issue.date).getTime();
+        const start = startDate ? new Date(startDate).getTime() : 0;
+        const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
+        matchDate = iDate >= start && iDate <= end;
+      }
+
+      return matchNs && matchType && matchDate;
+    });
+
+    return filtered.sort((a, b) => {
+      const timeA = new Date(a.date).getTime();
+      const timeB = new Date(b.date).getTime();
+      return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
+    });
+  }, [data.issues, filterNs, filterType, startDate, endDate, sortOrder]);
 
   const formatDate = (isoString: string) => {
     return new Date(isoString).toLocaleString('pt-BR', {
@@ -47,8 +67,8 @@ export const IssueHistory: React.FC<IssueHistoryProps> = ({ data, currentUser, o
   return (
     <div className="space-y-6">
       {/* Filters */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4">
-        <div className="relative flex-1">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="relative">
           <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
           <input
             type="text"
@@ -61,11 +81,41 @@ export const IssueHistory: React.FC<IssueHistoryProps> = ({ data, currentUser, o
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+          className="p-2 border rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
         >
           <option value="">Todos os Tipos de Erro</option>
           {ISSUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
+
+        <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">De:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-sm"
+            />
+        </div>
+
+        <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Até:</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-sm"
+            />
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+          <button 
+            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            {sortOrder === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
+            Ordenar por Data: {sortOrder === 'asc' ? 'Mais Antigos' : 'Mais Recentes'}
+          </button>
       </div>
 
       {/* List */}

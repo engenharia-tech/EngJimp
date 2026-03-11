@@ -581,7 +581,7 @@ BEGIN
     END IF;
 END $$;
 
--- Innovations: Garantir que não trave
+-- Innovations: Garantir que não trave e adicionar novas colunas
 ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_project_id_fkey;
 DO $$
 BEGIN
@@ -589,6 +589,13 @@ BEGIN
         ALTER TABLE public.innovations ADD CONSTRAINT innovations_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE SET NULL;
     END IF;
 END $$;
+
+-- 8. Corrigir Constraint de Tipo de Inovação e Adicionar Colunas de Cálculo
+ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_type_check;
+ALTER TABLE public.innovations ADD CONSTRAINT innovations_type_check CHECK (type IN ('Melhoria de Produto', 'Otimização de Processos', 'Novo Projeto'));
+
+ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS materials JSONB;
+ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS machine JSONB;
 
 -- 9. Adicionar colunas de Perfil (Nome, Sobrenome, Email, Celular)
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS surname TEXT;
