@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle } from 'lucide-react';
 import { User, UserRole } from '../types';
-import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup } from '../services/storageService';
+import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState } from '../services/storageService';
 import { getWebhookUrl, saveWebhookUrl } from '../services/webhookService';
 import { useToast } from './Toast';
 
@@ -21,9 +21,29 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [webhookUrl, setWebhookUrl] = useState('');
   const [showWebhookHelp, setShowWebhookHelp] = useState(false);
 
+  // Hourly Cost State
+  const [hourlyCost, setHourlyCost] = useState<number>(0);
+
   useEffect(() => {
       setWebhookUrl(getWebhookUrl());
+      // Load hourly cost from app state or fetch it
+      const loadSettings = async () => {
+          const state = await fetchAppState();
+          if (state.settings) {
+              setHourlyCost(state.settings.hourlyCost);
+          }
+      };
+      loadSettings();
   }, []);
+
+  const handleSaveHourlyCost = async () => {
+      try {
+          await updateSettings(hourlyCost);
+          addToast("Custo hora atualizado com sucesso!", "success");
+      } catch (error) {
+          addToast("Erro ao atualizar custo hora.", "error");
+      }
+  };
 
   const handleSaveWebhook = () => {
       saveWebhookUrl(webhookUrl);
@@ -179,16 +199,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     <div className="space-y-6">
       {/* Create/Edit User Form */}
       {(canCreateUser || editingUserId) && (
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold flex items-center text-gray-800">
-            <UserPlus className="w-6 h-6 mr-2 text-indigo-600" />
+          <h2 className="text-xl font-bold flex items-center text-black dark:text-white">
+            <UserPlus className="w-6 h-6 mr-2 text-indigo-600 dark:text-indigo-400" />
             {editingUserId ? (currentUser.id === editingUserId ? 'Editar Meu Perfil' : 'Editar Usuário') : 'Cadastrar Novo Usuário'}
           </h2>
           {editingUserId && (
             <button 
               onClick={resetForm}
-              className="text-gray-500 hover:text-gray-700 flex items-center text-sm"
+              className="text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 flex items-center text-sm"
             >
               <X className="w-4 h-4 mr-1" /> Cancelar Edição
             </button>
@@ -197,74 +217,74 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
         <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome (Primeiro Nome)</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome (Primeiro Nome)</label>
             <input 
               type="text" 
               value={name}
               onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
               required
               placeholder="Somente letras"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Sobrenome</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Sobrenome</label>
             <input 
               type="text" 
               value={surname}
               onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
               placeholder="Somente letras"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">E-mail</label>
             <input 
               type="email" 
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
               placeholder="exemplo@exemplo.com"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Celular</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Celular</label>
             <input 
               type="text" 
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
               placeholder="xx-xxxxx-xxxx"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome de Usuário (Login)</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome de Usuário (Login)</label>
             <input 
               type="text" 
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Senha</label>
             <input 
               type="text" 
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
               placeholder="Defina uma senha"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Função {(!isGestor) && <span className="text-xs text-gray-400">(Somente Gestor)</span>}</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Função {(!isGestor) && <span className="text-xs text-gray-400 dark:text-slate-500">(Somente Gestor)</span>}</label>
             <select 
               value={role}
               onChange={e => setRole(e.target.value as UserRole)}
               disabled={!isGestor}
-              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-800 dark:text-slate-200'}`}
             >
               <option value="PROJETISTA">Projetista</option>
               <option value="GESTOR">Gestor</option>
@@ -273,7 +293,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Salário (R$) {(!isGestor) && <span className="text-xs text-gray-400">(Somente Gestor)</span>}</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Salário (R$) {(!isGestor) && <span className="text-xs text-gray-400 dark:text-slate-500">(Somente Gestor)</span>}</label>
             <input 
               type="text"
               value={salary === 0 ? '' : salary}
@@ -282,7 +302,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                   setSalary(Number(val));
               }}
               disabled={!isGestor}
-              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-800 dark:text-slate-200'}`}
               placeholder="Ex: 5000.00"
             />
           </div>
@@ -301,13 +321,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       )}
 
       {/* Users List */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-           <h3 className="font-bold text-gray-700">Membros da Equipe</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+        <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
+           <h3 className="font-bold text-black dark:text-white">Membros da Equipe</h3>
            {loadingList && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
         </div>
         <table className="w-full text-sm text-left">
-          <thead className="bg-gray-50 text-gray-600 font-medium">
+          <thead className="bg-gray-50 dark:bg-slate-900/50 text-black dark:text-white font-medium">
             <tr>
               <th className="p-4">Nome</th>
               <th className="p-4">Usuário</th>
@@ -316,28 +336,28 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               <th className="p-4 text-center">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
             {users.map((u) => {
               const canEditThisUser = canEditUser(u);
               const canDeleteThisUser = canDeleteUser; // Only Gestor
               const showActions = canEditThisUser || canDeleteThisUser;
 
               return (
-              <tr key={u.id} className={`hover:bg-gray-50 ${currentUser.id === u.id ? 'bg-blue-50/50' : ''}`}>
-                <td className="p-4 font-medium text-gray-800 flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold">
+              <tr key={u.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${currentUser.id === u.id ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''}`}>
+                <td className="p-4 font-medium text-black dark:text-white flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-slate-700 flex items-center justify-center text-gray-500 dark:text-slate-400 font-bold">
                     {u.name.charAt(0)}
                   </div>
-                  {u.name} {currentUser.id === u.id && <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full ml-2">Você</span>}
+                  {u.name} {currentUser.id === u.id && <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded-full ml-2">Você</span>}
                 </td>
-                <td className="p-4 text-gray-600">{u.username}</td>
+                <td className="p-4 text-black dark:text-white">{u.username}</td>
                 <td className="p-4">
-                  <span className={`px-2 py-1 rounded-full text-xs font-bold flex items-center w-fit gap-1 bg-gray-100 text-gray-700`}>
+                  <span className={`px-2 py-1 rounded-full text-xs font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-slate-700 text-black dark:text-white`}>
                     {getRoleIcon(u.role)}
                     {u.role}
                   </span>
                 </td>
-                <td className="p-4 text-gray-600">
+                <td className="p-4 text-black dark:text-white">
                   {/* Only show salary if user is GESTOR or viewing their own salary */}
                   {(isGestor || currentUser.id === u.id) 
                     ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
@@ -347,7 +367,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     {canEditThisUser && (
                     <button
                       onClick={() => handleEdit(u)}
-                      className="text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded transition"
+                      className="text-gray-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 p-2 rounded transition"
                       title="Editar Usuário"
                     >
                       <Edit className="w-4 h-4" />
@@ -356,19 +376,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     {canDeleteThisUser && (
                     <button
                       onClick={() => handleDelete(u)}
-                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-2 rounded transition"
+                      className="text-gray-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded transition"
                       title="Excluir Usuário"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                     )}
-                    {!showActions && <span className="text-gray-300">-</span>}
+                    {!showActions && <span className="text-gray-300 dark:text-slate-600">-</span>}
                 </td>
               </tr>
             )})}
             {!loadingList && users.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-4 text-center text-gray-400">Nenhum usuário encontrado.</td>
+                <td colSpan={5} className="p-4 text-center text-gray-400 dark:text-slate-500">Nenhum usuário encontrado.</td>
               </tr>
             )}
           </tbody>
@@ -376,17 +396,17 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       </div>
       {/* Data Maintenance Section - GESTOR ONLY */}
       {currentUser.role === 'GESTOR' && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-orange-100 mt-8">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center">
-            <Shield className="w-5 h-5 mr-2 text-orange-600" />
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30 mt-8">
+            <h3 className="font-bold text-black dark:text-white mb-4 flex items-center">
+            <Shield className="w-5 h-5 mr-2 text-orange-600 dark:text-orange-400" />
             Manutenção de Dados & Permissões
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Clear Issues */}
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <h4 className="font-semibold text-gray-700 mb-2">Limpeza de Dados</h4>
-                    <p className="text-sm text-gray-500 mb-4">
+                <div className="p-4 bg-gray-50 dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-slate-700">
+                    <h4 className="font-semibold text-black dark:text-white mb-2">Limpeza de Dados</h4>
+                    <p className="text-sm text-gray-500 dark:text-slate-400 mb-4">
                         A tabela de "Problemas" (Issues) foi descontinuada. Use este botão para limpar todos os registros antigos do banco de dados.
                     </p>
                     <button 
@@ -399,7 +419,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                             else alert("Erro: " + res.message);
                         }}
                         disabled={isCleaning}
-                        className="bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
+                        className="bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
                     >
                         {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
                         Limpar Tabela de Problemas
@@ -407,24 +427,24 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 </div>
 
                 {/* Excel Integration */}
-                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                    <h4 className="font-semibold text-green-800 mb-2 flex items-center">
+                <div className="p-4 bg-green-50 dark:bg-emerald-900/20 rounded-lg border border-green-200 dark:border-emerald-900/30">
+                    <h4 className="font-semibold text-black dark:text-white mb-2 flex items-center">
                         <Activity className="w-5 h-5 mr-2" />
                         Integração com Excel Online
                     </h4>
-                    <p className="text-sm text-green-700 mb-4">
+                    <p className="text-sm text-green-700 dark:text-emerald-500/80 mb-4">
                         Configure um Webhook (Power Automate) para enviar dados automaticamente para sua planilha Excel ao concluir projetos.
                     </p>
                     
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-green-800 uppercase">URL do Webhook</label>
+                        <label className="text-xs font-bold text-green-800 dark:text-emerald-400 uppercase">URL do Webhook</label>
                         <div className="flex gap-2">
                             <input 
                                 type="text" 
                                 value={webhookUrl}
                                 onChange={(e) => setWebhookUrl(e.target.value)}
                                 placeholder="https://prod-XX.westus.logic.azure.com:443/workflows/..."
-                                className="flex-1 p-2 border border-green-300 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none"
+                                className="flex-1 p-2 border border-green-300 dark:border-emerald-900/50 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
                             />
                             <button 
                                 onClick={handleSaveWebhook}
@@ -435,19 +455,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                         </div>
                         <button 
                             onClick={() => setShowWebhookHelp(!showWebhookHelp)}
-                            className="text-xs text-green-600 underline hover:text-green-800 mt-1"
+                            className="text-xs text-green-600 dark:text-emerald-500 underline hover:text-green-800 dark:hover:text-emerald-400 mt-1"
                         >
                             Como configurar isso?
                         </button>
                         
                         {showWebhookHelp && (
-                            <div className="mt-4 bg-white p-4 rounded border border-green-200 text-sm text-gray-600 space-y-2">
+                            <div className="mt-4 bg-white dark:bg-slate-900 p-4 rounded border border-green-200 dark:border-emerald-900/30 text-sm text-gray-600 dark:text-slate-400 space-y-2">
                                 <p><strong>Passo a Passo (Power Automate):</strong></p>
                                 <ol className="list-decimal pl-5 space-y-1">
                                     <li>Crie um novo fluxo "Instantâneo" no Power Automate.</li>
                                     <li>Escolha o gatilho: <strong>"Quando uma solicitação HTTP é recebida"</strong>.</li>
                                     <li>No corpo da solicitação (Schema), use este JSON de exemplo:
-                                        <pre className="bg-gray-100 p-2 rounded mt-1 text-xs font-mono">
+                                        <pre className="bg-gray-100 dark:bg-slate-800 p-2 rounded mt-1 text-xs font-mono dark:text-slate-300">
 {`{
   "projetista": "Nome",
   "ns": "123456",
@@ -469,10 +489,40 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     </div>
                 </div>
 
+                {/* Hourly Cost Configuration */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-900/30">
+                    <h4 className="font-semibold text-black dark:text-white mb-2 flex items-center">
+                        <Briefcase className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
+                        Custo Hora Engenharia
+                    </h4>
+                    <p className="text-sm text-blue-700 dark:text-blue-400/80 mb-4">
+                        Defina o valor da hora de engenharia para o cálculo automático de custos dos projetos.
+                    </p>
+                    
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase">Valor da Hora (R$)</label>
+                        <div className="flex gap-2">
+                            <input 
+                                type="number" 
+                                value={hourlyCost}
+                                onChange={(e) => setHourlyCost(Number(e.target.value))}
+                                className="flex-1 p-2 border border-blue-300 dark:border-blue-900/50 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
+                                placeholder="Ex: 150.00"
+                            />
+                            <button 
+                                onClick={handleSaveHourlyCost}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold"
+                            >
+                                Salvar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Remove Duplicates */}
-                <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
-                    <h4 className="font-semibold text-orange-700 mb-2">Remover Projetos Duplicados</h4>
-                    <p className="text-sm text-orange-600 mb-4">
+                <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-900/30">
+                    <h4 className="font-semibold text-black dark:text-white mb-2">Remover Projetos Duplicados</h4>
+                    <p className="text-sm text-orange-600 dark:text-orange-500/80 mb-4">
                         Localiza e permite apagar projetos com o mesmo NS e Cliente, mantendo o mais recente.
                     </p>
                     <button 
@@ -500,7 +550,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                             }
                         }}
                         disabled={isCleaning}
-                        className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
+                        className="bg-orange-100 dark:bg-orange-900/30 hover:bg-orange-200 dark:hover:bg-orange-900/50 text-orange-700 dark:text-orange-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
                     >
                         {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
                         Buscar Duplicatas
@@ -508,12 +558,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 </div>
 
                 {/* Fix RLS */}
-                <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                    <h4 className="font-bold text-red-700 mb-2 flex items-center">
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-900/30">
+                    <h4 className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center">
                         <AlertCircle className="w-5 h-5 mr-2" />
                         CORREÇÃO DE ERROS DE BANCO DE DADOS
                     </h4>
-                    <p className="text-sm text-red-600 mb-4">
+                    <p className="text-sm text-red-600 dark:text-red-500/80 mb-4">
                         Se você está vendo erros como <strong>"violates check constraint"</strong>, <strong>"policy violated"</strong> ou não consegue salvar/excluir nada, é OBRIGATÓRIO rodar este script no Supabase.
                     </p>
                     <button 
@@ -601,6 +651,49 @@ ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS machine JSONB;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS surname TEXT;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
+
+-- 10. Criar Tabelas de Interrupções
+CREATE TABLE IF NOT EXISTS public.interruption_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    is_active BOOLEAN DEFAULT true
+);
+
+CREATE TABLE IF NOT EXISTS public.interruptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_ns TEXT NOT NULL,
+    client_name TEXT,
+    designer_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    start_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+    end_time TIMESTAMPTZ,
+    problem_type TEXT NOT NULL,
+    responsible_area TEXT NOT NULL,
+    responsible_person TEXT,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'Aberto',
+    total_time_seconds INTEGER DEFAULT 0
+);
+
+-- Habilitar RLS
+ALTER TABLE public.interruption_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interruptions ENABLE ROW LEVEL SECURITY;
+
+-- Criar Políticas
+DROP POLICY IF EXISTS "Enable all for interruption_types" ON public.interruption_types;
+CREATE POLICY "Enable all for interruption_types" ON public.interruption_types FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Enable all for interruptions" ON public.interruptions;
+CREATE POLICY "Enable all for interruptions" ON public.interruptions FOR ALL USING (true) WITH CHECK (true);
+
+-- Seed default interruption types
+INSERT INTO public.interruption_types (name)
+SELECT name FROM (
+    VALUES 
+    ('falta de informações'),
+    ('Informações erradas'),
+    ('outros')
+) AS t(name)
+WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
 `;
                             navigator.clipboard.writeText(sql);
                             addToast("SQL Completo copiado! Cole no SQL Editor do Supabase e execute.", 'success');
@@ -617,15 +710,15 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
       {/* Delete Confirmation Modal */}
       {deleteConfirmationUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Confirmar Exclusão</h3>
-                <p className="text-gray-600 mb-6">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">Confirmar Exclusão</h3>
+                <p className="text-gray-600 dark:text-slate-400 mb-6">
                     Tem certeza que deseja excluir o usuário <strong>{deleteConfirmationUser.name}</strong>? Esta ação não pode ser desfeita.
                 </p>
                 <div className="flex justify-end gap-3">
                     <button 
                         onClick={() => setDeleteConfirmationUser(null)}
-                        className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                        className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
                     >
                         Cancelar
                     </button>
@@ -642,29 +735,29 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
       {/* Duplicate Resolution Modal */}
       {showDuplicateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col border border-gray-100 dark:border-slate-700">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-gray-900 flex items-center">
-                        <AlertCircle className="w-6 h-6 mr-2 text-orange-600" />
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
+                        <AlertCircle className="w-6 h-6 mr-2 text-orange-600 dark:text-orange-400" />
                         Resolver Duplicatas ({duplicateGroups.length})
                     </h3>
-                    <button onClick={() => setShowDuplicateModal(false)} className="text-gray-400 hover:text-gray-600">
+                    <button onClick={() => setShowDuplicateModal(false)} className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
                         <X className="w-6 h-6" />
                     </button>
                 </div>
                 
                 <div className="overflow-y-auto flex-1 space-y-4 pr-2">
                     {duplicateGroups.map((group, idx) => (
-                        <div key={idx} className="border border-gray-200 rounded-lg p-4 bg-gray-50 grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+                        <div key={idx} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 bg-gray-50 dark:bg-slate-900/50 grid grid-cols-1 md:grid-cols-2 gap-4 relative">
                             {/* Keep */}
-                            <div className="bg-white p-3 rounded border border-green-200 shadow-sm">
+                            <div className="bg-white dark:bg-slate-800 p-3 rounded border border-green-200 dark:border-emerald-900/30 shadow-sm">
                                 <div className="flex justify-between items-start mb-2">
-                                    <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded">MANTER</span>
-                                    <span className="text-xs text-gray-400">ID: ...{group.keep.id.slice(-4)}</span>
+                                    <span className="bg-green-100 dark:bg-emerald-900/40 text-green-800 dark:text-emerald-400 text-xs font-bold px-2 py-1 rounded">MANTER</span>
+                                    <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.keep.id.slice(-4)}</span>
                                 </div>
-                                <p className="font-bold text-gray-800">{group.keep.ns}</p>
-                                <p className="text-sm text-gray-600">{group.keep.clientName || 'Sem cliente'}</p>
-                                <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                <p className="font-bold text-gray-800 dark:text-slate-200">{group.keep.ns}</p>
+                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.keep.clientName || 'Sem cliente'}</p>
+                                <div className="mt-2 text-xs text-gray-500 dark:text-slate-500 space-y-1">
                                     <p>Início: {new Date(group.keep.startTime).toLocaleString()}</p>
                                     <p>Tempo: {(group.keep.totalActiveSeconds / 3600).toFixed(2)}h</p>
                                     <p>Status: {group.keep.status}</p>
@@ -672,14 +765,14 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
                             </div>
 
                             {/* Discard */}
-                            <div className="bg-white p-3 rounded border border-red-200 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
+                            <div className="bg-white dark:bg-slate-800 p-3 rounded border border-red-200 dark:border-red-900/30 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
                                 <div className="flex justify-between items-start mb-2">
-                                    <span className="bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded">APAGAR</span>
-                                    <span className="text-xs text-gray-400">ID: ...{group.discard.id.slice(-4)}</span>
+                                    <span className="bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-400 text-xs font-bold px-2 py-1 rounded">APAGAR</span>
+                                    <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.discard.id.slice(-4)}</span>
                                 </div>
-                                <p className="font-bold text-gray-800">{group.discard.ns}</p>
-                                <p className="text-sm text-gray-600">{group.discard.clientName || 'Sem cliente'}</p>
-                                <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                <p className="font-bold text-gray-800 dark:text-slate-200">{group.discard.ns}</p>
+                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.discard.clientName || 'Sem cliente'}</p>
+                                <div className="mt-2 text-xs text-gray-500 dark:text-slate-500 space-y-1">
                                     <p>Início: {new Date(group.discard.startTime).toLocaleString()}</p>
                                     <p>Tempo: {(group.discard.totalActiveSeconds / 3600).toFixed(2)}h</p>
                                     <p>Status: {group.discard.status}</p>
@@ -698,33 +791,33 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
                                             window.alert("Erro ao excluir: " + res.message);
                                         }
                                     }}
-                                    className="mt-3 w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 py-1 rounded text-xs font-bold flex items-center justify-center"
+                                    className="mt-3 w-full bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/30 py-1 rounded text-xs font-bold flex items-center justify-center"
                                 >
                                     <Trash2 className="w-3 h-3 mr-1" />
                                     EXCLUIR ESTE
                                 </button>
                             </div>
                             
-                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 border border-gray-200 shadow-sm z-10 hidden md:block">
-                                <div className="text-gray-400 text-xs font-bold">VS</div>
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-slate-800 rounded-full p-1 border border-gray-200 dark:border-slate-700 shadow-sm z-10 hidden md:block">
+                                <div className="text-gray-400 dark:text-slate-500 text-xs font-bold">VS</div>
                             </div>
                         </div>
                     ))}
                     {duplicateGroups.length === 0 && (
-                        <div className="text-center py-10 text-gray-500">
-                            <CheckCircle className="w-12 h-12 mx-auto text-green-500 mb-3" />
+                        <div className="text-center py-10 text-gray-500 dark:text-slate-400">
+                            <CheckCircle className="w-12 h-12 mx-auto text-green-500 dark:text-emerald-500 mb-3" />
                             <p>Todas as duplicatas foram resolvidas!</p>
                         </div>
                     )}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-700 flex justify-end">
                     <button 
                         onClick={() => {
                             setShowDuplicateModal(false);
                             window.location.reload();
                         }}
-                        className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-medium text-sm"
+                        className="px-4 py-2 bg-gray-800 dark:bg-slate-700 hover:bg-gray-900 dark:hover:bg-slate-600 text-white rounded-lg font-medium text-sm"
                     >
                         Fechar e Atualizar
                     </button>

@@ -4,12 +4,15 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { Dashboard } from './components/Dashboard';
 import { ProjectHistory } from './components/ProjectHistory';
 import { UserManagement } from './components/UserManagement';
 import { InnovationManager } from './components/InnovationManager';
+import { InterruptionManager } from './components/InterruptionManager';
+import { InterruptionDashboard } from './components/InterruptionDashboard';
+import { Reports } from './components/Reports';
 import { UserProfileModal } from './components/UserProfileModal';
 import { Login } from './components/Login';
 import { 
@@ -44,12 +47,31 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations'>('dashboard');
-  const [data, setData] = useState<AppState>({ projects: [], issues: [], innovations: [] });
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports'>('dashboard');
+  const [data, setData] = useState<AppState>({ 
+    projects: [], 
+    issues: [], 
+    innovations: [],
+    interruptions: [],
+    interruptionTypes: []
+  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme');
+    return (saved as 'light' | 'dark') || 'light';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
 
   // Load data when user logs in or mounts
   useEffect(() => {
@@ -103,7 +125,7 @@ const AppContent: React.FC = () => {
 
   // Filter Data based on User Role
   const displayData = useMemo(() => {
-    if (!currentUser) return { projects: [], issues: [], innovations: [] };
+    if (!currentUser) return { projects: [], issues: [], innovations: [], interruptions: [], interruptionTypes: [] };
 
     const role = currentUser.role;
 
@@ -116,7 +138,9 @@ const AppContent: React.FC = () => {
     return {
       projects: data.projects.filter(p => p.userId === currentUser.id),
       issues: data.issues.filter(i => i.reportedBy === currentUser.id),
-      innovations: data.innovations
+      innovations: data.innovations,
+      interruptions: data.interruptions.filter(i => i.designerId === currentUser.id),
+      interruptionTypes: data.interruptionTypes
     };
   }, [data, currentUser]);
 
@@ -311,10 +335,18 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleInterruptionUpdate = (newState: AppState) => {
+    setData(newState);
+  };
+
   const handleLogout = () => {
     setCurrentUser(null);
     // Reset to tracker but effective login will handle redirection
     setActiveTab('tracker');
+  };
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
   if (!currentUser) {
@@ -339,21 +371,30 @@ const AppContent: React.FC = () => {
   );
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className={`flex min-h-screen ${theme === 'dark' ? 'bg-slate-950 text-slate-200' : 'bg-gray-50 text-gray-900'}`}>
       {/* Sidebar for Desktop */}
-      <aside className="hidden md:flex flex-col w-64 bg-slate-900 border-r border-slate-800 fixed h-full z-10 text-white shadow-xl">
+      <aside className="hidden md:flex flex-col w-64 bg-slate-900 dark:bg-slate-950 border-r border-slate-800 fixed h-full z-10 text-white shadow-xl">
         <div className="p-6 border-b border-slate-800">
-          <div className="mb-6 flex items-center gap-3">
-             <img 
-               src={COMPANY_LOGO_URL}
-               alt="Logo" 
-               className="h-10 w-auto max-w-[50px] object-contain" 
-             />
-             <div className="flex flex-col">
-                <span className="text-2xl font-bold text-white leading-none tracking-tight">
-                  Eng <span className="text-blue-500">Jimp</span>
-                </span>
-             </div>
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+               <img 
+                 src={COMPANY_LOGO_URL}
+                 alt="Logo" 
+                 className="h-10 w-auto max-w-[50px] object-contain" 
+               />
+               <div className="flex flex-col">
+                  <span className="text-2xl font-bold text-white leading-none tracking-tight">
+                    Eng <span className="text-blue-500">Jimp</span>
+                  </span>
+               </div>
+            </div>
+            <button 
+              onClick={toggleTheme}
+              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-slate-300"
+              title={theme === 'light' ? 'Modo Escuro' : 'Modo Claro'}
+            >
+              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            </button>
           </div>
           
           <div className="flex items-center text-slate-500 text-xs mb-1 uppercase tracking-wider font-semibold">
@@ -385,9 +426,17 @@ const AppContent: React.FC = () => {
           {canUseTracker && (
             <NavItem id="history" label="Histórico" icon={History} />
           )}
+
+          {canUseTracker && (
+            <NavItem id="interruptions" label="Interrupções" icon={PauseCircle} />
+          )}
           
           {canSeeInnovations && (
              <NavItem id="innovations" label="Inovações & Custos" icon={Lightbulb} />
+          )}
+
+          {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+            <NavItem id="reports" label="Relatórios" icon={FileText} />
           )}
           
           {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
@@ -419,6 +468,12 @@ const AppContent: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
             <button 
+                onClick={toggleTheme}
+                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-slate-300"
+            >
+              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            </button>
+            <button 
                 onClick={() => setIsProfileOpen(true)}
                 className="text-slate-300 hover:text-white p-2"
             >
@@ -441,8 +496,14 @@ const AppContent: React.FC = () => {
             {canUseTracker && (
                 <NavItem id="history" label="Histórico" icon={History} />
             )}
+            {canUseTracker && (
+                <NavItem id="interruptions" label="Interrupções" icon={PauseCircle} />
+            )}
             {canSeeInnovations && (
                 <NavItem id="innovations" label="Inovações & Custos" icon={Lightbulb} />
+            )}
+            {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                <NavItem id="reports" label="Relatórios" icon={FileText} />
             )}
             {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
                <NavItem id="team" label="Gestão de Equipe" icon={Users} />
@@ -461,7 +522,7 @@ const AppContent: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 p-6 pt-24 md:pt-6 transition-all bg-gray-50 min-h-screen">
+      <main className={`flex-1 md:ml-64 p-6 pt-24 md:pt-6 transition-all min-h-screen ${theme === 'dark' ? 'bg-slate-900' : 'bg-gray-50'}`}>
         {isLoading && (
           <div className="fixed top-0 left-0 w-full h-1 bg-blue-100 z-50">
             <div className="h-full bg-blue-600 animate-pulse w-full"></div>
@@ -472,12 +533,14 @@ const AppContent: React.FC = () => {
           <div className={activeTab === 'tracker' && canUseTracker ? 'block space-y-6' : 'hidden'}>
             <div className="mb-6 flex justify-between items-end">
               <div>
-                <h2 className="text-2xl font-bold text-gray-800">Área de Projeto</h2>
-                <p className="text-gray-500">Bem-vindo, <span className="font-semibold text-blue-600">{currentUser.name}</span></p>
+                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Área de Projeto</h2>
+                <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>Bem-vindo, <span className="font-semibold text-blue-600">{currentUser.name}</span></p>
               </div>
             </div>
             <EngJimpTracker 
               existingProjects={displayData.projects}
+              interruptions={displayData.interruptions}
+              settings={data.settings}
               onCreate={handleProjectCreate}
               onUpdate={handleProjectUpdate}
               isVisible={activeTab === 'tracker'}
@@ -489,8 +552,8 @@ const AppContent: React.FC = () => {
           {activeTab === 'history' && canUseTracker && (
             <div className="space-y-6">
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-gray-800">Histórico de Liberações</h2>
-                <p className="text-gray-500">
+                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Histórico de Liberações</h2>
+                <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
                   {canSeeAllHistory
                     ? "Visão geral de todas as liberações da equipe." 
                     : "Consulte suas liberações passadas."}
@@ -516,14 +579,32 @@ const AppContent: React.FC = () => {
                     />
                  </div>
                  <div>
-                    <h2 className="text-2xl font-bold text-gray-800">Painel de Desempenho</h2>
-                    <p className="text-gray-500">
+                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Painel de Desempenho</h2>
+                    <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
                       {canSeeAllHistory ? "Indicadores globais da equipe." : "Seus indicadores de produtividade."}
                     </p>
                  </div>
               </div>
-              <Dashboard data={displayData} currentUser={currentUser} />
+              <Dashboard data={displayData} currentUser={currentUser} theme={theme} />
+              {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                <div className="mt-12">
+                  <div className="mb-6">
+                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Relatórios de Interrupção</h2>
+                    <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>Análise de gargalos e tempo perdido.</p>
+                  </div>
+                  <InterruptionDashboard data={displayData} theme={theme} />
+                </div>
+              )}
             </div>
+          )}
+
+          {activeTab === 'interruptions' && canUseTracker && (
+            <InterruptionManager 
+              data={displayData}
+              currentUser={currentUser}
+              onUpdate={handleInterruptionUpdate}
+              addToast={addToast}
+            />
           )}
 
           {activeTab === 'innovations' && canSeeInnovations && (
@@ -537,11 +618,19 @@ const AppContent: React.FC = () => {
              />
           )}
 
+          {activeTab === 'reports' && (
+            <Reports 
+              data={displayData} 
+              currentUser={currentUser} 
+              theme={theme} 
+            />
+          )}
+
           {activeTab === 'team' && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
              <div className="space-y-6">
                 <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-gray-800">Gestão de Equipe</h2>
-                  <p className="text-gray-500">Adicione novos membros e gerencie permissões de acesso.</p>
+                  <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Gestão de Equipe</h2>
+                  <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>Adicione novos membros e gerencie permissões de acesso.</p>
                 </div>
                 <UserManagement currentUser={currentUser} />
              </div>
@@ -583,8 +672,8 @@ const AppContent: React.FC = () => {
           )}
 
           {/* Footer */}
-          <footer className="mt-12 pt-8 border-t border-gray-200 text-center">
-            <p className="text-sm font-medium text-gray-400">
+          <footer className={`mt-12 pt-8 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-200'} text-center`}>
+            <p className={`text-sm font-medium ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`}>
               Desenvolvido por <span className="text-orange-500 font-bold tracking-tight">JIMP<span className="text-cyan-500">NEXUS</span></span>
             </p>
           </footer>

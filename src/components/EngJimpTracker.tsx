@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X } from 'lucide-react';
-import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User } from '../types';
+import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { getWorkingSeconds } from '../utils/timeUtils';
 import { fetchUsers } from '../services/storageService';
@@ -11,6 +11,8 @@ const TEAMS_WEBHOOK_URL = "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL_H
 
 interface EngJimpTrackerProps {
   existingProjects: ProjectSession[];
+  interruptions: InterruptionRecord[];
+  settings: AppSettings;
   onCreate: (project: ProjectSession) => void;
   onUpdate: (project: ProjectSession) => void;
   isVisible: boolean;
@@ -18,7 +20,7 @@ interface EngJimpTrackerProps {
   currentUser: User | null;
 }
 
-export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects, onCreate, onUpdate, isVisible, onNavigateBack, currentUser }) => {
+export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects, interruptions, settings, onCreate, onUpdate, isVisible, onNavigateBack, currentUser }) => {
   const [activeProject, setActiveProject] = useState<ProjectSession | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [users, setUsers] = useState<User[]>([]);
@@ -257,10 +259,29 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
     const finalSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
     const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
 
+    // --- NEW CALCULATIONS ---
+    // Calculate interruption seconds for this project NS
+    const projectInterruptions = interruptions.filter(i => 
+      i.projectNs === activeProject.ns && 
+      i.status === 'Resolvido'
+    );
+    const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
+    const totalSeconds = finalSeconds + interruptionSeconds;
+    
+    const hourlyCost = settings?.hourlyCost || 0;
+    const productiveCost = (finalSeconds / 3600) * hourlyCost;
+    const interruptionCost = (interruptionSeconds / 3600) * hourlyCost;
+    const totalCost = productiveCost + interruptionCost;
+
     const finishedProject: ProjectSession = {
       ...activeProject,
       endTime: new Date().toISOString(),
       totalActiveSeconds: finalSeconds,
+      interruptionSeconds,
+      totalSeconds,
+      productiveCost,
+      interruptionCost,
+      totalCost,
       estimatedSeconds: estimatedSeconds > 0 ? estimatedSeconds : activeProject.estimatedSeconds,
       status: 'COMPLETED'
     };
@@ -400,9 +421,9 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
           
           {/* Pending Projects */}
           {pendingProjects.length > 0 && (
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-blue-100">
-               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                 <Briefcase className="w-5 h-5 mr-2 text-blue-600" />
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/30">
+               <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
+                 <Briefcase className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
                  Projetos em Andamento / Pausados
                </h3>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -410,18 +431,18 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                     const isPaused = p.pauses.length > 0 && p.pauses[p.pauses.length - 1].durationSeconds === -1;
                     const pUser = users.find(u => u.id === p.userId);
                     return (
-                     <div key={p.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-all bg-gray-50 group">
+                     <div key={p.id} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 hover:border-blue-300 dark:hover:border-blue-500 transition-all bg-gray-50 dark:bg-slate-900/50 group">
                         <div className="flex justify-between items-start mb-2">
                           <div>
-                            <div className="font-bold text-gray-800 text-lg">{p.ns}</div>
-                            <div className="text-sm text-gray-500">{p.clientName}</div>
-                            <div className="text-xs text-gray-400 mt-1">{p.type} • {p.implementType}</div>
-                            <div className="text-xs text-gray-500 mt-2 flex items-center">
-                                <span className="font-semibold mr-1">Responsável:</span>
+                            <div className="font-bold text-black dark:text-white text-lg">{p.ns}</div>
+                            <div className="text-sm text-gray-600 dark:text-slate-400">{p.clientName}</div>
+                            <div className="text-xs text-gray-500 dark:text-slate-500 mt-1">{p.type} • {p.implementType}</div>
+                            <div className="text-xs text-gray-600 dark:text-slate-400 mt-2 flex items-center">
+                                <span className="font-semibold mr-1 text-black dark:text-white">Responsável:</span>
                                 {pUser ? pUser.name : 'Não atribuído'}
                             </div>
                           </div>
-                          <span className={`px-2 py-1 rounded text-xs font-bold ${isPaused ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                          <span className={`px-2 py-1 rounded text-xs font-bold ${isPaused ? 'bg-yellow-100 text-yellow-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
                              {isPaused ? 'PAUSADO' : 'ABERTO'}
                           </span>
                         </div>
@@ -430,7 +451,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                             {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') && (
                                 <button 
                                   onClick={() => handleResumeFromList(p)}
-                                  className="flex-1 bg-white border border-blue-200 text-blue-600 font-bold py-2 rounded hover:bg-blue-50 transition-colors flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white shadow-sm"
+                                  className="flex-1 bg-white dark:bg-slate-700 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center group-hover:bg-blue-600 dark:group-hover:bg-blue-500 group-hover:text-white shadow-sm"
                                 >
                                   <Play className="w-4 h-4 mr-2" />
                                   {isPaused ? 'Retomar Timer' : 'Continuar'}
@@ -440,7 +461,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                             {['CEO', 'COORDENADOR'].includes(currentUser?.role || '') && (
                                 <button 
                                     onClick={() => setSelectedProjectDetails(p)}
-                                    className="px-3 bg-white border border-gray-200 text-gray-600 font-bold py-2 rounded hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+                                    className="px-3 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 font-bold py-2 rounded hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors flex items-center justify-center shadow-sm"
                                     title="Ver Detalhes"
                                 >
                                     <Info className="w-4 h-4" />
@@ -456,67 +477,67 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
 
           {/* New Project Form - GESTOR, CEO, COORDENADOR, PROJETISTA */}
           {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') ? (
-              <div className="bg-white p-6 rounded-xl shadow-md border border-gray-100">
-                <h2 className="text-xl font-bold mb-4 flex items-center text-gray-800">
-                  <Clock className="w-6 h-6 mr-2 text-blue-600" />
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
+                <h2 className="text-xl font-bold mb-4 flex items-center text-black dark:text-white">
+                  <Clock className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
                   Iniciar Novo Projeto
                 </h2>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">NS do Produto</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">NS do Produto</label>
                       <input 
                         type="text" 
                         value={ns}
                         onChange={e => setNs(e.target.value)}
-                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                         placeholder="Ex: 123456"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Cliente</label>
                       <div className="relative">
-                        <Building className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+                        <Building className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <input 
                           type="text" 
                           value={clientName}
                           onChange={e => setClientName(e.target.value)}
-                          className="w-full pl-8 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                          className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                           placeholder="Nome do Cliente"
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Cód. Projeto (Opcional)</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Cód. Projeto (Opcional)</label>
                       <div className="relative">
-                        <Hash className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+                        <Hash className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <input 
                           type="text" 
                           value={projectCode}
                           onChange={e => setProjectCode(e.target.value)}
-                          className="w-full pl-8 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                          className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                           placeholder="Ex: PRJ-001"
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Projeto</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Tipo de Projeto</label>
                       <select 
                         value={type}
                         onChange={e => setType(e.target.value as ProjectType)}
-                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                       >
                         {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Implemento</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Implemento</label>
                       <div className="relative">
-                        <Truck className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+                        <Truck className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <select 
                           value={implementType}
                           onChange={e => setImplementType(e.target.value as ImplementType)}
-                          className="w-full pl-8 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                          className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                         >
                           {IMPLEMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
@@ -525,13 +546,13 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
 
                     {shouldShowFlooring && (
                         <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Assoalho</label>
+                        <label className="block text-sm font-medium text-black dark:text-white mb-1">Tipo de Assoalho</label>
                         <div className="relative">
-                            <Layers className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+                            <Layers className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
                             <select 
                             value={flooringType}
                             onChange={e => setFlooringType(e.target.value)}
-                            className="w-full pl-8 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                             >
                                 <option value="">Selecione...</option>
                                 {FLOORING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -541,37 +562,37 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                     )}
 
                     <div className="md:col-span-2 lg:col-span-1">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Tempo Estimado</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Tempo Estimado</label>
                       <div className="flex gap-2">
                         <div className="flex-1 relative">
                           <input 
                             type="number" 
                             value={estHours}
                             onChange={e => setEstHours(e.target.value)}
-                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                             placeholder="Horas"
                             min="0"
                           />
-                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 font-bold uppercase">H</span>
+                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">H</span>
                         </div>
                         <div className="flex-1 relative">
                           <input 
                             type="number" 
                             value={estMinutes}
                             onChange={e => setEstMinutes(e.target.value)}
-                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                             placeholder="Min"
                             min="0"
                             max="59"
                           />
-                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 font-bold uppercase">M</span>
+                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">M</span>
                         </div>
                       </div>
                     </div>
                   </div>
                   <button 
                     onClick={handleStartNew}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
                   >
                     <Play className="w-5 h-5 mr-2" />
                     Começar Cronômetro
@@ -579,12 +600,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                 </div>
               </div>
           ) : (
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-                    <Clock className="w-8 h-8 text-gray-400" />
+            <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-slate-700 mb-4">
+                    <Clock className="w-8 h-8 text-gray-400 dark:text-slate-500" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">Modo Visualização</h3>
-                <p className="text-gray-500 max-w-md mx-auto">
+                <h3 className="text-lg font-bold text-black dark:text-white mb-2">Modo Visualização</h3>
+                <p className="text-black dark:text-white max-w-md mx-auto">
                     Você está logado como <strong>{currentUser?.role}</strong>. Você não tem permissão para iniciar, pausar ou finalizar projetos.
                 </p>
             </div>
@@ -595,47 +616,47 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
       {activeProject && (
         <div className="space-y-6">
             {/* Main Tracker Card */}
-            <div className="bg-white p-6 rounded-xl shadow-md border border-gray-100 relative">
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700 relative">
                 <div className="flex justify-between items-start mb-6">
-                    <h2 className="text-xl font-bold flex items-center text-gray-800">
-                        <Clock className="w-6 h-6 mr-2 text-blue-600" />
+                    <h2 className="text-xl font-bold flex items-center text-black dark:text-white">
+                        <Clock className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
                         Rastreador Ativo
                     </h2>
                     <div className="text-right">
-                        <div className="font-bold text-lg text-gray-700">{activeProject.ns}</div>
-                        <div className="text-xs text-gray-500 font-semibold">{activeProject.clientName}</div>
+                        <div className="font-bold text-lg text-black dark:text-white">{activeProject.ns}</div>
+                        <div className="text-xs text-gray-600 dark:text-slate-400 font-semibold">{activeProject.clientName}</div>
                         {activeProject.estimatedSeconds && (
-                            <div className="text-[10px] text-blue-600 font-bold mt-1 bg-blue-50 px-2 py-0.5 rounded-full inline-block">
+                            <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mt-1 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full inline-block">
                                 Estimado: {formatTime(activeProject.estimatedSeconds)}
                             </div>
                         )}
-                        <div className="text-xs text-gray-400 flex flex-col items-end mt-1">
+                        <div className="text-xs text-gray-400 dark:text-slate-500 flex flex-col items-end mt-1">
                             <span>{activeProject.implementType} {activeProject.flooringType ? `• ${activeProject.flooringType}` : ''}</span>
                             <div className="mt-1 flex items-center">
-                                <span className="mr-1 text-gray-500">Cod:</span>
+                                <span className="mr-1 text-gray-500 dark:text-slate-400">Cod:</span>
                                 <input 
                                     type="text" 
                                     value={activeProject.projectCode || ''}
                                     onChange={(e) => handleUpdateActiveProjectCode(e.target.value)}
                                     onBlur={saveProjectCode}
                                     placeholder="Inserir Código"
-                                    className="border-b border-gray-300 text-right text-xs focus:border-blue-500 focus:outline-none w-24 bg-transparent"
+                                    className="border-b border-gray-300 dark:border-slate-600 text-right text-xs focus:border-blue-500 focus:outline-none w-24 bg-transparent dark:text-white"
                                 />
-                                <Edit className="w-3 h-3 ml-1 text-gray-400" />
+                                <Edit className="w-3 h-3 ml-1 text-gray-400 dark:text-slate-500" />
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex flex-col items-center justify-center bg-gray-50 p-8 rounded-xl border border-gray-200 mb-6">
-                    <span className="text-sm text-gray-500 font-medium tracking-wider uppercase mb-2 flex items-center animate-pulse">
+                <div className="flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900/50 p-8 rounded-xl border border-gray-200 dark:border-slate-700 mb-6">
+                    <span className="text-sm text-gray-500 dark:text-slate-400 font-medium tracking-wider uppercase mb-2 flex items-center animate-pulse">
                         <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
                         Executando
                     </span>
-                    <div className="text-7xl font-mono font-bold text-blue-600 tracking-tight">
+                    <div className="text-7xl font-mono font-bold text-blue-600 dark:text-blue-400 tracking-tight">
                         {formatTime(elapsedSeconds)}
                     </div>
-                    <div className="mt-4 flex gap-4 text-sm text-gray-500">
+                    <div className="mt-4 flex gap-4 text-sm text-gray-500 dark:text-slate-400">
                         <span>Início: {new Date(activeProject.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                 </div>
@@ -664,47 +685,47 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
             </div>
 
             {/* VARIATION MANAGEMENT SECTION */}
-            <div className="bg-white p-6 rounded-xl shadow-md border border-gray-100">
-                 <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-                    <Layers className="w-5 h-5 mr-2 text-purple-600" />
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
+                 <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center border-b dark:border-slate-700 pb-2">
+                    <Layers className="w-5 h-5 mr-2 text-purple-600 dark:text-purple-400" />
                     Lista de Variações de Projeto
                  </h3>
                  
                  {/* Input Row */}
-                 <div className="grid grid-cols-1 md:grid-cols-12 gap-2 mb-4 bg-gray-50 p-3 rounded-lg items-end">
+                 <div className="grid grid-cols-1 md:grid-cols-12 gap-2 mb-4 bg-gray-50 dark:bg-slate-900/50 p-3 rounded-lg items-end">
                      <div className="md:col-span-2">
-                        <label className="text-xs font-semibold text-gray-500">Cód. Antigo</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Cód. Antigo</label>
                         <input 
                             type="text" 
                             value={varOldCode}
                             onChange={e => setVarOldCode(e.target.value)}
-                            className="w-full p-2 text-sm border rounded focus:ring-1 focus:ring-purple-500"
+                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-slate-700 dark:text-white"
                         />
                      </div>
                      <div className="md:col-span-4">
-                        <label className="text-xs font-semibold text-gray-500">Descrição / Nome</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Descrição / Nome</label>
                         <input 
                             type="text" 
                             value={varDesc}
                             onChange={e => setVarDesc(e.target.value)}
-                            className="w-full p-2 text-sm border rounded focus:ring-1 focus:ring-purple-500"
+                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-slate-700 dark:text-white"
                         />
                      </div>
                      <div className="md:col-span-2">
-                        <label className="text-xs font-semibold text-gray-500">Cód. Novo</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Cód. Novo</label>
                         <input 
                             type="text" 
                             value={varNewCode}
                             onChange={e => setVarNewCode(e.target.value)}
-                            className="w-full p-2 text-sm border rounded focus:ring-1 focus:ring-purple-500"
+                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-slate-700 dark:text-white"
                         />
                      </div>
                      <div className="md:col-span-2">
-                        <label className="text-xs font-semibold text-gray-500">Tipo</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Tipo</label>
                         <select 
                             value={varType}
                             onChange={e => setVarType(e.target.value as any)}
-                            className="w-full p-2 text-sm border rounded focus:ring-1 focus:ring-purple-500"
+                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-slate-700 dark:text-white"
                         >
                             <option value="Peça">Peça</option>
                             <option value="Montagem">Montagem</option>
@@ -716,27 +737,26 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                                 type="checkbox" 
                                 checked={varFiles}
                                 onChange={e => setVarFiles(e.target.checked)}
-                                className="w-4 h-4 text-purple-600 rounded mr-1"
+                                className="w-4 h-4 text-purple-600 dark:text-purple-400 rounded mr-1 dark:bg-slate-700 dark:border-slate-600"
                              />
-                             <span className="text-xs font-bold text-gray-600">Ok</span>
+                             <span className="text-xs font-bold text-gray-600 dark:text-slate-400">Ok</span>
                          </label>
                      </div>
                      <div className="md:col-span-1">
                          {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') && (
                              <button 
                                 onClick={handleAddVariation}
-                                className="w-full bg-purple-600 hover:bg-purple-700 text-white p-2 rounded flex items-center justify-center"
+                                className="w-full bg-purple-600 hover:bg-purple-700 text-white p-2 rounded flex items-center justify-center shadow-sm"
                              >
                                  <Plus className="w-5 h-5" />
                              </button>
                          )}
                      </div>
                  </div>
-
-                 {/* Table */}
+                                 {/* Table */}
                  <div className="overflow-x-auto">
                      <table className="w-full text-sm text-left">
-                         <thead className="bg-gray-100 text-gray-600 font-semibold">
+                         <thead className="bg-gray-100 dark:bg-slate-900/50 text-black dark:text-white font-semibold">
                              <tr>
                                  <th className="p-3 rounded-tl-lg">Código Antigo</th>
                                  <th className="p-3">Descrição</th>
@@ -746,14 +766,14 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                                  <th className="p-3 rounded-tr-lg"></th>
                              </tr>
                          </thead>
-                         <tbody className="divide-y divide-gray-100">
+                         <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                              {activeProject.variations.map((v) => (
-                                 <tr key={v.id} className="hover:bg-gray-50">
-                                     <td className="p-3 font-mono text-gray-600">{v.oldCode || '-'}</td>
-                                     <td className="p-3 text-gray-800 font-medium">{v.description}</td>
-                                     <td className="p-3 font-mono text-blue-600 font-bold">{v.newCode || '-'}</td>
+                                 <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+                                     <td className="p-3 font-mono text-black dark:text-white">{v.oldCode || '-'}</td>
+                                     <td className="p-3 text-black dark:text-white font-medium">{v.description}</td>
+                                     <td className="p-3 font-mono text-blue-600 dark:text-blue-400 font-bold">{v.newCode || '-'}</td>
                                      <td className="p-3">
-                                         <span className={`px-2 py-0.5 rounded text-xs ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 text-gray-700'}`}>
+                                         <span className={`px-2 py-0.5 rounded text-xs ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-slate-300'}`}>
                                              {v.type}
                                          </span>
                                      </td>
@@ -763,8 +783,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                                             title={v.filesGenerated ? "Arquivos Gerados (Clique para desfazer)" : "Marcar arquivos como gerados"}
                                             className={`flex items-center justify-center p-2 rounded mx-auto transition-colors ${
                                                 v.filesGenerated 
-                                                ? 'bg-green-100 text-green-600 hover:bg-green-200 shadow-sm' 
-                                                : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                                                ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 shadow-sm' 
+                                                : 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500 hover:bg-gray-200 dark:hover:bg-slate-600'
                                             }`}
                                          >
                                             {v.filesGenerated ? <FileCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
@@ -774,7 +794,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                                      <td className="p-3 text-right">
                                          <button 
                                             onClick={() => handleDeleteVariation(v.id)}
-                                            className="text-gray-400 hover:text-red-500"
+                                            className="text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                                          >
                                              <Trash2 className="w-4 h-4" />
                                          </button>
@@ -783,7 +803,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                              ))}
                              {activeProject.variations.length === 0 && (
                                  <tr>
-                                     <td colSpan={6} className="p-6 text-center text-gray-400 italic">
+                                     <td colSpan={6} className="p-6 text-center text-gray-400 dark:text-slate-500 italic">
                                          Nenhuma variação registrada para este projeto ainda.
                                      </td>
                                  </tr>
@@ -798,15 +818,15 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
       {/* Project Details Modal (CEO/COORDENADOR) */}
       {selectedProjectDetails && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white z-10">
-                    <h3 className="text-xl font-bold text-gray-800 flex items-center">
-                        <Info className="w-6 h-6 mr-2 text-blue-600" />
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col border border-gray-100 dark:border-slate-700">
+                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-800 z-10">
+                    <h3 className="text-xl font-bold text-gray-800 dark:text-slate-100 flex items-center">
+                        <Info className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
                         Detalhes do Projeto
                     </h3>
                     <button 
                         onClick={() => setSelectedProjectDetails(null)}
-                        className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                        className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                     >
                         <X className="w-6 h-6" />
                     </button>
@@ -814,24 +834,24 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                 
                 <div className="p-6 space-y-6">
                     {/* Header Info */}
-                    <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg border border-gray-200 dark:border-slate-700">
                         <div>
-                            <span className="text-xs text-gray-500 uppercase font-bold block">NS</span>
-                            <span className="text-lg font-mono font-bold text-gray-800">{selectedProjectDetails.ns}</span>
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">NS</span>
+                            <span className="text-lg font-mono font-bold text-gray-800 dark:text-slate-100">{selectedProjectDetails.ns}</span>
                         </div>
                         <div>
-                            <span className="text-xs text-gray-500 uppercase font-bold block">Cliente</span>
-                            <span className="text-lg font-medium text-gray-800">{selectedProjectDetails.clientName}</span>
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">Cliente</span>
+                            <span className="text-lg font-medium text-gray-800 dark:text-slate-100">{selectedProjectDetails.clientName}</span>
                         </div>
                         <div>
-                            <span className="text-xs text-gray-500 uppercase font-bold block">Responsável</span>
-                            <span className="text-sm font-medium text-gray-800">
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">Responsável</span>
+                            <span className="text-sm font-medium text-gray-800 dark:text-slate-200">
                                 {users.find(u => u.id === selectedProjectDetails.userId)?.name || 'Não atribuído'}
                             </span>
                         </div>
                         <div>
-                            <span className="text-xs text-gray-500 uppercase font-bold block">Status</span>
-                            <span className={`text-sm font-bold ${selectedProjectDetails.status === 'IN_PROGRESS' ? 'text-blue-600' : 'text-green-600'}`}>
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">Status</span>
+                            <span className={`text-sm font-bold ${selectedProjectDetails.status === 'IN_PROGRESS' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}`}>
                                 {selectedProjectDetails.status === 'IN_PROGRESS' ? 'EM ANDAMENTO' : 'FINALIZADO'}
                             </span>
                         </div>
@@ -839,25 +859,25 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
 
                     {/* Context (Para que) */}
                     <div>
-                        <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center">
-                            <Briefcase className="w-4 h-4 mr-2 text-gray-500" />
+                        <h4 className="text-sm font-bold text-gray-700 dark:text-slate-300 mb-2 flex items-center">
+                            <Briefcase className="w-4 h-4 mr-2 text-gray-500 dark:text-slate-400" />
                             Contexto / Observações (Para que)
                         </h4>
-                        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 text-gray-700 text-sm whitespace-pre-wrap">
+                        <div className="bg-yellow-50 dark:bg-amber-900/20 p-4 rounded-lg border border-yellow-100 dark:border-amber-900/30 text-gray-700 dark:text-slate-300 text-sm whitespace-pre-wrap">
                             {selectedProjectDetails.notes || "Nenhuma observação registrada."}
                         </div>
                     </div>
 
                     {/* History (O que) */}
                     <div>
-                        <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center">
-                            <Layers className="w-4 h-4 mr-2 text-gray-500" />
+                        <h4 className="text-sm font-bold text-gray-700 dark:text-slate-300 mb-2 flex items-center">
+                            <Layers className="w-4 h-4 mr-2 text-gray-500 dark:text-slate-400" />
                             Histórico de Variações (O que)
                         </h4>
                         {selectedProjectDetails.variations.length > 0 ? (
-                            <div className="border border-gray-200 rounded-lg overflow-hidden">
+                            <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
                                 <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-100 text-gray-600 font-semibold">
+                                    <thead className="bg-gray-100 dark:bg-slate-900/50 text-gray-600 dark:text-slate-400 font-semibold">
                                         <tr>
                                             <th className="p-3">De (Antigo)</th>
                                             <th className="p-3">Para (Novo)</th>
@@ -865,14 +885,14 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                                             <th className="p-3">Tipo</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-100">
+                                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                                         {selectedProjectDetails.variations.map(v => (
-                                            <tr key={v.id} className="hover:bg-gray-50">
-                                                <td className="p-3 font-mono text-gray-500">{v.oldCode || '-'}</td>
-                                                <td className="p-3 font-mono text-blue-600 font-bold">{v.newCode || '-'}</td>
-                                                <td className="p-3 text-gray-800">{v.description}</td>
+                                            <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+                                                <td className="p-3 font-mono text-gray-500 dark:text-slate-400">{v.oldCode || '-'}</td>
+                                                <td className="p-3 font-mono text-blue-600 dark:text-blue-400 font-bold">{v.newCode || '-'}</td>
+                                                <td className="p-3 text-gray-800 dark:text-slate-200">{v.description}</td>
                                                 <td className="p-3">
-                                                    <span className={`px-2 py-0.5 rounded text-xs ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 text-gray-700'}`}>
+                                                    <span className={`px-2 py-0.5 rounded text-xs ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-slate-300'}`}>
                                                         {v.type}
                                                     </span>
                                                 </td>
@@ -882,17 +902,17 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
                                 </table>
                             </div>
                         ) : (
-                            <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200 text-gray-400 italic">
+                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-slate-700 text-gray-400 dark:text-slate-500 italic">
                                 Nenhuma variação registrada.
                             </div>
                         )}
                     </div>
                 </div>
                 
-                <div className="p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end">
+                <div className="p-6 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 rounded-b-xl flex justify-end">
                     <button 
                         onClick={() => setSelectedProjectDetails(null)}
-                        className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-lg transition-colors"
+                        className="px-6 py-2 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-800 dark:text-slate-200 font-bold rounded-lg transition-colors"
                     >
                         Fechar
                     </button>
@@ -904,33 +924,33 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
       {/* Pause Modal */}
       {showPauseModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200">
-            <h3 className="text-lg font-bold mb-4 flex items-center text-yellow-600">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
+            <h3 className="text-lg font-bold mb-4 flex items-center text-yellow-600 dark:text-amber-400">
               <Pause className="w-5 h-5 mr-2" />
               Pausar Projeto
             </h3>
-            <p className="text-gray-600 text-sm mb-4">
+            <p className="text-gray-600 dark:text-slate-400 text-sm mb-4">
               Isso irá parar o cronômetro. O projeto ficará salvo na lista para retorno posterior.
             </p>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Motivo da Pausa</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Motivo da Pausa</label>
             <input 
               type="text" 
               autoFocus
               value={pauseReason}
               onChange={e => setPauseReason(e.target.value)}
               placeholder="Ex: Almoço..."
-              className="w-full p-3 border rounded-lg mb-6 focus:ring-2 focus:ring-yellow-500 outline-none"
+              className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg mb-6 focus:ring-2 focus:ring-yellow-500 outline-none dark:bg-slate-700 dark:text-white"
             />
             <div className="flex justify-end gap-2">
               <button 
                 onClick={() => setShowPauseModal(false)}
-                className="text-gray-500 px-4 py-2 rounded-lg font-medium hover:bg-gray-100"
+                className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancelar
               </button>
               <button 
                 onClick={confirmPauseAndExit}
-                className="bg-yellow-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-yellow-600"
+                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors"
               >
                 Confirmar Pausa
               </button>
@@ -942,46 +962,46 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
       {/* Finish Confirmation Modal */}
       {showFinishModal && activeProject && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200">
-            <h3 className="text-lg font-bold mb-2 flex items-center text-red-600">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
+            <h3 className="text-lg font-bold mb-2 flex items-center text-red-600 dark:text-red-400">
               <CheckSquare className="w-5 h-5 mr-2" />
               Finalizar Liberação
             </h3>
-            <p className="text-gray-600 text-sm mb-6">
+            <p className="text-gray-600 dark:text-slate-400 text-sm mb-6">
               Revise o tempo estimado para este projeto antes de concluir.
             </p>
             
             <div className="space-y-4 mb-6">
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="text-xs text-gray-500 uppercase font-bold mb-1">Tempo Realizado (Cronômetro)</div>
-                    <div className="text-2xl font-mono font-bold text-gray-800">{formatTime(elapsedSeconds)}</div>
+                <div className="p-4 bg-gray-50 dark:bg-slate-900/50 rounded-lg border border-gray-100 dark:border-slate-700">
+                    <div className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold mb-1">Tempo Realizado (Cronômetro)</div>
+                    <div className="text-2xl font-mono font-bold text-gray-800 dark:text-slate-100">{formatTime(elapsedSeconds)}</div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tempo Estimado (Planejado)</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Tempo Estimado (Planejado)</label>
                   <div className="flex gap-2">
                     <div className="flex-1 relative">
                       <input 
                         type="number" 
                         value={estHours}
                         onChange={e => setEstHours(e.target.value)}
-                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                         placeholder="Horas"
                         min="0"
                       />
-                      <span className="absolute right-3 top-3.5 text-xs text-gray-400 font-bold">H</span>
+                      <span className="absolute right-3 top-3.5 text-xs text-gray-400 dark:text-slate-500 font-bold">H</span>
                     </div>
                     <div className="flex-1 relative">
                       <input 
                         type="number" 
                         value={estMinutes}
                         onChange={e => setEstMinutes(e.target.value)}
-                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
                         placeholder="Min"
                         min="0"
                         max="59"
                       />
-                      <span className="absolute right-3 top-3.5 text-xs text-gray-400 font-bold">M</span>
+                      <span className="absolute right-3 top-3.5 text-xs text-gray-400 dark:text-slate-500 font-bold">M</span>
                     </div>
                   </div>
                 </div>
@@ -990,13 +1010,13 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ existingProjects
             <div className="flex justify-end gap-3">
               <button 
                 onClick={() => setShowFinishModal(false)}
-                className="flex-1 text-gray-500 px-4 py-3 rounded-lg font-medium hover:bg-gray-100 border border-gray-200"
+                className="flex-1 text-gray-500 dark:text-slate-400 px-4 py-3 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 transition-colors"
               >
                 Voltar
               </button>
               <button 
                 onClick={confirmFinish}
-                className="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-red-700 shadow-md transition-all"
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg font-bold shadow-md transition-all"
               >
                 Concluir e Salvar
               </button>

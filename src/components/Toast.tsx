@@ -56,10 +56,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               layout
               className={`
                 flex items-center w-full max-w-sm p-4 rounded-lg shadow-lg border-l-4
-                ${toast.type === 'success' ? 'bg-white border-green-500 text-gray-800' : ''}
-                ${toast.type === 'error' ? 'bg-white border-red-500 text-gray-800' : ''}
-                ${toast.type === 'info' ? 'bg-white border-blue-500 text-gray-800' : ''}
-                ${toast.type === 'warning' ? 'bg-white border-yellow-500 text-gray-800' : ''}
+                ${toast.type === 'success' ? 'bg-white dark:bg-slate-800 border-green-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'error' ? 'bg-white dark:bg-slate-800 border-red-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'info' ? 'bg-white dark:bg-slate-800 border-blue-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'warning' ? 'bg-white dark:bg-slate-800 border-yellow-500 text-gray-800 dark:text-slate-100' : ''}
               `}
             >
               <div className="flex-shrink-0 mr-3">
@@ -71,7 +71,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               <div className="flex-1 text-sm font-medium">{toast.message}</div>
               <button
                 onClick={() => removeToast(toast.id)}
-                className="ml-4 text-gray-400 hover:text-gray-600 transition-colors"
+                className="ml-4 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
