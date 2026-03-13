@@ -45,6 +45,21 @@ export enum InnovationType {
   PROCESS_OPTIMIZATION = 'Otimização de Processos'
 }
 
+export enum InterruptionStatus {
+  OPEN = 'Aberto',
+  WAITING = 'Aguardando resposta',
+  RESOLVED = 'Resolvido',
+  CANCELLED = 'Cancelado'
+}
+
+export enum InterruptionArea {
+  COMERCIAL = 'Comercial',
+  CADASTRO = 'Cadastro',
+  ENGENHARIA = 'Engenharia',
+  CLIENTE = 'Cliente',
+  OUTROS = 'Outros'
+}
+
 export enum CalculationType {
   PER_UNIT = 'Por Unidade Produzida',
   RECURRING_MONTHLY = 'Recorrente (Mensal)',
@@ -84,20 +99,25 @@ export interface VariationRecord {
 export interface ProjectSession {
   id: string;
   ns: string;
-  clientName?: string; // New
-  flooringType?: string; // New
+  clientName?: string;
+  flooringType?: string;
   projectCode?: string;
   type: ProjectType;
   implementType?: ImplementType;
   startTime: string; // ISO
   endTime?: string | null; // ISO
   estimatedSeconds?: number;
-  totalActiveSeconds: number;
+  totalActiveSeconds: number; // This will be the productive time
+  interruptionSeconds?: number; // New: Time lost to interruptions
+  totalSeconds?: number; // New: productive + interruption
+  productiveCost?: number; // New
+  interruptionCost?: number; // New
+  totalCost?: number; // New
   pauses: PauseRecord[];
-  variations: VariationRecord[]; // New
+  variations: VariationRecord[];
   status: 'COMPLETED' | 'IN_PROGRESS';
   notes?: string;
-  userId?: string; // Track who did this project
+  userId?: string;
 }
 
 export interface IssueRecord {
@@ -106,7 +126,7 @@ export interface IssueRecord {
   type: IssueType;
   description: string;
   date: string;
-  reportedBy?: string; // Track who reported
+  reportedBy?: string;
 }
 
 export interface InnovationMaterial {
@@ -131,10 +151,10 @@ export interface InnovationRecord {
   
   // Advanced Calculation Fields
   calculationType: CalculationType;
-  unitSavings: number; // The base value (e.g., saving per unit, or value per month)
-  quantity: number; // Multiplier (e.g., units per year, or 12 months)
-  totalAnnualSavings: number; // The calculated total: unitSavings * quantity (if recurring/unit)
-  investmentCost?: number; // Cost to implement (optional)
+  unitSavings: number;
+  quantity: number;
+  totalAnnualSavings: number;
+  investmentCost?: number;
 
   // New Fields
   materials?: InnovationMaterial[];
@@ -145,8 +165,36 @@ export interface InnovationRecord {
   createdAt: string;
 }
 
+export interface InterruptionType {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface InterruptionRecord {
+  id: string;
+  projectNs: string;
+  clientName: string;
+  designerId: string;
+  startTime: string; // ISO
+  endTime?: string | null; // ISO
+  problemType: string;
+  responsibleArea: InterruptionArea;
+  responsiblePerson: string;
+  description: string;
+  status: InterruptionStatus;
+  totalTimeSeconds: number;
+}
+
+export interface AppSettings {
+  hourlyCost: number;
+}
+
 export interface AppState {
   projects: ProjectSession[];
   issues: IssueRecord[];
   innovations: InnovationRecord[];
+  interruptions: InterruptionRecord[];
+  interruptionTypes: InterruptionType[];
+  settings: AppSettings;
 }

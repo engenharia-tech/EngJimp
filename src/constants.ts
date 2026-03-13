@@ -54,4 +54,18 @@ export const ISSUE_TYPES = [
   IssueType.QUALIDADE_INSPECAO_FINAL
 ];
 
+export const INTERRUPTION_AREAS = [
+  'Comercial',
+  'Cadastro',
+  'Engenharia',
+  'Cliente',
+  'Outros'
+];
+
+export const DEFAULT_INTERRUPTION_TYPES = [
+  'falta de informações',
+  'Informações erradas',
+  'outros'
+];
+
 export const STORAGE_KEY = 'design_track_pro_data';

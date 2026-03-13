@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, CalculationType, ProjectType, ImplementType } from '../types';
+import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea } from '../types';
+import { DEFAULT_INTERRUPTION_TYPES } from '../constants';
 
 // Supabase Configuration
 // Hardcoded for immediate fix
@@ -11,7 +12,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const defaultState: AppState = {
   projects: [],
   issues: [],
-  innovations: []
+  innovations: [],
+  interruptions: [],
+  interruptionTypes: [],
+  settings: { hourlyCost: 150 }
 };
 
 // --- DATA MANAGEMENT ---
@@ -39,6 +43,34 @@ export const fetchAppState = async (): Promise<AppState> => {
       .from('innovations')
       .select('*')
       .order('created_at', { ascending: false });
+
+    // Fetch Interruptions
+    const { data: interruptionsData, error: interruptionsError } = await supabase
+      .from('interruptions')
+      .select('*')
+      .order('start_time', { ascending: false });
+
+    // Fetch Interruption Types
+    const { data: interruptionTypesData, error: interruptionTypesError } = await supabase
+      .from('interruption_types')
+      .select('*')
+      .order('name', { ascending: true });
+
+    // Fetch Settings
+    let settings = { hourlyCost: 150 };
+    try {
+      const { data: settingsData, error: settingsError } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('key', 'hourly_cost')
+        .single();
+      
+      if (!settingsError && settingsData) {
+        settings.hourlyCost = Number(settingsData.value);
+      }
+    } catch (e) {
+      console.warn("Settings table not found, using default hourly cost.");
+    }
     
     // Map DB columns (snake_case) to Types (camelCase)
     const projects: ProjectSession[] = (projectsData || []).map((p: any) => ({
@@ -52,6 +84,11 @@ export const fetchAppState = async (): Promise<AppState> => {
       startTime: p.start_time,
       endTime: p.end_time,
       totalActiveSeconds: p.total_active_seconds,
+      interruptionSeconds: p.interruption_seconds || 0,
+      totalSeconds: p.total_seconds || p.total_active_seconds,
+      productiveCost: p.productive_cost || 0,
+      interruptionCost: p.interruption_cost || 0,
+      totalCost: p.total_cost || 0,
       pauses: typeof p.pauses === 'string' ? JSON.parse(p.pauses) : (p.pauses || []),
       variations: typeof p.variations === 'string' ? JSON.parse(p.variations) : (p.variations || []),
       status: p.status,
@@ -91,10 +128,53 @@ export const fetchAppState = async (): Promise<AppState> => {
       machine: typeof inv.machine === 'string' ? JSON.parse(inv.machine) : (inv.machine || undefined)
     }));
 
-    return { projects, issues, innovations };
+    const interruptions: InterruptionRecord[] = (interruptionsData || []).map((i: any) => ({
+      id: i.id,
+      projectNs: i.project_ns,
+      clientName: i.client_name,
+      designerId: i.designer_id,
+      startTime: i.start_time,
+      endTime: i.end_time,
+      problemType: i.problem_type,
+      responsibleArea: i.responsible_area as InterruptionArea,
+      responsiblePerson: i.responsible_person,
+      description: i.description,
+      status: i.status as InterruptionStatus,
+      totalTimeSeconds: i.total_time_seconds
+    }));
+
+    const interruptionTypes: InterruptionType[] = (interruptionTypesData || []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      isActive: t.is_active
+    }));
+
+    // If no interruption types exist, seed them (first time)
+    if (interruptionTypes.length === 0) {
+        // We don't seed here to avoid multiple calls, but we return defaults if empty
+        // Actually, let's just return what's in DB. The UI will handle seeding if Gestor.
+    }
+
+    return { projects, issues, innovations, interruptions, interruptionTypes, settings };
   } catch (error) {
     console.error("Failed to load data from Supabase", error);
     return defaultState;
+  }
+};
+
+export const updateSettings = async (hourlyCost: number): Promise<AppState> => {
+  try {
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ key: 'hourly_cost', value: hourlyCost.toString() }, { onConflict: 'key' });
+    
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("Failed to update settings", error);
+    // Fallback: update local storage if table doesn't exist
+    localStorage.setItem('hourly_cost', hourlyCost.toString());
+    return fetchAppState();
   }
 };
 
@@ -111,6 +191,11 @@ export const addProject = async (project: ProjectSession): Promise<AppState> => 
       start_time: project.startTime,
       end_time: project.endTime,
       total_active_seconds: project.totalActiveSeconds,
+      interruption_seconds: project.interruptionSeconds || 0,
+      total_seconds: project.totalSeconds || project.totalActiveSeconds,
+      productive_cost: project.productiveCost || 0,
+      interruption_cost: project.interruptionCost || 0,
+      total_cost: project.totalCost || 0,
       pauses: project.pauses,
       variations: project.variations,
       status: project.status,
@@ -141,6 +226,11 @@ export const updateProject = async (project: ProjectSession): Promise<AppState> 
         start_time: project.startTime,
         end_time: project.endTime || null,
         total_active_seconds: project.totalActiveSeconds,
+        interruption_seconds: project.interruptionSeconds || 0,
+        total_seconds: project.totalSeconds || project.totalActiveSeconds,
+        productive_cost: project.productiveCost || 0,
+        interruption_cost: project.interruptionCost || 0,
+        total_cost: project.totalCost || 0,
         pauses: project.pauses,
         variations: project.variations,
         status: project.status,
@@ -355,6 +445,126 @@ export const deleteInnovation = async (id: string): Promise<AppState> => {
     console.error("Failed to delete innovation", error);
     throw error;
   }
+};
+
+// --- INTERRUPTION MANAGEMENT ---
+
+export const addInterruption = async (interruption: InterruptionRecord): Promise<AppState> => {
+  try {
+    const { error } = await supabase.from('interruptions').insert([{
+      id: interruption.id,
+      project_ns: interruption.projectNs,
+      client_name: interruption.clientName,
+      designer_id: interruption.designerId,
+      start_time: interruption.startTime,
+      end_time: interruption.endTime,
+      problem_type: interruption.problemType,
+      responsible_area: interruption.responsibleArea,
+      responsible_person: interruption.responsiblePerson,
+      description: interruption.description,
+      status: interruption.status,
+      total_time_seconds: interruption.totalTimeSeconds
+    }]);
+
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("Failed to add interruption", error);
+    throw error;
+  }
+};
+
+export const updateInterruption = async (interruption: InterruptionRecord): Promise<AppState> => {
+  try {
+    const { error } = await supabase
+      .from('interruptions')
+      .update({
+        project_ns: interruption.projectNs,
+        client_name: interruption.clientName,
+        designer_id: interruption.designerId,
+        start_time: interruption.startTime,
+        end_time: interruption.endTime || null,
+        problem_type: interruption.problemType,
+        responsible_area: interruption.responsibleArea,
+        responsible_person: interruption.responsiblePerson,
+        description: interruption.description,
+        status: interruption.status,
+        total_time_seconds: interruption.totalTimeSeconds
+      })
+      .eq('id', interruption.id);
+
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("Failed to update interruption", error);
+    throw error;
+  }
+};
+
+export const deleteInterruption = async (id: string): Promise<AppState> => {
+  try {
+    const { error } = await supabase.from('interruptions').delete().eq('id', id);
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("Failed to delete interruption", error);
+    throw error;
+  }
+};
+
+export const fetchInterruptionTypes = async (): Promise<InterruptionType[]> => {
+    try {
+        const { data, error } = await supabase.from('interruption_types').select('*').order('name');
+        if (error) throw error;
+        return (data || []).map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            isActive: t.is_active
+        }));
+    } catch (error) {
+        console.error("Failed to fetch interruption types", error);
+        return [];
+    }
+};
+
+export const addInterruptionType = async (type: InterruptionType): Promise<AppState> => {
+    try {
+        const { error } = await supabase.from('interruption_types').insert([{
+            id: type.id,
+            name: type.name,
+            is_active: type.isActive
+        }]);
+        if (error) throw error;
+        return fetchAppState();
+    } catch (error) {
+        console.error("Failed to add interruption type", error);
+        throw error;
+    }
+};
+
+export const updateInterruptionType = async (type: InterruptionType): Promise<AppState> => {
+    try {
+        const { error } = await supabase
+            .from('interruption_types')
+            .update({ name: type.name, is_active: type.isActive })
+            .eq('id', type.id);
+        if (error) throw error;
+        return fetchAppState();
+    } catch (error) {
+        console.error("Failed to update interruption type", error);
+        throw error;
+    }
+};
+
+export const deleteInterruptionType = async (id: string): Promise<AppState> => {
+    try {
+        const { error } = await supabase.from('interruption_types').delete().eq('id', id);
+        if (error) throw error;
+        return fetchAppState();
+    } catch (error) {
+        console.error("Failed to delete interruption type", error);
+        throw error;
+    }
 };
 
 // --- USER MANAGEMENT ---
@@ -608,21 +818,21 @@ export const seedFebruaryData = async (): Promise<{ success: boolean; count: num
       { p: 'Cobo', ns: '9059', c: 'Aceville', pr: 'sobrechassi especial', d: '24/fev', h: '07:37' },
       { p: 'Cobo', ns: '9060', c: 'Aceville', pr: 'sobrechassi especial', d: '24/fev', h: '07:43' },
       { p: 'Cobo', ns: '9089', c: 'GODI', pr: 'Sobre chassi', d: '24/fev', h: '09:47' },
-      { p: 'Edson', ns: '9009', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9010', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9011', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9012', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9013', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9014', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9015', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9016', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9017', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9018', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9019', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9020', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9021', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9022', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
-      { p: 'Edson', ns: '9023', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/dez', h: '11:47' },
+      { p: 'Edson', ns: '9009', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9010', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9011', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9012', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9013', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9014', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9015', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9016', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9017', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9018', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9019', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9020', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9021', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9022', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+      { p: 'Edson', ns: '9023', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
       { p: 'Luiz', ns: '9111', c: 'Pedroni', pr: 'Sobrechassi', d: '24/fev', h: '15:25' },
       { p: 'Cobo', ns: '8976', c: 'bigfer', pr: 'Sobre chassi', d: '24/fev', h: '17:31' },
       { p: 'Cobo', ns: '8977', c: 'bigfer', pr: 'Sobre chassi', d: '25/fev', h: '07:39' },
