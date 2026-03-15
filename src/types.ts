@@ -120,6 +120,7 @@ export interface ProjectSession {
   status: 'COMPLETED' | 'IN_PROGRESS';
   notes?: string;
   userId?: string;
+  isOvertime?: boolean;
 }
 
 export interface IssueRecord {
@@ -175,6 +176,7 @@ export interface InterruptionType {
 
 export interface InterruptionRecord {
   id: string;
+  projectId?: string;
   projectNs: string;
   clientName: string;
   designerId: string;

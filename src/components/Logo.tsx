@@ -4,9 +4,15 @@ interface LogoProps {
   theme?: 'light' | 'dark';
   className?: string;
   logoUrl?: string;
+  textSizeClassName?: string;
 }
 
-export const Logo: React.FC<LogoProps> = ({ theme = 'dark', className = "h-10 w-auto", logoUrl }) => {
+export const Logo: React.FC<LogoProps> = ({ 
+  theme = 'dark', 
+  className = "h-10 w-auto", 
+  logoUrl,
+  textSizeClassName = "text-xl"
+}) => {
   // If there's a custom logo URL, we use it as an image
   if (logoUrl && !logoUrl.includes('logo.svg')) {
     return (
@@ -27,8 +33,7 @@ export const Logo: React.FC<LogoProps> = ({ theme = 'dark', className = "h-10 w-
       <svg 
         version="1.1" 
         xmlns="http://www.w3.org/2000/svg" 
-        width="40" 
-        height="40" 
+        className="h-full w-auto"
         viewBox="0 0 189 183"
       >
         <path 
@@ -52,8 +57,8 @@ export const Logo: React.FC<LogoProps> = ({ theme = 'dark', className = "h-10 w-
           transform="translate(110.125,161.2109375)"
         />
       </svg>
-      <div className="font-bold text-xl tracking-tight">
-        <span className="text-white">Eng. Jimp</span>
+      <div className={`font-bold tracking-tight ${textSizeClassName}`}>
+        <span className={theme === 'dark' ? 'text-white' : 'text-black'}>Eng. Jimp</span>
       </div>
     </div>
   );

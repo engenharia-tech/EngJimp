@@ -233,7 +233,8 @@ const AppContent: React.FC = () => {
              addToast('Projeto atualizado com sucesso!', 'success');
         }
     } catch (e) {
-        addToast('Erro ao atualizar projeto.', 'error');
+        console.error("Erro ao atualizar projeto:", e);
+        addToast('Erro ao atualizar projeto no banco de dados.', 'error');
     }
   };
 
@@ -616,6 +617,7 @@ const AppContent: React.FC = () => {
             </div>
             <EngJimpTracker 
               existingProjects={displayData.projects}
+              allProjects={data.projects}
               interruptions={displayData.interruptions}
               settings={data.settings}
               onCreate={handleProjectCreate}

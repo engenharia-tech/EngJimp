@@ -26,12 +26,12 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     hourlyCost: Number(localStorage.getItem('hourly_cost')) || 150,
     logoUrl: localStorage.getItem('logo_url') || undefined,
     companyName: localStorage.getItem('company_name') || 'Eng. Jimp',
-    emailHost: localStorage.getItem('email_host') || undefined,
-    emailPort: localStorage.getItem('email_port') || undefined,
-    emailUser: localStorage.getItem('email_user') || undefined,
-    emailPass: localStorage.getItem('email_pass') || undefined,
-    emailFrom: localStorage.getItem('email_from') || undefined,
-    emailTo: localStorage.getItem('email_to') || undefined
+    emailHost: localStorage.getItem('email_host') || '',
+    emailPort: localStorage.getItem('email_port') || '',
+    emailUser: localStorage.getItem('email_user') || '',
+    emailPass: localStorage.getItem('email_pass') || '',
+    emailFrom: localStorage.getItem('email_from') || '',
+    emailTo: localStorage.getItem('email_to') || ''
   };
 
   try {
@@ -51,14 +51,14 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       const emailToRow = settingsData.find(s => s.key === 'email_to');
 
       if (hourlyCostRow) settings.hourlyCost = Number(hourlyCostRow.value);
-      if (logoUrlRow) settings.logoUrl = logoUrlRow.value;
-      if (companyNameRow) settings.companyName = companyNameRow.value;
-      if (emailHostRow) settings.emailHost = emailHostRow.value;
-      if (emailPortRow) settings.emailPort = emailPortRow.value;
-      if (emailUserRow) settings.emailUser = emailUserRow.value;
-      if (emailPassRow) settings.emailPass = emailPassRow.value;
-      if (emailFromRow) settings.emailFrom = emailFromRow.value;
-      if (emailToRow) settings.emailTo = emailToRow.value;
+      if (logoUrlRow) settings.logoUrl = logoUrlRow.value || '';
+      if (companyNameRow) settings.companyName = companyNameRow.value || 'Eng. Jimp';
+      if (emailHostRow) settings.emailHost = emailHostRow.value || '';
+      if (emailPortRow) settings.emailPort = emailPortRow.value || '';
+      if (emailUserRow) settings.emailUser = emailUserRow.value || '';
+      if (emailPassRow) settings.emailPass = emailPassRow.value || '';
+      if (emailFromRow) settings.emailFrom = emailFromRow.value || '';
+      if (emailToRow) settings.emailTo = emailToRow.value || '';
 
       // Sync to localStorage for offline fallback
       localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
@@ -138,7 +138,8 @@ export const fetchAppState = async (): Promise<AppState> => {
       status: p.status,
       notes: p.notes,
       userId: p.user_id,
-      estimatedSeconds: p.estimated_seconds
+      estimatedSeconds: p.estimated_seconds,
+      isOvertime: p.is_overtime
     }));
 
     const issues: IssueRecord[] = (issuesData || []).map((i: any) => ({
@@ -174,6 +175,7 @@ export const fetchAppState = async (): Promise<AppState> => {
 
     const interruptions: InterruptionRecord[] = (interruptionsData || []).map((i: any) => ({
       id: i.id,
+      projectId: i.project_id,
       projectNs: i.project_ns,
       clientName: i.client_name,
       designerId: i.designer_id,
@@ -276,17 +278,13 @@ export const addProject = async (project: ProjectSession): Promise<AppState> => 
       start_time: project.startTime,
       end_time: project.endTime,
       total_active_seconds: project.totalActiveSeconds,
-      interruption_seconds: project.interruptionSeconds || 0,
-      total_seconds: project.totalSeconds || project.totalActiveSeconds,
-      productive_cost: project.productiveCost || 0,
-      interruption_cost: project.interruptionCost || 0,
-      total_cost: project.totalCost || 0,
       pauses: project.pauses,
       variations: project.variations,
       status: project.status,
       notes: project.notes,
       user_id: project.userId,
-      estimated_seconds: project.estimatedSeconds
+      estimated_seconds: project.estimatedSeconds,
+      is_overtime: project.isOvertime
     }]);
 
     if (error) throw error;
@@ -311,17 +309,13 @@ export const updateProject = async (project: ProjectSession): Promise<AppState> 
         start_time: project.startTime,
         end_time: project.endTime || null,
         total_active_seconds: project.totalActiveSeconds,
-        interruption_seconds: project.interruptionSeconds || 0,
-        total_seconds: project.totalSeconds || project.totalActiveSeconds,
-        productive_cost: project.productiveCost || 0,
-        interruption_cost: project.interruptionCost || 0,
-        total_cost: project.totalCost || 0,
         pauses: project.pauses,
         variations: project.variations,
         status: project.status,
         notes: project.notes,
         estimated_seconds: project.estimatedSeconds,
-        user_id: project.userId
+        user_id: project.userId,
+        is_overtime: project.isOvertime
       })
       .eq('id', project.id);
 
@@ -538,6 +532,7 @@ export const addInterruption = async (interruption: InterruptionRecord): Promise
   try {
     const { error } = await supabase.from('interruptions').insert([{
       id: interruption.id,
+      project_id: interruption.projectId,
       project_ns: interruption.projectNs,
       client_name: interruption.clientName,
       designer_id: interruption.designerId,
@@ -564,6 +559,7 @@ export const updateInterruption = async (interruption: InterruptionRecord): Prom
     const { error } = await supabase
       .from('interruptions')
       .update({
+        project_id: interruption.projectId,
         project_ns: interruption.projectNs,
         client_name: interruption.clientName,
         designer_id: interruption.designerId,
@@ -1141,7 +1137,7 @@ export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; 
 
     const { data: projects, error: fetchError } = await supabase
       .from('projects')
-      .select('id, total_active_seconds');
+      .select('id, total_active_seconds, notes');
     
     if (fetchError) throw fetchError;
 
@@ -1151,8 +1147,8 @@ export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; 
       const { error: updateError } = await supabase
         .from('projects')
         .update({ 
-          total_cost: totalCost,
-          productive_cost: totalCost // Productive cost is the same as total cost in this rule
+          // total_cost and productive_cost removed due to schema mismatch
+          notes: p.notes // Dummy update or just remove the update if nothing else to update
         })
         .eq('id', p.id);
       

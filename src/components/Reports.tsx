@@ -43,6 +43,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [expandedSection, setExpandedSection] = useState<string | null>('productivity');
   const [expandedDesigner, setExpandedDesigner] = useState<string | null>(null);
+  const [expandedNs, setExpandedNs] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
 
@@ -353,6 +354,66 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
     });
   }, [data.projects, currentUser]);
 
+  const nsAggregationData = useMemo(() => {
+    const allCompletedInPeriod = data.projects.filter(p => {
+      if (p.status !== 'COMPLETED') return false;
+      const date = new Date(p.endTime || p.startTime);
+      return isDateInPeriod(date);
+    });
+
+    const stats: Record<string, { 
+      ns: string, 
+      clientName: string,
+      totalSessions: number,
+      totalProductiveSeconds: number,
+      totalCost: number,
+      contributors: Record<string, { userId: string, name: string, sessions: number, seconds: number, cost: number }>
+    }> = {};
+
+    allCompletedInPeriod.forEach(p => {
+      const ns = p.ns || 'Sem NS';
+      if (!stats[ns]) {
+        stats[ns] = { 
+          ns, 
+          clientName: p.clientName || 'N/A',
+          totalSessions: 0,
+          totalProductiveSeconds: 0,
+          totalCost: 0,
+          contributors: {}
+        };
+      }
+      
+      const userId = p.userId || 'unknown';
+      const user = data.users.find(u => u.id === userId);
+      const userName = user ? `${user.name} ${user.surname || ''}`.trim() : (userId.length < 30 ? userId : 'N/A');
+      
+      if (!stats[ns].contributors[userId]) {
+        stats[ns].contributors[userId] = { userId, name: userName, sessions: 0, seconds: 0, cost: 0 };
+      }
+      
+      const projectCost = (p.totalActiveSeconds || 0) * costPerSecond;
+      
+      stats[ns].totalSessions += 1;
+      stats[ns].totalProductiveSeconds += (p.totalActiveSeconds || 0);
+      stats[ns].totalCost += projectCost;
+      
+      stats[ns].contributors[userId].sessions += 1;
+      stats[ns].contributors[userId].seconds += (p.totalActiveSeconds || 0);
+      stats[ns].contributors[userId].cost += projectCost;
+    });
+
+    const result = Object.values(stats).sort((a, b) => b.totalSessions - a.totalSessions);
+
+    // Role-based filtering: Designers only see NS they contributed to
+    if (currentUser.role === 'PROJETISTA') {
+      return result.filter(s => 
+        Object.values(s.contributors).some(c => c.userId === currentUser.id)
+      );
+    }
+
+    return result;
+  }, [data.projects, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, costPerSecond, isDateInPeriod]);
+
   const handleAiAnalysis = async () => {
     setIsLoadingAi(true);
     // Filter projects and issues for the selected period
@@ -603,6 +664,42 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
     }
   };
 
+  const handleExportNsAggregation = (format: 'CSV' | 'PDF' | 'EXCEL') => {
+    const headers = ['NS / Código', 'Cliente', 'Total de Lançamentos', 'Tempo Total', 'Custo Total'];
+    const data = nsAggregationData.map(item => [
+      item.ns,
+      item.clientName,
+      item.totalSessions,
+      formatDuration(item.totalProductiveSeconds),
+      item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    ]);
+
+    if (format === 'CSV') {
+      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...data.map(r => r.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `relatorio_agregacao_ns_${getPeriodLabel().replace(/ /g, '_')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else if (format === 'PDF') {
+      const doc = new jsPDF();
+      doc.text(`Agregação por NS / Código - ${getPeriodLabel()}`, 14, 15);
+      (doc as any).autoTable({
+        head: [headers],
+        body: data,
+        startY: 20,
+      });
+      doc.save(`relatorio_agregacao_ns_${getPeriodLabel().replace(/ /g, '_')}.pdf`);
+    } else if (format === 'EXCEL') {
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Agregação por NS");
+      XLSX.writeFile(wb, `relatorio_agregacao_ns_${getPeriodLabel().replace(/ /g, '_')}.xlsx`);
+    }
+  };
+
   const getPeriodLabel = () => {
     if (filterType === 'MONTH') return `${months[selectedMonth]} ${selectedYear}`;
     if (filterType === 'QUARTER') return `${selectedQuarter}º Trimestre ${selectedYear}`;
@@ -684,10 +781,14 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
           <TrendingDown className="w-5 h-5 mr-2" />
           Resumo de Engenharia - {getPeriodLabel()}
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
-            <p className="text-[10px] uppercase font-bold opacity-70">Projetos</p>
+            <p className="text-[10px] uppercase font-bold opacity-70">Lançamentos</p>
             <p className="text-xl font-black">{productivityData.totalCount}</p>
+          </div>
+          <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
+            <p className="text-[10px] uppercase font-bold opacity-70">Projetos (NS)</p>
+            <p className="text-xl font-black">{nsAggregationData.length}</p>
           </div>
           <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
             <p className="text-[10px] uppercase font-bold opacity-70">Média/Projeto</p>
@@ -1305,6 +1406,118 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
               </button>
               <button 
                 onClick={() => handleExportDetailedInterruptions('EXCEL')}
+                className="flex items-center px-3 py-1.5 bg-slate-100 dark:bg-black text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium"
+              >
+                <Download className="w-3 h-3 mr-1" /> Excel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* NS Aggregation Report Section */}
+      <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+        <button 
+          onClick={() => setExpandedSection(expandedSection === 'nsAggregation' ? null : 'nsAggregation')}
+          className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <BarChart3 className="w-5 h-5 text-orange-600" />
+            <h3 className="font-bold text-black dark:text-white">Agregação por NS / Código (Múltiplos Projetistas)</h3>
+          </div>
+          {expandedSection === 'nsAggregation' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+        </button>
+
+        {expandedSection === 'nsAggregation' && (
+          <div className="p-6 border-t border-gray-100 dark:border-slate-700 space-y-4">
+            <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-100 dark:border-orange-900/30 flex items-start gap-3">
+              <Info className="w-5 h-5 text-orange-600 mt-0.5" />
+              <p className="text-sm text-orange-800 dark:text-orange-200">
+                Este relatório agrupa todos os lançamentos feitos para o mesmo <strong>NS / Código</strong>, somando as contribuições de diferentes projetistas para chegar ao valor total do projeto.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                  <tr>
+                    <th className="p-3">NS / Código</th>
+                    <th className="p-3">Cliente</th>
+                    <th className="p-3 text-center">Total de Lançamentos</th>
+                    <th className="p-3 text-center">Tempo Total</th>
+                    <th className="p-3 text-right">Custo Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                  {nsAggregationData.map((item) => (
+                    <React.Fragment key={item.ns}>
+                      <tr 
+                        className="hover:bg-gray-50 dark:hover:bg-slate-700/50 cursor-pointer"
+                        onClick={() => setExpandedNs(expandedNs === item.ns ? null : item.ns)}
+                      >
+                        <td className="p-3 font-medium text-black dark:text-white flex items-center gap-2">
+                          {Object.keys(item.contributors).length > 0 && (
+                            expandedNs === item.ns ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />
+                          )}
+                          {item.ns}
+                        </td>
+                        <td className="p-3 text-black dark:text-white">{item.clientName}</td>
+                        <td className="p-3 text-center font-bold text-orange-600 dark:text-orange-400">{item.totalSessions}</td>
+                        <td className="p-3 text-center text-emerald-600 dark:text-emerald-400">{formatDuration(item.totalProductiveSeconds)}</td>
+                        <td className="p-3 text-right text-black dark:text-white font-bold">
+                          {item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                      </tr>
+                      {expandedNs === item.ns && (
+                        <tr className="bg-slate-50 dark:bg-slate-900/50">
+                          <td colSpan={5} className="p-0">
+                            <div className="p-4 space-y-2">
+                              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Detalhamento por Projetista</h4>
+                              <div className="grid grid-cols-4 gap-4 text-xs font-medium text-gray-400 border-b border-gray-200 dark:border-slate-700 pb-1">
+                                <span>Projetista</span>
+                                <span className="text-center">Lançamentos</span>
+                                <span className="text-center">Tempo</span>
+                                <span className="text-right">Custo Contribuído</span>
+                              </div>
+                              {Object.values(item.contributors).map((contributor: any, idx) => (
+                                <div key={idx} className="grid grid-cols-4 gap-4 text-xs py-1 border-b border-gray-100 dark:border-slate-800 last:border-0">
+                                  <span className="text-black dark:text-white">{contributor.name}</span>
+                                  <span className="text-center text-gray-600 dark:text-gray-400">{contributor.sessions}</span>
+                                  <span className="text-center text-emerald-600 dark:text-emerald-400">{formatDuration(contributor.seconds)}</span>
+                                  <span className="text-right font-bold text-black dark:text-white">
+                                    {contributor.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                  {nsAggregationData.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-gray-500 italic">Nenhum dado para este período.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button 
+                onClick={() => handleExportNsAggregation('CSV')}
+                className="flex items-center px-3 py-1.5 bg-slate-100 dark:bg-black text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium"
+              >
+                <Download className="w-3 h-3 mr-1" /> CSV
+              </button>
+              <button 
+                onClick={() => handleExportNsAggregation('PDF')}
+                className="flex items-center px-3 py-1.5 bg-slate-100 dark:bg-black text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium"
+              >
+                <Download className="w-3 h-3 mr-1" /> PDF
+              </button>
+              <button 
+                onClick={() => handleExportNsAggregation('EXCEL')}
                 className="flex items-center px-3 py-1.5 bg-slate-100 dark:bg-black text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium"
               >
                 <Download className="w-3 h-3 mr-1" /> Excel
