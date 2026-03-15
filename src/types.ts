@@ -192,6 +192,12 @@ export interface AppSettings {
   hourlyCost: number;
   logoUrl?: string;
   companyName?: string;
+  emailHost?: string;
+  emailPort?: string;
+  emailUser?: string;
+  emailPass?: string;
+  emailFrom?: string;
+  emailTo?: string;
 }
 
 export interface AppState {

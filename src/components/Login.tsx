@@ -44,7 +44,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   const COMPANY_LOGO = settings?.logoUrl || logoImg;
-  const COMPANY_NAME = settings?.companyName || 'Eng Jimp';
+  const COMPANY_NAME = settings?.companyName || 'Eng. Jimp';
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
@@ -55,12 +55,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
              <Logo 
                theme="dark"
                logoUrl={COMPANY_LOGO} 
-               className="h-24 w-auto max-w-[200px] object-contain"
+               className="h-32 w-auto max-w-[250px] object-contain"
              />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-2">
-            {COMPANY_NAME}
-          </h1>
           <p className="text-slate-400 text-sm">Entre com suas credenciais para continuar</p>
         </div>
 
@@ -113,7 +110,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         <div className="mt-8 text-center text-xs">
           <p className="font-medium text-slate-500">
-            Desenvolvido por <span className="text-orange-500 font-bold tracking-tight">WHITE<span className="text-cyan-400">LABEL</span></span>
+            Desenvolvido por <span className="font-bold tracking-tight"><span className="text-orange-500">JIMP</span><span className="text-blue-600">NEXUS</span></span>
           </p>
         </div>
       </div>

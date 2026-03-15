@@ -20,6 +20,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
   const [surname, setSurname] = useState(user.surname || '');
   const [email, setEmail] = useState(user.email || '');
   const [phone, setPhone] = useState(user.phone || '');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
 
   const handleSave = async () => {
     if (newPassword && newPassword !== confirmPassword) {
@@ -148,9 +149,25 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
             <div>
                 <h3 className="text-sm font-bold text-black dark:text-white mb-3 flex items-center">
                     <Lock className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
-                    Alterar Senha
+                    Segurança & Senha
                 </h3>
                 <div className="space-y-3">
+                    <div className="bg-gray-50 dark:bg-black p-3 rounded-lg border border-gray-100 dark:border-slate-700">
+                        <label className="block text-xs font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">Senha Atual</label>
+                        <div className="flex items-center justify-between">
+                            <span className="font-mono text-sm text-black dark:text-white">
+                                {showCurrentPassword ? user.password : '••••••••'}
+                            </span>
+                            <button 
+                                type="button"
+                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                            >
+                                {showCurrentPassword ? 'Ocultar' : 'Ver Senha'}
+                            </button>
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-xs font-medium text-black dark:text-white mb-1">Nova Senha</label>
                         <input 
@@ -158,7 +175,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                             value={newPassword}
                             onChange={e => setNewPassword(e.target.value)}
                             className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-black dark:text-white"
-                            placeholder="Digite a nova senha"
+                            placeholder="Digite a nova senha para alterar"
                         />
                     </div>
                     <div>

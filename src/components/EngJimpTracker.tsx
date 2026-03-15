@@ -5,6 +5,7 @@ import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { getWorkingSeconds } from '../utils/timeUtils';
 import { fetchUsers } from '../services/storageService';
 import { triggerExcelUpdate } from '../services/webhookService';
+import { useToast } from './Toast';
 
 // SUBSTITUA ISSO PELA SUA URL DO WEBHOOK DO TEAMS
 const TEAMS_WEBHOOK_URL = "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL_HERE";
@@ -38,6 +39,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedProjectDetails, setSelectedProjectDetails] = useState<ProjectSession | null>(null);
+  const { showToast } = useToast();
 
   // Form Data (Start)
   const [ns, setNs] = useState('');
@@ -358,10 +360,14 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       status: 'COMPLETED'
     };
 
-    onUpdate(finishedProject);
-    sendTeamsNotification(finishedProject);
+    // 1. Update DB
+    await onUpdate(finishedProject);
     
-    // Trigger Excel Integration
+    // 2. Send Notifications
+    sendTeamsNotification(finishedProject);
+    await sendEmailNotification(finishedProject);
+    
+    // 3. Trigger Excel Integration
     triggerExcelUpdate(finishedProject, currentUser).then(() => {
         console.log("Excel update triggered");
     });
@@ -476,6 +482,74 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       });
     } catch (error) {
       console.error("Erro Teams", error);
+    }
+  };
+
+  const sendEmailNotification = async (project: ProjectSession) => {
+    const now = new Date();
+    const hour = now.getHours();
+    let greeting = "Bom dia";
+    if (hour >= 12 && hour < 18) greeting = "Boa tarde";
+    else if (hour >= 18 || hour < 5) greeting = "Boa noite";
+
+    const hours = (project.totalActiveSeconds / 3600).toFixed(2);
+    const plannedHours = ((project.estimatedSeconds || 0) / 3600).toFixed(2);
+    const cost = project.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    
+    // Get interruptions for this project
+    const projectInterruptions = interruptions.filter(i => i.projectNs === project.ns);
+    const interruptionCount = projectInterruptions.length;
+    const interruptionReasons = projectInterruptions.map(i => `- ${i.problemType}: ${i.description || 'Sem descrição'}`).join('\n');
+
+    const subject = `Conclusão Projeto NS: ${project.ns} - ${project.clientName || 'Sem Cliente'}`;
+    const body = `${greeting},
+
+Informamos a conclusão do projeto abaixo:
+
+NS: ${project.ns}
+Cliente: ${project.clientName || 'Não informado'}
+Código Projeto: ${project.projectCode || 'Não informado'}
+
+Tempo Planejado: ${plannedHours} horas
+Tempo Executado: ${hours} horas
+
+Custo Total do Projeto: ${cost}
+Número de interrupções: ${interruptionCount}
+
+Detalhamento das interrupções:
+${interruptionReasons || 'Nenhuma interrupção registrada.'}
+
+Atenciosamente.
+JIMPNEXUS
+`;
+
+    try {
+      const response = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          subject, 
+          body,
+          config: {
+            emailHost: settings.emailHost,
+            emailPort: settings.emailPort,
+            emailUser: settings.emailUser,
+            emailPass: settings.emailPass,
+            emailFrom: settings.emailFrom,
+            emailTo: settings.emailTo
+          }
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        showToast(`E-mail de conclusão enviado para: ${settings.emailTo}`, 'success');
+      } else {
+        showToast(`Erro ao enviar e-mail: ${result.error || 'Verifique as configurações'}`, 'error');
+      }
+    } catch (error) {
+      console.error("Erro ao enviar e-mail", error);
+      showToast('Erro de conexão ao tentar enviar e-mail.', 'error');
     }
   };
 
