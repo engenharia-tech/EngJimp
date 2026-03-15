@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Lock, User as UserIcon, LogIn, Loader2 } from 'lucide-react';
-import { authenticateUser } from '../services/storageService';
-import { User } from '../types';
+import { authenticateUser, fetchSettings } from '../services/storageService';
+import { User, AppSettings } from '../types';
+import { Logo } from './Logo';
 import logoImg from '../assets/logo.svg';
 
 interface LoginProps {
@@ -13,6 +14,15 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const s = await fetchSettings();
+      setSettings(s);
+    };
+    loadSettings();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,19 +43,24 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
+  const COMPANY_LOGO = settings?.logoUrl || logoImg;
+  const COMPANY_NAME = settings?.companyName || 'Eng Jimp';
+
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="bg-slate-900 p-8 rounded-2xl shadow-2xl max-w-md w-full border border-slate-800">
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      <div className="bg-black p-8 rounded-2xl shadow-2xl max-w-md w-full border border-slate-800">
         <div className="text-center mb-8">
           {/* Logo Container */}
           <div className="flex justify-center mb-6">
-             <img 
-               src={logoImg} 
-               alt="Logo" 
-               className="h-24 w-auto object-contain"
+             <Logo 
+               theme="dark"
+               logoUrl={COMPANY_LOGO} 
+               className="h-24 w-auto max-w-[200px] object-contain"
              />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Eng <span className="text-blue-500">Jimp</span></h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight mb-2">
+            {COMPANY_NAME}
+          </h1>
           <p className="text-slate-400 text-sm">Entre com suas credenciais para continuar</p>
         </div>
 
@@ -64,7 +79,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 type="text" 
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full pl-10 p-3 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                className="w-full pl-10 p-3 bg-black border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                 placeholder="Seu nome de usuário"
                 required
               />
@@ -79,7 +94,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 type="password" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 p-3 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                className="w-full pl-10 p-3 bg-black border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                 placeholder="Sua senha"
                 required
               />
@@ -98,7 +113,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         <div className="mt-8 text-center text-xs">
           <p className="font-medium text-slate-500">
-            Desenvolvido por <span className="text-orange-500 font-bold tracking-tight">JIMP<span className="text-cyan-400">NEXUS</span></span>
+            Desenvolvido por <span className="text-orange-500 font-bold tracking-tight">WHITE<span className="text-cyan-400">LABEL</span></span>
           </p>
         </div>
       </div>

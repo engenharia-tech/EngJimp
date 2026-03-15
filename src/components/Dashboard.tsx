@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell 
 } from 'recharts';
-import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity } from 'lucide-react';
+import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType } from '../types';
 import { analyzePerformance } from '../services/geminiService';
 import { fetchUsers } from '../services/storageService';
@@ -97,6 +97,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     });
   }, [data.innovations, startDate, endDate]);
 
+  const filteredInterruptions = useMemo(() => {
+    return data.interruptions.filter(i => {
+      // Restrict visibility for PROJETISTA to their own interruptions only
+      if (currentUser.role === 'PROJETISTA' && i.designerId !== currentUser.id) {
+          return false;
+      }
+      
+      let matchDate = true;
+      if (startDate || endDate) {
+        const iDate = new Date(i.startTime).getTime();
+        const start = startDate ? new Date(startDate).getTime() : 0;
+        const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
+        matchDate = iDate >= start && iDate <= end;
+      }
+      return matchDate;
+    });
+  }, [data.interruptions, startDate, endDate, currentUser.role, currentUser.id]);
+
 
   // 1. Calculate Average Time per Project Type
   const averageTimes = useMemo(() => {
@@ -134,24 +152,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val);
   };
 
+  const costPerSecond = useMemo(() => {
+    const designers = data.users.filter(u => u.role === 'PROJETISTA');
+    if (designers.length === 0) {
+      const avgSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0) / (data.users.length || 1);
+      return (avgSalary / 220) / 3600;
+    }
+    const avgDesignerSalary = designers.reduce((acc, u) => acc + (u.salary || 0), 0) / designers.length;
+    return (avgDesignerSalary / 220) / 3600;
+  }, [data.users]);
+
   const costData = useMemo(() => {
     let totalProductive = 0;
-    let totalInterruption = 0;
-    let totalOverall = 0;
 
+    // 1. Costs from finished projects
     filteredProjects.forEach(p => {
-      totalProductive += p.productiveCost || 0;
-      totalInterruption += p.interruptionCost || 0;
-      totalOverall += p.totalCost || 0;
+      // Recalculate based on the new formula for consistency
+      const productiveCost = (p.totalActiveSeconds / 3600) * (costPerSecond * 3600);
+      totalProductive += productiveCost;
     });
+
+    // 2. Costs from filtered interruptions
+    const totalInterruptionSeconds = filteredInterruptions.reduce((acc, i) => acc + i.totalTimeSeconds, 0);
+    const totalInterruptionCost = totalInterruptionSeconds * costPerSecond;
+
+    const totalOverall = totalProductive + totalInterruptionCost;
 
     return {
       productive: totalProductive,
-      interruption: totalInterruption,
+      interruption: totalInterruptionCost,
+      totalInterruptionSeconds,
       total: totalOverall,
-      percentageLost: totalOverall > 0 ? (totalInterruption / totalOverall) * 100 : 0
+      percentageLost: totalOverall > 0 ? (totalInterruptionCost / totalOverall) * 100 : 0
     };
-  }, [filteredProjects]);
+  }, [filteredProjects, filteredInterruptions, costPerSecond]);
 
   // --- NOVO GRÁFICO: Horas Realizadas vs Meta Mensal ---
   const hoursVsGoalData = useMemo(() => {
@@ -249,7 +283,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     if (currentUser.role !== 'GESTOR') return [];
 
     const counts = filteredProjects.reduce((acc, curr) => {
-      const name = usersMap[curr.userId || ''] || 'Desconhecido';
+      const name = usersMap[curr.userId || ''] || (curr.userId && curr.userId.length < 30 ? curr.userId : 'Desconhecido');
       const date = new Date(curr.endTime || curr.startTime);
       
       let key = name;
@@ -304,7 +338,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     const data: Record<string, { name: string, [key: string]: any }> = {};
 
     filteredProjects.forEach(p => {
-        const userName = usersMap[p.userId || ''] || 'Desconhecido';
+        const userName = usersMap[p.userId || ''] || (p.userId && p.userId.length < 30 ? p.userId : 'Desconhecido');
         if (!data[userName]) {
             data[userName] = { 
                 name: userName, 
@@ -329,7 +363,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     const allReasons = new Set<string>();
 
     filteredProjects.forEach(p => {
-        const userName = usersMap[p.userId || ''] || 'Desconhecido';
+        const userName = usersMap[p.userId || ''] || (p.userId && p.userId.length < 30 ? p.userId : 'Desconhecido');
         if (!data[userName]) {
             data[userName] = { name: userName };
         }
@@ -354,21 +388,71 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     return { data: result, reasons: Array.from(allReasons) };
   }, [filteredProjects, usersMap]);
 
+  // 8.1. Monthly Interruptions (General View)
+  const interruptionsByMonth = useMemo(() => {
+    const data: Record<string, { name: string, total: number, [key: string]: any }> = {};
+    const allReasons = new Set<string>();
+
+    filteredProjects.forEach(p => {
+        const date = new Date(p.startTime);
+        const monthYear = date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+        
+        if (!data[monthYear]) {
+            data[monthYear] = { name: monthYear, total: 0 };
+        }
+        
+        if (p.pauses && p.pauses.length > 0) {
+            p.pauses.forEach(pause => {
+                const reason = pause.reason || 'Outros';
+                allReasons.add(reason);
+                data[monthYear][reason] = (data[monthYear][reason] || 0) + 1;
+                data[monthYear].total++;
+            });
+        }
+    });
+
+    const result = Object.values(data).sort((a, b) => {
+        const [mA, yA] = a.name.split('/');
+        const [mB, yB] = b.name.split('/');
+        return new Date(`20${yA}-${mA}-01`).getTime() - new Date(`20${yB}-${mB}-01`).getTime();
+    });
+
+    return { data: result, reasons: Array.from(allReasons) };
+  }, [filteredProjects]);
+
   // 9. Interruptions for Selected Designer (Grouped by Project)
   const interruptionsForSelectedDesigner = useMemo(() => {
     if (selectedInterruptionDesigner === 'ALL') return [];
 
-    return filteredProjects
-        .filter(p => p.userId === selectedInterruptionDesigner && p.pauses && p.pauses.length > 0)
-        .map(p => ({
-            id: p.id,
-            ns: p.ns,
-            client: p.clientName,
-            date: p.startTime,
-            totalPaused: p.pauses.reduce((acc, curr) => acc + Number(curr.durationSeconds), 0),
-            pauses: p.pauses
-        }))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const data: Record<string, { name: string, [key: string]: any }> = {};
+    const allReasons = new Set<string>();
+
+    const designerProjects = filteredProjects.filter(p => p.userId === selectedInterruptionDesigner);
+
+    designerProjects.forEach(p => {
+        const date = new Date(p.startTime);
+        const monthYear = date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+        
+        if (!data[monthYear]) {
+            data[monthYear] = { name: monthYear };
+        }
+        
+        if (p.pauses && p.pauses.length > 0) {
+            p.pauses.forEach(pause => {
+                const reason = pause.reason || 'Outros';
+                allReasons.add(reason);
+                data[monthYear][reason] = (data[monthYear][reason] || 0) + 1;
+            });
+        }
+    });
+
+    const result = Object.values(data).sort((a, b) => {
+        const [mA, yA] = a.name.split('/');
+        const [mB, yB] = b.name.split('/');
+        return new Date(`20${yA}-${mA}-01`).getTime() - new Date(`20${yB}-${mB}-01`).getTime();
+    });
+
+    return { data: result, reasons: Array.from(allReasons) };
   }, [filteredProjects, selectedInterruptionDesigner]);
 
   const handleAiAnalysis = async () => {
@@ -407,7 +491,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     <div className="space-y-6">
       
       {/* Date Filter Section */}
-      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center text-black dark:text-white font-bold">
           <Filter className="w-5 h-5 mr-2 text-blue-600" />
           Filtros de Análise
@@ -419,7 +503,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="p-2 border dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-slate-700 dark:text-white"
+              className="p-2 border dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-black dark:text-white"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -428,7 +512,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="p-2 border dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-slate-700 dark:text-white"
+              className="p-2 border dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-black dark:text-white"
             />
           </div>
           {currentUser.role === 'GESTOR' && (
@@ -440,7 +524,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                   setSelectedDesignerForReleases(e.target.value);
                   setSelectedDesignerForChart(e.target.value); // Sync both for convenience
                 }}
-                className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-slate-700 dark:text-white cursor-pointer"
+                className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
               >
                 <option value="ALL">Todos</option>
                 {availableDesigners.map((u) => (
@@ -452,7 +536,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
         </div>
           <button 
             onClick={handleExportCSV}
-            className="flex items-center text-sm font-medium text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors ml-auto md:ml-0"
+            className="flex items-center text-sm font-medium text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors ml-auto md:ml-0"
           >
             <Download className="w-4 h-4 mr-2" />
             CSV
@@ -462,41 +546,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
       {/* KPI Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {averageTimes.length > 0 && averageTimes.map((stat) => (
-            <div key={stat.type} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div key={stat.type} className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-black dark:text-white uppercase tracking-wider mb-1">Média {stat.type}</p>
                 <p className="text-xl font-bold text-black dark:text-white">{formatDuration(stat.avgSeconds)}</p>
               </div>
-              <div className="h-8 w-8 bg-blue-50 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <div className="h-8 w-8 bg-blue-50 dark:bg-black rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400">
                 <Clock className="w-4 h-4" />
               </div>
             </div>
           ))}
           {/* Innovation KPI */}
-           <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex items-center justify-between">
+           <div className="bg-white dark:bg-black p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">Economia Aprovada</p>
                 <p className="text-xl font-bold text-emerald-800 dark:text-emerald-300">{formatCurrency(totalSavings)}</p>
               </div>
-              <div className="h-8 w-8 bg-emerald-50 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <div className="h-8 w-8 bg-emerald-50 dark:bg-black rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400">
                 <TrendingDown className="w-4 h-4" />
               </div>
             </div>
 
           {/* Cost KPI */}
-          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-red-100 dark:border-red-900/30 shadow-sm flex items-center justify-between">
+          <div className="bg-white dark:bg-black p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">Valor Total de Projetos</p>
+              <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{formatCurrency(costData.productive)}</p>
+              <p className="text-[10px] text-blue-500 font-medium mt-1">Baseado em tempo produtivo</p>
+            </div>
+            <div className="h-8 w-8 bg-blue-50 dark:bg-black rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <DollarSign className="w-4 h-4" />
+            </div>
+          </div>
+
+          {/* Interruption Cost KPI */}
+          <div className="bg-white dark:bg-black p-4 rounded-xl border border-red-100 dark:border-red-900/30 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">Custo de Interrupções</p>
               <p className="text-xl font-bold text-red-800 dark:text-red-300">{formatCurrency(costData.interruption)}</p>
+              <p className="text-[10px] text-red-500 font-medium mt-1">Tempo total: {formatDuration(costData.totalInterruptionSeconds)}</p>
             </div>
-            <div className="h-8 w-8 bg-red-50 dark:bg-red-900/30 rounded-full flex items-center justify-center text-red-600 dark:text-red-400">
+            <div className="h-8 w-8 bg-red-50 dark:bg-black rounded-full flex items-center justify-center text-red-600 dark:text-red-400">
               <TrendingDown className="w-4 h-4" />
             </div>
           </div>
         </div>
 
       {/* AI Insights Section */}
-        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-950/30 p-6 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-black p-6 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-300 flex items-center">
               <Sparkles className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
@@ -512,7 +609,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
           </div>
           
           {aiAnalysis ? (
-            <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-slate-800/50 p-4 rounded-lg">
+            <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-4 rounded-lg">
               <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{aiAnalysis}</pre>
             </div>
           ) : (
@@ -523,7 +620,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
         </div>
 
       {/* NOVO: Gráfico Horas Realizadas vs Meta Mensal */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[400px]">
+        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[400px]">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
             <div className="flex flex-col">
                 <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
@@ -540,7 +637,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                         type="number" 
                         value={monthlyGoal}
                         onChange={(e) => setMonthlyGoal(Number(e.target.value))}
-                        className="w-16 p-1 border dark:border-slate-600 rounded text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:bg-slate-700 dark:text-white"
+                        className="w-16 p-1 border dark:border-slate-600 rounded text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:bg-black dark:text-white"
                     />
                 </div>
 
@@ -548,7 +645,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                 <select
                     value={selectedDesignerForChart}
                     onChange={(e) => setSelectedDesignerForChart(e.target.value)}
-                    className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-gray-50 dark:bg-slate-700 dark:text-white cursor-pointer"
+                    className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
                 >
                     <option value="ALL">Todos os Projetistas</option>
                     {availableDesigners.map((u) => (
@@ -591,33 +688,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
           </div>
         </div>
 
-      {/* NOVO: Ranking do Mês (CEO/GESTOR) */}
-      {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR') && (
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+      {/* NOVO: Ranking do Mês (CEO/GESTOR/COORDENADOR) */}
+      {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR') && (
+        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
             <div className="flex flex-col md:flex-row items-center justify-between mb-4 gap-4">
                 <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
                     <Target className="w-5 h-5 mr-2 text-purple-600" />
                     Ranking de Produtividade
                 </h3>
                 
-                <div className="flex bg-gray-100 dark:bg-slate-700 p-1 rounded-lg">
+                <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
                     <button 
                         onClick={() => setRankingPeriod('MONTH')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'MONTH' ? 'bg-white dark:bg-slate-600 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'MONTH' ? 'bg-white dark:bg-black text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         <Calendar className="w-3 h-3" />
                         Este Mês
                     </button>
                     <button 
                         onClick={() => setRankingPeriod('YEAR')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'YEAR' ? 'bg-white dark:bg-slate-600 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'YEAR' ? 'bg-white dark:bg-black text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         <Calendar className="w-3 h-3" />
                         Este Ano
                     </button>
                     <button 
                         onClick={() => setRankingPeriod('CUSTOM')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'CUSTOM' ? 'bg-white dark:bg-slate-600 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'CUSTOM' ? 'bg-white dark:bg-black text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         <Filter className="w-3 h-3" />
                         Personalizado
@@ -627,7 +724,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
 
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50 dark:bg-slate-900/50 text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                    <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
                         <tr>
                             <th className="p-3">Projetista</th>
                             <th className="p-3 text-center">Liberações</th>
@@ -696,7 +793,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                                         <div className="flex items-center">
                                             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
                                                 index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
-                                                index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-slate-300' : 
+                                                index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-300' : 
                                                 index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                                             }`}>
                                                 {index + 1}
@@ -722,7 +819,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
         {/* Removed: Issue Distribution (Pie Chart) */}
 
         {/* Releases per Month (Bar Chart) */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
+            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
             <div className="flex justify-between items-center mb-4">
                 <div className="flex flex-col">
                     <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
@@ -730,25 +827,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                         {currentUser.role === 'GESTOR' || currentUser.role === 'CEO' ? 'Liberações da Equipe' : 'Seu Desempenho de Liberações'}
                     </h3>
                     {selectedDesignerForReleases !== 'ALL' && (
-                        <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7">Filtrado por: {usersMap[selectedDesignerForReleases]}</span>
+                        <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7">Filtrado por: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
                     )}
                 </div>
-                <div className="flex bg-gray-100 dark:bg-slate-700 p-1 rounded-lg">
+                <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
                     <button 
                         onClick={() => setReleaseGrouping('MONTHLY')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         Mensal
                     </button>
                     <button 
                         onClick={() => setReleaseGrouping('YEARLY')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'YEARLY' ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'YEARLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         Anual
                     </button>
                     <button 
                         onClick={() => setReleaseGrouping('GLOBAL')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'GLOBAL' ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'GLOBAL' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         Global
                     </button>
@@ -777,7 +874,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
             </div>
 
         {/* Innovations Chart */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
+            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
             <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
                 <Lightbulb className="w-5 h-5 mr-2 text-yellow-500" />
                 Status de Inovações
@@ -808,7 +905,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
         {currentUser.role === 'GESTOR' && (
           <>
             {/* 1. Activities by Designer (Stacked Bar) */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
+            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
                 <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
                     <Activity className="w-5 h-5 mr-2 text-indigo-600" />
                     Atividades por Projetista
@@ -838,17 +935,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                 </div>
             </div>
 
-            {/* 2. Interruptions by Designer (Stacked Bar) */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
+            {/* 2. Paradas by Designer (Stacked Bar) */}
+            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-gray-700 dark:text-slate-200 flex items-center">
                         <PauseCircle className="w-5 h-5 mr-2 text-red-500" />
-                        Análise de Interrupções por Projetista
+                        Análise de Paradas
                     </h3>
                     <select 
                         value={selectedInterruptionDesigner}
                         onChange={(e) => setSelectedInterruptionDesigner(e.target.value)}
-                        className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-sm bg-gray-50 dark:bg-slate-700 dark:text-white cursor-pointer"
+                        className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
                     >
                         <option value="ALL">Visão Geral (Todos)</option>
                         {availableDesigners.map((u) => (
@@ -857,11 +954,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                     </select>
                 </div>
 
-                {selectedInterruptionDesigner === 'ALL' ? (
-                    <div className="h-[300px] w-full">
-                        {interruptionsByDesigner.data.length > 0 ? (
+                <div className="h-[300px] w-full">
+                    {selectedInterruptionDesigner === 'ALL' ? (
+                        interruptionsByMonth.data.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={interruptionsByDesigner.data}>
+                                <BarChart data={interruptionsByMonth.data}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                                    <XAxis dataKey="name" tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
+                                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} label={{ value: 'Qtd. Paradas', angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }} />
+                                    <Tooltip 
+                                        contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                        cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
+                                    />
+                                    {/* No legend in general view as requested */}
+                                    <Bar dataKey="total" name="Paradas" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
+                                Nenhuma parada registrada no período.
+                            </div>
+                        )
+                    ) : (
+                        interruptionsForSelectedDesigner.data.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={interruptionsForSelectedDesigner.data}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
                                     <XAxis dataKey="name" tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
                                     <YAxis allowDecimals={false} tickLine={false} axisLine={false} label={{ value: 'Qtd. Paradas', angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }} />
@@ -870,7 +987,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                                         cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                                     />
                                     <Legend />
-                                    {interruptionsByDesigner.reasons.map((reason, index) => (
+                                    {interruptionsForSelectedDesigner.reasons.map((reason, index) => (
                                         <Bar 
                                             key={reason} 
                                             dataKey={reason} 
@@ -881,62 +998,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                                 </BarChart>
                             </ResponsiveContainer>
                         ) : (
-                            <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
-                                Nenhuma interrupção registrada no período.
+                            <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm border-2 border-dashed border-gray-100 dark:border-slate-700 rounded-lg">
+                                Nenhuma parada encontrada para este projetista no período selecionado.
                             </div>
-                        )}
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        {interruptionsForSelectedDesigner.length > 0 ? (
-                            <div className="overflow-x-auto border dark:border-slate-700 rounded-lg">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-50 dark:bg-slate-900/50 text-gray-600 dark:text-slate-400 font-medium border-b border-gray-100 dark:border-slate-700">
-                                        <tr>
-                                            <th className="p-3">Projeto (NS)</th>
-                                            <th className="p-3">Cliente</th>
-                                            <th className="p-3">Data</th>
-                                            <th className="p-3 text-center">Qtd</th>
-                                            <th className="p-3 text-center">Total Parado</th>
-                                            <th className="p-3">Detalhes das Paradas</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                                        {interruptionsForSelectedDesigner.map((item) => (
-                                            <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                                                <td className="p-3 font-mono font-bold text-gray-800 dark:text-slate-200">{item.ns}</td>
-                                                <td className="p-3 text-gray-600 dark:text-slate-400">{item.client || '-'}</td>
-                                                <td className="p-3 text-gray-500 dark:text-slate-500 text-xs">
-                                                    {new Date(item.date).toLocaleDateString('pt-BR')}
-                                                </td>
-                                                <td className="p-3 text-center font-bold text-gray-700 dark:text-slate-300">
-                                                    {item.pauses.length}
-                                                </td>
-                                                <td className="p-3 text-center font-bold text-red-600 dark:text-red-400">
-                                                    {formatDuration(item.totalPaused)}
-                                                </td>
-                                                <td className="p-3">
-                                                    <div className="space-y-1">
-                                                        {item.pauses.map((pause, idx) => (
-                                                            <div key={idx} className="flex items-center text-xs bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 px-2 py-1 rounded border border-red-100 dark:border-red-900/30 w-fit">
-                                                                <span className="font-bold mr-2">{pause.reason}:</span>
-                                                                <span>{formatDuration(Number(pause.durationSeconds))}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div className="h-[200px] flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm border-2 border-dashed border-gray-100 dark:border-slate-700 rounded-lg">
-                                Nenhuma interrupção encontrada para este projetista no período selecionado.
-                            </div>
-                        )}
-                    </div>
-                )}
+                        )
+                    )}
+                </div>
             </div>
           </>
         )}

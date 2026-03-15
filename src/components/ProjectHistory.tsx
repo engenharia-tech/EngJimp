@@ -395,7 +395,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   return (
     <div className="space-y-6">
       {/* Filters Section */}
-      <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+      <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
         <div className="flex items-center mb-4 text-black dark:text-white font-bold">
           <Filter className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
           Filtros de Busca
@@ -408,14 +408,14 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
               placeholder="Buscar por NS..."
               value={filterNs}
               onChange={(e) => setFilterNs(e.target.value)}
-              className="w-full pl-10 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+              className="w-full pl-10 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
             />
           </div>
           
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
           >
             <option value="">Todos os Tipos</option>
             {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -427,7 +427,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-slate-700 dark:text-white"
+              className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-black dark:text-white"
             />
           </div>
 
@@ -437,7 +437,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-slate-700 dark:text-white"
+              className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-black dark:text-white"
             />
           </div>
 
@@ -448,7 +448,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 className={`flex-1 flex items-center justify-center gap-2 p-2 rounded-lg border transition-all font-medium text-sm ${
                     filterSuspicious 
                     ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 shadow-sm' 
-                    : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-600'
+                    : 'bg-white dark:bg-black border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-600'
                 }`}
               >
                 <AlertTriangle className={`w-4 h-4 ${filterSuspicious ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400'}`} />
@@ -458,7 +458,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
               <button 
                 onClick={handleRecalculateClick}
                 disabled={isRecalculating}
-                className={`p-2 rounded-lg border transition-colors flex items-center justify-center ${isRecalculating ? 'bg-gray-100 dark:bg-slate-700 text-gray-400 cursor-not-allowed' : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-blue-600 dark:hover:text-blue-400'}`}
+                className={`p-2 rounded-lg border transition-colors flex items-center justify-center ${isRecalculating ? 'bg-gray-100 dark:bg-black text-gray-400 cursor-not-allowed' : 'bg-white dark:bg-black border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-blue-600 dark:hover:text-blue-400'}`}
                 title="Recalcular Duração de Todos os Projetos"
               >
                 <RefreshCw className={`w-4 h-4 ${isRecalculating ? 'animate-spin' : ''}`} />
@@ -488,7 +488,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     }
                 }}
                 disabled={isCheckingDuplicates}
-                className={`p-2 rounded-lg border transition-colors flex items-center justify-center ${isCheckingDuplicates ? 'bg-gray-100 dark:bg-slate-700 text-gray-400 cursor-not-allowed' : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-orange-600 dark:hover:text-orange-400'}`}
+                className={`p-2 rounded-lg border transition-colors flex items-center justify-center ${isCheckingDuplicates ? 'bg-gray-100 dark:bg-black text-gray-400 cursor-not-allowed' : 'bg-white dark:bg-black border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-orange-600 dark:hover:text-orange-400'}`}
                 title="Buscar Projetos Duplicados"
               >
                 {isCheckingDuplicates ? <RefreshCw className="w-4 h-4 animate-spin" /> : <AlertCircle className="w-4 h-4" />}
@@ -501,7 +501,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       {/* Recalculate Confirmation Modal */}
       {showRecalculateConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
+            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
                 <div className="flex items-center gap-3 mb-4 text-amber-600 dark:text-amber-400">
                     <AlertTriangle className="w-6 h-6" />
                     <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">Confirmar Recálculo</h3>
@@ -514,7 +514,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 <div className="flex justify-end gap-3">
                     <button 
                         onClick={() => setShowRecalculateConfirm(false)}
-                        className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
+                        className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
                     >
                         Cancelar
                     </button>
@@ -533,7 +533,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       {/* Progress Modal */}
       {isRecalculating && !showRecalculateConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm p-8 text-center border border-gray-100 dark:border-slate-700">
+            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-sm p-8 text-center border border-gray-100 dark:border-slate-700">
                 <div className="mb-4 flex justify-center">
                     <RefreshCw className="w-12 h-12 text-blue-600 dark:text-blue-400 animate-spin" />
                 </div>
@@ -544,7 +544,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 
                 {recalculateProgress.total > 0 && (
                     <div className="space-y-2">
-                        <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
+                        <div className="w-full bg-gray-100 dark:bg-black rounded-full h-2.5 overflow-hidden">
                             <div 
                                 className="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full transition-all duration-300" 
                                 style={{ width: `${(recalculateProgress.current / recalculateProgress.total) * 100}%` }}
@@ -561,32 +561,32 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       )}
 
       {/* Results Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+      <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50 dark:bg-slate-900/50 text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+            <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
               <tr>
                 <th className="p-4 text-center w-24">Ações</th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('status')}>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('status')}>
                   <div className="flex items-center">Status <SortIcon columnKey="status" /></div>
                 </th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('userId')}>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('userId')}>
                   <div className="flex items-center">Projetista <SortIcon columnKey="userId" /></div>
                 </th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('clientName')}>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('clientName')}>
                   <div className="flex items-center">Cliente <SortIcon columnKey="clientName" /></div>
                 </th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('ns')}>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('ns')}>
                   <div className="flex items-center">NS / Cód. <SortIcon columnKey="ns" /></div>
                 </th>
                 <th className="p-4">Variações (Total)</th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('type')}>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('type')}>
                   <div className="flex items-center">Tipo / Impl. <SortIcon columnKey="type" /></div>
                 </th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('startTime')}>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('startTime')}>
                   <div className="flex items-center">Início / Fim <SortIcon columnKey="startTime" /></div>
                 </th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('totalActiveSeconds')}>
+                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('totalActiveSeconds')}>
                   <div className="flex items-center">Tempo (Est. / Real) <SortIcon columnKey="totalActiveSeconds" /></div>
                 </th>
                 {isGestor && <th className="p-4">Custo</th>}
@@ -614,7 +614,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const canViewVariations = true; // Everyone can view variations
 
                 return (
-                <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors group">
+                <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-black/50 transition-colors group">
                   <td className="p-4 text-center">
                       <div className="flex items-center justify-center gap-2">
                           <button 
@@ -773,8 +773,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       {/* Project Details Modal */}
       {selectedProject && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] border border-gray-100 dark:border-slate-700">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900/50">
+            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] border border-gray-100 dark:border-slate-700">
+                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
                     <div>
                         <h3 className="text-lg font-bold text-gray-800 dark:text-slate-100 flex items-center">
                             <FileCheck className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
@@ -880,7 +880,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         </h4>
                         <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
                             <table className="w-full text-sm text-left">
-                                <thead className="bg-gray-50 dark:bg-slate-900/50 text-gray-600 dark:text-slate-400 font-semibold border-b border-gray-200 dark:border-slate-700">
+                                <thead className="bg-gray-50 dark:bg-black text-gray-600 dark:text-slate-400 font-semibold border-b border-gray-200 dark:border-slate-700">
                                     <tr>
                                         <th className="p-3">Código Antigo</th>
                                         <th className="p-3">Descrição</th>
@@ -896,7 +896,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                             <td className="p-3 text-gray-800 dark:text-slate-200 font-medium">{v.description}</td>
                                             <td className="p-3 font-mono text-blue-600 dark:text-blue-400 font-bold text-xs">{v.newCode || '-'}</td>
                                             <td className="p-3">
-                                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-slate-300'}`}>
+                                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-black dark:text-slate-300'}`}>
                                                     {v.type}
                                                 </span>
                                             </td>
@@ -926,10 +926,10 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 text-right">
+                <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black text-right">
                     <button 
                         onClick={() => setSelectedProject(null)}
-                        className="px-6 py-2 bg-gray-800 dark:bg-slate-700 text-white dark:text-slate-100 rounded-lg hover:bg-gray-900 dark:hover:bg-slate-600 font-medium transition-colors"
+                        className="px-6 py-2 bg-gray-800 dark:bg-black text-white dark:text-slate-100 rounded-lg hover:bg-gray-900 dark:hover:bg-slate-600 font-medium transition-colors"
                     >
                         Fechar
                     </button>
@@ -941,15 +941,15 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       {/* Edit Project Modal */}
       {editingProject && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-gray-100 dark:border-slate-700">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900/50">
+            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-gray-100 dark:border-slate-700">
+                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
                     <h3 className="text-lg font-bold text-gray-800 dark:text-slate-100 flex items-center">
                         <Edit className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
                         Editar Liberação
                     </h3>
                     <button 
                         onClick={() => setEditingProject(null)}
-                        className="p-2 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full transition"
+                        className="p-2 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-200 dark:hover:bg-black rounded-full transition"
                     >
                         <X className="w-6 h-6" />
                     </button>
@@ -963,7 +963,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 type="text"
                                 value={editForm.ns}
                                 onChange={(e) => setEditForm({...editForm, ns: e.target.value})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono font-bold dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono font-bold dark:bg-black dark:text-white"
                             />
                         </div>
                         <div className="space-y-2">
@@ -972,7 +972,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 type="text"
                                 value={editForm.projectCode}
                                 onChange={(e) => setEditForm({...editForm, projectCode: e.target.value})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             />
                         </div>
                     </div>
@@ -983,7 +983,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             type="text"
                             value={editForm.clientName}
                             onChange={(e) => setEditForm({...editForm, clientName: e.target.value})}
-                            className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                            className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                         />
                     </div>
 
@@ -993,7 +993,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             <select 
                                 value={editForm.type}
                                 onChange={(e) => setEditForm({...editForm, type: e.target.value as ProjectType})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             >
                                 {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
@@ -1003,7 +1003,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             <select 
                                 value={editForm.implementType}
                                 onChange={(e) => setEditForm({...editForm, implementType: e.target.value as ImplementType})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             >
                                 {IMPLEMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
@@ -1022,7 +1022,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             <select 
                                 value={editForm.flooringType}
                                 onChange={(e) => setEditForm({...editForm, flooringType: e.target.value})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             >
                                 <option value="">Selecione...</option>
                                 {FLOORING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1035,7 +1035,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         <select 
                             value={editForm.userId}
                             onChange={(e) => setEditForm({...editForm, userId: e.target.value})}
-                            className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                            className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             disabled={isSaving}
                         >
                             <option value="">Selecione um projetista</option>
@@ -1061,7 +1061,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 type="date"
                                 value={editForm.startDate}
                                 onChange={(e) => setEditForm({...editForm, startDate: e.target.value})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             />
                         </div>
                         <div className="space-y-2">
@@ -1070,7 +1070,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 type="time"
                                 value={editForm.startTime}
                                 onChange={(e) => setEditForm({...editForm, startTime: e.target.value})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             />
                         </div>
                     </div>
@@ -1082,7 +1082,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 type="date"
                                 value={editForm.endDate}
                                 onChange={(e) => setEditForm({...editForm, endDate: e.target.value})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             />
                         </div>
                         <div className="space-y-2">
@@ -1091,7 +1091,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 type="time"
                                 value={editForm.endTime}
                                 onChange={(e) => setEditForm({...editForm, endTime: e.target.value})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             />
                         </div>
                     </div>
@@ -1103,7 +1103,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 type="number"
                                 value={editForm.estHours}
                                 onChange={(e) => setEditForm({...editForm, estHours: parseInt(e.target.value) || 0})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                                 disabled={isSaving}
                             />
                         </div>
@@ -1113,7 +1113,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 type="number"
                                 value={editForm.estMinutes}
                                 onChange={(e) => setEditForm({...editForm, estMinutes: parseInt(e.target.value) || 0})}
-                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:text-white"
+                                className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                                 disabled={isSaving}
                             />
                         </div>
@@ -1125,15 +1125,15 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             <p className="text-gray-500 dark:text-slate-400">O tempo total realizado será calculado automaticamente:</p>
                         </div>
                         <div className="grid grid-cols-3 gap-2 text-center">
-                            <div className="bg-white dark:bg-slate-800 p-2 rounded border border-blue-100 dark:border-blue-900/50">
+                            <div className="bg-white dark:bg-black p-2 rounded border border-blue-100 dark:border-blue-900/50">
                                 <div className="text-[10px] text-gray-500 dark:text-slate-500">Bruto</div>
                                 <div className="font-mono font-bold text-gray-800 dark:text-slate-200">{formatDuration(durationPreview.gross)}</div>
                             </div>
-                            <div className="bg-white dark:bg-slate-800 p-2 rounded border border-blue-100 dark:border-blue-900/50">
+                            <div className="bg-white dark:bg-black p-2 rounded border border-blue-100 dark:border-blue-900/50">
                                 <div className="text-[10px] text-gray-500 dark:text-slate-500">Pausas</div>
                                 <div className="font-mono font-bold text-red-500 dark:text-red-400">-{formatDuration(durationPreview.pauses)}</div>
                             </div>
-                            <div className="bg-white dark:bg-slate-800 p-2 rounded border border-blue-100 dark:border-blue-900/50 ring-1 ring-blue-200 dark:ring-blue-900/50">
+                            <div className="bg-white dark:bg-black p-2 rounded border border-blue-100 dark:border-blue-900/50 ring-1 ring-blue-200 dark:ring-blue-900/50">
                                 <div className="text-[10px] text-gray-500 dark:text-slate-500">Líquido (Real)</div>
                                 <div className="font-mono font-bold text-green-600 dark:text-green-400">{formatDuration(durationPreview.net)}</div>
                             </div>
@@ -1153,7 +1153,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 flex gap-3">
+                <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black flex gap-3">
                     <button 
                         onClick={() => setEditingProject(null)}
                         className="flex-1 px-4 py-2 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 font-medium transition-colors"
@@ -1182,7 +1182,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       {/* Duplicate Resolution Modal */}
       {showDuplicateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col border border-gray-100 dark:border-slate-700">
+            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col border border-gray-100 dark:border-slate-700">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
                         <AlertCircle className="w-6 h-6 mr-2 text-orange-600 dark:text-orange-400" />
@@ -1195,9 +1195,9 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 
                 <div className="overflow-y-auto flex-1 space-y-4 pr-2">
                     {duplicateGroups.map((group) => (
-                        <div key={group.discard.id} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 bg-gray-50 dark:bg-slate-900/50 grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+                        <div key={group.discard.id} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 bg-gray-50 dark:bg-black grid grid-cols-1 md:grid-cols-2 gap-4 relative">
                             {/* Keep */}
-                            <div className="bg-white dark:bg-slate-800 p-3 rounded border border-green-200 dark:border-green-900/50 shadow-sm">
+                            <div className="bg-white dark:bg-black p-3 rounded border border-green-200 dark:border-green-900/50 shadow-sm">
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 text-xs font-bold px-2 py-1 rounded">MANTER</span>
                                     <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.keep.id.slice(-4)}</span>
@@ -1212,7 +1212,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             </div>
 
                             {/* Discard */}
-                            <div className="bg-white dark:bg-slate-800 p-3 rounded border border-red-200 dark:border-red-900/50 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
+                            <div className="bg-white dark:bg-black p-3 rounded border border-red-200 dark:border-red-900/50 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 text-xs font-bold px-2 py-1 rounded">APAGAR</span>
                                     <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.discard.id.slice(-4)}</span>
@@ -1252,7 +1252,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 </button>
                             </div>
                             
-                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-slate-800 rounded-full p-1 border border-gray-200 dark:border-slate-700 shadow-sm z-10 hidden md:block">
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-black rounded-full p-1 border border-gray-200 dark:border-slate-700 shadow-sm z-10 hidden md:block">
                                 <div className="text-gray-400 dark:text-slate-500 text-xs font-bold">VS</div>
                             </div>
                         </div>
@@ -1271,7 +1271,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             setShowDuplicateModal(false);
                             window.location.reload();
                         }}
-                        className="px-4 py-2 bg-gray-800 dark:bg-slate-700 hover:bg-gray-900 dark:hover:bg-slate-600 text-white dark:text-slate-100 rounded-lg font-medium text-sm"
+                        className="px-4 py-2 bg-gray-800 dark:bg-black hover:bg-gray-900 dark:hover:bg-slate-600 text-white dark:text-slate-100 rounded-lg font-medium text-sm"
                     >
                         Fechar e Atualizar
                     </button>
