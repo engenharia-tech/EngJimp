@@ -54,9 +54,11 @@ export enum InterruptionStatus {
 
 export enum InterruptionArea {
   COMERCIAL = 'Comercial',
-  CADASTRO = 'Cadastro',
   ENGENHARIA = 'Engenharia',
+  PCP = 'PCP',
+  PRODUCAO = 'Produção',
   CLIENTE = 'Cliente',
+  VENDAS = 'Vendas',
   OUTROS = 'Outros'
 }
 
@@ -188,6 +190,8 @@ export interface InterruptionRecord {
 
 export interface AppSettings {
   hourlyCost: number;
+  logoUrl?: string;
+  companyName?: string;
 }
 
 export interface AppState {
@@ -196,5 +200,6 @@ export interface AppState {
   innovations: InnovationRecord[];
   interruptions: InterruptionRecord[];
   interruptionTypes: InterruptionType[];
+  users: User[];
   settings: AppSettings;
 }

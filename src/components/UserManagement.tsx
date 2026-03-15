@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle } from 'lucide-react';
 import { User, UserRole } from '../types';
-import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState } from '../services/storageService';
+import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts } from '../services/storageService';
 import { getWebhookUrl, saveWebhookUrl } from '../services/webhookService';
 import { useToast } from './Toast';
 
@@ -14,6 +14,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [users, setUsers] = useState<User[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   
@@ -21,27 +22,53 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [webhookUrl, setWebhookUrl] = useState('');
   const [showWebhookHelp, setShowWebhookHelp] = useState(false);
 
-  // Hourly Cost State
+  // White Label & Settings State
   const [hourlyCost, setHourlyCost] = useState<number>(0);
+  const [companyName, setCompanyName] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
 
   useEffect(() => {
       setWebhookUrl(getWebhookUrl());
-      // Load hourly cost from app state or fetch it
+      // Load settings from app state
       const loadSettings = async () => {
           const state = await fetchAppState();
           if (state.settings) {
               setHourlyCost(state.settings.hourlyCost);
+              setCompanyName(state.settings.companyName || '');
+              setLogoUrl(state.settings.logoUrl || '');
           }
       };
       loadSettings();
   }, []);
 
-  const handleSaveHourlyCost = async () => {
+  const handleSaveSettings = async () => {
       try {
-          await updateSettings(hourlyCost);
-          addToast("Custo hora atualizado com sucesso!", "success");
+          await updateSettings({
+              hourlyCost,
+              companyName,
+              logoUrl
+          });
+          addToast("Configurações atualizadas com sucesso!", "success");
+          // Force a reload or notify App.tsx if needed, but App.tsx usually re-fetches on interval or we can just tell user to refresh
+          // In a real app we'd use a global state manager or context
+          window.location.reload(); // Simple way to apply white label changes globally
       } catch (error) {
-          addToast("Erro ao atualizar custo hora.", "error");
+          addToast("Erro ao atualizar configurações.", "error");
+      }
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          if (file.size > 500 * 1024) { // 500KB limit
+              addToast("A imagem deve ter no máximo 500KB.", "error");
+              return;
+          }
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              setLogoUrl(reader.result as string);
+          };
+          reader.readAsDataURL(file);
       }
   };
 
@@ -199,7 +226,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     <div className="space-y-6">
       {/* Create/Edit User Form */}
       {(canCreateUser || editingUserId) && (
-      <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+      <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold flex items-center text-black dark:text-white">
             <UserPlus className="w-6 h-6 mr-2 text-indigo-600 dark:text-indigo-400" />
@@ -222,7 +249,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               type="text" 
               value={name}
               onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               required
               placeholder="Somente letras"
             />
@@ -233,7 +260,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               type="text" 
               value={surname}
               onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               placeholder="Somente letras"
             />
           </div>
@@ -243,7 +270,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               type="email" 
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               placeholder="exemplo@exemplo.com"
             />
           </div>
@@ -253,7 +280,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               type="text" 
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               placeholder="xx-xxxxx-xxxx"
             />
           </div>
@@ -263,7 +290,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               type="text" 
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               required
             />
           </div>
@@ -273,7 +300,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               type="text" 
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               placeholder="Defina uma senha"
               required
             />
@@ -284,7 +311,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               value={role}
               onChange={e => setRole(e.target.value as UserRole)}
               disabled={!isGestor}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-800 dark:text-slate-200'}`}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-black text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-black dark:text-slate-200'}`}
             >
               <option value="PROJETISTA">Projetista</option>
               <option value="GESTOR">Gestor</option>
@@ -302,7 +329,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                   setSalary(Number(val));
               }}
               disabled={!isGestor}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-800 dark:text-slate-200'}`}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-black text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-black dark:text-slate-200'}`}
               placeholder="Ex: 5000.00"
             />
           </div>
@@ -321,13 +348,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       )}
 
       {/* Users List */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+      <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
         <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
            <h3 className="font-bold text-black dark:text-white">Membros da Equipe</h3>
            {loadingList && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
         </div>
         <table className="w-full text-sm text-left">
-          <thead className="bg-gray-50 dark:bg-slate-900/50 text-black dark:text-white font-medium">
+          <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium">
             <tr>
               <th className="p-4">Nome</th>
               <th className="p-4">Usuário</th>
@@ -345,14 +372,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               return (
               <tr key={u.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${currentUser.id === u.id ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''}`}>
                 <td className="p-4 font-medium text-black dark:text-white flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-slate-700 flex items-center justify-center text-gray-500 dark:text-slate-400 font-bold">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-black flex items-center justify-center text-gray-500 dark:text-slate-400 font-bold">
                     {u.name.charAt(0)}
                   </div>
                   {u.name} {currentUser.id === u.id && <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded-full ml-2">Você</span>}
                 </td>
                 <td className="p-4 text-black dark:text-white">{u.username}</td>
                 <td className="p-4">
-                  <span className={`px-2 py-1 rounded-full text-xs font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-slate-700 text-black dark:text-white`}>
+                  <span className={`px-2 py-1 rounded-full text-xs font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-black text-black dark:text-white`}>
                     {getRoleIcon(u.role)}
                     {u.role}
                   </span>
@@ -396,7 +423,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       </div>
       {/* Data Maintenance Section - GESTOR ONLY */}
       {currentUser.role === 'GESTOR' && (
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30 mt-8">
+        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30 mt-8">
             <h3 className="font-bold text-black dark:text-white mb-4 flex items-center">
             <Shield className="w-5 h-5 mr-2 text-orange-600 dark:text-orange-400" />
             Manutenção de Dados & Permissões
@@ -404,7 +431,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Clear Issues */}
-                <div className="p-4 bg-gray-50 dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-slate-700">
+                <div className="p-4 bg-gray-50 dark:bg-black rounded-lg border border-gray-200 dark:border-slate-700">
                     <h4 className="font-semibold text-black dark:text-white mb-2">Limpeza de Dados</h4>
                     <p className="text-sm text-gray-500 dark:text-slate-400 mb-4">
                         A tabela de "Problemas" (Issues) foi descontinuada. Use este botão para limpar todos os registros antigos do banco de dados.
@@ -444,7 +471,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                                 value={webhookUrl}
                                 onChange={(e) => setWebhookUrl(e.target.value)}
                                 placeholder="https://prod-XX.westus.logic.azure.com:443/workflows/..."
-                                className="flex-1 p-2 border border-green-300 dark:border-emerald-900/50 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
+                                className="flex-1 p-2 border border-green-300 dark:border-emerald-900/50 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none bg-white dark:bg-black dark:text-slate-200"
                             />
                             <button 
                                 onClick={handleSaveWebhook}
@@ -461,13 +488,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                         </button>
                         
                         {showWebhookHelp && (
-                            <div className="mt-4 bg-white dark:bg-slate-900 p-4 rounded border border-green-200 dark:border-emerald-900/30 text-sm text-gray-600 dark:text-slate-400 space-y-2">
+                            <div className="mt-4 bg-white dark:bg-black p-4 rounded border border-green-200 dark:border-emerald-900/30 text-sm text-gray-600 dark:text-slate-400 space-y-2">
                                 <p><strong>Passo a Passo (Power Automate):</strong></p>
                                 <ol className="list-decimal pl-5 space-y-1">
                                     <li>Crie um novo fluxo "Instantâneo" no Power Automate.</li>
                                     <li>Escolha o gatilho: <strong>"Quando uma solicitação HTTP é recebida"</strong>.</li>
                                     <li>No corpo da solicitação (Schema), use este JSON de exemplo:
-                                        <pre className="bg-gray-100 dark:bg-slate-800 p-2 rounded mt-1 text-xs font-mono dark:text-slate-300">
+                                        <pre className="bg-gray-100 dark:bg-black p-2 rounded mt-1 text-xs font-mono dark:text-slate-300">
 {`{
   "projetista": "Nome",
   "ns": "123456",
@@ -489,33 +516,81 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     </div>
                 </div>
 
-                {/* Hourly Cost Configuration */}
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-900/30">
-                    <h4 className="font-semibold text-black dark:text-white mb-2 flex items-center">
-                        <Briefcase className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
-                        Custo Hora Engenharia
+                {/* White Label & Hourly Cost Configuration */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-900/30 md:col-span-2">
+                    <h4 className="font-semibold text-black dark:text-white mb-4 flex items-center">
+                        <Shield className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
+                        Configurações da Empresa (White Label)
                     </h4>
-                    <p className="text-sm text-blue-700 dark:text-blue-400/80 mb-4">
-                        Defina o valor da hora de engenharia para o cálculo automático de custos dos projetos.
-                    </p>
                     
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase">Valor da Hora (R$)</label>
-                        <div className="flex gap-2">
-                            <input 
-                                type="number" 
-                                value={hourlyCost}
-                                onChange={(e) => setHourlyCost(Number(e.target.value))}
-                                className="flex-1 p-2 border border-blue-300 dark:border-blue-900/50 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-800 dark:text-slate-200"
-                                placeholder="Ex: 150.00"
-                            />
-                            <button 
-                                onClick={handleSaveHourlyCost}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold"
-                            >
-                                Salvar
-                            </button>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase block mb-1">Nome da Empresa</label>
+                                <input 
+                                    type="text" 
+                                    value={companyName}
+                                    onChange={(e) => setCompanyName(e.target.value)}
+                                    className="w-full p-2 border border-blue-300 dark:border-blue-900/50 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                                    placeholder="Ex: Minha Empresa LTDA"
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase block mb-1">Custo Hora Engenharia (R$)</label>
+                                <input 
+                                    type="number" 
+                                    value={hourlyCost}
+                                    onChange={(e) => setHourlyCost(Number(e.target.value))}
+                                    className="w-full p-2 border border-blue-300 dark:border-blue-900/50 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                                    placeholder="Ex: 150.00"
+                                />
+                            </div>
                         </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase block mb-1">Logo da Empresa</label>
+                                <div className="flex items-start gap-4">
+                                    <div className="w-20 h-20 border border-dashed border-blue-300 dark:border-blue-900/50 rounded-lg flex items-center justify-center bg-white dark:bg-black overflow-hidden">
+                                        {logoUrl ? (
+                                            <img src={logoUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+                                        ) : (
+                                            <Briefcase className="w-8 h-8 text-blue-200 dark:text-blue-900/50" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1">
+                                        <input 
+                                            type="file" 
+                                            accept="image/*"
+                                            onChange={handleLogoUpload}
+                                            className="hidden" 
+                                            id="logo-upload"
+                                        />
+                                        <label 
+                                            htmlFor="logo-upload"
+                                            className="inline-block bg-white dark:bg-black border border-blue-300 dark:border-blue-900/50 text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded text-xs font-bold cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                        >
+                                            Selecionar Imagem
+                                        </label>
+                                        <p className="text-[10px] text-gray-500 dark:text-slate-500 mt-2 leading-tight">
+                                            Recomendado: PNG ou SVG com fundo transparente.<br />
+                                            Tamanho ideal: 200x50px (proporção retangular).<br />
+                                            Máximo: 500KB.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t border-blue-100 dark:border-blue-900/30">
+                        <button 
+                            onClick={handleSaveSettings}
+                            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-sm font-bold transition-colors"
+                        >
+                            Salvar Todas as Configurações
+                        </button>
                     </div>
                 </div>
 
@@ -704,13 +779,39 @@ WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
                         COPIAR SCRIPT DE CORREÇÃO (SQL)
                     </button>
                 </div>
+
+                {/* Recalculate Costs */}
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-900/30">
+                    <h4 className="font-semibold text-black dark:text-white mb-2 flex items-center">
+                        <Activity className="w-5 h-5 mr-2 text-indigo-600" />
+                        Atualizar Valores de Projetos
+                    </h4>
+                    <p className="text-sm text-indigo-600 dark:text-indigo-400 mb-4">
+                        Recalcula o custo de todos os projetos no banco de dados usando a regra atual (Tempo Produtivo × Custo Hora).
+                    </p>
+                    <button 
+                        onClick={async () => {
+                            if(!window.confirm("Isso atualizará o custo de TODOS os projetos no banco de dados. Deseja continuar?")) return;
+                            setIsRecalculating(true);
+                            const res = await recalculateAllProjectCosts();
+                            setIsRecalculating(false);
+                            if(res.success) addToast(res.message, "success");
+                            else addToast("Erro: " + res.message, "error");
+                        }}
+                        disabled={isRecalculating}
+                        className="bg-indigo-100 dark:bg-indigo-900/30 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
+                    >
+                        {isRecalculating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Activity className="w-4 h-4 mr-2" />}
+                        Recalcular e Sincronizar Custos
+                    </button>
+                </div>
             </div>
         </div>
       )}
       {/* Delete Confirmation Modal */}
       {deleteConfirmationUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
+            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">Confirmar Exclusão</h3>
                 <p className="text-gray-600 dark:text-slate-400 mb-6">
                     Tem certeza que deseja excluir o usuário <strong>{deleteConfirmationUser.name}</strong>? Esta ação não pode ser desfeita.
@@ -718,7 +819,7 @@ WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
                 <div className="flex justify-end gap-3">
                     <button 
                         onClick={() => setDeleteConfirmationUser(null)}
-                        className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
+                        className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
                     >
                         Cancelar
                     </button>
@@ -735,7 +836,7 @@ WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
       {/* Duplicate Resolution Modal */}
       {showDuplicateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col border border-gray-100 dark:border-slate-700">
+            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col border border-gray-100 dark:border-slate-700">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
                         <AlertCircle className="w-6 h-6 mr-2 text-orange-600 dark:text-orange-400" />
@@ -748,9 +849,9 @@ WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
                 
                 <div className="overflow-y-auto flex-1 space-y-4 pr-2">
                     {duplicateGroups.map((group, idx) => (
-                        <div key={idx} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 bg-gray-50 dark:bg-slate-900/50 grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+                        <div key={idx} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 bg-gray-50 dark:bg-black grid grid-cols-1 md:grid-cols-2 gap-4 relative">
                             {/* Keep */}
-                            <div className="bg-white dark:bg-slate-800 p-3 rounded border border-green-200 dark:border-emerald-900/30 shadow-sm">
+                            <div className="bg-white dark:bg-black p-3 rounded border border-green-200 dark:border-emerald-900/30 shadow-sm">
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="bg-green-100 dark:bg-emerald-900/40 text-green-800 dark:text-emerald-400 text-xs font-bold px-2 py-1 rounded">MANTER</span>
                                     <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.keep.id.slice(-4)}</span>
@@ -765,7 +866,7 @@ WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
                             </div>
 
                             {/* Discard */}
-                            <div className="bg-white dark:bg-slate-800 p-3 rounded border border-red-200 dark:border-red-900/30 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
+                            <div className="bg-white dark:bg-black p-3 rounded border border-red-200 dark:border-red-900/30 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-400 text-xs font-bold px-2 py-1 rounded">APAGAR</span>
                                     <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.discard.id.slice(-4)}</span>
@@ -798,7 +899,7 @@ WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
                                 </button>
                             </div>
                             
-                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-slate-800 rounded-full p-1 border border-gray-200 dark:border-slate-700 shadow-sm z-10 hidden md:block">
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-black rounded-full p-1 border border-gray-200 dark:border-slate-700 shadow-sm z-10 hidden md:block">
                                 <div className="text-gray-400 dark:text-slate-500 text-xs font-bold">VS</div>
                             </div>
                         </div>
@@ -817,7 +918,7 @@ WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
                             setShowDuplicateModal(false);
                             window.location.reload();
                         }}
-                        className="px-4 py-2 bg-gray-800 dark:bg-slate-700 hover:bg-gray-900 dark:hover:bg-slate-600 text-white rounded-lg font-medium text-sm"
+                        className="px-4 py-2 bg-gray-800 dark:bg-black hover:bg-gray-900 dark:hover:bg-slate-600 text-white rounded-lg font-medium text-sm"
                     >
                         Fechar e Atualizar
                     </button>

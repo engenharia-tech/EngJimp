@@ -24,13 +24,16 @@ import {
   updateInnovationStatus,
   updateInnovation,
   deleteInnovation,
+  addInterruption,
+  updateInterruption,
   seedFebruaryData
 } from './services/storageService';
-import { AppState, ProjectSession, IssueRecord, User, InnovationRecord } from './types';
+import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord } from './types';
 import logoImg from './assets/logo.svg';
 
 const COMPANY_LOGO_URL = logoImg;
 
+import { Logo } from './components/Logo';
 import { ToastProvider, useToast } from './components/Toast';
 
 const App: React.FC = () => {
@@ -53,7 +56,8 @@ const AppContent: React.FC = () => {
     issues: [], 
     innovations: [],
     interruptions: [],
-    interruptionTypes: []
+    interruptionTypes: [],
+    users: []
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -68,8 +72,10 @@ const AppContent: React.FC = () => {
     localStorage.setItem('theme', theme);
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
+      document.body.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
+      document.body.classList.remove('dark');
     }
   }, [theme]);
 
@@ -91,6 +97,36 @@ const AppContent: React.FC = () => {
     };
     load();
   }, [currentUser]); 
+
+  // Automatic Alerts for Open Interruptions (Module 10)
+  useEffect(() => {
+    if (!currentUser || data.interruptions.length === 0) return;
+
+    const checkAlerts = () => {
+      const now = new Date().getTime();
+      const openInterruptions = data.interruptions.filter(i => i.status === InterruptionStatus.OPEN);
+      
+      let redCount = 0;
+      let yellowCount = 0;
+
+      openInterruptions.forEach(i => {
+        const hours = (now - new Date(i.startTime).getTime()) / (1000 * 3600);
+        if (hours >= 48) redCount++;
+        else if (hours >= 24) yellowCount++;
+      });
+
+      if (redCount > 0) {
+        addToast(`ALERTA CRÍTICO: Existem ${redCount} interrupções abertas há mais de 48h!`, 'error');
+      } else if (yellowCount > 0) {
+        addToast(`Aviso: Existem ${yellowCount} interrupções abertas há mais de 24h.`, 'info');
+      }
+    };
+
+    // Check once on load and then every hour
+    checkAlerts();
+    const interval = setInterval(checkAlerts, 3600000);
+    return () => clearInterval(interval);
+  }, [data.interruptions, currentUser, addToast]);
 
   // Auto-redirect based on role logic
   useEffect(() => {
@@ -339,6 +375,24 @@ const AppContent: React.FC = () => {
     setData(newState);
   };
 
+  const onAddInterruption = async (interruption: InterruptionRecord) => {
+    try {
+      const updatedData = await addInterruption(interruption);
+      setData(updatedData);
+    } catch (e) {
+      addToast('Erro ao registrar interrupção.', 'error');
+    }
+  };
+
+  const onUpdateInterruption = async (interruption: InterruptionRecord) => {
+    try {
+      const updatedData = await updateInterruption(interruption);
+      setData(updatedData);
+    } catch (e) {
+      addToast('Erro ao atualizar interrupção.', 'error');
+    }
+  };
+
   const handleLogout = () => {
     setCurrentUser(null);
     // Reset to tracker but effective login will handle redirection
@@ -346,12 +400,17 @@ const AppContent: React.FC = () => {
   };
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    addToast(`Modo ${newTheme === 'dark' ? 'Escuro' : 'Claro'} ativado`, 'info');
   };
 
   if (!currentUser) {
     return <Login onLogin={setCurrentUser} />;
   }
+
+  const COMPANY_LOGO_URL = data.settings.logoUrl || logoImg;
+  const COMPANY_NAME = data.settings.companyName || 'Eng Jimp';
 
   const NavItem = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
     <button
@@ -361,57 +420,61 @@ const AppContent: React.FC = () => {
       }}
       className={`flex items-center w-full px-6 py-4 text-left transition-colors border-l-4 ${
         activeTab === id 
-          ? 'bg-blue-900/20 border-orange-500 text-blue-400 font-medium' 
-          : 'border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+          ? theme === 'dark' 
+            ? 'bg-blue-900/20 border-orange-500 text-blue-400 font-medium' 
+            : 'bg-blue-50 border-orange-500 text-blue-600 font-medium'
+          : theme === 'dark'
+            ? 'border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+            : 'border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900'
       }`}
     >
-      <Icon className={`w-5 h-5 mr-3 ${activeTab === id ? 'text-blue-400' : 'text-slate-500'}`} />
+      <Icon className={`w-5 h-5 mr-3 ${activeTab === id ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
       {label}
     </button>
   );
 
   return (
-    <div className={`flex min-h-screen ${theme === 'dark' ? 'bg-slate-950 text-slate-200' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`flex min-h-screen ${theme === 'dark' ? 'bg-black text-slate-200' : 'bg-gray-50 text-gray-900'}`}>
       {/* Sidebar for Desktop */}
-      <aside className="hidden md:flex flex-col w-64 bg-slate-900 dark:bg-slate-950 border-r border-slate-800 fixed h-full z-10 text-white shadow-xl">
-        <div className="p-6 border-b border-slate-800">
+      <aside className={`hidden md:flex flex-col w-64 ${theme === 'dark' ? 'bg-black border-slate-800 text-white' : 'bg-white border-gray-200 text-slate-900'} border-r fixed h-full z-10 shadow-xl`}>
+        <div className={`p-6 border-b ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'}`}>
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
-               <img 
-                 src={COMPANY_LOGO_URL}
-                 alt="Logo" 
+               <Logo 
+                 theme={theme}
+                 logoUrl={COMPANY_LOGO_URL}
                  className="h-10 w-auto max-w-[50px] object-contain" 
                />
                <div className="flex flex-col">
-                  <span className="text-2xl font-bold text-white leading-none tracking-tight">
-                    Eng <span className="text-blue-500">Jimp</span>
+                  <span className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'} leading-none tracking-tight`}>
+                    {COMPANY_NAME}
                   </span>
                </div>
             </div>
             <button 
               onClick={toggleTheme}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-slate-300"
+              className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700 hover:bg-slate-900 text-slate-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'} transition-colors`}
               title={theme === 'light' ? 'Modo Escuro' : 'Modo Claro'}
             >
               {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
           </div>
           
-          <div className="flex items-center text-slate-500 text-xs mb-1 uppercase tracking-wider font-semibold">
+          <div className={`flex items-center ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'} text-xs mb-1 uppercase tracking-wider font-semibold`}>
             Painel de Controle
           </div>
           <div className="flex items-center justify-between group">
-            <p className="text-sm font-medium text-slate-200 truncate">{currentUser.name}</p>
+            <p className={`text-sm font-medium ${theme === 'dark' ? 'text-slate-200' : 'text-gray-700'} truncate`}>{currentUser.name}</p>
             <button 
                 onClick={() => setIsProfileOpen(true)}
-                className="text-slate-500 hover:text-white transition-colors p-1 rounded hover:bg-slate-800"
+                className={`${theme === 'dark' ? 'text-slate-500 hover:text-white hover:bg-slate-900' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'} transition-colors p-1 rounded`}
                 title="Meu Perfil"
             >
                 <UserCog className="w-4 h-4" />
             </button>
           </div>
           <div className="flex items-center mt-2 gap-2">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full inline-block">
+            <span className={`text-[10px] uppercase tracking-wider font-bold ${theme === 'dark' ? 'text-slate-400 bg-black border-slate-700' : 'text-gray-500 bg-gray-100 border-gray-200'} border px-2 py-0.5 rounded-full inline-block`}>
                 {currentUser.role}
             </span>
           </div>
@@ -443,10 +506,10 @@ const AppContent: React.FC = () => {
             <NavItem id="team" label="Gestão de Equipe" icon={Users} />
           )}
         </nav>
-        <div className="p-6 border-t border-slate-800 bg-slate-900">
+        <div className={`p-6 border-t ${theme === 'dark' ? 'border-slate-800 bg-black' : 'border-gray-100 bg-gray-50'}`}>
           <button 
             onClick={handleLogout}
-            className="flex items-center text-sm text-red-400 hover:text-red-300 hover:bg-slate-800/50 p-2 rounded-lg font-medium transition-colors w-full"
+            className="flex items-center text-sm text-red-400 hover:text-red-300 hover:bg-red-50 dark:hover:bg-slate-800/50 p-2 rounded-lg font-medium transition-colors w-full"
           >
             <LogOut className="w-4 h-4 mr-2" />
             Sair da Conta
@@ -455,21 +518,21 @@ const AppContent: React.FC = () => {
       </aside>
 
       {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 w-full bg-slate-900 border-b border-slate-800 z-20 flex justify-between items-center p-4 shadow-md">
+      <div className={`md:hidden fixed top-0 w-full ${theme === 'dark' ? 'bg-black border-slate-800' : 'bg-white border-gray-200'} border-b z-20 flex justify-between items-center p-4 shadow-md`}>
         <div className="h-8 flex items-center gap-2">
-            <img 
-                src={COMPANY_LOGO_URL} 
-                alt="Logo" 
+            <Logo 
+                theme={theme}
+                logoUrl={COMPANY_LOGO_URL}
                 className="h-full w-auto object-contain"
             />
-            <span className="text-lg font-bold text-white">
-                Eng <span className="text-blue-500">Jimp</span>
+            <span className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                {COMPANY_NAME}
             </span>
         </div>
         <div className="flex items-center gap-3">
             <button 
                 onClick={toggleTheme}
-                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-slate-300"
+                className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700' : 'bg-slate-800'} hover:bg-slate-700 transition-colors text-slate-300`}
             >
               {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
             </button>
@@ -487,7 +550,7 @@ const AppContent: React.FC = () => {
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 bg-slate-900 z-10 pt-20 md:hidden animate-in slide-in-from-right duration-200">
+        <div className="fixed inset-0 bg-black z-10 pt-20 md:hidden animate-in slide-in-from-right duration-200">
           <nav className="flex flex-col h-full overflow-y-auto">
             <NavItem id="dashboard" label="Painel & Gráficos" icon={LayoutDashboard} />
             {canUseTracker && (
@@ -522,7 +585,7 @@ const AppContent: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <main className={`flex-1 md:ml-64 p-6 pt-24 md:pt-6 transition-all min-h-screen ${theme === 'dark' ? 'bg-slate-900' : 'bg-gray-50'}`}>
+      <main className={`flex-1 md:ml-64 p-6 pt-24 md:pt-6 transition-all min-h-screen ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
         {isLoading && (
           <div className="fixed top-0 left-0 w-full h-1 bg-blue-100 z-50">
             <div className="h-full bg-blue-600 animate-pulse w-full"></div>
@@ -543,6 +606,8 @@ const AppContent: React.FC = () => {
               settings={data.settings}
               onCreate={handleProjectCreate}
               onUpdate={handleProjectUpdate}
+              onAddInterruption={onAddInterruption}
+              onUpdateInterruption={onUpdateInterruption}
               isVisible={activeTab === 'tracker'}
               onNavigateBack={() => setActiveTab('tracker')}
               currentUser={currentUser}
@@ -571,10 +636,10 @@ const AppContent: React.FC = () => {
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
                <div className="mb-6 flex items-center gap-4">
-                 <div className="bg-slate-900 p-2 rounded-xl shadow-sm border border-slate-800">
-                    <img 
-                      src={COMPANY_LOGO_URL}
-                      alt="Logo" 
+                 <div className="bg-gray-100 dark:bg-black p-2 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+                    <Logo 
+                      theme={theme}
+                      logoUrl={COMPANY_LOGO_URL}
                       className="h-12 w-auto object-contain" 
                     />
                  </div>
@@ -618,7 +683,7 @@ const AppContent: React.FC = () => {
              />
           )}
 
-          {activeTab === 'reports' && (
+          {activeTab === 'reports' && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
             <Reports 
               data={displayData} 
               currentUser={currentUser} 
@@ -639,15 +704,15 @@ const AppContent: React.FC = () => {
           {/* Delete Confirmation Modal */}
           {deleteConfirmationId && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">Confirmar Exclusão</h3>
-                    <p className="text-gray-600 mb-6">
+                <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Confirmar Exclusão</h3>
+                    <p className="text-gray-600 dark:text-slate-400 mb-6">
                         Tem certeza que deseja excluir este projeto? Esta ação não pode ser desfeita e removerá todos os registros associados.
                     </p>
                     <div className="flex justify-end gap-3">
                         <button 
                             onClick={() => setDeleteConfirmationId(null)}
-                            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                            className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors"
                         >
                             Cancelar
                         </button>
@@ -674,7 +739,7 @@ const AppContent: React.FC = () => {
           {/* Footer */}
           <footer className={`mt-12 pt-8 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-200'} text-center`}>
             <p className={`text-sm font-medium ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`}>
-              Desenvolvido por <span className="text-orange-500 font-bold tracking-tight">JIMP<span className="text-cyan-500">NEXUS</span></span>
+              Desenvolvido por <span className="text-orange-500 font-bold tracking-tight">WHITE<span className="text-cyan-500">LABEL</span></span>
             </p>
           </footer>
         </div>

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea } from '../types';
+import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES } from '../constants';
 
 // Supabase Configuration
@@ -15,10 +15,33 @@ const defaultState: AppState = {
   innovations: [],
   interruptions: [],
   interruptionTypes: [],
+  users: [],
   settings: { hourlyCost: 150 }
 };
 
 // --- DATA MANAGEMENT ---
+
+export const fetchSettings = async (): Promise<AppSettings> => {
+  let settings: AppSettings = { hourlyCost: 150 };
+  try {
+    const { data: settingsData, error: settingsError } = await supabase
+      .from('settings')
+      .select('*');
+    
+    if (!settingsError && settingsData) {
+      const hourlyCostRow = settingsData.find(s => s.key === 'hourly_cost');
+      const logoUrlRow = settingsData.find(s => s.key === 'logo_url');
+      const companyNameRow = settingsData.find(s => s.key === 'company_name');
+
+      if (hourlyCostRow) settings.hourlyCost = Number(hourlyCostRow.value);
+      if (logoUrlRow) settings.logoUrl = logoUrlRow.value;
+      if (companyNameRow) settings.companyName = companyNameRow.value;
+    }
+  } catch (e) {
+    console.warn("Settings table not found, using default settings.");
+  }
+  return settings;
+};
 
 export const fetchAppState = async (): Promise<AppState> => {
   try {
@@ -57,20 +80,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       .order('name', { ascending: true });
 
     // Fetch Settings
-    let settings = { hourlyCost: 150 };
-    try {
-      const { data: settingsData, error: settingsError } = await supabase
-        .from('settings')
-        .select('*')
-        .eq('key', 'hourly_cost')
-        .single();
-      
-      if (!settingsError && settingsData) {
-        settings.hourlyCost = Number(settingsData.value);
-      }
-    } catch (e) {
-      console.warn("Settings table not found, using default hourly cost.");
-    }
+    const settings = await fetchSettings();
     
     // Map DB columns (snake_case) to Types (camelCase)
     const projects: ProjectSession[] = (projectsData || []).map((p: any) => ({
@@ -155,25 +165,57 @@ export const fetchAppState = async (): Promise<AppState> => {
         // Actually, let's just return what's in DB. The UI will handle seeding if Gestor.
     }
 
-    return { projects, issues, innovations, interruptions, interruptionTypes, settings };
+    // Fetch Users
+    const { data: usersData, error: usersError } = await supabase
+      .from('users')
+      .select('*');
+
+    if (usersError) throw usersError;
+
+    const users: User[] = (usersData || []).map((u: any) => ({
+      id: u.id,
+      username: u.username,
+      password: u.password,
+      name: u.name,
+      surname: u.surname,
+      email: u.email,
+      phone: u.phone,
+      role: u.role,
+      salary: Number(u.salary) || 0
+    }));
+
+    return { projects, issues, innovations, interruptions, interruptionTypes, users, settings };
   } catch (error) {
     console.error("Failed to load data from Supabase", error);
-    return defaultState;
+    return { ...defaultState, users: [] };
   }
 };
 
-export const updateSettings = async (hourlyCost: number): Promise<AppState> => {
+export const updateSettings = async (settings: AppSettings): Promise<AppState> => {
   try {
+    const updates = [
+      { key: 'hourly_cost', value: settings.hourlyCost.toString() }
+    ];
+
+    if (settings.logoUrl !== undefined) {
+      updates.push({ key: 'logo_url', value: settings.logoUrl });
+    }
+    if (settings.companyName !== undefined) {
+      updates.push({ key: 'company_name', value: settings.companyName });
+    }
+
     const { error } = await supabase
       .from('settings')
-      .upsert({ key: 'hourly_cost', value: hourlyCost.toString() }, { onConflict: 'key' });
+      .upsert(updates, { onConflict: 'key' });
     
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
     console.error("Failed to update settings", error);
     // Fallback: update local storage if table doesn't exist
-    localStorage.setItem('hourly_cost', hourlyCost.toString());
+    localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
+    if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
+    if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
     return fetchAppState();
   }
 };
@@ -1038,6 +1080,46 @@ export const findDuplicateProjects = async (): Promise<{ success: boolean; dupli
   } catch (error: any) {
     console.error("Failed to find duplicates", error);
     return { success: false, duplicates: [], message: error.message };
+  }
+};
+
+export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    const settings = await fetchSettings();
+    const users = await fetchUsers();
+    
+    let costPerSecond = settings.hourlyCost / 3600;
+    if (settings.hourlyCost <= 0) {
+      const totalSalaries = users.reduce((acc, u) => acc + (u.salary || 0), 0);
+      const avgSalary = users.length > 0 ? totalSalaries / users.length : 0;
+      const hourlyRate = avgSalary / 220;
+      costPerSecond = hourlyRate / 3600;
+    }
+
+    const { data: projects, error: fetchError } = await supabase
+      .from('projects')
+      .select('id, total_active_seconds');
+    
+    if (fetchError) throw fetchError;
+
+    let updatedCount = 0;
+    for (const p of projects || []) {
+      const totalCost = (p.total_active_seconds || 0) * costPerSecond;
+      const { error: updateError } = await supabase
+        .from('projects')
+        .update({ 
+          total_cost: totalCost,
+          productive_cost: totalCost // Productive cost is the same as total cost in this rule
+        })
+        .eq('id', p.id);
+      
+      if (!updateError) updatedCount++;
+    }
+
+    return { success: true, message: `${updatedCount} projetos atualizados com novos custos.` };
+  } catch (error: any) {
+    console.error("Failed to recalculate costs", error);
+    return { success: false, message: error.message };
   }
 };
 

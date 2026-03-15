@@ -1,4 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { 
   PauseCircle, Plus, Search, Filter, Calendar, User as UserIcon, 
   Clock, AlertCircle, CheckCircle2, XCircle, Trash2, Edit, 
@@ -58,6 +61,20 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const costPerSecond = useMemo(() => {
+    const designers = data.users.filter(u => u.role === 'PROJETISTA');
+    if (designers.length === 0) {
+      const avgSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0) / (data.users.length || 1);
+      return (avgSalary / 220) / 3600;
+    }
+    const avgDesignerSalary = designers.reduce((acc, u) => acc + (u.salary || 0), 0) / designers.length;
+    return (avgDesignerSalary / 220) / 3600;
+  }, [data.users]);
+
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  };
 
   const filteredInterruptions = useMemo(() => {
     return data.interruptions.filter(i => {
@@ -220,9 +237,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   };
 
   const exportData = (format: 'CSV' | 'PDF' | 'EXCEL') => {
-    // Basic CSV export for now
     const headers = ['NS', 'Cliente', 'Projetista', 'Início', 'Fim', 'Tipo', 'Área', 'Responsável', 'Status', 'Tempo Total(s)'];
-    const rows = filteredInterruptions.map(i => [
+    const data = filteredInterruptions.map(i => [
       i.projectNs,
       i.clientName,
       i.designerId, // Ideally map to name
@@ -233,16 +249,34 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       i.responsiblePerson,
       i.status,
       i.totalTimeSeconds
-    ].join(','));
+    ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `interrupcoes_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (format === 'CSV') {
+      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...data.map(r => r.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `interrupcoes_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else if (format === 'PDF') {
+      const doc = new jsPDF();
+      doc.text(`Relatório de Paradas - ${new Date().toLocaleDateString()}`, 14, 15);
+      (doc as any).autoTable({
+        head: [headers],
+        body: data,
+        startY: 20,
+        styles: { fontSize: 8 }
+      });
+      doc.save(`interrupcoes_${new Date().toISOString().slice(0,10)}.pdf`);
+    } else if (format === 'EXCEL') {
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Paradas");
+      XLSX.writeFile(wb, `interrupcoes_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+    
     addToast(`Exportando em ${format}...`, 'info');
   };
 
@@ -253,7 +287,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         <div>
           <h1 className="text-2xl font-bold text-black dark:text-white flex items-center">
             <PauseCircle className="w-8 h-8 mr-3 text-amber-500" />
-            Interrupções de Projeto
+            Paradas de Projeto
           </h1>
           <p className="text-gray-600 dark:text-slate-400">Gerencie e monitore gargalos no desenvolvimento</p>
         </div>
@@ -270,7 +304,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           {canManage && (
             <button 
               onClick={() => setIsTypeManagerOpen(true)}
-              className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-4 py-2 rounded-lg font-bold flex items-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700"
+              className="bg-slate-100 dark:bg-black text-slate-600 dark:text-slate-300 px-4 py-2 rounded-lg font-bold flex items-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700"
             >
               <Settings className="w-5 h-5 mr-2" />
               Categorias
@@ -280,7 +314,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       </div>
 
       {/* Filters */}
-      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="bg-white dark:bg-black p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
           <input
@@ -288,13 +322,13 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             placeholder="Buscar por NS..."
             value={filterNs}
             onChange={(e) => setFilterNs(e.target.value)}
-            className="w-full pl-10 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900 dark:text-white"
+            className="w-full pl-10 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-black dark:text-white"
           />
         </div>
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900 dark:text-white"
+          className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-black dark:text-white"
         >
           <option value="ALL">Todos os Status</option>
           {Object.values(InterruptionStatus).map(s => <option key={s} value={s}>{s}</option>)}
@@ -302,7 +336,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         <select
           value={filterArea}
           onChange={(e) => setFilterArea(e.target.value)}
-          className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900 dark:text-white"
+          className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-black dark:text-white"
         >
           <option value="ALL">Todas as Áreas</option>
           {Object.values(InterruptionArea).map(a => <option key={a} value={a}>{a}</option>)}
@@ -312,7 +346,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm bg-white dark:bg-slate-900 dark:text-white"
+            className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -320,7 +354,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm bg-white dark:bg-slate-900 dark:text-white"
+            className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
           />
         </div>
       </div>
@@ -346,7 +380,18 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             const elapsed = getElapsedTime(i.startTime, i.endTime);
             
             return (
-              <div key={i.id} className={`bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border ${alert === 'red' ? 'border-red-500' : alert === 'yellow' ? 'border-amber-500' : 'border-gray-100 dark:border-slate-700'} hover:shadow-md transition-all relative group`}>
+              <div key={i.id} className={`bg-white dark:bg-black p-5 rounded-xl shadow-sm border ${alert === 'red' ? 'border-red-500' : alert === 'yellow' ? 'border-amber-500' : 'border-gray-100 dark:border-slate-700'} hover:shadow-md transition-all relative group`}>
+                {/* Designer Name Badge */}
+                <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700">
+                  <UserIcon className="w-3 h-3 text-gray-500" />
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-slate-300">
+                    {(() => {
+                      const designer = data.users.find(u => u.id === i.designerId);
+                      return designer ? `${designer.name} ${designer.surname || ''}`.trim() : 'Desconhecido';
+                    })()}
+                  </span>
+                </div>
+
                 {alert && (
                   <div className={`absolute -top-2 -right-2 px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm ${alert === 'red' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'}`}>
                     <AlertTriangle className="w-3 h-3" />
@@ -361,7 +406,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                         i.status === InterruptionStatus.OPEN ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                         i.status === InterruptionStatus.WAITING ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
                         i.status === InterruptionStatus.RESOLVED ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                        'bg-gray-50 text-gray-700 dark:bg-slate-700 dark:text-slate-400'
+                        'bg-gray-50 text-gray-700 dark:bg-black dark:text-slate-400'
                       }`}>
                         {i.status}
                       </span>
@@ -377,7 +422,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                       <div className="flex items-center text-gray-500 dark:text-slate-400">
                         <UserIcon className="w-3 h-3 mr-1" />
                         Resp: <span className="ml-1 font-semibold text-black dark:text-white">{i.responsiblePerson}</span>
-                        <span className="ml-1 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] uppercase">{i.responsibleArea}</span>
+                        <span className="ml-1 px-1.5 py-0.5 bg-slate-100 dark:bg-black rounded text-[10px] uppercase">{i.responsibleArea}</span>
                       </div>
                       <div className="flex items-center text-gray-400 dark:text-slate-500">
                         <Calendar className="w-3 h-3 mr-1" />
@@ -391,7 +436,12 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                       <div className={`text-xl font-mono font-bold ${i.status === InterruptionStatus.RESOLVED ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400 animate-pulse'}`}>
                         {formatDuration(i.status === InterruptionStatus.RESOLVED ? i.totalTimeSeconds : elapsed)}
                       </div>
-                      <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold tracking-widest">Tempo Decorrido</div>
+                      <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold tracking-widest mb-1">Tempo Decorrido</div>
+                      
+                      <div className="text-sm font-bold text-red-600 dark:text-red-400">
+                        {formatCurrency((i.status === InterruptionStatus.RESOLVED ? i.totalTimeSeconds : elapsed) * costPerSecond)}
+                      </div>
+                      <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold tracking-widest">Custo Estimado</div>
                     </div>
 
                     <div className="flex gap-2 mt-4">
@@ -427,7 +477,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             );
           })
         ) : (
-          <div className="text-center py-20 bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-gray-200 dark:border-slate-700">
+          <div className="text-center py-20 bg-white dark:bg-black rounded-2xl border border-dashed border-gray-200 dark:border-slate-700">
             <PauseCircle className="w-12 h-12 mx-auto text-gray-200 dark:text-slate-700 mb-4" />
             <h3 className="text-lg font-bold text-gray-400 dark:text-slate-500">Nenhuma interrupção encontrada</h3>
             <p className="text-gray-400 dark:text-slate-600 text-sm">Use os filtros acima ou registre uma nova interrupção.</p>
@@ -438,8 +488,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       {/* Form Modal */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border dark:border-slate-700">
-            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900/50">
+          <div className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border dark:border-slate-700">
+            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
               <h2 className="text-xl font-bold text-black dark:text-white flex items-center">
                 {editingInterruption ? <Edit className="w-6 h-6 mr-2 text-amber-500" /> : <Plus className="w-6 h-6 mr-2 text-amber-500" />}
                 {editingInterruption ? 'Editar Interrupção' : 'Registrar Nova Interrupção'}
@@ -457,7 +507,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                     type="text" 
                     value={ns}
                     onChange={e => setNs(e.target.value)}
-                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
+                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
                     placeholder="Ex: 12345"
                     required
                   />
@@ -468,7 +518,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                     type="text" 
                     value={client}
                     onChange={e => setClient(e.target.value)}
-                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
+                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
                     placeholder="Nome do cliente"
                   />
                 </div>
@@ -480,7 +530,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   <select 
                     value={problemType}
                     onChange={e => setProblemType(e.target.value)}
-                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
+                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
                     required
                   >
                     <option value="">Selecione o tipo...</option>
@@ -494,7 +544,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   <select 
                     value={area}
                     onChange={e => setArea(e.target.value as InterruptionArea)}
-                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
+                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
                     required
                   >
                     {Object.values(InterruptionArea).map(a => <option key={a} value={a}>{a}</option>)}
@@ -508,7 +558,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   type="text" 
                   value={responsible}
                   onChange={e => setResponsible(e.target.value)}
-                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
+                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
                   placeholder="Nome da pessoa que deve responder"
                 />
               </div>
@@ -519,7 +569,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   value={description}
                   onChange={e => setDescription(e.target.value)}
                   rows={4}
-                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white resize-none"
+                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white resize-none"
                   placeholder="Descreva detalhadamente o que está impedindo o projeto..."
                   required
                 />
@@ -537,7 +587,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                         className={`p-2 text-xs font-bold rounded-lg border transition-all ${
                           status === s 
                             ? 'bg-amber-600 border-amber-600 text-white shadow-md' 
-                            : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:border-amber-300'
+                            : 'bg-white dark:bg-black border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:border-amber-300'
                         }`}
                       >
                         {s}
@@ -554,7 +604,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
               )}
             </form>
 
-            <div className="p-6 bg-gray-50 dark:bg-slate-900/50 border-t dark:border-slate-700 flex justify-end gap-3">
+            <div className="p-6 bg-gray-50 dark:bg-black border-t dark:border-slate-700 flex justify-end gap-3">
               <button 
                 onClick={resetForm}
                 className="px-6 py-2.5 text-gray-600 dark:text-slate-300 font-bold hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
@@ -576,8 +626,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       {/* Type Manager Modal */}
       {isTypeManagerOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border dark:border-slate-700">
-            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900/50">
+          <div className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border dark:border-slate-700">
+            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
               <h2 className="text-xl font-bold text-black dark:text-white flex items-center">
                 <Settings className="w-6 h-6 mr-2 text-slate-500" />
                 Categorias de Problemas
@@ -593,7 +643,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   type="text" 
                   value={newTypeName}
                   onChange={e => setNewTypeName(e.target.value)}
-                  className="flex-1 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white text-sm"
+                  className="flex-1 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
                   placeholder="Nova categoria..."
                 />
                 <button 
@@ -606,7 +656,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
 
               <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
                 {data.interruptionTypes.map(t => (
-                  <div key={t.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border dark:border-slate-700">
+                  <div key={t.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-black rounded-lg border dark:border-slate-700">
                     <span className={`text-sm font-medium ${t.isActive ? 'text-gray-700 dark:text-slate-200' : 'text-gray-400 line-through'}`}>
                       {t.name}
                     </span>
@@ -642,8 +692,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       {/* View Details Modal */}
       {viewingInterruption && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border dark:border-slate-700">
-            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900/50">
+          <div className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border dark:border-slate-700">
+            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
               <h2 className="text-xl font-bold text-black dark:text-white flex items-center">
                 <Info className="w-6 h-6 mr-2 text-blue-500" />
                 Detalhes da Interrupção
@@ -668,14 +718,14 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
               <div>
                 <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">Problema</label>
                 <p className="text-lg font-bold text-black dark:text-white">{viewingInterruption.problemType}</p>
-                <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">
+                <span className="px-2 py-0.5 bg-slate-100 dark:bg-black rounded text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">
                   Área: {viewingInterruption.responsibleArea}
                 </span>
               </div>
 
               <div>
                 <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">Descrição</label>
-                <div className="mt-1 p-4 bg-gray-50 dark:bg-slate-900 rounded-xl border dark:border-slate-700 text-black dark:text-white text-sm leading-relaxed">
+                <div className="mt-1 p-4 bg-gray-50 dark:bg-black rounded-xl border dark:border-slate-700 text-black dark:text-white text-sm leading-relaxed">
                   {viewingInterruption.description}
                 </div>
               </div>
@@ -694,10 +744,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
               </div>
             </div>
 
-            <div className="p-6 bg-gray-50 dark:bg-slate-900/50 border-t dark:border-slate-700 flex justify-end">
+            <div className="p-6 bg-gray-50 dark:bg-black border-t dark:border-slate-700 flex justify-end">
               <button 
                 onClick={() => setViewingInterruption(null)}
-                className="px-6 py-2.5 bg-gray-800 dark:bg-slate-700 text-white font-bold rounded-xl hover:bg-gray-900 dark:hover:bg-slate-600 transition-colors"
+                className="px-6 py-2.5 bg-gray-800 dark:bg-black text-white font-bold rounded-xl hover:bg-gray-900 dark:hover:bg-slate-600 transition-colors"
               >
                 Fechar
               </button>

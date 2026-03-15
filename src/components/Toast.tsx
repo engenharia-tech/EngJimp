@@ -56,10 +56,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               layout
               className={`
                 flex items-center w-full max-w-sm p-4 rounded-lg shadow-lg border-l-4
-                ${toast.type === 'success' ? 'bg-white dark:bg-slate-800 border-green-500 text-gray-800 dark:text-slate-100' : ''}
-                ${toast.type === 'error' ? 'bg-white dark:bg-slate-800 border-red-500 text-gray-800 dark:text-slate-100' : ''}
-                ${toast.type === 'info' ? 'bg-white dark:bg-slate-800 border-blue-500 text-gray-800 dark:text-slate-100' : ''}
-                ${toast.type === 'warning' ? 'bg-white dark:bg-slate-800 border-yellow-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'success' ? 'bg-white dark:bg-black border-green-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'error' ? 'bg-white dark:bg-black border-red-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'info' ? 'bg-white dark:bg-black border-blue-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'warning' ? 'bg-white dark:bg-black border-yellow-500 text-gray-800 dark:text-slate-100' : ''}
               `}
             >
               <div className="flex-shrink-0 mr-3">
