@@ -22,23 +22,57 @@ const defaultState: AppState = {
 // --- DATA MANAGEMENT ---
 
 export const fetchSettings = async (): Promise<AppSettings> => {
-  let settings: AppSettings = { hourlyCost: 150 };
+  let settings: AppSettings = { 
+    hourlyCost: Number(localStorage.getItem('hourly_cost')) || 150,
+    logoUrl: localStorage.getItem('logo_url') || undefined,
+    companyName: localStorage.getItem('company_name') || 'Eng. Jimp',
+    emailHost: localStorage.getItem('email_host') || undefined,
+    emailPort: localStorage.getItem('email_port') || undefined,
+    emailUser: localStorage.getItem('email_user') || undefined,
+    emailPass: localStorage.getItem('email_pass') || undefined,
+    emailFrom: localStorage.getItem('email_from') || undefined,
+    emailTo: localStorage.getItem('email_to') || undefined
+  };
+
   try {
     const { data: settingsData, error: settingsError } = await supabase
       .from('settings')
       .select('*');
     
-    if (!settingsError && settingsData) {
+    if (!settingsError && settingsData && settingsData.length > 0) {
       const hourlyCostRow = settingsData.find(s => s.key === 'hourly_cost');
       const logoUrlRow = settingsData.find(s => s.key === 'logo_url');
       const companyNameRow = settingsData.find(s => s.key === 'company_name');
+      const emailHostRow = settingsData.find(s => s.key === 'email_host');
+      const emailPortRow = settingsData.find(s => s.key === 'email_port');
+      const emailUserRow = settingsData.find(s => s.key === 'email_user');
+      const emailPassRow = settingsData.find(s => s.key === 'email_pass');
+      const emailFromRow = settingsData.find(s => s.key === 'email_from');
+      const emailToRow = settingsData.find(s => s.key === 'email_to');
 
       if (hourlyCostRow) settings.hourlyCost = Number(hourlyCostRow.value);
       if (logoUrlRow) settings.logoUrl = logoUrlRow.value;
       if (companyNameRow) settings.companyName = companyNameRow.value;
+      if (emailHostRow) settings.emailHost = emailHostRow.value;
+      if (emailPortRow) settings.emailPort = emailPortRow.value;
+      if (emailUserRow) settings.emailUser = emailUserRow.value;
+      if (emailPassRow) settings.emailPass = emailPassRow.value;
+      if (emailFromRow) settings.emailFrom = emailFromRow.value;
+      if (emailToRow) settings.emailTo = emailToRow.value;
+
+      // Sync to localStorage for offline fallback
+      localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
+      if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
+      if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
+      if (settings.emailHost) localStorage.setItem('email_host', settings.emailHost);
+      if (settings.emailPort) localStorage.setItem('email_port', settings.emailPort);
+      if (settings.emailUser) localStorage.setItem('email_user', settings.emailUser);
+      if (settings.emailPass) localStorage.setItem('email_pass', settings.emailPass);
+      if (settings.emailFrom) localStorage.setItem('email_from', settings.emailFrom);
+      if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
     }
   } catch (e) {
-    console.warn("Settings table not found, using default settings.");
+    console.warn("Error fetching settings from Supabase, using localStorage/defaults:", e);
   }
   return settings;
 };
@@ -193,16 +227,29 @@ export const fetchAppState = async (): Promise<AppState> => {
 
 export const updateSettings = async (settings: AppSettings): Promise<AppState> => {
   try {
+    // Update LocalStorage first for immediate feedback
+    localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
+    if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
+    if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
+    if (settings.emailHost) localStorage.setItem('email_host', settings.emailHost);
+    if (settings.emailPort) localStorage.setItem('email_port', settings.emailPort);
+    if (settings.emailUser) localStorage.setItem('email_user', settings.emailUser);
+    if (settings.emailPass) localStorage.setItem('email_pass', settings.emailPass);
+    if (settings.emailFrom) localStorage.setItem('email_from', settings.emailFrom);
+    if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
+
     const updates = [
       { key: 'hourly_cost', value: settings.hourlyCost.toString() }
     ];
 
-    if (settings.logoUrl !== undefined) {
-      updates.push({ key: 'logo_url', value: settings.logoUrl });
-    }
-    if (settings.companyName !== undefined) {
-      updates.push({ key: 'company_name', value: settings.companyName });
-    }
+    if (settings.logoUrl !== undefined) updates.push({ key: 'logo_url', value: settings.logoUrl });
+    if (settings.companyName !== undefined) updates.push({ key: 'company_name', value: settings.companyName });
+    if (settings.emailHost !== undefined) updates.push({ key: 'email_host', value: settings.emailHost });
+    if (settings.emailPort !== undefined) updates.push({ key: 'email_port', value: settings.emailPort });
+    if (settings.emailUser !== undefined) updates.push({ key: 'email_user', value: settings.emailUser });
+    if (settings.emailPass !== undefined) updates.push({ key: 'email_pass', value: settings.emailPass });
+    if (settings.emailFrom !== undefined) updates.push({ key: 'email_from', value: settings.emailFrom });
+    if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo });
 
     const { error } = await supabase
       .from('settings')
@@ -211,11 +258,7 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to update settings", error);
-    // Fallback: update local storage if table doesn't exist
-    localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
-    if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
-    if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
+    console.error("Failed to update settings in Supabase", error);
     return fetchAppState();
   }
 };

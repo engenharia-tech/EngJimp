@@ -353,11 +353,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
            <h3 className="font-bold text-black dark:text-white">Membros da Equipe</h3>
            {loadingList && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
         </div>
-        <table className="w-full text-sm text-left">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left min-w-[800px]">
           <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium">
             <tr>
               <th className="p-4">Nome</th>
               <th className="p-4">Usuário</th>
+              <th className="p-4">E-mail / Celular</th>
+              <th className="p-4">Senha</th>
               <th className="p-4">Função</th>
               <th className="p-4">Salário</th>
               <th className="p-4 text-center">Ações</th>
@@ -371,15 +374,27 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
               return (
               <tr key={u.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${currentUser.id === u.id ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''}`}>
-                <td className="p-4 font-medium text-black dark:text-white flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-black flex items-center justify-center text-gray-500 dark:text-slate-400 font-bold">
-                    {u.name.charAt(0)}
+                <td className="p-4 font-medium text-black dark:text-white">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-black flex items-center justify-center text-gray-500 dark:text-slate-400 font-bold flex-shrink-0">
+                      {u.name.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="font-bold">{u.name} {u.surname}</div>
+                      {currentUser.id === u.id && <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded-full">Você</span>}
+                    </div>
                   </div>
-                  {u.name} {currentUser.id === u.id && <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded-full ml-2">Você</span>}
                 </td>
                 <td className="p-4 text-black dark:text-white">{u.username}</td>
+                <td className="p-4 text-black dark:text-white">
+                  <div className="text-xs">{u.email || '-'}</div>
+                  <div className="text-[10px] text-gray-500 dark:text-slate-400">{u.phone || '-'}</div>
+                </td>
+                <td className="p-4 text-black dark:text-white font-mono text-xs">
+                  {u.password}
+                </td>
                 <td className="p-4">
-                  <span className={`px-2 py-1 rounded-full text-xs font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-black text-black dark:text-white`}>
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-black text-black dark:text-white`}>
                     {getRoleIcon(u.role)}
                     {u.role}
                   </span>
@@ -390,7 +405,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
                     : '***'}
                 </td>
-                <td className="p-4 text-center flex items-center justify-center gap-2">
+                <td className="p-4 text-center">
+                  <div className="flex items-center justify-center gap-2">
                     {canEditThisUser && (
                     <button
                       onClick={() => handleEdit(u)}
@@ -410,16 +426,18 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     </button>
                     )}
                     {!showActions && <span className="text-gray-300 dark:text-slate-600">-</span>}
+                  </div>
                 </td>
               </tr>
             )})}
             {!loadingList && users.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-4 text-center text-gray-400 dark:text-slate-500">Nenhum usuário encontrado.</td>
+                <td colSpan={7} className="p-4 text-center text-gray-400 dark:text-slate-500">Nenhum usuário encontrado.</td>
               </tr>
             )}
           </tbody>
         </table>
+        </div>
       </div>
       {/* Data Maintenance Section - GESTOR ONLY */}
       {currentUser.role === 'GESTOR' && (

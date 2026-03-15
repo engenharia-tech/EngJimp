@@ -14,6 +14,7 @@ import { InterruptionManager } from './components/InterruptionManager';
 import { InterruptionDashboard } from './components/InterruptionDashboard';
 import { Reports } from './components/Reports';
 import { UserProfileModal } from './components/UserProfileModal';
+import { Settings } from './components/Settings';
 import { Login } from './components/Login';
 import { 
   fetchAppState, 
@@ -26,9 +27,10 @@ import {
   deleteInnovation,
   addInterruption,
   updateInterruption,
+  updateSettings,
   seedFebruaryData
 } from './services/storageService';
-import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord } from './types';
+import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 import logoImg from './assets/logo.svg';
 
 const COMPANY_LOGO_URL = logoImg;
@@ -50,7 +52,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings'>('dashboard');
   const [data, setData] = useState<AppState>({ 
     projects: [], 
     issues: [], 
@@ -408,6 +410,16 @@ const AppContent: React.FC = () => {
     addToast(`Modo ${newTheme === 'dark' ? 'Escuro' : 'Claro'} ativado`, 'info');
   };
 
+  const handleUpdateSettings = async (newSettings: AppSettings) => {
+    try {
+      const updatedData = await updateSettings(newSettings);
+      setData(updatedData);
+      addToast('Configurações salvas com sucesso!', 'success');
+    } catch (error) {
+      addToast('Erro ao salvar configurações.', 'error');
+    }
+  };
+
   if (!currentUser) {
     return <Login onLogin={setCurrentUser} />;
   }
@@ -446,13 +458,8 @@ const AppContent: React.FC = () => {
                <Logo 
                  theme={theme}
                  logoUrl={COMPANY_LOGO_URL}
-                 className="h-10 w-auto max-w-[50px] object-contain" 
+                 className="h-10 w-auto max-w-[180px] object-contain" 
                />
-               <div className="flex flex-col">
-                  <span className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'} leading-none tracking-tight`}>
-                    {COMPANY_NAME}
-                  </span>
-               </div>
             </div>
             <button 
               onClick={toggleTheme}
@@ -504,9 +511,13 @@ const AppContent: React.FC = () => {
           {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
             <NavItem id="reports" label="Relatórios" icon={FileText} />
           )}
-          
+
           {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
             <NavItem id="team" label="Gestão de Equipe" icon={Users} />
+          )}
+
+          {['GESTOR', 'CEO'].includes(currentUser.role) && (
+            <NavItem id="settings" label="Configurações" icon={UserCog} />
           )}
         </nav>
         <div className={`p-6 border-t ${theme === 'dark' ? 'border-slate-800 bg-black' : 'border-gray-100 bg-gray-50'}`}>
@@ -526,11 +537,8 @@ const AppContent: React.FC = () => {
             <Logo 
                 theme={theme}
                 logoUrl={COMPANY_LOGO_URL}
-                className="h-full w-auto object-contain"
+                className="h-full w-auto object-contain max-w-[150px]"
             />
-            <span className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                {COMPANY_NAME}
-            </span>
         </div>
         <div className="flex items-center gap-3">
             <button 
@@ -573,6 +581,9 @@ const AppContent: React.FC = () => {
             )}
             {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
                <NavItem id="team" label="Gestão de Equipe" icon={Users} />
+            )}
+            {['GESTOR', 'CEO'].includes(currentUser.role) && (
+                <NavItem id="settings" label="Configurações" icon={UserCog} />
             )}
             <div className="mt-auto p-6 border-t border-slate-800">
               <button 
@@ -694,6 +705,13 @@ const AppContent: React.FC = () => {
             />
           )}
 
+          {activeTab === 'settings' && ['GESTOR', 'CEO'].includes(currentUser.role) && (
+            <Settings 
+              settings={data.settings}
+              onUpdate={handleUpdateSettings}
+            />
+          )}
+
           {activeTab === 'team' && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
              <div className="space-y-6">
                 <div className="mb-6">
@@ -742,7 +760,7 @@ const AppContent: React.FC = () => {
           {/* Footer */}
           <footer className={`mt-12 pt-8 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-200'} text-center`}>
             <p className={`text-sm font-medium ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`}>
-              Desenvolvido por <span className="text-orange-500 font-bold tracking-tight">WHITE<span className="text-cyan-500">LABEL</span></span>
+              Desenvolvido por <span className="font-bold tracking-tight"><span className="text-orange-500">JIMP</span><span className="text-blue-600">NEXUS</span></span>
             </p>
           </footer>
         </div>
