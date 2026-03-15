@@ -55,6 +55,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
              <Logo 
                theme="dark"
                logoUrl={COMPANY_LOGO} 
+               companyName={COMPANY_NAME}
                className="h-28"
                textSizeClassName="text-2xl whitespace-nowrap"
              />
