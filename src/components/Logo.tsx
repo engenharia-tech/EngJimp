@@ -5,33 +5,31 @@ interface LogoProps {
   className?: string;
   logoUrl?: string;
   textSizeClassName?: string;
-  companyName?: string;
 }
 
 export const Logo: React.FC<LogoProps> = ({ 
   theme = 'dark', 
   className = "h-10 w-auto", 
   logoUrl,
-  textSizeClassName = "text-xl",
-  companyName = "Eng. Jimp"
+  textSizeClassName = "text-xl"
 }) => {
-  const renderLogo = () => {
-    // If there's a custom logo URL, we use it as an image
-    if (logoUrl && !logoUrl.includes('logo.svg')) {
-      return (
-        <img 
-          src={logoUrl} 
-          alt="Logo" 
-          className="h-full w-auto object-contain"
-        />
-      );
-    }
-
-    // JIMP: Orange (#F2722C), NEXUS: Blue (#3b82f6)
-    const nexusColor = '#3b82f6';
-    const jimpColor = '#F2722C';
-
+  // If there's a custom logo URL, we use it as an image
+  if (logoUrl && !logoUrl.includes('logo.svg')) {
     return (
+      <img 
+        src={logoUrl} 
+        alt="Logo" 
+        className={`${className} object-contain`}
+      />
+    );
+  }
+
+  // JIMP: Orange (#F2722C), NEXUS: Blue (#3b82f6)
+  const nexusColor = '#3b82f6';
+  const jimpColor = '#F2722C';
+
+  return (
+    <div className={`flex items-center gap-2 ${className}`}>
       <svg 
         version="1.1" 
         xmlns="http://www.w3.org/2000/svg" 
@@ -59,14 +57,8 @@ export const Logo: React.FC<LogoProps> = ({
           transform="translate(110.125,161.2109375)"
         />
       </svg>
-    );
-  };
-
-  return (
-    <div className={`flex items-center gap-2 ${className}`}>
-      {renderLogo()}
       <div className={`font-bold tracking-tight ${textSizeClassName}`}>
-        <span className={theme === 'dark' ? 'text-white' : 'text-black'}>{companyName}</span>
+        <span className={theme === 'dark' ? 'text-white' : 'text-black'}>Eng. Jimp</span>
       </div>
     </div>
   );
