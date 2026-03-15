@@ -559,7 +559,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
           {/* Innovation KPI */}
            <div className="bg-white dark:bg-black p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">Economia Aprovada</p>
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">Economia Anual Prevista de Inovação</p>
                 <p className="text-xl font-bold text-emerald-800 dark:text-emerald-300">{formatCurrency(totalSavings)}</p>
               </div>
               <div className="h-8 w-8 bg-emerald-50 dark:bg-black rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400">

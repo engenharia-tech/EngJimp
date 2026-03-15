@@ -317,14 +317,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         
         <div className="bg-gradient-to-r from-emerald-500 to-teal-600 dark:from-black dark:to-black rounded-xl p-6 text-white shadow-lg relative overflow-hidden border dark:border-slate-700">
           <div className="relative z-10">
-              <div className="text-emerald-100 text-sm font-medium mb-1 uppercase tracking-wider">Economia Anual (Aprovada)</div>
+              <div className="text-emerald-100 text-sm font-medium mb-1 uppercase tracking-wider">Economia Anual Prevista de Inovação</div>
               <div className="text-4xl font-bold font-mono">{formatCurrency(totalStats.savings)}</div>
               <div className="text-emerald-100 text-xs mt-2 flex items-center">
                 <Check className="w-4 h-4 mr-1" />
                 {totalStats.count} inovações contabilizadas
               </div>
           </div>
-          <TrendingDown className="absolute right-4 bottom-4 w-24 h-24 text-white/10" />
+          <TrendingDown className="absolute right-4 bottom-4 w-24 h-24 text-white/30 dark:text-emerald-500/30" />
         </div>
       </div>
 
