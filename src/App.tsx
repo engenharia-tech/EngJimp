@@ -57,7 +57,8 @@ const AppContent: React.FC = () => {
     innovations: [],
     interruptions: [],
     interruptionTypes: [],
-    users: []
+    users: [],
+    settings: { hourlyCost: 150 }
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -176,7 +177,9 @@ const AppContent: React.FC = () => {
       issues: data.issues.filter(i => i.reportedBy === currentUser.id),
       innovations: data.innovations,
       interruptions: data.interruptions.filter(i => i.designerId === currentUser.id),
-      interruptionTypes: data.interruptionTypes
+      interruptionTypes: data.interruptionTypes,
+      users: data.users,
+      settings: data.settings
     };
   }, [data, currentUser]);
 
