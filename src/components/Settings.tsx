@@ -14,7 +14,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
   const [isTesting, setIsTesting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const { showToast } = useToast();
+  const { addToast } = useToast();
 
   // Sync formData when settings prop changes (e.g. after initial load or save)
   useEffect(() => {
@@ -27,9 +27,9 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
     try {
       await onUpdate(formData);
       setIsEditing(false);
-      showToast('Configurações salvas com sucesso!', 'success');
+      addToast('Configurações salvas com sucesso!', 'success');
     } catch (error) {
-      showToast('Erro ao salvar configurações.', 'error');
+      addToast('Erro ao salvar configurações.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -37,7 +37,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
 
   const handleTestEmail = async () => {
     if (!formData.emailUser || !formData.emailPass || !formData.emailTo) {
-      showToast('Preencha os campos de e-mail, senha e destinatário para testar.', 'error');
+      addToast('Preencha os campos de e-mail, senha e destinatário para testar.', 'error');
       return;
     }
 
@@ -62,12 +62,12 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
 
       const result = await response.json();
       if (result.success) {
-        showToast('E-mail de teste enviado com sucesso!', 'success');
+        addToast('E-mail de teste enviado com sucesso!', 'success');
       } else {
-        showToast(`Erro ao enviar: ${result.error || 'Verifique as configurações'}`, 'error');
+        addToast(`Erro ao enviar: ${result.error || 'Verifique as configurações'}`, 'error');
       }
     } catch (error) {
-      showToast('Erro de conexão com o servidor.', 'error');
+      addToast('Erro de conexão com o servidor.', 'error');
     } finally {
       setIsTesting(false);
     }
@@ -85,7 +85,10 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
         </div>
         {!isEditing && (
           <button
-            onClick={() => setIsEditing(true)}
+            onClick={() => {
+              setIsEditing(true);
+              setShowPassword(true);
+            }}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center transition-all shadow-md"
           >
             Alterar Configurações
@@ -149,21 +152,21 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
                   disabled={!isEditing}
                   value={formData.emailHost || ''}
                   onChange={e => setFormData({ ...formData, emailHost: e.target.value })}
-                  className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                  className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
                   placeholder="smtp.gmail.com"
                 />
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Porta</label>
-              <input
-                type="text"
-                disabled={!isEditing}
-                value={formData.emailPort || ''}
-                onChange={e => setFormData({ ...formData, emailPort: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
-                placeholder="587 ou 465"
-              />
+                <input
+                  type="text"
+                  disabled={!isEditing}
+                  value={formData.emailPort || ''}
+                  onChange={e => setFormData({ ...formData, emailPort: e.target.value })}
+                  className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                  placeholder="587 ou 465"
+                />
             </div>
           </div>
 
@@ -177,7 +180,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
                   disabled={!isEditing}
                   value={formData.emailUser || ''}
                   onChange={e => setFormData({ ...formData, emailUser: e.target.value })}
-                  className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                  className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
                   placeholder="seu-email@gmail.com"
                 />
               </div>
@@ -191,7 +194,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
                   disabled={!isEditing}
                   value={formData.emailPass || ''}
                   onChange={e => setFormData({ ...formData, emailPass: e.target.value })}
-                  className="w-full pl-8 pr-10 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                  className="w-full pl-8 pr-10 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
                   placeholder="••••••••••••"
                 />
                 <button
@@ -213,7 +216,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
                 disabled={!isEditing}
                 value={formData.emailFrom || ''}
                 onChange={e => setFormData({ ...formData, emailFrom: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
                 placeholder="Nome <email@empresa.com>"
               />
             </div>
@@ -224,7 +227,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
                 disabled={!isEditing}
                 value={formData.emailTo || ''}
                 onChange={e => setFormData({ ...formData, emailTo: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
                 placeholder="email1@exemplo.com, email2@exemplo.com"
               />
               <p className="text-[10px] text-gray-500 mt-1">Separe múltiplos e-mails por vírgula.</p>

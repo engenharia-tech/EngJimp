@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X } from 'lucide-react';
 import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
-import { getWorkingSeconds } from '../utils/timeUtils';
+import { getWorkingSeconds, isWorkingHour } from '../utils/timeUtils';
 import { fetchUsers } from '../services/storageService';
 import { triggerExcelUpdate } from '../services/webhookService';
 import { useToast } from './Toast';
@@ -12,6 +12,7 @@ const TEAMS_WEBHOOK_URL = "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL_H
 
 interface EngJimpTrackerProps {
   existingProjects: ProjectSession[];
+  allProjects: ProjectSession[];
   interruptions: InterruptionRecord[];
   settings: AppSettings;
   onCreate: (project: ProjectSession) => void;
@@ -25,6 +26,7 @@ interface EngJimpTrackerProps {
 
 export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ 
   existingProjects, 
+  allProjects,
   interruptions, 
   settings, 
   onCreate, 
@@ -39,7 +41,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedProjectDetails, setSelectedProjectDetails] = useState<ProjectSession | null>(null);
-  const { showToast } = useToast();
+  const { addToast } = useToast();
 
   // Form Data (Start)
   const [ns, setNs] = useState('');
@@ -51,6 +53,22 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [notes, setNotes] = useState('');
   const [estHours, setEstHours] = useState<string>('');
   const [estMinutes, setEstMinutes] = useState<string>('');
+  const [isOvertime, setIsOvertime] = useState(false);
+
+  const aggregatedInfo = useMemo(() => {
+    if (!ns.trim()) return null;
+    const related = allProjects.filter(p => p.ns === ns.trim());
+    if (related.length === 0) return null;
+
+    const totalSeconds = related.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0);
+    const contributors = new Set(related.map(p => p.userId)).size;
+    
+    return {
+      totalSeconds,
+      contributors,
+      count: related.length
+    };
+  }, [ns, allProjects]);
 
   // Variation Form Data
   const [varOldCode, setVarOldCode] = useState('');
@@ -95,36 +113,28 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       const start = new Date(activeProject.startTime);
       const now = new Date();
       
-      // 1. Calculate Total Working Time from Start to Now (ignoring pauses)
-      // If currently paused, we stop counting at the pause start time
-      const effectiveEnd = isCurrentlyPaused ? new Date(lastPause.timestamp) : now;
-      const totalWorkingSeconds = getWorkingSeconds(start, effectiveEnd);
+      // For the VISUAL timer, we'll show the actual elapsed working time
+      // to give the user feedback that it's running.
+      const totalWorkingSeconds = getWorkingSeconds(start, now, activeProject.isOvertime);
 
-      // 2. Calculate Total Working Time consumed by CLOSED pauses
-      // We must calculate the "working seconds" for each pause duration to subtract correctly
-      // (e.g. a pause during lunch shouldn't subtract working time because it didn't add any)
+      // Calculate Total Working Time consumed by CLOSED pauses
       let totalPauseWorkingSeconds = 0;
-      
       activeProject.pauses.forEach(p => {
           if (p.durationSeconds > 0) {
-              // Closed pause: Calculate overlap with working hours
               const pStart = new Date(p.timestamp);
-              // We don't store pEnd, we store duration. 
-              // This is tricky because the stored duration might be "wall clock" duration from old logic.
-              // However, going forward, we should probably calculate pause overlap dynamically.
-              // BUT, for simplicity and backward compatibility:
-              // If the pause was created with the OLD logic, durationSeconds is wall clock.
-              // If we want strict "working hours" accounting, we should ideally store pauseEnd.
-              // Given the constraint, let's assume manual pauses subtract from the working time 
-              // ONLY if they overlapped with working hours.
-              // Approximation: pEnd = pStart + durationSeconds.
               const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
-              totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd);
+              totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd, activeProject.isOvertime);
+          } else if (p.durationSeconds === -1) {
+              // If currently paused, subtract working time from pause start to now
+              const pStart = new Date(p.timestamp);
+              totalPauseWorkingSeconds += getWorkingSeconds(pStart, now, activeProject.isOvertime);
           }
       });
 
-      // 3. Net Elapsed = Total Working Time - Working Time spent in Pauses
       const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
+      
+      // If netSeconds is 0 but the project is NOT paused and we are within working hours,
+      // it might be a calculation delay. Let's ensure it shows at least 1 if it just started.
       setElapsedSeconds(netSeconds);
     };
 
@@ -147,6 +157,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       return;
     }
 
+    // Check Working Hours
+    if (!isWorkingHour(new Date(), isOvertime)) {
+      alert("Fora do horário de expediente. Marque 'Hora Extra' para iniciar.");
+      return;
+    }
+
     const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
 
     const newProject: ProjectSession = {
@@ -164,7 +180,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       variations: [], // Start empty
       status: 'IN_PROGRESS',
       notes,
-      userId: currentUser?.id
+      userId: currentUser?.id,
+      isOvertime
     };
 
     onCreate(newProject);
@@ -178,9 +195,16 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     setFlooringType('');
     setEstHours('');
     setEstMinutes('');
+    setIsOvertime(false);
   };
 
   const handleResumeFromList = (project: ProjectSession) => {
+    // Check Working Hours
+    if (!isWorkingHour(new Date(), project.isOvertime)) {
+      alert("Fora do horário de expediente. Este projeto não está marcado como 'Hora Extra'.");
+      return;
+    }
+
     // Logic to close open pause if needed
     const lastPauseIndex = project.pauses.length - 1;
     if (lastPauseIndex >= 0 && project.pauses[lastPauseIndex].durationSeconds === -1) {
@@ -262,6 +286,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     if (isInterruption) {
         const newInterruption: InterruptionRecord = {
             id: crypto.randomUUID(),
+            projectId: activeProject.id,
             projectNs: activeProject.ns,
             clientName: activeProject.clientName || '',
             designerId: currentUser?.id || '',
@@ -306,7 +331,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     const now = new Date();
     
     // 1. Total Working Time
-    const totalWorkingSeconds = getWorkingSeconds(start, now);
+    const totalWorkingSeconds = getWorkingSeconds(start, now, activeProject.isOvertime);
 
     // 2. Subtract Working Time spent in Pauses
     let totalPauseWorkingSeconds = 0;
@@ -314,7 +339,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         if (p.durationSeconds > 0) {
             const pStart = new Date(p.timestamp);
             const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
-            totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd);
+            totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd, activeProject.isOvertime);
         }
     });
 
@@ -322,11 +347,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
 
     // --- NEW CALCULATIONS ---
-    // Calculate interruption seconds for this project NS
-    const projectInterruptions = interruptions.filter(i => 
-      i.projectNs === activeProject.ns && 
-      i.status === 'Resolvido'
-    );
+    // Calculate interruption seconds for this project ID (with NS fallback for legacy data)
+    const projectInterruptions = interruptions.filter(i => {
+      if (i.projectId) return i.projectId === activeProject.id && i.status === 'Resolvido';
+      return i.projectNs === activeProject.ns && i.status === 'Resolvido';
+    });
+
     const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
     const totalSeconds = finalSeconds + interruptionSeconds;
     
@@ -361,23 +387,31 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     };
 
     // 1. Update DB
-    await onUpdate(finishedProject);
-    
-    // 2. Send Notifications
-    sendTeamsNotification(finishedProject);
-    await sendEmailNotification(finishedProject);
-    
-    // 3. Trigger Excel Integration
-    triggerExcelUpdate(finishedProject, currentUser).then(() => {
-        console.log("Excel update triggered");
-    });
+    try {
+        await onUpdate(finishedProject);
+        
+        // Close modal and clear active project immediately after DB success
+        setActiveProject(null);
+        setShowFinishModal(false);
+        
+        // 2. Send Notifications (in background, don't block UI)
+        sendTeamsNotification(finishedProject);
+        sendEmailNotification(finishedProject).catch(err => {
+            console.error("Delayed email error:", err);
+        });
+        
+        // 3. Trigger Excel Integration
+        triggerExcelUpdate(finishedProject, currentUser).catch(err => {
+            console.error("Excel update error:", err);
+        });
 
-    setActiveProject(null);
-    setShowFinishModal(false);
-    
-    // Reset form
-    setEstHours('');
-    setEstMinutes('');
+        // Reset form
+        setEstHours('');
+        setEstMinutes('');
+    } catch (error) {
+        console.error("Error during project finalization:", error);
+        addToast("Erro ao finalizar projeto. Tente novamente.", "error");
+    }
   };
 
   // --- VARIATION HANDLERS ---
@@ -494,12 +528,24 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
     const hours = (project.totalActiveSeconds / 3600).toFixed(2);
     const plannedHours = ((project.estimatedSeconds || 0) / 3600).toFixed(2);
-    const cost = project.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const cost = (project.totalCost || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     
     // Get interruptions for this project
-    const projectInterruptions = interruptions.filter(i => i.projectNs === project.ns);
+    const projectInterruptions = interruptions.filter(i => {
+      if (i.projectId) return i.projectId === project.id;
+      return i.projectNs === project.ns;
+    });
     const interruptionCount = projectInterruptions.length;
-    const interruptionReasons = projectInterruptions.map(i => `- ${i.problemType}: ${i.description || 'Sem descrição'}`).join('\n');
+    
+    // Calculate interruption time and cost breakdown
+    const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
+    const hourlyRate = settings.hourlyCost || 0;
+    const interruptionCost = (interruptionSeconds / 3600) * hourlyRate;
+    const productiveCost = Math.max(0, (project.totalCost || 0) - interruptionCost);
+
+    const interruptionReasons = projectInterruptions.map(i => 
+      `- ${i.problemType}: ${i.description || 'Sem descrição'} (${formatTime(i.totalTimeSeconds)})`
+    ).join('\n');
 
     const subject = `Conclusão Projeto NS: ${project.ns} - ${project.clientName || 'Sem Cliente'}`;
     const body = `${greeting},
@@ -512,12 +558,18 @@ Código Projeto: ${project.projectCode || 'Não informado'}
 
 Tempo Planejado: ${plannedHours} horas
 Tempo Executado: ${hours} horas
+Tempo de Interrupção: ${formatTime(interruptionSeconds)}
 
+Custo Produtivo: ${productiveCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+Custo de Interrupção: ${interruptionCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
 Custo Total do Projeto: ${cost}
+
 Número de interrupções: ${interruptionCount}
 
 Detalhamento das interrupções:
 ${interruptionReasons || 'Nenhuma interrupção registrada.'}
+
+Notas: ${project.notes || 'Nenhuma'}
 
 Atenciosamente.
 JIMPNEXUS
@@ -543,13 +595,13 @@ JIMPNEXUS
 
       const result = await response.json();
       if (result.success) {
-        showToast(`E-mail de conclusão enviado para: ${settings.emailTo}`, 'success');
+        addToast(`E-mail de conclusão enviado para: ${settings.emailTo}`, 'success');
       } else {
-        showToast(`Erro ao enviar e-mail: ${result.error || 'Verifique as configurações'}`, 'error');
+        addToast(`Erro ao enviar e-mail: ${result.error || 'Verifique as configurações'}`, 'error');
       }
     } catch (error) {
       console.error("Erro ao enviar e-mail", error);
-      showToast('Erro de conexão ao tentar enviar e-mail.', 'error');
+      addToast('Erro de conexão ao tentar enviar e-mail.', 'error');
     }
   };
 
@@ -639,6 +691,16 @@ JIMPNEXUS
                         className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                         placeholder="Ex: 123456"
                       />
+                      {aggregatedInfo && (
+                        <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-1.5 rounded-md border border-amber-100 dark:border-amber-900/30">
+                          <Info className="w-3 h-3" />
+                          <span>
+                            {aggregatedInfo.totalSeconds > 0 
+                              ? `Acumulado: ${formatTime(aggregatedInfo.totalSeconds)} (${aggregatedInfo.contributors} projetistas)`
+                              : "NS já registrado (sem tempo acumulado)"}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-black dark:text-white mb-1">Cliente</label>
@@ -735,6 +797,18 @@ JIMPNEXUS
                         </div>
                       </div>
                     </div>
+                    
+                    <div className="flex items-end pb-1">
+                      <label className="flex items-center space-x-2 cursor-pointer bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg border border-amber-100 dark:border-amber-900/30 w-full">
+                        <input 
+                          type="checkbox" 
+                          checked={isOvertime}
+                          onChange={e => setIsOvertime(e.target.checked)}
+                          className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                        />
+                        <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Hora Extra</span>
+                      </label>
+                    </div>
                   </div>
                   <button 
                     onClick={handleStartNew}
@@ -771,11 +845,18 @@ JIMPNEXUS
                     <div className="text-right">
                         <div className="font-bold text-lg text-black dark:text-white">{activeProject.ns}</div>
                         <div className="text-xs text-gray-600 dark:text-slate-400 font-semibold">{activeProject.clientName}</div>
-                        {activeProject.estimatedSeconds && (
-                            <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mt-1 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full inline-block">
-                                Estimado: {formatTime(activeProject.estimatedSeconds)}
-                            </div>
-                        )}
+                        <div className="flex flex-col items-end gap-1 mt-1">
+                            {activeProject.isOvertime && (
+                                <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold">
+                                    HORA EXTRA
+                                </span>
+                            )}
+                            {activeProject.estimatedSeconds && (
+                                <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full inline-block">
+                                    Estimado: {formatTime(activeProject.estimatedSeconds)}
+                                </div>
+                            )}
+                        </div>
                         <div className="text-xs text-gray-400 dark:text-slate-500 flex flex-col items-end mt-1">
                             <span>{activeProject.implementType} {activeProject.flooringType ? `• ${activeProject.flooringType}` : ''}</span>
                             <div className="mt-1 flex items-center">
@@ -802,6 +883,11 @@ JIMPNEXUS
                     <div className="text-7xl font-mono font-bold text-blue-600 dark:text-blue-400 tracking-tight">
                         {formatTime(elapsedSeconds)}
                     </div>
+                    {elapsedSeconds === 0 && !showPauseModal && (
+                        <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-3 py-1 rounded-full border border-amber-100 dark:border-amber-900/30">
+                            Fora do horário comercial - Cronômetro pausado
+                        </div>
+                    )}
                     <div className="mt-4 flex gap-4 text-sm text-gray-500 dark:text-slate-400">
                         <span>Início: {new Date(activeProject.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
