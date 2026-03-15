@@ -459,7 +459,6 @@ const AppContent: React.FC = () => {
                <Logo 
                  theme={theme}
                  logoUrl={COMPANY_LOGO_URL}
-                 companyName={COMPANY_NAME}
                  className="h-10 w-auto max-w-[180px] object-contain" 
                />
             </div>
@@ -539,7 +538,6 @@ const AppContent: React.FC = () => {
             <Logo 
                 theme={theme}
                 logoUrl={COMPANY_LOGO_URL}
-                companyName={COMPANY_NAME}
                 className="h-full w-auto object-contain max-w-[150px]"
             />
         </div>
@@ -658,7 +656,6 @@ const AppContent: React.FC = () => {
                     <Logo 
                       theme={theme}
                       logoUrl={COMPANY_LOGO_URL}
-                      companyName={COMPANY_NAME}
                       className="h-12 w-auto object-contain" 
                     />
                  </div>
