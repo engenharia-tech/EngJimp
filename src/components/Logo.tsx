@@ -12,11 +12,12 @@ export const Logo: React.FC<LogoProps> = ({
   theme = 'dark', 
   className = "h-10 w-auto", 
   logoUrl,
-  companyName = "Eng. Jimp",
+  companyName = "JIMP NEXUS",
   textSizeClassName = "text-xl"
 }) => {
   // If there's a custom logo URL, we use it as an image
-  if (logoUrl && !logoUrl.includes('logo.svg')) {
+  // We only return early if it's NOT the default logo (not logo.svg and not a data URL)
+  if (logoUrl && !logoUrl.includes('logo.svg') && !logoUrl.startsWith('data:image/svg+xml')) {
     return (
       <img 
         src={logoUrl} 
@@ -60,7 +61,14 @@ export const Logo: React.FC<LogoProps> = ({
         />
       </svg>
       <div className={`font-bold tracking-tight ${textSizeClassName}`}>
-        <span className={theme === 'dark' ? 'text-white' : 'text-black'}>{companyName}</span>
+        {companyName === "JIMP NEXUS" || companyName === "Eng. Jimp" || companyName === "Eng Jimp" ? (
+          <div className="flex">
+            <span className="text-orange-500">JIMP</span>
+            <span className={theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}>NEXUS</span>
+          </div>
+        ) : (
+          <span className={theme === 'dark' ? 'text-white' : 'text-black'}>{companyName}</span>
+        )}
       </div>
     </div>
   );
