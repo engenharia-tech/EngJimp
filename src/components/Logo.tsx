@@ -15,9 +15,14 @@ export const Logo: React.FC<LogoProps> = ({
   companyName = "JIMP NEXUS",
   textSizeClassName = "text-xl"
 }) => {
-  // If there's a custom logo URL, we use it as an image
-  // We only return early if it's NOT the default logo (not logo.svg and not a data URL)
-  if (logoUrl && !logoUrl.includes('logo.svg') && !logoUrl.startsWith('data:image/svg+xml')) {
+  // Detect if we are using the default system logo
+  const isDefaultLogo = !logoUrl || 
+    logoUrl.startsWith('data:image/svg+xml') ||
+    // Broad check for the default logo asset, which usually contains 'logo' and ends with '.svg'
+    // This handles Vite/Vercel hashed paths like /assets/logo-D_XyZ123.svg or /_next/static/media/logo.hash.svg
+    (logoUrl.toLowerCase().includes('logo') && logoUrl.toLowerCase().includes('.svg'));
+
+  if (logoUrl && !isDefaultLogo) {
     return (
       <img 
         src={logoUrl} 
@@ -61,10 +66,12 @@ export const Logo: React.FC<LogoProps> = ({
         />
       </svg>
       <div className={`font-bold tracking-tight ${textSizeClassName}`}>
-        {companyName === "JIMP NEXUS" || companyName === "Eng. Jimp" || companyName === "Eng Jimp" ? (
+        {companyName?.toUpperCase().includes('JIMP') ? (
           <div className="flex">
-            <span className="text-orange-500">JIMP</span>
-            <span className={theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}>NEXUS</span>
+            <span className={theme === 'dark' ? 'text-white' : 'text-orange-500'}>JIMP</span>
+            {companyName?.toUpperCase().includes('NEXUS') && (
+              <span className={theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}>NEXUS</span>
+            )}
           </div>
         ) : (
           <span className={theme === 'dark' ? 'text-white' : 'text-black'}>{companyName}</span>
