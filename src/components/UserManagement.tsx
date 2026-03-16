@@ -754,6 +754,7 @@ CREATE TABLE IF NOT EXISTS public.interruption_types (
 
 CREATE TABLE IF NOT EXISTS public.interruptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
     project_ns TEXT NOT NULL,
     client_name TEXT,
     designer_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
@@ -766,6 +767,9 @@ CREATE TABLE IF NOT EXISTS public.interruptions (
     status TEXT NOT NULL DEFAULT 'Aberto',
     total_time_seconds INTEGER DEFAULT 0
 );
+
+-- Garantir que a coluna project_id exista caso a tabela tenha sido criada sem ela
+ALTER TABLE public.interruptions ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL;
 
 -- Habilitar RLS
 ALTER TABLE public.interruption_types ENABLE ROW LEVEL SECURITY;

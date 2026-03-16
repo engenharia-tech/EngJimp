@@ -4,14 +4,30 @@ import { DEFAULT_INTERRUPTION_TYPES } from '../constants';
 
 // Supabase Configuration
 const getSupabaseConfig = () => {
-  const envUrl = import.meta.env.VITE_SUPABASE_URL;
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  
-  // Use env var only if it looks like a valid URL, otherwise fallback to hardcoded
-  const url = (envUrl && envUrl.startsWith('http')) ? envUrl : 'https://otajfsjtpucdmkwgmeku.supabase.co';
-  const key = (envKey && envKey.length > 10) ? envKey : 'sb_publishable_tUhxD-ixI7mhxhvB5FYVGQ_FCkLGa6h';
-  
-  return { url, key };
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // Check if they are valid URLs/Strings
+  const isValidUrl = (u: string | undefined): u is string => {
+    if (!u) return false;
+    try {
+      new URL(u);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  if (isValidUrl(url) && key) {
+    return { url, key };
+  }
+
+  // Fallback to hardcoded defaults if env vars are missing/invalid
+  // Note: In a production app, you'd want to handle this more strictly
+  return {
+    url: 'https://otajfsjtpucdmkwgmeku.supabase.co',
+    key: 'sb_publishable_tUhxD-ixI7mhxhvB5FYVGQ_FCkLGa6h'
+  };
 };
 
 const { url: SUPABASE_URL, key: SUPABASE_KEY } = getSupabaseConfig();
@@ -34,7 +50,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
   let settings: AppSettings = { 
     hourlyCost: Number(localStorage.getItem('hourly_cost')) || 150,
     logoUrl: localStorage.getItem('logo_url') || undefined,
-    companyName: localStorage.getItem('company_name') || 'Eng. Jimp',
+    companyName: localStorage.getItem('company_name') || 'JIMP NEXUS',
     emailHost: localStorage.getItem('email_host') || '',
     emailPort: localStorage.getItem('email_port') || '',
     emailUser: localStorage.getItem('email_user') || '',
@@ -61,7 +77,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
 
       if (hourlyCostRow) settings.hourlyCost = Number(hourlyCostRow.value);
       if (logoUrlRow) settings.logoUrl = logoUrlRow.value || '';
-      if (companyNameRow) settings.companyName = companyNameRow.value || 'Eng. Jimp';
+      if (companyNameRow) settings.companyName = companyNameRow.value || 'JIMP NEXUS';
       if (emailHostRow) settings.emailHost = emailHostRow.value || '';
       if (emailPortRow) settings.emailPort = emailPortRow.value || '';
       if (emailUserRow) settings.emailUser = emailUserRow.value || '';
@@ -206,34 +222,8 @@ export const fetchAppState = async (): Promise<AppState> => {
 
     // If no interruption types exist, seed them (first time)
     if (interruptionTypes.length === 0) {
-      const seedTypes = DEFAULT_INTERRUPTION_TYPES.map(name => ({
-        id: crypto.randomUUID(),
-        name,
-        is_active: true
-      }));
-      
-      try {
-        const { error: seedError } = await supabase.from('interruption_types').insert(seedTypes);
-        if (!seedError) {
-          seedTypes.forEach(t => interruptionTypes.push({ id: t.id, name: t.name, isActive: t.is_active }));
-        }
-      } catch (e) {
-        console.warn("Failed to seed interruption types:", e);
-      }
-    } else {
-      // Ensure "Peças oficina (Jimpservice)" exists even if other types are already seeded
-      const hasJimpservice = interruptionTypes.some(t => t.name === 'Peças oficina (Jimpservice)');
-      if (!hasJimpservice) {
-        const newType = { id: crypto.randomUUID(), name: 'Peças oficina (Jimpservice)', is_active: true };
-        try {
-          const { error: insertError } = await supabase.from('interruption_types').insert([newType]);
-          if (!insertError) {
-            interruptionTypes.push({ id: newType.id, name: newType.name, isActive: newType.is_active });
-          }
-        } catch (e) {
-          console.warn("Failed to add Jimpservice type:", e);
-        }
-      }
+        // We don't seed here to avoid multiple calls, but we return defaults if empty
+        // Actually, let's just return what's in DB. The UI will handle seeding if Gestor.
     }
 
     // Fetch Users
@@ -565,9 +555,8 @@ export const deleteInnovation = async (id: string): Promise<AppState> => {
 
 export const addInterruption = async (interruption: InterruptionRecord): Promise<AppState> => {
   try {
-    const { error } = await supabase.from('interruptions').insert([{
+    const payload: any = {
       id: interruption.id,
-      project_id: interruption.projectId,
       project_ns: interruption.projectNs,
       client_name: interruption.clientName,
       designer_id: interruption.designerId,
@@ -579,9 +568,19 @@ export const addInterruption = async (interruption: InterruptionRecord): Promise
       description: interruption.description,
       status: interruption.status,
       total_time_seconds: interruption.totalTimeSeconds
-    }]);
+    };
 
-    if (error) throw error;
+    // Only add project_id if it exists to avoid errors if the column is missing
+    if (interruption.projectId) {
+      payload.project_id = interruption.projectId;
+    }
+
+    const { error } = await supabase.from('interruptions').insert([payload]);
+
+    if (error) {
+      console.error("Supabase error adding interruption:", error);
+      throw error;
+    }
     return fetchAppState();
   } catch (error) {
     console.error("Failed to add interruption", error);
@@ -591,25 +590,33 @@ export const addInterruption = async (interruption: InterruptionRecord): Promise
 
 export const updateInterruption = async (interruption: InterruptionRecord): Promise<AppState> => {
   try {
+    const payload: any = {
+      project_ns: interruption.projectNs,
+      client_name: interruption.clientName,
+      designer_id: interruption.designerId,
+      start_time: interruption.startTime,
+      end_time: interruption.endTime || null,
+      problem_type: interruption.problemType,
+      responsible_area: interruption.responsibleArea,
+      responsible_person: interruption.responsiblePerson,
+      description: interruption.description,
+      status: interruption.status,
+      total_time_seconds: interruption.totalTimeSeconds
+    };
+
+    if (interruption.projectId) {
+      payload.project_id = interruption.projectId;
+    }
+
     const { error } = await supabase
       .from('interruptions')
-      .update({
-        project_id: interruption.projectId,
-        project_ns: interruption.projectNs,
-        client_name: interruption.clientName,
-        designer_id: interruption.designerId,
-        start_time: interruption.startTime,
-        end_time: interruption.endTime || null,
-        problem_type: interruption.problemType,
-        responsible_area: interruption.responsibleArea,
-        responsible_person: interruption.responsiblePerson,
-        description: interruption.description,
-        status: interruption.status,
-        total_time_seconds: interruption.totalTimeSeconds
-      })
+      .update(payload)
       .eq('id', interruption.id);
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase error updating interruption:", error);
+      throw error;
+    }
     return fetchAppState();
   } catch (error) {
     console.error("Failed to update interruption", error);

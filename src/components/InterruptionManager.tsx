@@ -107,10 +107,14 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     }
 
     try {
+      // Tentar encontrar o ID do projeto pelo NS para manter o vínculo
+      const linkedProject = data.projects.find(p => p.ns.toLowerCase() === ns.toLowerCase());
+
       if (editingInterruption) {
         const updated: InterruptionRecord = {
           ...editingInterruption,
           projectNs: ns,
+          projectId: linkedProject?.id || editingInterruption.projectId,
           clientName: client,
           problemType,
           responsibleArea: area,
@@ -131,6 +135,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       } else {
         const newItem: InterruptionRecord = {
           id: crypto.randomUUID(),
+          projectId: linkedProject?.id,
           projectNs: ns,
           clientName: client,
           designerId: currentUser.id,

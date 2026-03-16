@@ -85,18 +85,40 @@ const AppContent: React.FC = () => {
   // Load data when user logs in or mounts
   useEffect(() => {
     const load = async () => {
+      // If we already have a user, we definitely need to load data
+      // If we don't have a user, we still load data (like settings/users) but we shouldn't block the login screen forever
       setIsLoading(true);
 
-      // One-time seed for February data
-      const hasSeeded = localStorage.getItem('eng_jimp_seeded_feb_v7');
-      if (!hasSeeded) {
-        await seedFebruaryData();
-        localStorage.setItem('eng_jimp_seeded_feb_v7', 'true');
-      }
+      try {
+        // Add a timeout to prevent hanging forever (15 seconds)
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Timeout loading app state")), 15000)
+        );
 
-      const appData = await fetchAppState();
-      setData(appData);
-      setIsLoading(false);
+        const initializationPromise = (async () => {
+          // One-time seed for February data - only if we have a user or it's the first run
+          const hasSeeded = localStorage.getItem('eng_jimp_seeded_feb_v7');
+          if (!hasSeeded) {
+            console.log("Seeding initial February data...");
+            try {
+              await seedFebruaryData();
+              localStorage.setItem('eng_jimp_seeded_feb_v7', 'true');
+            } catch (e) {
+              console.error("Seed error", e);
+            }
+          }
+
+          const appData = await fetchAppState();
+          setData(appData);
+        })();
+
+        await Promise.race([initializationPromise, timeoutPromise]);
+      } catch (error) {
+        console.error("Failed to load app state", error);
+        addToast("Erro ao carregar dados do servidor.", "error");
+      } finally {
+        setIsLoading(false);
+      }
     };
     load();
   }, [currentUser]); 
@@ -426,7 +448,7 @@ const AppContent: React.FC = () => {
   }
 
   const COMPANY_LOGO_URL = data.settings.logoUrl || logoImg;
-  const COMPANY_NAME = data.settings.companyName || 'Eng Jimp';
+  const COMPANY_NAME = data.settings.companyName || 'JIMP NEXUS';
 
   const NavItem = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
     <button

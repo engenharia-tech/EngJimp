@@ -44,11 +44,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   const COMPANY_LOGO = settings?.logoUrl || logoImg;
-  const COMPANY_NAME = settings?.companyName || 'Eng. Jimp';
+  const COMPANY_NAME = settings?.companyName || 'JIMP NEXUS';
+
+  console.log("Rendering Login component, settings:", settings);
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <div className="bg-black p-8 rounded-2xl shadow-2xl max-w-md w-full border border-slate-800">
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="bg-slate-950 p-8 rounded-2xl shadow-2xl max-w-md w-full border border-slate-800">
         <div className="text-center mb-8">
           {/* Logo Container */}
           <div className="flex justify-center mb-6">
