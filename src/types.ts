@@ -59,6 +59,7 @@ export enum InterruptionArea {
   PRODUCAO = 'Produção',
   CLIENTE = 'Cliente',
   VENDAS = 'Vendas',
+  JIMPSERVICE = 'Jimpservice',
   OUTROS = 'Outros'
 }
 

@@ -59,12 +59,14 @@ export const INTERRUPTION_AREAS = [
   'Cadastro',
   'Engenharia',
   'Cliente',
+  'Jimpservice',
   'Outros'
 ];
 
 export const DEFAULT_INTERRUPTION_TYPES = [
   'falta de informações',
   'Informações erradas',
+  'Peças oficina (Jimpservice)',
   'outros'
 ];
 

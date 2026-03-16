@@ -1271,7 +1271,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
         >
           <div className="flex items-center gap-3">
             <BarChart3 className="w-5 h-5 text-amber-600" />
-            <h3 className="font-bold text-black dark:text-white">Relatório de Gargalos (Ranking por Área)</h3>
+            <h3 className="font-bold text-black dark:text-white">Relatório por Departamento / Área (Gargalos)</h3>
           </div>
           {expandedSection === 'bottlenecks' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
         </button>
