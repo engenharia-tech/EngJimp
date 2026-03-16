@@ -459,6 +459,7 @@ const AppContent: React.FC = () => {
                <Logo 
                  theme={theme}
                  logoUrl={COMPANY_LOGO_URL}
+                 companyName={COMPANY_NAME}
                  className="h-10 w-auto max-w-[180px] object-contain" 
                />
             </div>

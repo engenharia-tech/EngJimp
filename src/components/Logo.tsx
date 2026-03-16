@@ -4,6 +4,7 @@ interface LogoProps {
   theme?: 'light' | 'dark';
   className?: string;
   logoUrl?: string;
+  companyName?: string;
   textSizeClassName?: string;
 }
 
@@ -11,6 +12,7 @@ export const Logo: React.FC<LogoProps> = ({
   theme = 'dark', 
   className = "h-10 w-auto", 
   logoUrl,
+  companyName = "Eng. Jimp",
   textSizeClassName = "text-xl"
 }) => {
   // If there's a custom logo URL, we use it as an image
@@ -58,7 +60,7 @@ export const Logo: React.FC<LogoProps> = ({
         />
       </svg>
       <div className={`font-bold tracking-tight ${textSizeClassName}`}>
-        <span className={theme === 'dark' ? 'text-white' : 'text-black'}>Eng. Jimp</span>
+        <span className={theme === 'dark' ? 'text-white' : 'text-black'}>{companyName}</span>
       </div>
     </div>
   );
