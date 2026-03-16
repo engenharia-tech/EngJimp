@@ -457,7 +457,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
 
   const handleAiAnalysis = async () => {
     setIsLoadingAi(true);
-    const result = await analyzePerformance(filteredProjects, filteredIssues);
+    const result = await analyzePerformance(filteredProjects, filteredIssues, filteredInterruptions, data.settings);
     setAiAnalysis(result);
     setIsLoadingAi(false);
   };

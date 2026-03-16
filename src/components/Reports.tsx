@@ -416,11 +416,12 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
 
   const handleAiAnalysis = async () => {
     setIsLoadingAi(true);
-    // Filter projects and issues for the selected period
+    // Filter projects, issues and interruptions for the selected period
     const filteredProjects = data.projects.filter(p => isDateInPeriod(new Date(p.endTime || p.startTime)));
     const filteredIssues = data.issues.filter(i => isDateInPeriod(new Date(i.date)));
+    const filteredInterruptions = data.interruptions.filter(i => isDateInPeriod(new Date(i.startTime)));
     
-    const result = await analyzePerformance(filteredProjects, filteredIssues);
+    const result = await analyzePerformance(filteredProjects, filteredIssues, filteredInterruptions, data.settings);
     setAiAnalysis(result);
     setIsLoadingAi(false);
   };
