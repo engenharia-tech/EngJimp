@@ -44,6 +44,25 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
     });
 
     return Object.values(stats).sort((a, b) => b.totalInterruptions - a.totalInterruptions);
+  }, [interruptions, data.users]);
+
+  const areaStats = useMemo(() => {
+    const stats: Record<string, { 
+      area: string, 
+      totalInterruptions: number, 
+      totalLostTime: number 
+    }> = {};
+
+    interruptions.forEach(i => {
+      const area = i.responsibleArea;
+      if (!stats[area]) {
+        stats[area] = { area, totalInterruptions: 0, totalLostTime: 0 };
+      }
+      stats[area].totalInterruptions += 1;
+      stats[area].totalLostTime += i.totalTimeSeconds;
+    });
+
+    return Object.values(stats).sort((a, b) => b.totalLostTime - a.totalLostTime);
   }, [interruptions]);
 
   const selectedDesignerData = useMemo(() => {
@@ -73,6 +92,47 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
 
   return (
     <div className="space-y-6">
+      {/* Area Stats Section */}
+      <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black flex items-center justify-between">
+          <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
+            <BarChart3 className="w-5 h-5 mr-2 text-amber-500" />
+            Paradas por Departamento / Área
+          </h3>
+        </div>
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {areaStats.map((stat) => (
+            <div key={stat.area} className="p-4 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-100 dark:border-slate-800">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{stat.area}</span>
+                <span className="text-xs font-bold text-red-600 dark:text-red-400">{formatDuration(stat.totalLostTime)}</span>
+              </div>
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-2xl font-black text-black dark:text-white">{stat.totalInterruptions}</p>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">Interrupções</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-red-600 dark:text-red-400">{formatCurrency(stat.totalLostTime * costPerSecond)}</p>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">Custo Estimado</p>
+                </div>
+              </div>
+              <div className="mt-3 w-full bg-gray-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-amber-500 h-full rounded-full" 
+                  style={{ width: `${Math.min(100, (stat.totalLostTime / (areaStats[0]?.totalLostTime || 1)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+          {areaStats.length === 0 && (
+            <div className="col-span-full py-8 text-center text-gray-500 italic">
+              Nenhuma parada registrada por área.
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
         <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black flex items-center justify-between">
           <h3 className="text-lg font-bold text-black dark:text-white flex items-center">

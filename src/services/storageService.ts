@@ -3,9 +3,18 @@ import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, Calculat
 import { DEFAULT_INTERRUPTION_TYPES } from '../constants';
 
 // Supabase Configuration
-// Hardcoded for immediate fix
-const SUPABASE_URL = 'https://otajfsjtpucdmkwgmeku.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_tUhxD-ixI7mhxhvB5FYVGQ_FCkLGa6h';
+const getSupabaseConfig = () => {
+  const envUrl = import.meta.env.VITE_SUPABASE_URL;
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  // Use env var only if it looks like a valid URL, otherwise fallback to hardcoded
+  const url = (envUrl && envUrl.startsWith('http')) ? envUrl : 'https://otajfsjtpucdmkwgmeku.supabase.co';
+  const key = (envKey && envKey.length > 10) ? envKey : 'sb_publishable_tUhxD-ixI7mhxhvB5FYVGQ_FCkLGa6h';
+  
+  return { url, key };
+};
+
+const { url: SUPABASE_URL, key: SUPABASE_KEY } = getSupabaseConfig();
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -197,8 +206,34 @@ export const fetchAppState = async (): Promise<AppState> => {
 
     // If no interruption types exist, seed them (first time)
     if (interruptionTypes.length === 0) {
-        // We don't seed here to avoid multiple calls, but we return defaults if empty
-        // Actually, let's just return what's in DB. The UI will handle seeding if Gestor.
+      const seedTypes = DEFAULT_INTERRUPTION_TYPES.map(name => ({
+        id: crypto.randomUUID(),
+        name,
+        is_active: true
+      }));
+      
+      try {
+        const { error: seedError } = await supabase.from('interruption_types').insert(seedTypes);
+        if (!seedError) {
+          seedTypes.forEach(t => interruptionTypes.push({ id: t.id, name: t.name, isActive: t.is_active }));
+        }
+      } catch (e) {
+        console.warn("Failed to seed interruption types:", e);
+      }
+    } else {
+      // Ensure "Peças oficina (Jimpservice)" exists even if other types are already seeded
+      const hasJimpservice = interruptionTypes.some(t => t.name === 'Peças oficina (Jimpservice)');
+      if (!hasJimpservice) {
+        const newType = { id: crypto.randomUUID(), name: 'Peças oficina (Jimpservice)', is_active: true };
+        try {
+          const { error: insertError } = await supabase.from('interruption_types').insert([newType]);
+          if (!insertError) {
+            interruptionTypes.push({ id: newType.id, name: newType.name, isActive: newType.is_active });
+          }
+        } catch (e) {
+          console.warn("Failed to add Jimpservice type:", e);
+        }
+      }
     }
 
     // Fetch Users
