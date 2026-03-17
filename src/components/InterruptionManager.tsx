@@ -41,6 +41,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   const [responsible, setResponsible] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<InterruptionStatus>(InterruptionStatus.OPEN);
+  const [formStartDate, setFormStartDate] = useState('');
+  const [formStartTime, setFormStartTime] = useState('');
+  const [formEndDate, setFormEndDate] = useState('');
+  const [formEndTime, setFormEndTime] = useState('');
 
   // Filter State
   const [filterNs, setFilterNs] = useState('');
@@ -54,6 +58,25 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
 
   const canManage = currentUser.role === 'GESTOR';
   const isCEO = currentUser.role === 'CEO';
+
+  // Helper to format date for input
+  const getLocalDate = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Helper to format time for input
+  const getLocalTime = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    return `${hours}:${mins}`;
+  };
 
   // Real-time timer update
   const [now, setNow] = useState(new Date());
@@ -110,6 +133,14 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       // Tentar encontrar o ID do projeto pelo NS para manter o vínculo
       const linkedProject = data.projects.find(p => p.ns.toLowerCase() === ns.toLowerCase());
 
+      const startIso = (formStartDate && formStartTime) 
+        ? new Date(`${formStartDate}T${formStartTime}`).toISOString() 
+        : new Date().toISOString();
+      
+      const endIso = (formEndDate && formEndTime)
+        ? new Date(`${formEndDate}T${formEndTime}`).toISOString()
+        : (status === InterruptionStatus.RESOLVED ? new Date().toISOString() : null);
+
       if (editingInterruption) {
         const updated: InterruptionRecord = {
           ...editingInterruption,
@@ -121,13 +152,11 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           responsiblePerson: responsible,
           description,
           status,
-          // If moving to Resolved, calculate total time
-          endTime: status === InterruptionStatus.RESOLVED && !editingInterruption.endTime 
-            ? new Date().toISOString() 
-            : editingInterruption.endTime,
-          totalTimeSeconds: (status === InterruptionStatus.RESOLVED && !editingInterruption.endTime)
-            ? Math.floor((new Date().getTime() - new Date(editingInterruption.startTime).getTime()) / 1000)
-            : editingInterruption.totalTimeSeconds
+          startTime: startIso,
+          endTime: endIso,
+          totalTimeSeconds: endIso 
+            ? Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000)
+            : 0
         };
         const newState = await updateInterruption(updated);
         onUpdate(newState);
@@ -139,17 +168,20 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           projectNs: ns,
           clientName: client,
           designerId: currentUser.id,
-          startTime: new Date().toISOString(),
+          startTime: startIso,
+          endTime: endIso,
           problemType,
           responsibleArea: area,
           responsiblePerson: responsible,
           description,
-          status: InterruptionStatus.OPEN,
-          totalTimeSeconds: 0
+          status: status,
+          totalTimeSeconds: endIso 
+            ? Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000)
+            : 0
         };
         const newState = await addInterruption(newItem);
         onUpdate(newState);
-        addToast('Interrupção registrada e cronômetro iniciado', 'success');
+        addToast(status === InterruptionStatus.OPEN ? 'Interrupção registrada e cronômetro iniciado' : 'Interrupção registrada com sucesso', 'success');
       }
       resetForm();
     } catch (err) {
@@ -165,6 +197,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     setResponsible('');
     setDescription('');
     setStatus(InterruptionStatus.OPEN);
+    setFormStartDate('');
+    setFormStartTime('');
+    setFormEndDate('');
+    setFormEndTime('');
     setEditingInterruption(null);
     setIsFormOpen(false);
   };
@@ -178,6 +214,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     setResponsible(i.responsiblePerson);
     setDescription(i.description);
     setStatus(i.status);
+    setFormStartDate(getLocalDate(i.startTime));
+    setFormStartTime(getLocalTime(i.startTime));
+    setFormEndDate(i.endTime ? getLocalDate(i.endTime) : '');
+    setFormEndTime(i.endTime ? getLocalTime(i.endTime) : '');
     setIsFormOpen(true);
   };
 
@@ -578,6 +618,43 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   placeholder="Descreva detalhadamente o que está impedindo o projeto..."
                   required
                 />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t dark:border-slate-800">
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-black dark:text-white">Data Início</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="date"
+                      value={formStartDate}
+                      onChange={e => setFormStartDate(e.target.value)}
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
+                    />
+                    <input 
+                      type="time"
+                      value={formStartTime}
+                      onChange={e => setFormStartTime(e.target.value)}
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-black dark:text-white">Data Fim (Opcional)</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="date"
+                      value={formEndDate}
+                      onChange={e => setFormEndDate(e.target.value)}
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
+                    />
+                    <input 
+                      type="time"
+                      value={formEndTime}
+                      onChange={e => setFormEndTime(e.target.value)}
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
+                    />
+                  </div>
+                </div>
               </div>
 
               {editingInterruption && (
