@@ -233,6 +233,49 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
               <p className="text-[10px] text-gray-500 mt-1">Separe múltiplos e-mails por vírgula.</p>
             </div>
           </div>
+
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Destinatários para Interrupções</label>
+            <input
+              type="text"
+              disabled={!isEditing}
+              value={formData.interruptionEmailTo || ''}
+              onChange={e => setFormData({ ...formData, interruptionEmailTo: e.target.value })}
+              className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+              placeholder="email-interrupcao@exemplo.com"
+            />
+            <p className="text-[10px] text-gray-500 mt-1">E-mails que receberão alertas automáticos quando uma interrupção for criada.</p>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Template de E-mail de Interrupção</label>
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800 mb-3">
+              <p className="text-[10px] text-blue-700 dark:text-blue-300 font-bold uppercase mb-1">Tags Disponíveis:</p>
+              <div className="flex flex-wrap gap-2">
+                <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[NS_PARADA]</span>
+                <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[CLIENTE]</span>
+                <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[TIPO_PROBLEMA]</span>
+                <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[AREA_RESPONSAVEL]</span>
+                <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[RESPONSAVEL_RESPOSTA]</span>
+                <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[DATA_HORA]</span>
+                <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[MOTIVO]</span>
+                <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[OUTRAS_PERDAS]</span>
+              </div>
+            </div>
+            <textarea
+              disabled={!isEditing}
+              value={formData.interruptionEmailTemplate || ''}
+              onChange={e => setFormData({ ...formData, interruptionEmailTemplate: e.target.value })}
+              className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 h-48 font-mono text-sm resize-none"
+              placeholder={`“E-mail automático, não responda este e-mail”\n\nOlá,\n\n Informamos que a [NS_PARADA] está interrompida no departamento de engenharia, \nTipo de Problema: [TIPO_PROBLEMA]\nArea Responsável: [AREA_RESPONSAVEL]\nResponsável da resposta: [RESPONSAVEL_RESPOSTA]\nData e hora da parada: [DATA_HORA]\nMotivo: [MOTIVO]\n\nOutras perdas: [OUTRAS_PERDAS]\n\naguardamos as informações para retornarmos o projeto, enquanto isso estará com um put andou o tempo de projeto parado`}
+            />
+            <div className="mt-3 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800">
+              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Rodapé Padrão (Fixo):</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400 italic">
+                Dúvidas falar com matheus.p@joinvilleimplementos.com.br e engenharia@joinvilleimplementos.com.br
+              </p>
+            </div>
+          </div>
         </div>
 
         {isEditing && (

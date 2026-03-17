@@ -16,6 +16,7 @@ import { Reports } from './components/Reports';
 import { SEOManager } from './components/SEOManager';
 import { UserProfileModal } from './components/UserProfileModal';
 import { Settings } from './components/Settings';
+import { OperationalPerformance } from './components/OperationalPerformance';
 import { Login } from './components/Login';
 import { 
   fetchAppState, 
@@ -29,6 +30,12 @@ import {
   addInterruption,
   updateInterruption,
   updateSettings,
+  addOperationalActivity,
+  updateOperationalActivity,
+  deleteOperationalActivity,
+  addActivityType,
+  updateActivityType,
+  deleteActivityType,
   seedFebruaryData
 } from './services/storageService';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
@@ -56,7 +63,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational'>('dashboard');
   const [data, setData] = useState<AppState>({ 
     projects: [], 
     issues: [], 
@@ -65,7 +72,9 @@ const AppContent: React.FC = () => {
     interruptionTypes: [],
     users: [],
     settings: { hourlyCost: 150 },
-    seoData: { keywords: [], metrics: [], tasks: [] }
+    seoData: { keywords: [], metrics: [], tasks: [] },
+    activityTypes: [],
+    operationalActivities: []
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -448,6 +457,60 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const onAddOperationalActivity = async (activity: any) => {
+    try {
+      const updatedData = await addOperationalActivity(activity);
+      setData(updatedData);
+    } catch (e) {
+      addToast('Error adding activity', 'error');
+    }
+  };
+
+  const onUpdateOperationalActivity = async (activity: any) => {
+    try {
+      const updatedData = await updateOperationalActivity(activity);
+      setData(updatedData);
+    } catch (e) {
+      addToast('Error updating activity', 'error');
+    }
+  };
+
+  const onDeleteOperationalActivity = async (id: string) => {
+    try {
+      const updatedData = await deleteOperationalActivity(id);
+      setData(updatedData);
+    } catch (e) {
+      addToast('Error deleting activity', 'error');
+    }
+  };
+
+  const onAddActivityType = async (type: any) => {
+    try {
+      const updatedData = await addActivityType(type);
+      setData(updatedData);
+    } catch (e) {
+      addToast('Error adding activity type', 'error');
+    }
+  };
+
+  const onUpdateActivityType = async (type: any) => {
+    try {
+      const updatedData = await updateActivityType(type);
+      setData(updatedData);
+    } catch (e) {
+      addToast('Error updating activity type', 'error');
+    }
+  };
+
+  const onDeleteActivityType = async (id: string) => {
+    try {
+      const updatedData = await deleteActivityType(id);
+      setData(updatedData);
+    } catch (e) {
+      addToast('Error deleting activity type', 'error');
+    }
+  };
+
   if (!currentUser) {
     return <Login onLogin={setCurrentUser} />;
   }
@@ -459,24 +522,39 @@ const AppContent: React.FC = () => {
     <div className={`flex items-center gap-1 ${isMobile ? 'px-4 py-2' : ''}`}>
       <button 
         onClick={() => setLanguage('pt-BR')}
-        className={`p-1.5 rounded-lg transition-all ${language === 'pt-BR' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 dark:bg-slate-800 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200'}`}
+        className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${language === 'pt-BR' ? 'bg-blue-600 shadow-md ring-2 ring-blue-400' : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
         title="Português (Brasil)"
       >
-        <span className="text-lg">🇧🇷</span>
+        <img 
+          src="https://flagcdn.com/w40/br.png" 
+          alt="Português (Brasil)" 
+          className="w-6 h-4 object-cover rounded-sm"
+          referrerPolicy="no-referrer"
+        />
       </button>
       <button 
         onClick={() => setLanguage('es-ES')}
-        className={`p-1.5 rounded-lg transition-all ${language === 'es-ES' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 dark:bg-slate-800 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200'}`}
+        className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${language === 'es-ES' ? 'bg-blue-600 shadow-md ring-2 ring-blue-400' : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
         title="Español (España)"
       >
-        <span className="text-lg">🇪🇸</span>
+        <img 
+          src="https://flagcdn.com/w40/es.png" 
+          alt="Español (España)" 
+          className="w-6 h-4 object-cover rounded-sm"
+          referrerPolicy="no-referrer"
+        />
       </button>
       <button 
         onClick={() => setLanguage('en-US')}
-        className={`p-1.5 rounded-lg transition-all ${language === 'en-US' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 dark:bg-slate-800 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200'}`}
+        className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${language === 'en-US' ? 'bg-blue-600 shadow-md ring-2 ring-blue-400' : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
         title="English (US)"
       >
-        <span className="text-lg">🇺🇸</span>
+        <img 
+          src="https://flagcdn.com/w40/us.png" 
+          alt="English (US)" 
+          className="w-6 h-4 object-cover rounded-sm"
+          referrerPolicy="no-referrer"
+        />
       </button>
     </div>
   );
@@ -562,6 +640,10 @@ const AppContent: React.FC = () => {
           {canUseTracker && (
             <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} />
           )}
+
+          {canUseTracker && (
+            <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} />
+          )}
           
           {canSeeInnovations && (
              <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} />
@@ -636,6 +718,9 @@ const AppContent: React.FC = () => {
             )}
             {canUseTracker && (
                 <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} />
+            )}
+            {canUseTracker && (
+                <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} />
             )}
             {canSeeInnovations && (
                 <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} />
@@ -751,6 +836,25 @@ const AppContent: React.FC = () => {
               currentUser={currentUser}
               onUpdate={handleInterruptionUpdate}
               addToast={addToast}
+            />
+          )}
+
+          {activeTab === 'operational' && canUseTracker && (
+            <OperationalPerformance 
+              activities={data.operationalActivities}
+              activityTypes={data.activityTypes}
+              projects={data.projects}
+              currentUser={currentUser}
+              users={data.users}
+              theme={theme}
+              onAddActivity={onAddOperationalActivity}
+              onUpdateActivity={onUpdateOperationalActivity}
+              onDeleteActivity={onDeleteOperationalActivity}
+              onAddActivityType={onAddActivityType}
+              onUpdateActivityType={onUpdateActivityType}
+              onDeleteActivityType={onDeleteActivityType}
+              settings={data.settings}
+              onUpdateSettings={updateSettings}
             />
           )}
 

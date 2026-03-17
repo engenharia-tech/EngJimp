@@ -70,4 +70,20 @@ export const DEFAULT_INTERRUPTION_TYPES = [
   'outros'
 ];
 
+export const DEFAULT_ACTIVITY_TYPES = [
+  'PADRÃO',
+  'FÁBRICA',
+  'ALONGAMENTO',
+  'REUNIÃO',
+  'RETRABALHO',
+  'DESENVOLVIMENTO PROJETO',
+  'RETRABALHO SOLICITADO',
+  'FOLGA',
+  'FÉRIAS',
+  'VIAGEM',
+  'OUTROS',
+  'GERENCIAL',
+  'P&D'
+];
+
 export const STORAGE_KEY = 'design_track_pro_data';
