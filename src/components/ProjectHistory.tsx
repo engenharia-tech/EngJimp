@@ -55,7 +55,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       startDate: '',
       startTime: '',
       endDate: '',
-      endTime: ''
+      endTime: '',
+      isOvertime: false
   });
 
   // Helper to format date for input
@@ -172,7 +173,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           startDate: getLocalDate(project.startTime),
           startTime: getLocalTime(project.startTime),
           endDate: project.endTime ? getLocalDate(project.endTime) : '',
-          endTime: project.endTime ? getLocalTime(project.endTime) : ''
+          endTime: project.endTime ? getLocalTime(project.endTime) : '',
+          isOvertime: !!project.isOvertime
       });
   };
 
@@ -203,7 +205,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             }
 
             // Calculate correct duration using Working Hours
-            const totalWorkingSeconds = getWorkingSeconds(start, end);
+            const totalWorkingSeconds = getWorkingSeconds(start, end, !!project.isOvertime);
             
             // Subtract Working Time spent in Pauses
             let totalPauseWorkingSeconds = 0;
@@ -212,7 +214,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 if (dur > 0) {
                     const pStart = new Date(p.timestamp);
                     const pEnd = new Date(pStart.getTime() + dur * 1000);
-                    totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd);
+                    totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd, !!project.isOvertime);
                 }
             });
             
@@ -278,7 +280,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return { gross: 0, pauses: 0, net: 0, valid: false };
         if (end < start) return { gross: 0, pauses: 0, net: 0, valid: false, error: "Data Fim anterior ao Início" };
 
-        const totalWorkingSeconds = getWorkingSeconds(start, end);
+        const totalWorkingSeconds = getWorkingSeconds(start, end, editForm.isOvertime);
         
         let totalPauseWorkingSeconds = 0;
         (editingProject?.pauses || []).forEach((p: any) => {
@@ -286,19 +288,19 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             if (dur > 0) {
                 const pStart = new Date(p.timestamp);
                 const pEnd = new Date(pStart.getTime() + dur * 1000);
-                totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd);
+                totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd, editForm.isOvertime);
             }
         });
 
         const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
 
         return { 
-            gross: totalWorkingSeconds, // Showing "Working Hours" as Gross now, which makes more sense in this context
+            gross: totalWorkingSeconds, 
             pauses: totalPauseWorkingSeconds, 
             net: netSeconds, 
             valid: true 
         };
-    }, [editForm.startDate, editForm.startTime, editForm.endDate, editForm.endTime, editingProject]);
+    }, [editForm.startDate, editForm.startTime, editForm.endDate, editForm.endTime, editForm.isOvertime, editingProject]);
 
     const handleSaveEdit = async () => {
       if (!editingProject || !onUpdate) return;
@@ -339,7 +341,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             estimatedSeconds: estimatedSeconds > 0 ? estimatedSeconds : undefined,
             userId: editForm.userId || undefined,
             startTime: startIso,
-            endTime: endIso
+            endTime: endIso,
+            isOvertime: editForm.isOvertime
         };
         
         await onUpdate(updatedProject);
@@ -1052,6 +1055,19 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 })
                             )}
                         </select>
+                    </div>
+
+                    <div className="flex items-center space-x-2 pt-2">
+                        <input 
+                            type="checkbox"
+                            id="isOvertime"
+                            checked={editForm.isOvertime}
+                            onChange={(e) => setEditForm({...editForm, isOvertime: e.target.checked})}
+                            className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                        />
+                        <label htmlFor="isOvertime" className="text-sm font-bold text-black dark:text-white cursor-pointer">
+                            Habilitar Hora Extra (Contabiliza fins de semana e fora do horário)
+                        </label>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
