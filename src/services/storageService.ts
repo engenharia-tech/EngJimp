@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings } from '../types';
+import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES } from '../constants';
 
 // Supabase Configuration
@@ -40,6 +40,8 @@ const defaultState: AppState = {
   innovations: [],
   interruptions: [],
   interruptionTypes: [],
+  activityTypes: [],
+  operationalActivities: [],
   users: [],
   settings: { hourlyCost: 150 }
 };
@@ -74,6 +76,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       const emailPassRow = settingsData.find(s => s.key === 'email_pass');
       const emailFromRow = settingsData.find(s => s.key === 'email_from');
       const emailToRow = settingsData.find(s => s.key === 'email_to');
+      const interruptionEmailToRow = settingsData.find(s => s.key === 'interruption_email_to');
 
       if (hourlyCostRow) settings.hourlyCost = Number(hourlyCostRow.value);
       if (logoUrlRow) settings.logoUrl = logoUrlRow.value || '';
@@ -84,6 +87,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (emailPassRow) settings.emailPass = emailPassRow.value || '';
       if (emailFromRow) settings.emailFrom = emailFromRow.value || '';
       if (emailToRow) settings.emailTo = emailToRow.value || '';
+      if (interruptionEmailToRow) settings.interruptionEmailTo = interruptionEmailToRow.value || '';
 
       // Sync to localStorage for offline fallback
       localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
@@ -95,6 +99,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (settings.emailPass) localStorage.setItem('email_pass', settings.emailPass);
       if (settings.emailFrom) localStorage.setItem('email_from', settings.emailFrom);
       if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
+      if (settings.interruptionEmailTo) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo);
     }
   } catch (e) {
     console.warn("Error fetching settings from Supabase, using localStorage/defaults:", e);
@@ -137,6 +142,18 @@ export const fetchAppState = async (): Promise<AppState> => {
       .from('interruption_types')
       .select('*')
       .order('name', { ascending: true });
+
+    // Fetch Activity Types
+    const { data: activityTypesData, error: activityTypesError } = await supabase
+      .from('activity_types')
+      .select('*')
+      .order('name', { ascending: true });
+
+    // Fetch Operational Activities
+    const { data: operationalActivitiesData, error: operationalActivitiesError } = await supabase
+      .from('operational_activities')
+      .select('*')
+      .order('start_time', { ascending: false });
 
     // Fetch Settings
     const settings = await fetchSettings();
@@ -220,6 +237,25 @@ export const fetchAppState = async (): Promise<AppState> => {
       isActive: t.is_active
     }));
 
+    const activityTypes: ActivityType[] = (activityTypesData || []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      isActive: t.is_active
+    }));
+
+    const operationalActivities: OperationalActivity[] = (operationalActivitiesData || []).map((a: any) => ({
+      id: a.id,
+      userId: a.user_id,
+      activityTypeId: a.activity_type_id,
+      activityName: a.activity_name,
+      startTime: a.start_time,
+      endTime: a.end_time,
+      durationSeconds: a.duration_seconds,
+      notes: a.notes,
+      projectId: a.project_id,
+      isFlagged: a.is_flagged
+    }));
+
     // If no interruption types exist, seed them (first time)
     if (interruptionTypes.length === 0) {
         // We don't seed here to avoid multiple calls, but we return defaults if empty
@@ -245,7 +281,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       salary: Number(u.salary) || 0
     }));
 
-    return { projects, issues, innovations, interruptions, interruptionTypes, users, settings };
+    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, users, settings };
   } catch (error) {
     console.error("Failed to load data from Supabase", error);
     return { ...defaultState, users: [] };
@@ -277,6 +313,7 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.emailPass !== undefined) updates.push({ key: 'email_pass', value: settings.emailPass });
     if (settings.emailFrom !== undefined) updates.push({ key: 'email_from', value: settings.emailFrom });
     if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo });
+    if (settings.interruptionEmailTo !== undefined) updates.push({ key: 'interruption_email_to', value: settings.interruptionEmailTo });
 
     const { error } = await supabase
       .from('settings')
@@ -686,6 +723,140 @@ export const deleteInterruptionType = async (id: string): Promise<AppState> => {
         return fetchAppState();
     } catch (error) {
         console.error("Failed to delete interruption type", error);
+        throw error;
+    }
+};
+
+// --- ACTIVITY MANAGEMENT ---
+
+export const fetchActivityTypes = async (): Promise<ActivityType[]> => {
+    try {
+        const { data, error } = await supabase.from('activity_types').select('*').order('name');
+        if (error) throw error;
+        return (data || []).map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            isActive: t.is_active
+        }));
+    } catch (error) {
+        console.error("Failed to fetch activity types", error);
+        return [];
+    }
+};
+
+export const addActivityType = async (type: ActivityType): Promise<AppState> => {
+    try {
+        const { error } = await supabase.from('activity_types').insert([{
+            id: type.id,
+            name: type.name,
+            is_active: type.isActive
+        }]);
+        if (error) throw error;
+        return fetchAppState();
+    } catch (error) {
+        console.error("Failed to add activity type", error);
+        throw error;
+    }
+};
+
+export const updateActivityType = async (type: ActivityType): Promise<AppState> => {
+    try {
+        const { error } = await supabase
+            .from('activity_types')
+            .update({ name: type.name, is_active: type.isActive })
+            .eq('id', type.id);
+        if (error) throw error;
+        return fetchAppState();
+    } catch (error) {
+        console.error("Failed to update activity type", error);
+        throw error;
+    }
+};
+
+export const deleteActivityType = async (id: string): Promise<AppState> => {
+    try {
+        const { error } = await supabase.from('activity_types').delete().eq('id', id);
+        if (error) throw error;
+        return fetchAppState();
+    } catch (error) {
+        console.error("Failed to delete activity type", error);
+        throw error;
+    }
+};
+
+export const fetchOperationalActivities = async (): Promise<OperationalActivity[]> => {
+    try {
+        const { data, error } = await supabase.from('operational_activities').select('*').order('start_time', { ascending: false });
+        if (error) throw error;
+        return (data || []).map((a: any) => ({
+            id: a.id,
+            userId: a.user_id,
+            activityTypeId: a.activity_type_id,
+            activityName: a.activity_name,
+            startTime: a.start_time,
+            endTime: a.end_time,
+            durationSeconds: a.duration_seconds,
+            notes: a.notes,
+            projectId: a.project_id
+        }));
+    } catch (error) {
+        console.error("Failed to fetch operational activities", error);
+        return [];
+    }
+};
+
+export const addOperationalActivity = async (activity: OperationalActivity): Promise<AppState> => {
+    try {
+        const { error } = await supabase.from('operational_activities').insert([{
+            id: activity.id,
+            user_id: activity.userId,
+            activity_type_id: activity.activityTypeId,
+            activity_name: activity.activityName,
+            start_time: activity.startTime,
+            end_time: activity.endTime,
+            duration_seconds: activity.durationSeconds,
+            notes: activity.notes,
+            project_id: activity.projectId,
+            is_flagged: activity.isFlagged
+        }]);
+        if (error) throw error;
+        return fetchAppState();
+    } catch (error) {
+        console.error("Failed to add operational activity", error);
+        throw error;
+    }
+};
+
+export const updateOperationalActivity = async (activity: OperationalActivity): Promise<AppState> => {
+    try {
+        const { error } = await supabase
+            .from('operational_activities')
+            .update({
+                activity_type_id: activity.activityTypeId,
+                activity_name: activity.activityName,
+                start_time: activity.startTime,
+                end_time: activity.endTime,
+                duration_seconds: activity.durationSeconds,
+                notes: activity.notes,
+                project_id: activity.projectId,
+                is_flagged: activity.isFlagged
+            })
+            .eq('id', activity.id);
+        if (error) throw error;
+        return fetchAppState();
+    } catch (error) {
+        console.error("Failed to update operational activity", error);
+        throw error;
+    }
+};
+
+export const deleteOperationalActivity = async (id: string): Promise<AppState> => {
+    try {
+        const { error } = await supabase.from('operational_activities').delete().eq('id', id);
+        if (error) throw error;
+        return fetchAppState();
+    } catch (error) {
+        console.error("Failed to delete operational activity", error);
         throw error;
     }
 };

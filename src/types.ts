@@ -175,6 +175,25 @@ export interface InterruptionType {
   isActive: boolean;
 }
 
+export interface ActivityType {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface OperationalActivity {
+  id: string;
+  userId: string;
+  activityTypeId: string;
+  activityName: string;
+  startTime: string; // ISO
+  endTime?: string | null; // ISO
+  durationSeconds: number;
+  notes?: string;
+  projectId?: string;
+  isFlagged?: boolean;
+}
+
 export interface InterruptionRecord {
   id: string;
   projectId?: string;
@@ -189,6 +208,7 @@ export interface InterruptionRecord {
   description: string;
   status: InterruptionStatus;
   totalTimeSeconds: number;
+  otherLosses?: string;
 }
 
 export interface AppSettings {
@@ -201,6 +221,8 @@ export interface AppSettings {
   emailPass?: string;
   emailFrom?: string;
   emailTo?: string;
+  interruptionEmailTo?: string;
+  interruptionEmailTemplate?: string;
 }
 
 export interface SEOKeyword {
@@ -238,6 +260,8 @@ export interface AppState {
   innovations: InnovationRecord[];
   interruptions: InterruptionRecord[];
   interruptionTypes: InterruptionType[];
+  activityTypes: ActivityType[];
+  operationalActivities: OperationalActivity[];
   users: User[];
   settings: AppSettings;
   seoData?: SEOData;

@@ -6,6 +6,7 @@ import { getWorkingSeconds, isWorkingHour } from '../utils/timeUtils';
 import { fetchUsers } from '../services/storageService';
 import { triggerExcelUpdate } from '../services/webhookService';
 import { useToast } from './Toast';
+import { useLanguage } from '../i18n/LanguageContext';
 
 // SUBSTITUA ISSO PELA SUA URL DO WEBHOOK DO TEAMS
 const TEAMS_WEBHOOK_URL = "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL_HERE";
@@ -42,6 +43,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [users, setUsers] = useState<User[]>([]);
   const [selectedProjectDetails, setSelectedProjectDetails] = useState<ProjectSession | null>(null);
   const { addToast } = useToast();
+  const { t } = useLanguage();
 
   // Form Data (Start)
   const [ns, setNs] = useState('');
@@ -753,6 +755,9 @@ JIMPNEXUS
                       >
                         {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
+                      <p className="mt-1 text-[10px] text-gray-500 dark:text-slate-400 italic">
+                        {t('otherActivitiesNote')}
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-black dark:text-white mb-1">Implemento</label>

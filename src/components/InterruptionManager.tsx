@@ -6,7 +6,7 @@ import {
   PauseCircle, Plus, Search, Filter, Calendar, User as UserIcon, 
   Clock, AlertCircle, CheckCircle2, XCircle, Trash2, Edit, 
   ChevronDown, ChevronUp, Download, BarChart3, Info, PlayCircle,
-  AlertTriangle, Settings
+  AlertTriangle, Settings, Mail, Send
 } from 'lucide-react';
 import { 
   AppState, User, InterruptionRecord, InterruptionStatus, 
@@ -40,7 +40,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   const [area, setArea] = useState<InterruptionArea>(InterruptionArea.COMERCIAL);
   const [responsible, setResponsible] = useState('');
   const [description, setDescription] = useState('');
+  const [otherLosses, setOtherLosses] = useState('');
   const [status, setStatus] = useState<InterruptionStatus>(InterruptionStatus.OPEN);
+  const [emailBody, setEmailBody] = useState('');
+  const [isEmailPreviewOpen, setIsEmailPreviewOpen] = useState(false);
   const [formStartDate, setFormStartDate] = useState('');
   const [formStartTime, setFormStartTime] = useState('');
   const [formEndDate, setFormEndDate] = useState('');
@@ -84,6 +87,48 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Update email body when form fields change
+  useEffect(() => {
+    if (!isFormOpen || editingInterruption) return; // Only for new interruptions or if we want to reset
+    
+    const template = data.settings.interruptionEmailTemplate || `“E-mail automático, não responda este e-mail”
+
+Olá,
+
+ Informamos que a [NS_PARADA] está interrompida no departamento de engenharia, 
+Tipo de Problema: [TIPO_PROBLEMA]
+Area Responsável: [AREA_RESPONSAVEL]
+Responsável da resposta: [RESPONSAVEL_RESPOSTA]
+Data e hora da parada: [DATA_HORA]
+Motivo: [MOTIVO]
+
+Outras perdas: [OUTRAS_PERDAS]
+
+aguardamos as informações para retornarmos o projeto, enquanto isso estará com um put andou o tempo de projeto parado`;
+
+    const footer = `\n\n "Dúvidas falar com matheus.p@joinvilleimplementos.com.br e engenharia@joinvilleimplementos.com.br".`;
+    
+    const dateTime = (formStartDate && formStartTime) 
+      ? `${new Date(`${formStartDate}T${formStartTime}`).toLocaleString('pt-BR')}`
+      : new Date().toLocaleString('pt-BR');
+
+    let body = template
+      .replace('[NS_PARADA]', ns || '___')
+      .replace('[CLIENTE]', client || '___')
+      .replace('[TIPO_PROBLEMA]', problemType || '___')
+      .replace('[AREA_RESPONSAVEL]', area || '___')
+      .replace('[RESPONSAVEL_RESPOSTA]', responsible || '___')
+      .replace('[DATA_HORA]', dateTime)
+      .replace('[MOTIVO]', description || '___')
+      .replace('[OUTRAS_PERDAS]', otherLosses || '___');
+    
+    if (!body.includes('Dúvidas falar com matheus.p')) {
+      body += footer;
+    }
+    
+    setEmailBody(body);
+  }, [ns, client, problemType, area, responsible, description, otherLosses, formStartDate, formStartTime, isFormOpen, data.settings.interruptionEmailTemplate, editingInterruption]);
 
   const costPerSecond = useMemo(() => {
     const designers = data.users.filter(u => u.role === 'PROJETISTA');
@@ -151,6 +196,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           responsibleArea: area,
           responsiblePerson: responsible,
           description,
+          otherLosses,
           status,
           startTime: startIso,
           endTime: endIso,
@@ -174,6 +220,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           responsibleArea: area,
           responsiblePerson: responsible,
           description,
+          otherLosses,
           status: status,
           totalTimeSeconds: endIso 
             ? Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000)
@@ -182,6 +229,30 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         const newState = await addInterruption(newItem);
         onUpdate(newState);
         addToast(status === InterruptionStatus.OPEN ? 'Interrupção registrada e cronômetro iniciado' : 'Interrupção registrada com sucesso', 'success');
+
+        // Trigger email notification if configured
+        if (data.settings.interruptionEmailTo && data.settings.emailUser && data.settings.emailPass) {
+          try {
+            fetch('/api/send-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                subject: `[ALERTA] Nova Interrupção - NS: ${ns}`,
+                body: emailBody.replace(/\n/g, '<br>'),
+                config: {
+                  emailHost: data.settings.emailHost,
+                  emailPort: data.settings.emailPort,
+                  emailUser: data.settings.emailUser,
+                  emailPass: data.settings.emailPass,
+                  emailFrom: data.settings.emailFrom,
+                  emailTo: data.settings.interruptionEmailTo
+                }
+              })
+            });
+          } catch (emailErr) {
+            console.error('Erro ao disparar e-mail de interrupção:', emailErr);
+          }
+        }
       }
       resetForm();
     } catch (err) {
@@ -196,6 +267,9 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     setArea(InterruptionArea.COMERCIAL);
     setResponsible('');
     setDescription('');
+    setOtherLosses('');
+    setEmailBody('');
+    setIsEmailPreviewOpen(false);
     setStatus(InterruptionStatus.OPEN);
     setFormStartDate('');
     setFormStartTime('');
@@ -213,6 +287,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     setArea(i.responsibleArea);
     setResponsible(i.responsiblePerson);
     setDescription(i.description);
+    setOtherLosses(i.otherLosses || '');
     setStatus(i.status);
     setFormStartDate(getLocalDate(i.startTime));
     setFormStartTime(getLocalTime(i.startTime));
@@ -613,12 +688,47 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                 <textarea 
                   value={description}
                   onChange={e => setDescription(e.target.value)}
-                  rows={4}
+                  rows={3}
                   className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white resize-none"
                   placeholder="Descreva detalhadamente o que está impedindo o projeto..."
                   required
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-bold text-black dark:text-white mb-1">Outras Perdas</label>
+                <textarea 
+                  value={otherLosses}
+                  onChange={e => setOtherLosses(e.target.value)}
+                  rows={2}
+                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white resize-none"
+                  placeholder="Descreva outras perdas ocasionadas pela interrupção..."
+                />
+              </div>
+
+              {!editingInterruption && (
+                <div className="pt-4 border-t dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsEmailPreviewOpen(!isEmailPreviewOpen)}
+                    className="flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    <Mail size={18} />
+                    {isEmailPreviewOpen ? 'Ocultar E-mail de Notificação' : 'Visualizar/Editar E-mail de Notificação'}
+                  </button>
+                  
+                  {isEmailPreviewOpen && (
+                    <div className="mt-3 space-y-2 animate-in slide-in-from-top duration-200">
+                      <p className="text-[10px] text-gray-400 uppercase font-bold">Este e-mail será enviado para os gestores:</p>
+                      <textarea
+                        value={emailBody}
+                        onChange={(e) => setEmailBody(e.target.value)}
+                        className="w-full p-3 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none h-48 font-mono text-xs resize-none"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t dark:border-slate-800">
                 <div className="space-y-2">
@@ -628,13 +738,15 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                       type="date"
                       value={formStartDate}
                       onChange={e => setFormStartDate(e.target.value)}
-                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
+                      disabled={!canManage}
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm disabled:opacity-50"
                     />
                     <input 
                       type="time"
                       value={formStartTime}
                       onChange={e => setFormStartTime(e.target.value)}
-                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
+                      disabled={!canManage}
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm disabled:opacity-50"
                     />
                   </div>
                 </div>
@@ -645,13 +757,15 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                       type="date"
                       value={formEndDate}
                       onChange={e => setFormEndDate(e.target.value)}
-                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
+                      disabled={!canManage}
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm disabled:opacity-50"
                     />
                     <input 
                       type="time"
                       value={formEndTime}
                       onChange={e => setFormEndTime(e.target.value)}
-                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
+                      disabled={!canManage}
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm disabled:opacity-50"
                     />
                   </div>
                 </div>

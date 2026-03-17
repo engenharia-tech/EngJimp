@@ -89,3 +89,41 @@ create policy "Enable read access for all innovations" on public.innovations for
 create policy "Enable insert access for all innovations" on public.innovations for insert with check (true);
 create policy "Enable update access for all innovations" on public.innovations for update using (true);
 create policy "Enable delete access for all innovations" on public.innovations for delete using (true);
+
+-- Activity Types Table
+create table if not exists public.activity_types (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  is_active boolean default true,
+  created_at timestamptz default now()
+);
+
+-- Operational Activities Table
+create table if not exists public.operational_activities (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references public.users(id),
+  activity_type_id uuid references public.activity_types(id),
+  activity_name text not null,
+  start_time timestamptz not null,
+  end_time timestamptz,
+  duration_seconds integer default 0,
+  notes text,
+  project_id uuid references public.projects(id),
+  is_flagged boolean default false,
+  created_at timestamptz default now()
+);
+
+-- Enable RLS
+alter table public.activity_types enable row level security;
+alter table public.operational_activities enable row level security;
+
+-- Policies
+create policy "Enable read access for all activity_types" on public.activity_types for select using (true);
+create policy "Enable insert access for all activity_types" on public.activity_types for insert with check (true);
+create policy "Enable update access for all activity_types" on public.activity_types for update using (true);
+create policy "Enable delete access for all activity_types" on public.activity_types for delete using (true);
+
+create policy "Enable read access for all operational_activities" on public.operational_activities for select using (true);
+create policy "Enable insert access for all operational_activities" on public.operational_activities for insert with check (true);
+create policy "Enable update access for all operational_activities" on public.operational_activities for update using (true);
+create policy "Enable delete access for all operational_activities" on public.operational_activities for delete using (true);
