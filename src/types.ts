@@ -203,6 +203,35 @@ export interface AppSettings {
   emailTo?: string;
 }
 
+export interface SEOKeyword {
+  id: string;
+  keyword: string;
+  rank: number;
+  volume: number;
+  difficulty: number;
+  lastUpdated: string;
+}
+
+export interface SEOMetric {
+  date: string;
+  domainAuthority: number;
+  organicTraffic: number;
+  backlinks: number;
+}
+
+export interface SEOTask {
+  id: string;
+  title: string;
+  status: 'TODO' | 'IN_PROGRESS' | 'DONE';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+export interface SEOData {
+  keywords: SEOKeyword[];
+  metrics: SEOMetric[];
+  tasks: SEOTask[];
+}
+
 export interface AppState {
   projects: ProjectSession[];
   issues: IssueRecord[];
@@ -211,4 +240,5 @@ export interface AppState {
   interruptionTypes: InterruptionType[];
   users: User[];
   settings: AppSettings;
+  seoData?: SEOData;
 }
