@@ -56,7 +56,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   // Type Manager State
   const [newTypeName, setNewTypeName] = useState('');
 
-  const canManage = currentUser.role === 'GESTOR';
+  const canManage = currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR';
   const isCEO = currentUser.role === 'CEO';
 
   // Helper to format date for input
