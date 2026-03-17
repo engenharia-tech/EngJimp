@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { Dashboard } from './components/Dashboard';
 import { ProjectHistory } from './components/ProjectHistory';
@@ -13,6 +13,7 @@ import { InnovationManager } from './components/InnovationManager';
 import { InterruptionManager } from './components/InterruptionManager';
 import { InterruptionDashboard } from './components/InterruptionDashboard';
 import { Reports } from './components/Reports';
+import { SEOManager } from './components/SEOManager';
 import { UserProfileModal } from './components/UserProfileModal';
 import { Settings } from './components/Settings';
 import { Login } from './components/Login';
@@ -37,6 +38,8 @@ const COMPANY_LOGO_URL = logoImg;
 
 import { Logo } from './components/Logo';
 import { ToastProvider, useToast } from './components/Toast';
+import { useLanguage } from './i18n/LanguageContext';
+import { Language } from './i18n/translations';
 
 const App: React.FC = () => {
   return (
@@ -48,11 +51,12 @@ const App: React.FC = () => {
 
 const AppContent: React.FC = () => {
   const { addToast } = useToast();
+  const { language, setLanguage, t } = useLanguage();
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo'>('dashboard');
   const [data, setData] = useState<AppState>({ 
     projects: [], 
     issues: [], 
@@ -60,7 +64,8 @@ const AppContent: React.FC = () => {
     interruptions: [],
     interruptionTypes: [],
     users: [],
-    settings: { hourlyCost: 150 }
+    settings: { hourlyCost: 150 },
+    seoData: { keywords: [], metrics: [], tasks: [] }
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -115,7 +120,7 @@ const AppContent: React.FC = () => {
         await Promise.race([initializationPromise, timeoutPromise]);
       } catch (error) {
         console.error("Failed to load app state", error);
-        addToast("Erro ao carregar dados do servidor.", "error");
+        addToast(t('errorLoadingData'), "error");
       } finally {
         setIsLoading(false);
       }
@@ -141,9 +146,9 @@ const AppContent: React.FC = () => {
       });
 
       if (redCount > 0) {
-        addToast(`ALERTA CRÍTICO: Existem ${redCount} interrupções abertas há mais de 48h!`, 'error');
+        addToast(t('criticalAlert', { count: redCount }), 'error');
       } else if (yellowCount > 0) {
-        addToast(`Aviso: Existem ${yellowCount} interrupções abertas há mais de 24h.`, 'info');
+        addToast(t('warningAlert', { count: yellowCount }), 'info');
       }
     };
 
@@ -212,7 +217,7 @@ const AppContent: React.FC = () => {
   const handleProjectCreate = async (project: ProjectSession) => {
     const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
-      addToast('Você não tem permissão para criar projetos.', 'error');
+      addToast(t('noPermissionCreate'), 'error');
       return;
     }
     const projectWithUser = { ...project, userId: currentUser?.id };
@@ -223,15 +228,15 @@ const AppContent: React.FC = () => {
     try {
       const updatedData = await addProject(projectWithUser);
       setData(updatedData);
-      addToast('Projeto criado com sucesso!', 'success');
+      addToast(t('projectCreatedSuccess'), 'success');
     } catch (e: any) {
       console.error("Project creation failed:", e);
       if (e.message?.includes('violates not-null constraint') || e.message?.includes('project_code')) {
-          addToast('ERRO: O campo "Código do Projeto" é obrigatório no banco de dados. Vá em "Gestão de Equipe" e rode a correção.', 'error');
+          addToast(t('errorProjectCodeRequired'), 'error');
       } else if (e.message?.includes('violates check constraint') || e.message?.includes('role')) {
-          addToast('ERRO: Seu cargo não tem permissão. Vá em "Gestão de Equipe" e rode a correção.', 'error');
+          addToast(t('errorRolePermission'), 'error');
       } else {
-          addToast(`Erro ao criar projeto: ${e.message || 'Verifique o console'}`, 'error');
+          addToast(t('errorCreatingProject', { error: e.message || 'Verifique o console' }), 'error');
       }
     }
   };
@@ -239,7 +244,7 @@ const AppContent: React.FC = () => {
   const handleProjectUpdate = async (project: ProjectSession) => {
     const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
-      addToast('Você não tem permissão para editar projetos.', 'error');
+      addToast(t('noPermissionEdit'), 'error');
       return;
     }
     setData(prev => ({
@@ -250,20 +255,20 @@ const AppContent: React.FC = () => {
         const updatedData = await updateProject(project);
         setData(updatedData);
         if (project.status === 'COMPLETED') {
-             addToast('Projeto concluído com sucesso!', 'success');
+             addToast(t('projectCompletedSuccess'), 'success');
         } else {
-             addToast('Projeto atualizado com sucesso!', 'success');
+             addToast(t('projectUpdatedSuccess'), 'success');
         }
     } catch (e) {
         console.error("Erro ao atualizar projeto:", e);
-        addToast('Erro ao atualizar projeto no banco de dados.', 'error');
+        addToast(t('errorUpdatingProject'), 'error');
     }
   };
 
   const handleProjectDelete = async (id: string) => {
     console.log("handleProjectDelete called for id:", id);
     if (currentUser?.role !== 'GESTOR') {
-      addToast('Apenas o GESTOR pode excluir projetos.', 'error');
+      addToast(t('onlyManagerDelete'), 'error');
       return;
     }
     setDeleteConfirmationId(id);
@@ -288,10 +293,10 @@ const AppContent: React.FC = () => {
       
       // Then update with real data
       setData(updatedData);
-      addToast('Projeto excluído com sucesso!', 'success');
+      addToast(t('projectDeletedSuccess'), 'success');
     } catch (e: any) {
       console.error("Project deletion failed:", e);
-      addToast(`Erro ao apagar projeto: ${e.message || 'Verifique o console'}`, 'error');
+      addToast(t('errorDeletingProject', { error: e.message || 'Verifique o console' }), 'error');
     } finally {
       setIsLoading(false);
     }
@@ -300,7 +305,7 @@ const AppContent: React.FC = () => {
   const handleInnovationAdd = async (innovation: InnovationRecord) => {
     const allowedRoles = ['GESTOR', 'COORDENADOR'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
-      addToast('Você não tem permissão para adicionar inovações.', 'error');
+      addToast(t('noPermissionAddInnovation'), 'error');
       return;
     }
     setIsLoading(true);
@@ -313,13 +318,13 @@ const AppContent: React.FC = () => {
     try {
       const updatedData = await addInnovation(innovation);
       setData(updatedData);
-      addToast('Inovação registrada com sucesso!', 'success');
+      addToast(t('innovationRegisteredSuccess'), 'success');
     } catch (e: any) {
       console.error(e);
       if (e.message?.includes('violates check constraint') || e.message?.includes('innovations_type_check')) {
-          addToast('ERRO: O banco de dados não aceita este tipo de inovação. Vá em "Gestão de Equipe" e rode a correção SQL.', 'error');
+          addToast(t('errorInnovationTypeNotAccepted'), 'error');
       } else {
-          addToast('Erro ao salvar inovação.', 'error');
+          addToast(t('errorSavingInnovation'), 'error');
       }
       const revertedData = await fetchAppState();
       setData(revertedData);
@@ -331,16 +336,16 @@ const AppContent: React.FC = () => {
   const handleInnovationStatusChange = async (id: string, status: string) => {
     const allowedRoles = ['GESTOR', 'COORDENADOR'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
-      addToast('Você não tem permissão para alterar status de inovações.', 'error');
+      addToast(t('noPermissionChangeInnovationStatus'), 'error');
       return;
     }
     setIsLoading(true);
     try {
         const updatedData = await updateInnovationStatus(id, status);
         setData(updatedData);
-        addToast('Status da inovação atualizado.', 'success');
+        addToast(t('innovationStatusUpdated'), 'success');
     } catch(e) {
-        addToast('Erro ao atualizar status.', 'error');
+        addToast(t('errorUpdatingStatus'), 'error');
     } finally {
         setIsLoading(false);
     }
@@ -349,20 +354,20 @@ const AppContent: React.FC = () => {
   const handleInnovationUpdate = async (innovation: InnovationRecord) => {
     const allowedRoles = ['GESTOR', 'COORDENADOR'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
-      addToast('Você não tem permissão para editar inovações.', 'error');
+      addToast(t('noPermissionEditInnovation'), 'error');
       return;
     }
     setIsLoading(true);
     try {
         const updatedData = await updateInnovation(innovation);
         setData(updatedData);
-        addToast('Inovação atualizada com sucesso!', 'success');
+        addToast(t('innovationUpdatedSuccess'), 'success');
     } catch (e: any) {
         console.error(e);
         if (e.message?.includes('violates check constraint') || e.message?.includes('innovations_type_check')) {
-            addToast('ERRO: O banco de dados não aceita este tipo de inovação. Vá em "Gestão de Equipe" e rode a correção SQL.', 'error');
+            addToast(t('errorInnovationTypeNotAccepted'), 'error');
         } else {
-            addToast('Erro ao atualizar inovação.', 'error');
+            addToast(t('errorSavingInnovation'), 'error');
         }
     } finally {
         setIsLoading(false);
@@ -372,7 +377,7 @@ const AppContent: React.FC = () => {
   const handleInnovationDelete = async (id: string) => {
     const allowedRoles = ['GESTOR', 'COORDENADOR'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
-      addToast('Você não tem permissão para excluir inovações.', 'error');
+      addToast(t('noPermissionDeleteInnovation'), 'error');
       return;
     }
     
@@ -387,10 +392,10 @@ const AppContent: React.FC = () => {
 
       const updatedData = await deleteInnovation(id);
       setData(updatedData);
-      addToast('Inovação excluída com sucesso.', 'success');
+      addToast(t('innovationDeletedSuccess'), 'success');
     } catch (e: any) {
       console.error("Failed to delete innovation:", e);
-      addToast(`Erro ao excluir inovação: ${e.message}`, 'error');
+      addToast(t('errorDeletingInnovation', { error: e.message }), 'error');
       // Revert on error
       const revertedData = await fetchAppState();
       setData(revertedData);
@@ -408,7 +413,7 @@ const AppContent: React.FC = () => {
       const updatedData = await addInterruption(interruption);
       setData(updatedData);
     } catch (e) {
-      addToast('Erro ao registrar interrupção.', 'error');
+      addToast(t('errorRegisteringInterruption'), 'error');
     }
   };
 
@@ -417,7 +422,7 @@ const AppContent: React.FC = () => {
       const updatedData = await updateInterruption(interruption);
       setData(updatedData);
     } catch (e) {
-      addToast('Erro ao atualizar interrupção.', 'error');
+      addToast(t('errorUpdatingInterruption'), 'error');
     }
   };
 
@@ -430,16 +435,16 @@ const AppContent: React.FC = () => {
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
-    addToast(`Modo ${newTheme === 'dark' ? 'Escuro' : 'Claro'} ativado`, 'info');
+    addToast(t(newTheme === 'dark' ? 'darkModeActivated' : 'lightModeActivated'), 'info');
   };
 
   const handleUpdateSettings = async (newSettings: AppSettings) => {
     try {
       const updatedData = await updateSettings(newSettings);
       setData(updatedData);
-      addToast('Configurações salvas com sucesso!', 'success');
+      addToast(t('settingsSavedSuccess'), 'success');
     } catch (error) {
-      addToast('Erro ao salvar configurações.', 'error');
+      addToast(t('errorSavingSettings'), 'error');
     }
   };
 
@@ -450,7 +455,33 @@ const AppContent: React.FC = () => {
   const COMPANY_LOGO_URL = data.settings.logoUrl || logoImg;
   const COMPANY_NAME = data.settings.companyName || 'JIMP NEXUS';
 
-  const NavItem = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
+  const LanguageSwitcher = ({ isMobile = false }: { isMobile?: boolean }) => (
+    <div className={`flex items-center gap-1 ${isMobile ? 'px-4 py-2' : ''}`}>
+      <button 
+        onClick={() => setLanguage('pt-BR')}
+        className={`p-1.5 rounded-lg transition-all ${language === 'pt-BR' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 dark:bg-slate-800 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200'}`}
+        title="Português (Brasil)"
+      >
+        <span className="text-lg">🇧🇷</span>
+      </button>
+      <button 
+        onClick={() => setLanguage('es-ES')}
+        className={`p-1.5 rounded-lg transition-all ${language === 'es-ES' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 dark:bg-slate-800 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200'}`}
+        title="Español (España)"
+      >
+        <span className="text-lg">🇪🇸</span>
+      </button>
+      <button 
+        onClick={() => setLanguage('en-US')}
+        className={`p-1.5 rounded-lg transition-all ${language === 'en-US' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 dark:bg-slate-800 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200'}`}
+        title="English (US)"
+      >
+        <span className="text-lg">🇺🇸</span>
+      </button>
+    </div>
+  );
+
+  const NavItem = ({ id, labelKey, icon: Icon }: { id: typeof activeTab, labelKey: any, icon: any }) => (
     <button
       onClick={() => {
         setActiveTab(id);
@@ -467,7 +498,7 @@ const AppContent: React.FC = () => {
       }`}
     >
       <Icon className={`w-5 h-5 mr-3 ${activeTab === id ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
-      {label}
+      {t(labelKey)}
     </button>
   );
 
@@ -488,21 +519,25 @@ const AppContent: React.FC = () => {
             <button 
               onClick={toggleTheme}
               className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700 hover:bg-slate-900 text-slate-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'} transition-colors`}
-              title={theme === 'light' ? 'Modo Escuro' : 'Modo Claro'}
+              title={theme === 'light' ? t('darkMode') : t('lightMode')}
             >
               {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
           </div>
+
+          <div className="mb-6">
+            <LanguageSwitcher />
+          </div>
           
           <div className={`flex items-center ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'} text-xs mb-1 uppercase tracking-wider font-semibold`}>
-            Painel de Controle
+            {t('controlPanel')}
           </div>
           <div className="flex items-center justify-between group">
             <p className={`text-sm font-medium ${theme === 'dark' ? 'text-slate-200' : 'text-gray-700'} truncate`}>{currentUser.name}</p>
             <button 
                 onClick={() => setIsProfileOpen(true)}
                 className={`${theme === 'dark' ? 'text-slate-500 hover:text-white hover:bg-slate-900' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'} transition-colors p-1 rounded`}
-                title="Meu Perfil"
+                title={t('myProfile')}
             >
                 <UserCog className="w-4 h-4" />
             </button>
@@ -514,34 +549,38 @@ const AppContent: React.FC = () => {
           </div>
         </div>
         <nav className="flex-1 mt-6 overflow-y-auto">
-          <NavItem id="dashboard" label="Painel & Gráficos" icon={LayoutDashboard} />
+          <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} />
 
           {canUseTracker && (
-             <NavItem id="tracker" label="Projetar" icon={PenTool} />
+             <NavItem id="tracker" labelKey="tracker" icon={PenTool} />
           )}
           
           {canUseTracker && (
-            <NavItem id="history" label="Histórico" icon={History} />
+            <NavItem id="history" labelKey="history" icon={History} />
           )}
 
           {canUseTracker && (
-            <NavItem id="interruptions" label="Interrupções" icon={PauseCircle} />
+            <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} />
           )}
           
           {canSeeInnovations && (
-             <NavItem id="innovations" label="Inovações & Custos" icon={Lightbulb} />
+             <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} />
           )}
 
           {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
-            <NavItem id="reports" label="Relatórios" icon={FileText} />
+            <NavItem id="reports" labelKey="reports" icon={FileText} />
           )}
 
           {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
-            <NavItem id="team" label="Gestão de Equipe" icon={Users} />
+            <NavItem id="team" labelKey="team" icon={Users} />
           )}
 
           {['GESTOR', 'CEO'].includes(currentUser.role) && (
-            <NavItem id="settings" label="Configurações" icon={UserCog} />
+            <NavItem id="settings" labelKey="settings" icon={UserCog} />
+          )}
+          
+          {['GESTOR', 'CEO'].includes(currentUser.role) && (
+            <NavItem id="seo" labelKey="seo" icon={Search} />
           )}
         </nav>
         <div className={`p-6 border-t ${theme === 'dark' ? 'border-slate-800 bg-black' : 'border-gray-100 bg-gray-50'}`}>
@@ -550,7 +589,7 @@ const AppContent: React.FC = () => {
             className="flex items-center text-sm text-red-400 hover:text-red-300 hover:bg-red-50 dark:hover:bg-slate-800/50 p-2 rounded-lg font-medium transition-colors w-full"
           >
             <LogOut className="w-4 h-4 mr-2" />
-            Sair da Conta
+            {t('logout')}
           </button>
         </div>
       </aside>
@@ -565,6 +604,7 @@ const AppContent: React.FC = () => {
             />
         </div>
         <div className="flex items-center gap-3">
+            <LanguageSwitcher />
             <button 
                 onClick={toggleTheme}
                 className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700' : 'bg-slate-800'} hover:bg-slate-700 transition-colors text-slate-300`}
@@ -587,27 +627,30 @@ const AppContent: React.FC = () => {
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-black z-10 pt-20 md:hidden animate-in slide-in-from-right duration-200">
           <nav className="flex flex-col h-full overflow-y-auto">
-            <NavItem id="dashboard" label="Painel & Gráficos" icon={LayoutDashboard} />
+            <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} />
             {canUseTracker && (
-                <NavItem id="tracker" label="Projetar" icon={PenTool} />
+                <NavItem id="tracker" labelKey="tracker" icon={PenTool} />
             )}
             {canUseTracker && (
-                <NavItem id="history" label="Histórico" icon={History} />
+                <NavItem id="history" labelKey="history" icon={History} />
             )}
             {canUseTracker && (
-                <NavItem id="interruptions" label="Interrupções" icon={PauseCircle} />
+                <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} />
             )}
             {canSeeInnovations && (
-                <NavItem id="innovations" label="Inovações & Custos" icon={Lightbulb} />
+                <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} />
             )}
             {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
-                <NavItem id="reports" label="Relatórios" icon={FileText} />
+                <NavItem id="reports" labelKey="reports" icon={FileText} />
             )}
             {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
-               <NavItem id="team" label="Gestão de Equipe" icon={Users} />
+               <NavItem id="team" labelKey="team" icon={Users} />
             )}
             {['GESTOR', 'CEO'].includes(currentUser.role) && (
-                <NavItem id="settings" label="Configurações" icon={UserCog} />
+                <NavItem id="settings" labelKey="settings" icon={UserCog} />
+            )}
+            {['GESTOR', 'CEO'].includes(currentUser.role) && (
+                <NavItem id="seo" labelKey="seo" icon={Search} />
             )}
             <div className="mt-auto p-6 border-t border-slate-800">
               <button 
@@ -615,7 +658,7 @@ const AppContent: React.FC = () => {
                 className="flex items-center w-full px-4 py-3 text-left text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
               >
                 <LogOut className="w-5 h-5 mr-3" />
-                Sair
+                {t('logout')}
               </button>
             </div>
           </nav>
@@ -634,8 +677,8 @@ const AppContent: React.FC = () => {
           <div className={activeTab === 'tracker' && canUseTracker ? 'block space-y-6' : 'hidden'}>
             <div className="mb-6 flex justify-between items-end">
               <div>
-                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Área de Projeto</h2>
-                <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>Bem-vindo, <span className="font-semibold text-blue-600">{currentUser.name}</span></p>
+                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('projectArea')}</h2>
+                <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('welcome')}, <span className="font-semibold text-blue-600">{currentUser.name}</span></p>
               </div>
             </div>
             <EngJimpTracker 
@@ -656,11 +699,11 @@ const AppContent: React.FC = () => {
           {activeTab === 'history' && canUseTracker && (
             <div className="space-y-6">
               <div className="mb-6">
-                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Histórico de Liberações</h2>
+                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('projectHistory')}</h2>
                 <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
                   {canSeeAllHistory
-                    ? "Visão geral de todas as liberações da equipe." 
-                    : "Consulte suas liberações passadas."}
+                    ? t('globalHistoryDesc')
+                    : t('yourHistoryDesc')}
                 </p>
               </div>
               <ProjectHistory 
@@ -683,9 +726,9 @@ const AppContent: React.FC = () => {
                     />
                  </div>
                  <div>
-                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Painel de Desempenho</h2>
+                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('performancePanel')}</h2>
                     <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
-                      {canSeeAllHistory ? "Indicadores globais da equipe." : "Seus indicadores de produtividade."}
+                      {canSeeAllHistory ? t('globalIndicators') : t('yourProductivityIndicators')}
                     </p>
                  </div>
               </div>
@@ -693,8 +736,8 @@ const AppContent: React.FC = () => {
               {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
                 <div className="mt-12">
                   <div className="mb-6">
-                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Relatórios de Interrupção</h2>
-                    <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>Análise de gargalos e tempo perdido.</p>
+                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('interruptionReports')}</h2>
+                    <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('bottleneckAnalysis')}</p>
                   </div>
                   <InterruptionDashboard data={displayData} theme={theme} />
                 </div>
@@ -737,11 +780,19 @@ const AppContent: React.FC = () => {
             />
           )}
 
+          {activeTab === 'seo' && ['GESTOR', 'CEO'].includes(currentUser.role) && (
+            <SEOManager 
+              data={data.seoData}
+              currentUser={currentUser}
+              theme={theme}
+            />
+          )}
+
           {activeTab === 'team' && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
              <div className="space-y-6">
                 <div className="mb-6">
-                  <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Gestão de Equipe</h2>
-                  <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>Adicione novos membros e gerencie permissões de acesso.</p>
+                  <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('team')}</h2>
+                  <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('teamManagementDesc')}</p>
                 </div>
                 <UserManagement currentUser={currentUser} />
              </div>
@@ -751,22 +802,22 @@ const AppContent: React.FC = () => {
           {deleteConfirmationId && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
                 <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Confirmar Exclusão</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t('confirmDeletion')}</h3>
                     <p className="text-gray-600 dark:text-slate-400 mb-6">
-                        Tem certeza que deseja excluir este projeto? Esta ação não pode ser desfeita e removerá todos os registros associados.
+                        {t('confirmDeletionDesc')}
                     </p>
                     <div className="flex justify-end gap-3">
                         <button 
                             onClick={() => setDeleteConfirmationId(null)}
                             className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors"
                         >
-                            Cancelar
+                            {t('cancel')}
                         </button>
                         <button 
                             onClick={confirmDelete}
                             className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors shadow-sm"
                         >
-                            Sim, Excluir
+                            {t('yesDelete')}
                         </button>
                     </div>
                 </div>
@@ -785,7 +836,7 @@ const AppContent: React.FC = () => {
           {/* Footer */}
           <footer className={`mt-12 pt-8 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-200'} text-center`}>
             <p className={`text-sm font-medium ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`}>
-              Desenvolvido por <span className="font-bold tracking-tight"><span className="text-orange-500">JIMP</span><span className="text-blue-600">NEXUS</span></span>
+              {t('developedBy')} <span className="font-bold tracking-tight"><span className="text-orange-500">JIMP</span><span className="text-blue-600">NEXUS</span></span>
             </p>
           </footer>
         </div>

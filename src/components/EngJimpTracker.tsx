@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X } from 'lucide-react';
+import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X, Loader2 } from 'lucide-react';
 import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { getWorkingSeconds, isWorkingHour } from '../utils/timeUtils';
@@ -82,6 +82,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [pauseReason, setPauseReason] = useState('');
   const [pauseSector, setPauseSector] = useState('');
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [sentEmailProjectIds, setSentEmailProjectIds] = useState<string[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingProjects = existingProjects.filter(p => p.status === 'IN_PROGRESS');
@@ -324,7 +326,15 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   };
 
   const confirmFinish = async () => {
-    if (!activeProject) return;
+    if (!activeProject || isFinalizing) return;
+
+    // Start finalizing process
+    setIsFinalizing(true);
+    
+    // Set a 45-second timeout to re-enable the button if needed
+    setTimeout(() => {
+      setIsFinalizing(false);
+    }, 45000);
 
     // Final Calculation using Working Hours
     const start = new Date(activeProject.startTime);
@@ -396,9 +406,15 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         
         // 2. Send Notifications (in background, don't block UI)
         sendTeamsNotification(finishedProject);
-        sendEmailNotification(finishedProject).catch(err => {
-            console.error("Delayed email error:", err);
-        });
+        
+        // Only send email if it hasn't been sent for this project in this session
+        if (!sentEmailProjectIds.includes(finishedProject.id)) {
+            sendEmailNotification(finishedProject).then(() => {
+                setSentEmailProjectIds(prev => [...prev, finishedProject.id]);
+            }).catch(err => {
+                console.error("Delayed email error:", err);
+            });
+        }
         
         // 3. Trigger Excel Integration
         triggerExcelUpdate(finishedProject, currentUser).catch(err => {
@@ -1298,9 +1314,21 @@ JIMPNEXUS
               </button>
               <button 
                 onClick={confirmFinish}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg font-bold shadow-md transition-all"
+                disabled={isFinalizing}
+                className={`flex-1 px-4 py-3 rounded-lg font-bold text-white transition-all shadow-md flex items-center justify-center ${
+                  isFinalizing 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-red-600 hover:bg-red-700'
+                }`}
               >
-                Concluir e Salvar
+                {isFinalizing ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  'Concluir e Salvar'
+                )}
               </button>
             </div>
           </div>

@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  PieChart, Pie, Cell 
+  PieChart, Pie, Cell, ComposedChart, Line
 } from 'recharts';
 import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType } from '../types';
 import { analyzePerformance } from '../services/geminiService';
 import { fetchUsers } from '../services/storageService';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface DashboardProps {
   data: AppState;
@@ -17,6 +18,7 @@ interface DashboardProps {
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#ec4899'];
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }) => {
+  const { t } = useLanguage();
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
@@ -142,11 +144,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     }, 0);
   }, [filteredInnovations]);
 
+  const totalHours = useMemo(() => {
+    const seconds = filteredProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    return Math.round(seconds / 3600);
+  }, [filteredProjects]);
+
+  const goalProgress = useMemo(() => {
+    if (monthlyGoal <= 0) return 0;
+    return Math.min(Math.round((totalHours / monthlyGoal) * 100), 100);
+  }, [totalHours, monthlyGoal]);
+
   const formatDuration = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     return `${h}h ${m}m`;
   };
+
+  const rankingStats = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return Object.keys(usersMap).map(userId => {
+        const userName = usersMap[userId];
+        let projectsToConsider = data.projects;
+
+        if (rankingPeriod === 'CUSTOM') {
+            projectsToConsider = filteredProjects;
+        }
+
+        const userProjects = projectsToConsider.filter(p => {
+            if (p.userId !== userId) return false;
+            if (p.status !== 'COMPLETED') return false;
+
+            const pDate = new Date(p.endTime || p.startTime);
+            
+            if (rankingPeriod === 'MONTH') {
+                return pDate.getMonth() === currentMonth && pDate.getFullYear() === currentYear;
+            } else if (rankingPeriod === 'YEAR') {
+                return pDate.getFullYear() === currentYear;
+            }
+            return true; 
+        });
+
+        const releases = userProjects.filter(p => p.type === ProjectType.RELEASE).length;
+        const variations = userProjects.filter(p => p.type === ProjectType.VARIATION).length;
+        const developments = userProjects.filter(p => p.type === ProjectType.DEVELOPMENT).length;
+
+        return { id: userId, name: userName, releases, variations, developments, total: releases + variations + developments };
+    }).filter(stat => stat.total > 0).sort((a, b) => b.total - a.total);
+  }, [usersMap, data.projects, rankingPeriod, filteredProjects]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val);
@@ -494,11 +541,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
       <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center text-black dark:text-white font-bold">
           <Filter className="w-5 h-5 mr-2 text-blue-600" />
-          Filtros de Análise
+          {t('analysisFilters')}
         </div>
         <div className="flex items-center gap-4 w-full md:w-auto">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 dark:text-slate-400">De:</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">{t('from')}</span>
             <input
               type="date"
               value={startDate}
@@ -507,7 +554,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
             />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-black dark:text-white">Até:</span>
+            <span className="text-xs text-black dark:text-white">{t('to')}</span>
             <input
               type="date"
               value={endDate}
@@ -517,7 +564,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
           </div>
           {currentUser.role === 'GESTOR' && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-black dark:text-white">Projetista:</span>
+              <span className="text-xs text-black dark:text-white">{t('designer')}</span>
               <select
                 value={selectedDesignerForReleases}
                 onChange={(e) => {
@@ -526,7 +573,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                 }}
                 className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
               >
-                <option value="ALL">Todos</option>
+                <option value="ALL">{t('all')}</option>
                 {availableDesigners.map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
@@ -539,7 +586,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
             className="flex items-center text-sm font-medium text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors ml-auto md:ml-0"
           >
             <Download className="w-4 h-4 mr-2" />
-            CSV
+            {t('exportCsv')}
           </button>
       </div>
 
@@ -548,7 +595,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
           {averageTimes.length > 0 && averageTimes.map((stat) => (
             <div key={stat.type} className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-black dark:text-white uppercase tracking-wider mb-1">Média {stat.type}</p>
+                <p className="text-xs font-bold text-black dark:text-white uppercase tracking-wider mb-1">{t('avgTime')} {stat.type}</p>
                 <p className="text-xl font-bold text-black dark:text-white">{formatDuration(stat.avgSeconds)}</p>
               </div>
               <div className="h-8 w-8 bg-blue-50 dark:bg-black rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400">
@@ -556,10 +603,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
               </div>
             </div>
           ))}
+          
+          <div className="bg-white dark:bg-black p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">{t('totalHours')}</p>
+              <p className="text-xl font-bold text-indigo-800 dark:text-indigo-300">{totalHours}h</p>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="flex-1 h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-indigo-500" style={{ width: `${goalProgress}%` }}></div>
+                </div>
+                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{goalProgress}%</span>
+              </div>
+            </div>
+            <div className="h-8 w-8 bg-indigo-50 dark:bg-black rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <Activity className="w-4 h-4" />
+            </div>
+          </div>
+
           {/* Innovation KPI */}
            <div className="bg-white dark:bg-black p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">Economia Anual Prevista de Inovação</p>
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">{t('annualSavings')}</p>
                 <p className="text-xl font-bold text-emerald-800 dark:text-emerald-300">{formatCurrency(totalSavings)}</p>
               </div>
               <div className="h-8 w-8 bg-emerald-50 dark:bg-black rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -570,9 +634,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
           {/* Cost KPI */}
           <div className="bg-white dark:bg-black p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 shadow-sm flex items-center justify-between">
             <div>
-              <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">Valor Total de Projetos</p>
+              <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">{t('totalProjectValue')}</p>
               <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{formatCurrency(costData.productive)}</p>
-              <p className="text-[10px] text-blue-500 font-medium mt-1">Baseado em tempo produtivo</p>
+              <p className="text-[10px] text-blue-500 font-medium mt-1">{t('productiveTimeBase')}</p>
             </div>
             <div className="h-8 w-8 bg-blue-50 dark:bg-black rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400">
               <DollarSign className="w-4 h-4" />
@@ -582,9 +646,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
           {/* Interruption Cost KPI */}
           <div className="bg-white dark:bg-black p-4 rounded-xl border border-red-100 dark:border-red-900/30 shadow-sm flex items-center justify-between">
             <div>
-              <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">Custo de Interrupções</p>
+              <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">{t('interruptionCost')}</p>
               <p className="text-xl font-bold text-red-800 dark:text-red-300">{formatCurrency(costData.interruption)}</p>
-              <p className="text-[10px] text-red-500 font-medium mt-1">Tempo total: {formatDuration(costData.totalInterruptionSeconds)}</p>
+              <p className="text-[10px] text-red-500 font-medium mt-1">{t('totalTime')}: {formatDuration(costData.totalInterruptionSeconds)}</p>
             </div>
             <div className="h-8 w-8 bg-red-50 dark:bg-black rounded-full flex items-center justify-center text-red-600 dark:text-red-400">
               <TrendingDown className="w-4 h-4" />
@@ -625,14 +689,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
             <div className="flex flex-col">
                 <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
                     <Target className="w-5 h-5 mr-2 text-indigo-500" />
-                    Horas Realizadas vs Meta Mensal
+                    {t('hoursVsGoalTitle')}
                 </h3>
-                <p className="text-xs text-black dark:text-white ml-7 opacity-70">Comparativo de produtividade por período</p>
+                <p className="text-xs text-black dark:text-white ml-7 opacity-70">{t('hoursVsGoalSub')}</p>
             </div>
             
             <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500 dark:text-slate-400">Meta (h):</span>
+                    <span className="text-xs text-gray-500 dark:text-slate-400">{t('goalLabel')}</span>
                     <input 
                         type="number" 
                         value={monthlyGoal}
@@ -647,7 +711,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                     onChange={(e) => setSelectedDesignerForChart(e.target.value)}
                     className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
                 >
-                    <option value="ALL">Todos os Projetistas</option>
+                    <option value="ALL">{t('allDesigners')}</option>
                     {availableDesigners.map((u) => (
                     <option key={u.id} value={u.id}>{u.name}</option>
                     ))}
@@ -659,7 +723,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
           <div className="h-[300px] w-full">
             {hoursVsGoalData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={hoursVsGoalData} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+                <ComposedChart data={hoursVsGoalData} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }} />
                   <YAxis 
@@ -667,7 +731,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                     tickLine={false} 
                     axisLine={false} 
                     style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }}
-                    label={{ value: 'Horas', angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }}
+                    label={{ value: t('hours'), angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }}
                   />
                   <Tooltip 
                     contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
@@ -675,14 +739,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                     formatter={(value: number) => [`${value}h`, '']}
                   />
                   <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                  <Bar dataKey="Realizado" name="Horas Realizadas" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} />
-                  <Bar dataKey="Meta" name="Meta Mensal" fill={theme === 'dark' ? '#334155' : '#e2e8f0'} radius={[4, 4, 0, 0]} barSize={40} />
-                </BarChart>
+                  <Bar dataKey="Realizado" name={t('realizedHours')} fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} />
+                  <Line type="monotone" dataKey="Meta" name={t('goal')} stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
                 <Target className="w-8 h-8 text-gray-200 dark:text-slate-700 mb-2" />
-                Sem dados de horas para exibir no filtro selecionado.
+                {t('noHoursData')}
               </div>
             )}
           </div>
@@ -694,7 +758,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
             <div className="flex flex-col md:flex-row items-center justify-between mb-4 gap-4">
                 <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
                     <Target className="w-5 h-5 mr-2 text-purple-600" />
-                    Ranking de Produtividade
+                    {t('productivityRankingTitle')}
                 </h3>
                 
                 <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
@@ -703,113 +767,101 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                         className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'MONTH' ? 'bg-white dark:bg-black text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         <Calendar className="w-3 h-3" />
-                        Este Mês
+                        {t('thisMonth')}
                     </button>
                     <button 
                         onClick={() => setRankingPeriod('YEAR')}
                         className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'YEAR' ? 'bg-white dark:bg-black text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         <Calendar className="w-3 h-3" />
-                        Este Ano
+                        {t('thisYear')}
                     </button>
                     <button 
                         onClick={() => setRankingPeriod('CUSTOM')}
                         className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'CUSTOM' ? 'bg-white dark:bg-black text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         <Filter className="w-3 h-3" />
-                        Personalizado
+                        {t('custom')}
                     </button>
                 </div>
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
-                        <tr>
-                            <th className="p-3">Projetista</th>
-                            <th className="p-3 text-center">Liberações</th>
-                            <th className="p-3 text-center">Variações</th>
-                            <th className="p-3 text-center">Desenvolvimentos</th>
-                            <th className="p-3 text-center">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                        {(() => {
-                            const now = new Date();
-                            const currentMonth = now.getMonth();
-                            const currentYear = now.getFullYear();
-
-                            // Iterate over user IDs directly from usersMap keys
-                            const stats = Object.keys(usersMap).map(userId => {
-                                const userName = usersMap[userId];
-                                
-                                // Determine which project set to use based on rankingPeriod
-                                let projectsToConsider = data.projects; // Default to all projects for filtering
-
-                                if (rankingPeriod === 'CUSTOM') {
-                                    // Use the globally filtered projects (respects top date filters)
-                                    projectsToConsider = filteredProjects;
-                                }
-
-                                // Filter projects for this user based on the selected period logic
-                                const userProjects = projectsToConsider.filter(p => {
-                                    if (p.userId !== userId) return false;
-                                    if (p.status !== 'COMPLETED') return false;
-
-                                    const pDate = new Date(p.endTime || p.startTime);
-                                    
-                                    if (rankingPeriod === 'MONTH') {
-                                        return pDate.getMonth() === currentMonth && pDate.getFullYear() === currentYear;
-                                    } else if (rankingPeriod === 'YEAR') {
-                                        return pDate.getFullYear() === currentYear;
-                                    }
-                                    
-                                    // For CUSTOM, filteredProjects already handles the date filtering
-                                    return true; 
-                                });
-
-                                const releases = userProjects.filter(p => p.type === ProjectType.RELEASE).length;
-                                const variations = userProjects.filter(p => p.type === ProjectType.VARIATION).length;
-                                const developments = userProjects.filter(p => p.type === ProjectType.DEVELOPMENT).length;
-
-                                return { name: userName, releases, variations, developments, total: releases + variations + developments };
-                            }).filter(stat => stat.total > 0).sort((a, b) => b.total - a.total);
-
-                            if (stats.length === 0) {
-                                return (
-                                    <tr>
-                                        <td colSpan={5} className="p-4 text-center text-black dark:text-white italic">
-                                            {rankingPeriod === 'MONTH' ? 'Nenhum projeto neste mês.' : 
-                                             rankingPeriod === 'YEAR' ? 'Nenhum projeto neste ano.' : 
-                                             'Nenhum projeto no período selecionado.'}
-                                        </td>
-                                    </tr>
-                                );
-                            }
-
-                            return stats.map((stat, index) => (
-                                <tr key={index} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                                    <td className="p-3 font-medium text-black dark:text-white">
-                                        <div className="flex items-center">
-                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
-                                                index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
-                                                index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-300' : 
-                                                index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                                            }`}>
-                                                {index + 1}
-                                            </span>
-                                            {stat.name}
-                                        </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                            <tr>
+                                <th className="p-3">{t('designerCol')}</th>
+                                <th className="p-3 text-center">{t('releases')}</th>
+                                <th className="p-3 text-center">{t('variations')}</th>
+                                <th className="p-3 text-center">{t('developments')}</th>
+                                <th className="p-3 text-center">{t('total')}</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                            {rankingStats.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="p-4 text-center text-black dark:text-white italic">
+                                        {rankingPeriod === 'MONTH' ? t('noProjectsMonth') : 
+                                         rankingPeriod === 'YEAR' ? t('noProjectsYear') : 
+                                         t('noProjects')}
                                     </td>
-                                    <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">{stat.releases}</td>
-                                    <td className="p-3 text-center font-bold text-orange-600 dark:text-orange-400">{stat.variations}</td>
-                                    <td className="p-3 text-center font-bold text-green-600 dark:text-green-400">{stat.developments}</td>
-                                    <td className="p-3 text-center font-bold text-black dark:text-white">{stat.total}</td>
                                 </tr>
-                            ));
-                        })()}
-                    </tbody>
-                </table>
+                            ) : (
+                                rankingStats.map((stat, index) => (
+                                    <tr key={index} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                                        <td className="p-3 font-medium text-black dark:text-white">
+                                            <div className="flex items-center">
+                                                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
+                                                    index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
+                                                    index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-300' : 
+                                                    index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                                                }`}>
+                                                    {index + 1}
+                                                </span>
+                                                {stat.name}
+                                            </div>
+                                        </td>
+                                        <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">{stat.releases}</td>
+                                        <td className="p-3 text-center font-bold text-orange-600 dark:text-orange-400">{stat.variations}</td>
+                                        <td className="p-3 text-center font-bold text-green-600 dark:text-green-400">{stat.developments}</td>
+                                        <td className="p-3 text-center font-bold text-black dark:text-white">{stat.total}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="h-[350px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                            data={rankingStats}
+                            layout="vertical"
+                            margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                        >
+                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                            <XAxis type="number" hide />
+                            <YAxis 
+                                dataKey="name" 
+                                type="category" 
+                                axisLine={false} 
+                                tickLine={false}
+                                style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }}
+                                width={100}
+                            />
+                            <Tooltip 
+                                contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }}
+                            />
+                            <Bar dataKey="total" name={t('totalDeliveries')} fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={30}>
+                                {rankingStats.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={index === 0 ? '#8b5cf6' : index === 1 ? '#a78bfa' : index === 2 ? '#c4b5fd' : '#ddd6fe'} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
             </div>
         </div>
       )}
@@ -824,10 +876,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                 <div className="flex flex-col">
                     <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
                         <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
-                        {currentUser.role === 'GESTOR' || currentUser.role === 'CEO' ? 'Liberações da Equipe' : 'Seu Desempenho de Liberações'}
+                        {currentUser.role === 'GESTOR' || currentUser.role === 'CEO' ? t('teamReleases') : t('yourPerformance')}
                     </h3>
                     {selectedDesignerForReleases !== 'ALL' && (
-                        <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7">Filtrado por: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
+                        <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7">{t('filteredBy')}: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
                     )}
                 </div>
                 <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
@@ -835,19 +887,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                         onClick={() => setReleaseGrouping('MONTHLY')}
                         className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
-                        Mensal
+                        {t('monthly')}
                     </button>
                     <button 
                         onClick={() => setReleaseGrouping('YEARLY')}
                         className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'YEARLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
-                        Anual
+                        {t('yearly')}
                     </button>
                     <button 
                         onClick={() => setReleaseGrouping('GLOBAL')}
                         className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'GLOBAL' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
-                        Global
+                        {t('global')}
                     </button>
                 </div>
             </div>
@@ -862,12 +914,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                         contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
                         cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                     />
-                    <Bar dataKey="liberacoes" name="Liberações" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={releaseGrouping === 'GLOBAL' ? 80 : 40} />
+                    <Bar dataKey="liberacoes" name={t('releases')} fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={releaseGrouping === 'GLOBAL' ? 80 : 40} />
                     </BarChart>
                 </ResponsiveContainer>
                 ) : (
                 <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
-                    Sem dados para exibir.
+                    {t('noData')}
                 </div>
                 )}
             </div>
@@ -877,7 +929,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
             <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
             <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
                 <Lightbulb className="w-5 h-5 mr-2 text-yellow-500" />
-                Status de Inovações
+                {t('innovationStatus')}
             </h3>
             <div className="h-[250px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -908,7 +960,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
             <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
                 <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
                     <Activity className="w-5 h-5 mr-2 text-indigo-600" />
-                    Atividades por Projetista
+                    {t('activitiesByDesigner')}
                 </h3>
                 <div className="h-[300px] w-full">
                     {activitiesByDesigner.length > 0 ? (
@@ -922,14 +974,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                                     cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                                 />
                                 <Legend />
-                                <Bar dataKey={ProjectType.RELEASE} name="Liberação" stackId="a" fill="#3b82f6" />
-                                <Bar dataKey={ProjectType.VARIATION} name="Variação" stackId="a" fill="#f97316" />
-                                <Bar dataKey={ProjectType.DEVELOPMENT} name="Desenvolvimento" stackId="a" fill="#10b981" />
+                                <Bar dataKey={ProjectType.RELEASE} name={t('releases')} stackId="a" fill="#3b82f6" />
+                                <Bar dataKey={ProjectType.VARIATION} name={t('variations')} stackId="a" fill="#f97316" />
+                                <Bar dataKey={ProjectType.DEVELOPMENT} name={t('developments')} stackId="a" fill="#10b981" />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
                         <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
-                            Sem dados de atividades para exibir.
+                            {t('noActivityData')}
                         </div>
                     )}
                 </div>
@@ -940,14 +992,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-gray-700 dark:text-slate-200 flex items-center">
                         <PauseCircle className="w-5 h-5 mr-2 text-red-500" />
-                        Análise de Paradas
+                        {t('stopAnalysis')}
                     </h3>
                     <select 
                         value={selectedInterruptionDesigner}
                         onChange={(e) => setSelectedInterruptionDesigner(e.target.value)}
                         className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
                     >
-                        <option value="ALL">Visão Geral (Todos)</option>
+                        <option value="ALL">{t('overviewAll')}</option>
                         {availableDesigners.map((u) => (
                             <option key={u.id} value={u.id}>{u.name}</option>
                         ))}
@@ -961,18 +1013,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                                 <BarChart data={interruptionsByMonth.data}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
                                     <XAxis dataKey="name" tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
-                                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} label={{ value: 'Qtd. Paradas', angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }} />
+                                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} label={{ value: t('stopCount'), angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }} />
                                     <Tooltip 
                                         contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
                                         cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                                     />
                                     {/* No legend in general view as requested */}
-                                    <Bar dataKey="total" name="Paradas" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="total" name={t('stopCount')} fill="#ef4444" radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         ) : (
                             <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
-                                Nenhuma parada registrada no período.
+                                {t('noStopsPeriod')}
                             </div>
                         )
                     ) : (
@@ -981,7 +1033,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                                 <BarChart data={interruptionsForSelectedDesigner.data}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
                                     <XAxis dataKey="name" tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
-                                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} label={{ value: 'Qtd. Paradas', angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }} />
+                                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} label={{ value: t('stopCount'), angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }} />
                                     <Tooltip 
                                         contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
                                         cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
@@ -999,7 +1051,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
                             </ResponsiveContainer>
                         ) : (
                             <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm border-2 border-dashed border-gray-100 dark:border-slate-700 rounded-lg">
-                                Nenhuma parada encontrada para este projetista no período selecionado.
+                                {t('noStopsDesigner')}
                             </div>
                         )
                     )}

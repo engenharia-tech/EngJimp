@@ -5,6 +5,7 @@ import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, DuplicateGroup } from '../services/storageService';
 import { useToast } from './Toast';
 import { getWorkingSeconds } from '../utils/timeUtils';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface ProjectHistoryProps {
   data: AppState;
@@ -14,6 +15,7 @@ interface ProjectHistoryProps {
 }
 
 export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUser, onDelete, onUpdate }) => {
+  const { t, language } = useLanguage();
   const { addToast } = useToast();
   const [filterNs, setFilterNs] = useState('');
   const [filterType, setFilterType] = useState<string>('');
@@ -37,6 +39,9 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   // State for the Variations Modal
   const [selectedProject, setSelectedProject] = useState<ProjectSession | null>(null);
+  
+  // Sub-tabs state
+  const [activeSubTab, setActiveSubTab] = useState<'list' | 'search'>('list');
   
   // State for Edit Modal
   const [editingProject, setEditingProject] = useState<ProjectSession | null>(null);
@@ -89,7 +94,15 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   const filteredProjects = useMemo(() => {
     const filtered = data.projects.filter(p => {
-      const matchNs = p.ns.toLowerCase().includes(filterNs.toLowerCase());
+      const searchLower = filterNs.toLowerCase();
+      const matchSearch = 
+        p.ns.toLowerCase().includes(searchLower) || 
+        (p.clientName || '').toLowerCase().includes(searchLower) || 
+        (p.projectCode || '').toLowerCase().includes(searchLower) ||
+        (p.flooringType || '').toLowerCase().includes(searchLower) ||
+        (p.implementType || '').toLowerCase().includes(searchLower) ||
+        (p.notes || '').toLowerCase().includes(searchLower);
+      
       const matchType = filterType ? p.type === filterType : true;
       
       let matchDate = true;
@@ -109,7 +122,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           matchSuspicious = isTooShort || isTooLong || isFuture;
       }
 
-      return matchNs && matchType && matchDate && matchSuspicious;
+      return matchSearch && matchType && matchDate && matchSuspicious;
     });
 
     return filtered.sort((a, b) => {
@@ -278,7 +291,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         const end = new Date(`${editForm.endDate}T${editForm.endTime}`);
         
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return { gross: 0, pauses: 0, net: 0, valid: false };
-        if (end < start) return { gross: 0, pauses: 0, net: 0, valid: false, error: "Data Fim anterior ao Início" };
+        if (end < start) return { gross: 0, pauses: 0, net: 0, valid: false, error: t('endDateBeforeStart') };
 
         const totalWorkingSeconds = getWorkingSeconds(start, end, editForm.isOvertime);
         
@@ -381,6 +394,73 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   const isGestor = currentUser.role === 'GESTOR';
 
+  const getTranslatedType = (type: string) => {
+    switch (type) {
+      case ProjectType.RELEASE: return t('release');
+      case ProjectType.VARIATION: return t('variation');
+      case ProjectType.DEVELOPMENT: return t('development');
+      default: return type;
+    }
+  };
+
+  const getTranslatedImplement = (type: string) => {
+    switch (type) {
+      case ImplementType.BASE: return t('base');
+      case ImplementType.FURGAO: return t('furgao');
+      case ImplementType.SIDER: return t('sider');
+      case ImplementType.CAIXA_CARGA: return t('caixaCarga');
+      case ImplementType.BASCULANTE: return t('basculante');
+      case ImplementType.SOBRECHASSI: return t('sobrechassi');
+      case ImplementType.GRANELEIRO: return t('graneleiro');
+      case ImplementType.CARGA_SECA: return t('cargaSeca');
+      case ImplementType.COMPONENTES: return t('componentes');
+      case ImplementType.OUTROS: return t('outros');
+      case ImplementType.SOBRE_CHASSI_FURGAO: return t('sobreChassiFurgao');
+      case ImplementType.SOBRE_CHASSI_LONADO: return t('sobreChassiLonado');
+      default: return type;
+    }
+  };
+
+  const getTranslatedStatus = (status: string) => {
+    return status === 'COMPLETED' ? t('completed') : t('inProgress');
+  };
+
+  const getTranslatedUserRole = (role: string) => {
+    switch (role) {
+      case 'GESTOR': return t('gestor');
+      case 'PROJETISTA': return t('projetista');
+      case 'CEO': return t('ceo');
+      case 'COORDENADOR': return t('coordenador');
+      default: return role;
+    }
+  };
+
+  // Calculate Stats
+  const stats = useMemo(() => {
+    const totalProjects = filteredProjects.length;
+    const totalSeconds = filteredProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const avgSeconds = totalProjects > 0 ? totalSeconds / totalProjects : 0;
+    
+    let totalCost = 0;
+    if (isGestor) {
+      filteredProjects.forEach(p => {
+        const user = usersMap[p.userId || ''];
+        const salary = user?.salary || 0;
+        const hourlyRate = salary / 220;
+        totalCost += hourlyRate * (p.totalActiveSeconds / 3600);
+      });
+    }
+
+    return {
+      totalProjects,
+      totalHours: Math.floor(totalSeconds / 3600),
+      totalMinutes: Math.floor((totalSeconds % 3600) / 60),
+      avgHours: Math.floor(avgSeconds / 3600),
+      avgMinutes: Math.floor((avgSeconds % 3600) / 60),
+      totalCost
+    };
+  }, [filteredProjects, isGestor, usersMap]);
+
   const handleSort = (key: string) => {
     if (sortKey === key) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -397,18 +477,106 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   return (
     <div className="space-y-6">
+      {/* Sub-Tabs Navigation */}
+      <div className="flex items-center justify-between">
+        <div className="flex p-1 bg-gray-100 dark:bg-slate-900 rounded-xl w-fit">
+            <button
+              onClick={() => setActiveSubTab('list')}
+              className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeSubTab === 'list' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'}`}
+            >
+              <Layers className="w-4 h-4" />
+              {t('generalHistory')}
+            </button>
+            <button
+              onClick={() => setActiveSubTab('search')}
+              className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeSubTab === 'search' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'}`}
+            >
+              <Search className="w-4 h-4" />
+              {t('searchProjects')}
+            </button>
+        </div>
+
+        {activeSubTab === 'list' && (
+          <div className="hidden md:flex items-center gap-4 text-xs font-medium text-gray-500 dark:text-slate-400">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              <span>{stats.totalProjects} {t('totalProjects')}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" />
+              <span>{stats.totalHours}h {stats.totalMinutes}m {t('totalTime')}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Stats Cards (Only in List view) */}
+      {activeSubTab === 'list' && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white dark:bg-black p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800">
+            <div className="text-xs text-gray-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+              <FileCheck className="w-3.5 h-3.5 text-blue-500" />
+              {t('totalProjects')}
+            </div>
+            <div className="text-2xl font-bold text-black dark:text-white">{stats.totalProjects}</div>
+          </div>
+          <div className="bg-white dark:bg-black p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800">
+            <div className="text-xs text-gray-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+              <Timer className="w-3.5 h-3.5 text-green-500" />
+              {t('totalTime')}
+            </div>
+            <div className="text-2xl font-bold text-black dark:text-white">{stats.totalHours}h {stats.totalMinutes}m</div>
+          </div>
+          <div className="bg-white dark:bg-black p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800">
+            <div className="text-xs text-gray-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+              <ArrowUpDown className="w-3.5 h-3.5 text-orange-500" />
+              {t('avgPerProject')}
+            </div>
+            <div className="text-2xl font-bold text-black dark:text-white">{stats.avgHours}h {stats.avgMinutes}m</div>
+          </div>
+          {isGestor && (
+            <div className="bg-white dark:bg-black p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800">
+              <div className="text-xs text-gray-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                {t('totalCost')}
+              </div>
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.totalCost)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filters Section */}
-      <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
-        <div className="flex items-center mb-4 text-black dark:text-white font-bold">
-          <Filter className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
-          Filtros de Busca
+      <div className={`bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 ${activeSubTab === 'list' ? 'hidden md:block' : 'block'}`}>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center text-black dark:text-white font-bold text-lg">
+            <Filter className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
+            {activeSubTab === 'search' ? t('advancedSearchTool') : t('searchFilters')}
+          </div>
+          {(filterNs || filterType || startDate || endDate || filterSuspicious) && (
+            <button 
+              onClick={() => {
+                setFilterNs('');
+                setFilterType('');
+                setStartDate('');
+                setEndDate('');
+                setFilterSuspicious(false);
+              }}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" />
+              {t('clearFilters')}
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por NS..."
+              placeholder={t('searchPlaceholder')}
               value={filterNs}
               onChange={(e) => setFilterNs(e.target.value)}
               className="w-full pl-10 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
@@ -420,12 +588,12 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             onChange={(e) => setFilterType(e.target.value)}
             className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
           >
-            <option value="">Todos os Tipos</option>
+            <option value="">{t('allTypes')}</option>
             {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-black dark:text-white">De:</span>
+            <span className="text-xs text-black dark:text-white">{t('from')}</span>
             <input
               type="date"
               value={startDate}
@@ -435,7 +603,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-black dark:text-white">Até:</span>
+            <span className="text-xs text-black dark:text-white">{t('to')}</span>
             <input
               type="date"
               value={endDate}
@@ -455,14 +623,14 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 }`}
               >
                 <AlertTriangle className={`w-4 h-4 ${filterSuspicious ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400'}`} />
-                Suspeitos
+                {t('suspicious')}
               </button>
               
               <button 
                 onClick={handleRecalculateClick}
                 disabled={isRecalculating}
                 className={`p-2 rounded-lg border transition-colors flex items-center justify-center ${isRecalculating ? 'bg-gray-100 dark:bg-black text-gray-400 cursor-not-allowed' : 'bg-white dark:bg-black border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-blue-600 dark:hover:text-blue-400'}`}
-                title="Recalcular Duração de Todos os Projetos"
+                title={t('recalculateDuration')}
               >
                 <RefreshCw className={`w-4 h-4 ${isRecalculating ? 'animate-spin' : ''}`} />
               </button>
@@ -492,7 +660,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 }}
                 disabled={isCheckingDuplicates}
                 className={`p-2 rounded-lg border transition-colors flex items-center justify-center ${isCheckingDuplicates ? 'bg-gray-100 dark:bg-black text-gray-400 cursor-not-allowed' : 'bg-white dark:bg-black border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-orange-600 dark:hover:text-orange-400'}`}
-                title="Buscar Projetos Duplicados"
+                title={t('searchDuplicates')}
               >
                 {isCheckingDuplicates ? <RefreshCw className="w-4 h-4 animate-spin" /> : <AlertCircle className="w-4 h-4" />}
               </button>
@@ -540,9 +708,9 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 <div className="mb-4 flex justify-center">
                     <RefreshCw className="w-12 h-12 text-blue-600 dark:text-blue-400 animate-spin" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-800 dark:text-slate-100 mb-2">Atualizando Projetos...</h3>
+                <h3 className="text-xl font-bold text-gray-800 dark:text-slate-100 mb-2">{t('updatingProjects')}</h3>
                 <p className="text-gray-500 dark:text-slate-400 mb-6">
-                    Por favor, aguarde enquanto recalculamos as durações.
+                    {t('waitRecalculate')}
                 </p>
                 
                 {recalculateProgress.total > 0 && (
@@ -554,8 +722,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             ></div>
                         </div>
                         <div className="flex justify-between text-xs font-medium text-gray-500 dark:text-slate-400">
-                            <span>{recalculateProgress.current} atualizados</span>
-                            <span>Total: {recalculateProgress.total}</span>
+                            <span>{recalculateProgress.current} {t('updated')}</span>
+                            <span>{t('total')}: {recalculateProgress.total}</span>
                         </div>
                     </div>
                 )}
@@ -564,35 +732,23 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       )}
 
       {/* Results Table */}
-      <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+      <div className="bg-white dark:bg-black rounded-xl shadow-md border border-gray-100 dark:border-slate-700 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+          <table className="w-full text-sm text-left border-collapse">
+            <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-slate-900 text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700 shadow-sm">
               <tr>
-                <th className="p-4 text-center w-24">Ações</th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('status')}>
-                  <div className="flex items-center">Status <SortIcon columnKey="status" /></div>
-                </th>
+                <th className="p-4 w-32">{t('statusActions')}</th>
                 <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('userId')}>
-                  <div className="flex items-center">Projetista <SortIcon columnKey="userId" /></div>
+                  <div className="flex items-center">{t('designerCol')} <SortIcon columnKey="userId" /></div>
                 </th>
                 <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('clientName')}>
-                  <div className="flex items-center">Cliente <SortIcon columnKey="clientName" /></div>
+                  <div className="flex items-center">{t('clientProjectCol')} <SortIcon columnKey="clientName" /></div>
                 </th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('ns')}>
-                  <div className="flex items-center">NS / Cód. <SortIcon columnKey="ns" /></div>
-                </th>
-                <th className="p-4">Variações (Total)</th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('type')}>
-                  <div className="flex items-center">Tipo / Impl. <SortIcon columnKey="type" /></div>
-                </th>
+                <th className="p-4">{t('specsVariationsCol')}</th>
                 <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('startTime')}>
-                  <div className="flex items-center">Início / Fim <SortIcon columnKey="startTime" /></div>
+                  <div className="flex items-center">{t('scheduleTimeCol')} <SortIcon columnKey="startTime" /></div>
                 </th>
-                <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('totalActiveSeconds')}>
-                  <div className="flex items-center">Tempo (Est. / Real) <SortIcon columnKey="totalActiveSeconds" /></div>
-                </th>
-                {isGestor && <th className="p-4">Custo</th>}
+                {isGestor && <th className="p-4">{t('costCol')}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -605,25 +761,26 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const hourlyRate = salary / 220; // Assuming 220 working hours per month
                 const cost = hourlyRate * (project.totalActiveSeconds / 3600);
                 
-                // Permission Logic
-                // "Somente eu (CEO/Gestor) ou o dono do projeto"
-                // Assuming "Me" includes GESTOR based on current user context, but strictly following "CEO" request for the new feature.
-                // For History: Owner can always edit their own. CEO/GESTOR can edit all.
-                // User said: "deixe esta opção de alteração disponível somente para mim" (Me = Gestor/CEO)
-                // "para os demais usuarios... não pode ser possível excluir ou alterar"
-                
                 const isGestor = currentUser.role === 'GESTOR';
                 const canEdit = isGestor;
-                const canViewVariations = true; // Everyone can view variations
 
                 return (
                 <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-black/50 transition-colors group">
-                  <td className="p-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
+                  <td className="p-4">
+                    <div className="flex flex-col gap-3">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm text-center ${
+                        project.status === 'COMPLETED' 
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 border border-green-200 dark:border-green-800' 
+                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+                      }`}>
+                        {getTranslatedStatus(project.status)}
+                      </span>
+                      
+                      <div className="flex items-center justify-center gap-1">
                           <button 
                               onClick={() => setSelectedProject(project)}
-                              className="text-gray-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded transition"
-                              title="Ver Detalhes Completos"
+                              className="text-gray-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-1.5 rounded transition"
+                              title={t('viewDetails')}
                           >
                               <Eye className="w-4 h-4" />
                           </button>
@@ -631,138 +788,150 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             <>
                                 <button 
                                     onClick={() => handleOpenEdit(project)}
-                                    className="text-gray-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded transition"
-                                    title="Editar Projeto"
+                                    className="text-gray-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-1.5 rounded transition"
+                                    title={t('edit')}
                                 >
                                     <Edit className="w-4 h-4" />
                                 </button>
                                 <button 
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        console.log("Delete button clicked for project:", project.id);
                                         if (onDelete) onDelete(project.id);
                                     }}
-                                    className="text-gray-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded transition"
-                                    title="Excluir Projeto"
+                                    className="text-gray-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 p-1.5 rounded transition"
+                                    title={t('delete')}
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                             </>
                           )}
                       </div>
-                  </td>
-
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                      project.status === 'COMPLETED' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                    }`}>
-                      {project.status === 'COMPLETED' ? 'Concluído' : 'Em And.'}
-                    </span>
+                    </div>
                   </td>
                   
                   {/* Projetista */}
                   <td className="p-4">
                     <div className="flex items-center text-black dark:text-white font-medium">
-                        <div className="w-6 h-6 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs mr-2 font-bold border border-blue-100 dark:border-blue-800">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xs mr-3 font-bold shadow-sm ring-2 ring-white dark:ring-slate-800 shrink-0">
                         {(user?.name || '?').charAt(0)}
                         </div>
-                        <span className="truncate max-w-[120px]" title={user?.name}>
-                            {user?.name || 'Desconhecido'}
-                        </span>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-bold truncate max-w-[100px]" title={user?.name}>
+                              {user?.name || t('unknown')}
+                          </span>
+                          <span className="text-[10px] text-gray-500 dark:text-slate-500 uppercase tracking-tighter">
+                            {user?.role ? getTranslatedUserRole(user.role) : t('member')}
+                          </span>
+                        </div>
                     </div>
                   </td>
 
-                  {/* Cliente */}
-                  <td className="p-4 text-black dark:text-white font-medium truncate max-w-[150px]" title={project.clientName}>
-                    {project.clientName || '-'}
-                  </td>
-
-                  {/* NS e Código */}
+                  {/* Cliente / Projeto */}
                   <td className="p-4">
-                     <div className="font-mono font-bold text-black dark:text-white">{project.ns}</div>
-                     {project.projectCode && (
-                         <div className="text-xs text-blue-600 dark:text-blue-400 font-mono mt-0.5">{project.projectCode}</div>
-                     )}
-                  </td>
-
-                  {/* Variações Count Simplificado + Botão */}
-                  <td className="p-4">
-                    {totalVariations === 0 ? (
-                        <span className="text-gray-400 dark:text-slate-600 text-xs">-</span>
-                    ) : (
-                        <div>
-                            <div className="text-sm font-bold text-black dark:text-white flex items-center">
-                                {totalVariations} <span className="text-xs font-normal text-gray-500 dark:text-slate-500 ml-1">Cód. Criados</span>
-                            </div>
-                            <div className="flex items-center justify-between mt-1">
-                                <div className="text-[10px] text-gray-500 dark:text-slate-500 flex items-center gap-2">
-                                    <span className={parts > 0 ? "text-blue-600 dark:text-blue-400 font-medium" : ""}>{parts} Pç</span>
-                                    <span className="text-gray-300 dark:text-slate-700">|</span>
-                                    <span className={assemblies > 0 ? "text-orange-600 dark:text-orange-400 font-medium" : ""}>{assemblies} Mont</span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                  </td>
-
-                  {/* Tipo e Implemento */}
-                  <td className="p-4">
-                     <div className="flex items-center gap-2">
-                        <div className="text-xs font-bold text-black dark:text-white">{project.type}</div>
-                        {project.isOvertime && (
-                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] font-bold rounded border border-amber-200 dark:border-amber-800 uppercase">
-                            H.E.
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="text-sm font-bold text-black dark:text-white truncate max-w-[180px]" title={project.clientName}>
+                        {project.clientName || '-'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-black text-blue-600 dark:text-blue-400 text-sm">{project.ns}</span>
+                        {project.projectCode && (
+                          <span className="text-[10px] text-gray-500 dark:text-slate-500 font-mono flex items-center gap-1 truncate max-w-[100px]">
+                            <Hash className="w-2.5 h-2.5" />
+                            {project.projectCode}
                           </span>
                         )}
-                     </div>
-                     <div className="flex items-center text-xs text-gray-500 dark:text-slate-500 mt-1">
-                      <Truck className="w-3 h-3 mr-1 text-gray-400 dark:text-slate-500" />
-                      {project.implementType || '-'}
+                      </div>
                     </div>
                   </td>
 
-                  {/* Datas */}
-                  <td className="p-4 text-xs text-gray-500 dark:text-slate-500">
-                      <div><span className="font-semibold dark:text-slate-400">I:</span> {formatDate(project.startTime)}</div>
-                      {project.endTime && <div><span className="font-semibold dark:text-slate-400">F:</span> {formatDate(project.endTime)}</div>}
+                  {/* Especificações / Variações */}
+                  <td className="p-4">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-black dark:text-white bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{getTranslatedType(project.type)}</span>
+                        {project.isOvertime && (
+                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-bold rounded border border-amber-200 dark:border-amber-800 uppercase">
+                            {t('overtimeAbbr')}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-gray-500 dark:text-slate-500 flex items-center gap-1">
+                        <Truck className="w-3 h-3" />
+                        {project.implementType ? getTranslatedImplement(project.implementType) : '-'}
+                        {project.flooringType && <span className="mx-1">|</span>}
+                        {project.flooringType}
+                      </div>
+                      {totalVariations > 0 && (
+                        <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                          <Layers className="w-3 h-3" />
+                          {totalVariations} Cód. ({parts}{t('part').charAt(0)} / {assemblies}{t('assembly').charAt(0)})
+                        </div>
+                      )}
+                    </div>
                   </td>
 
-                  <td className="p-4 font-medium text-black dark:text-white">
-                    <div className="flex flex-col">
-                        <div className="flex items-center text-xs text-blue-600 dark:text-blue-400 font-bold mb-1">
-                            <Timer className="w-3 h-3 mr-1" />
-                            Est: {project.estimatedSeconds ? formatDuration(project.estimatedSeconds) : '-'}
+                  {/* Cronograma / Tempo */}
+                  <td className="p-4">
+                    <div className="flex flex-col gap-2 min-w-[160px]">
+                        <div className="text-[10px] text-gray-500 dark:text-slate-500 flex flex-col">
+                          <span><span className="font-bold dark:text-slate-400">{t('startAbbr')}</span> {formatDate(project.startTime)}</span>
+                          {project.endTime && <span><span className="font-bold dark:text-slate-400">{t('endAbbr')}</span> {formatDate(project.endTime)}</span>}
                         </div>
-                        <div className="flex items-center">
-                            <Clock className="w-4 h-4 mr-1 text-gray-400 dark:text-slate-500" />
-                            Real: {formatDuration(project.totalActiveSeconds)}
-                        </div>
-                        {project.estimatedSeconds && (
-                            <div className={`text-[10px] mt-1 font-bold ${
-                                project.totalActiveSeconds <= project.estimatedSeconds ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                            }`}>
-                                {project.totalActiveSeconds <= project.estimatedSeconds 
-                                    ? `Economia: ${formatDuration(project.estimatedSeconds - project.totalActiveSeconds)}`
-                                    : `Atraso: ${formatDuration(project.totalActiveSeconds - project.estimatedSeconds)}`
-                                }
+                        
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center justify-between text-[10px] font-bold">
+                              <span className="text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                                  <Timer className="w-3 h-3" />
+                                  {t('estimatedAbbr')} {project.estimatedSeconds ? formatDuration(project.estimatedSeconds) : '-'}
+                              </span>
+                              <span className="text-gray-500 dark:text-slate-500 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {formatDuration(project.totalActiveSeconds)}
+                              </span>
+                          </div>
+                          
+                          {project.estimatedSeconds ? (
+                            <div className="w-full h-1 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  project.totalActiveSeconds <= project.estimatedSeconds 
+                                    ? 'bg-green-500' 
+                                    : 'bg-red-500'
+                                }`}
+                                style={{ width: `${Math.min(100, (project.totalActiveSeconds / project.estimatedSeconds) * 100)}%` }}
+                              ></div>
                             </div>
-                        )}
+                          ) : (
+                            <div className="w-full h-1 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden opacity-30"></div>
+                          )}
+
+                          {project.estimatedSeconds && (
+                              <div className={`text-[9px] font-black uppercase tracking-tighter ${
+                                  project.totalActiveSeconds <= project.estimatedSeconds ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                              }`}>
+                                  {project.totalActiveSeconds <= project.estimatedSeconds 
+                                      ? `✓ +${formatDuration(project.estimatedSeconds - project.totalActiveSeconds)}`
+                                      : `⚠ -${formatDuration(project.totalActiveSeconds - project.estimatedSeconds)}`
+                                  }
+                              </div>
+                          )}
+                        </div>
                     </div>
                   </td>
 
                   {isGestor && (
-                    <td className="p-4 font-medium text-black dark:text-white">
+                    <td className="p-4">
                       {salary > 0 ? (
                         <div className="flex flex-col">
                           <span className="text-sm font-bold text-red-600 dark:text-red-400">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cost)}
+                            {new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(cost)}
                           </span>
                           <span className="text-[10px] text-gray-500 dark:text-slate-500">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(hourlyRate)}/h
+                            {new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(hourlyRate)}/h
                           </span>
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-400 dark:text-slate-500 italic">Salário não def.</span>
+                        <span className="text-xs text-gray-400 dark:text-slate-500 italic">{t('salaryNotDef')}</span>
                       )}
                     </td>
                   )}
@@ -770,8 +939,30 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
               )})}
               {filteredProjects.length === 0 && (
                 <tr>
-                  <td colSpan={isGestor ? 10 : 9} className="p-12 text-center text-gray-400 dark:text-slate-500">
-                    Nenhum projeto encontrado com os filtros selecionados.
+                  <td colSpan={isGestor ? 10 : 9} className="p-20 text-center">
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                      <div className="w-16 h-16 bg-gray-50 dark:bg-slate-900 rounded-full flex items-center justify-center">
+                        <Search className="w-8 h-8 text-gray-300 dark:text-slate-700" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">{t('noProjectsFound')}</h3>
+                        <p className="text-sm text-gray-500 dark:text-slate-400 max-w-xs mx-auto">
+                          {t('noProjectsFoundDesc')}
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setFilterNs('');
+                          setFilterType('');
+                          setStartDate('');
+                          setEndDate('');
+                          setFilterSuspicious(false);
+                        }}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors shadow-sm"
+                      >
+                        {t('clearAllFilters')}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -788,7 +979,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     <div>
                         <h3 className="text-lg font-bold text-gray-800 dark:text-slate-100 flex items-center">
                             <FileCheck className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
-                            Detalhes do Projeto
+                            {t('projectDetails')}
                         </h3>
                         <p className="text-sm text-gray-500 dark:text-slate-400">NS: <span className="font-mono font-bold text-gray-700 dark:text-slate-200">{selectedProject.ns}</span></p>
                     </div>
@@ -804,67 +995,67 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     {/* Main Info Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-4">
-                            <h4 className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider border-b dark:border-slate-700 pb-1">Informações Gerais</h4>
+                            <h4 className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider border-b dark:border-slate-700 pb-1">{t('generalInfo')}</h4>
                             <div>
-                                <div className="text-xs text-gray-500 dark:text-slate-400">Cliente</div>
+                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('client')}</div>
                                 <div className="font-medium text-gray-800 dark:text-slate-200">{selectedProject.clientName || '-'}</div>
                             </div>
                             <div>
-                                <div className="text-xs text-gray-500 dark:text-slate-400">Código do Projeto</div>
+                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('projectCode')}</div>
                                 <div className="font-mono text-sm text-gray-800 dark:text-slate-200">{selectedProject.projectCode || '-'}</div>
                             </div>
                             <div>
-                                <div className="text-xs text-gray-500 dark:text-slate-400">Projetista</div>
+                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('designerCol')}</div>
                                 <div className="flex items-center mt-1">
                                     <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-[10px] font-bold mr-2">
                                         {(usersMap[selectedProject.userId || '']?.name || '?').charAt(0)}
                                     </div>
-                                    <span className="text-sm text-gray-700 dark:text-slate-300">{usersMap[selectedProject.userId || '']?.name || 'Desconhecido'}</span>
+                                    <span className="text-sm text-gray-700 dark:text-slate-300">{usersMap[selectedProject.userId || '']?.name || t('unknown')}</span>
                                 </div>
                             </div>
                         </div>
 
                         <div className="space-y-4">
-                            <h4 className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider border-b dark:border-slate-700 pb-1">Especificações</h4>
+                            <h4 className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider border-b dark:border-slate-700 pb-1">{t('specs')}</h4>
                             <div>
-                                <div className="text-xs text-gray-500 dark:text-slate-400">Tipo de Projeto</div>
-                                <div className="font-medium text-gray-800 dark:text-slate-200">{selectedProject.type}</div>
+                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('projectType')}</div>
+                                <div className="font-medium text-gray-800 dark:text-slate-200">{getTranslatedType(selectedProject.type)}</div>
                             </div>
                             <div>
-                                <div className="text-xs text-gray-500 dark:text-slate-400">Implemento</div>
+                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('implement')}</div>
                                 <div className="flex items-center text-gray-800 dark:text-slate-200">
                                     <Truck className="w-3 h-3 mr-1 text-gray-400 dark:text-slate-500" />
-                                    {selectedProject.implementType || '-'}
+                                    {selectedProject.implementType ? getTranslatedImplement(selectedProject.implementType) : '-'}
                                 </div>
                             </div>
                             <div>
-                                <div className="text-xs text-gray-500 dark:text-slate-400">Tipo de Assoalho</div>
+                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('flooringType')}</div>
                                 <div className="font-medium text-gray-800 dark:text-slate-200">{selectedProject.flooringType || '-'}</div>
                             </div>
                         </div>
 
                         <div className="space-y-4">
-                            <h4 className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider border-b dark:border-slate-700 pb-1">Tempo e Status</h4>
+                            <h4 className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider border-b dark:border-slate-700 pb-1">{t('scheduleTime')}</h4>
                             <div>
-                                <div className="text-xs text-gray-500 dark:text-slate-400">Status</div>
+                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('status')}</div>
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold mt-1 ${
                                     selectedProject.status === 'COMPLETED' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                                 }`}>
-                                    {selectedProject.status === 'COMPLETED' ? 'Concluído' : 'Em Andamento'}
+                                    {getTranslatedStatus(selectedProject.status)}
                                 </span>
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <div className="text-xs text-gray-500 dark:text-slate-400">Início</div>
+                                    <div className="text-xs text-gray-500 dark:text-slate-400">{t('start')}</div>
                                     <div className="text-xs font-mono text-gray-700 dark:text-slate-300">{formatDate(selectedProject.startTime)}</div>
                                 </div>
                                 <div>
-                                    <div className="text-xs text-gray-500 dark:text-slate-400">Fim</div>
+                                    <div className="text-xs text-gray-500 dark:text-slate-400">{t('end')}</div>
                                     <div className="text-xs font-mono text-gray-700 dark:text-slate-300">{selectedProject.endTime ? formatDate(selectedProject.endTime) : '-'}</div>
                                 </div>
                             </div>
                             <div>
-                                <div className="text-xs text-gray-500 dark:text-slate-400">Duração Real / Estimada</div>
+                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('realEstimatedDuration')}</div>
                                 <div className="text-sm font-mono font-bold text-gray-800 dark:text-slate-200">
                                     {formatDuration(selectedProject.totalActiveSeconds)} 
                                     <span className="text-gray-400 dark:text-slate-500 font-normal mx-1">/</span>
@@ -877,7 +1068,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     {/* Notes Section */}
                     {selectedProject.notes && (
                         <div className="bg-yellow-50 dark:bg-amber-900/20 p-4 rounded-lg border border-yellow-100 dark:border-amber-800">
-                            <h4 className="text-xs font-bold text-yellow-700 dark:text-amber-400 uppercase tracking-wider mb-2">Observações</h4>
+                            <h4 className="text-xs font-bold text-yellow-700 dark:text-amber-400 uppercase tracking-wider mb-2">{t('notes')}</h4>
                             <p className="text-sm text-yellow-800 dark:text-amber-200 whitespace-pre-wrap">{selectedProject.notes}</p>
                         </div>
                     )}
@@ -886,17 +1077,17 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     <div>
                         <h4 className="text-sm font-bold text-gray-800 dark:text-slate-100 mb-3 flex items-center">
                             <Layers className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
-                            Variações Registradas ({selectedProject.variations?.length || 0})
+                            {t('variations')} ({selectedProject.variations?.length || 0})
                         </h4>
                         <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-gray-50 dark:bg-black text-gray-600 dark:text-slate-400 font-semibold border-b border-gray-200 dark:border-slate-700">
                                     <tr>
-                                        <th className="p-3">Código Antigo</th>
-                                        <th className="p-3">Descrição</th>
-                                        <th className="p-3">Código Novo</th>
-                                        <th className="p-3">Tipo</th>
-                                        <th className="p-3 text-center">Arquivos</th>
+                                        <th className="p-3">{t('oldCode')}</th>
+                                        <th className="p-3">{t('description')}</th>
+                                        <th className="p-3">{t('newCode')}</th>
+                                        <th className="p-3">{t('type')}</th>
+                                        <th className="p-3 text-center">{t('files')}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -907,17 +1098,17 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                             <td className="p-3 font-mono text-blue-600 dark:text-blue-400 font-bold text-xs">{v.newCode || '-'}</td>
                                             <td className="p-3">
                                                 <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-black dark:text-slate-300'}`}>
-                                                    {v.type}
+                                                    {v.type === 'Montagem' ? t('assembly') : t('part')}
                                                 </span>
                                             </td>
                                             <td className="p-3 text-center">
                                             {v.filesGenerated ? (
                                                 <span className="inline-flex items-center text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded border border-green-100 dark:border-green-800">
-                                                    <FileCheck className="w-3 h-3 mr-1" /> OK
+                                                    <FileCheck className="w-3 h-3 mr-1" /> {t('ok')}
                                                 </span>
                                             ) : (
                                                 <span className="inline-flex items-center text-[10px] font-bold text-red-400 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded border border-red-100 dark:border-red-800">
-                                                    <FileX className="w-3 h-3 mr-1" /> Pendente
+                                                    <FileX className="w-3 h-3 mr-1" /> {t('pending')}
                                                 </span>
                                             )}
                                             </td>
@@ -926,7 +1117,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                     {(!selectedProject.variations || selectedProject.variations.length === 0) && (
                                         <tr>
                                             <td colSpan={5} className="p-6 text-center text-gray-400 dark:text-slate-500 italic text-xs">
-                                                Nenhuma variação registrada neste projeto.
+                                                {t('noVariationsFound')}
                                             </td>
                                         </tr>
                                     )}
@@ -941,7 +1132,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         onClick={() => setSelectedProject(null)}
                         className="px-6 py-2 bg-gray-800 dark:bg-black text-white dark:text-slate-100 rounded-lg hover:bg-gray-900 dark:hover:bg-slate-600 font-medium transition-colors"
                     >
-                        Fechar
+                        {t('close')}
                     </button>
                 </div>
             </div>
@@ -955,7 +1146,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
                     <h3 className="text-lg font-bold text-gray-800 dark:text-slate-100 flex items-center">
                         <Edit className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
-                        Editar Liberação
+                        {t('editRelease')}
                     </h3>
                     <button 
                         onClick={() => setEditingProject(null)}
@@ -968,7 +1159,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">NS do Projeto</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('projectNs')}</label>
                             <input 
                                 type="text"
                                 value={editForm.ns}
@@ -977,7 +1168,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Cód. Projeto</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('projectCode')}</label>
                             <input 
                                 type="text"
                                 value={editForm.projectCode}
@@ -988,7 +1179,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Cliente</label>
+                        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('client')}</label>
                         <input 
                             type="text"
                             value={editForm.clientName}
@@ -999,23 +1190,23 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Tipo de Projeto</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('projectType')}</label>
                             <select 
                                 value={editForm.type}
                                 onChange={(e) => setEditForm({...editForm, type: e.target.value as ProjectType})}
                                 className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             >
-                                {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                {PROJECT_TYPES.map(t_val => <option key={t_val} value={t_val}>{getTranslatedType(t_val)}</option>)}
                             </select>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Implemento</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('implement')}</label>
                             <select 
                                 value={editForm.implementType}
                                 onChange={(e) => setEditForm({...editForm, implementType: e.target.value as ImplementType})}
                                 className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             >
-                                {IMPLEMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                {IMPLEMENT_TYPES.map(t_val => <option key={t_val} value={t_val}>{getTranslatedImplement(t_val)}</option>)}
                             </select>
                         </div>
                     </div>
@@ -1028,29 +1219,29 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         ImplementType.SOBRE_CHASSI_LONADO
                     ].includes(editForm.implementType) && (
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Tipo de Assoalho</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('flooringType')}</label>
                             <select 
                                 value={editForm.flooringType}
                                 onChange={(e) => setEditForm({...editForm, flooringType: e.target.value})}
                                 className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             >
-                                <option value="">Selecione...</option>
-                                {FLOORING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                <option value="">{t('select')}...</option>
+                                {FLOORING_TYPES.map(t_val => <option key={t_val} value={t_val}>{t_val}</option>)}
                             </select>
                         </div>
                     )}
 
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Projetista</label>
+                        <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('designerCol')}</label>
                         <select 
                             value={editForm.userId}
                             onChange={(e) => setEditForm({...editForm, userId: e.target.value})}
                             className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             disabled={isSaving}
                         >
-                            <option value="">Selecione um projetista</option>
+                            <option value="">{t('selectDesigner')}</option>
                             {Object.keys(usersMap).length === 0 ? (
-                                <option disabled>Carregando usuários...</option>
+                                <option disabled>{t('loadingUsers')}...</option>
                             ) : (
                                 Object.keys(usersMap).map(userId => {
                                     const user = usersMap[userId];
@@ -1073,13 +1264,13 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
                         />
                         <label htmlFor="isOvertime" className="text-sm font-bold text-black dark:text-white cursor-pointer">
-                            Habilitar Hora Extra (Contabiliza domingos e fora do horário padrão)
+                            {t('enableOvertime')} ({t('enableOvertimeDesc')})
                         </label>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Data Início</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('startDate')}</label>
                             <input 
                                 type="date"
                                 value={editForm.startDate}
@@ -1088,7 +1279,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Hora Início</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('startTime')}</label>
                             <input 
                                 type="time"
                                 value={editForm.startTime}
@@ -1100,7 +1291,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Data Fim</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('endDate')}</label>
                             <input 
                                 type="date"
                                 value={editForm.endDate}
@@ -1109,7 +1300,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Hora Fim</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('endTime')}</label>
                             <input 
                                 type="time"
                                 value={editForm.endTime}
@@ -1121,7 +1312,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Horas Estimadas</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('estHours')}</label>
                             <input 
                                 type="number"
                                 value={editForm.estHours}
@@ -1131,7 +1322,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Minutos Estimados</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('estMinutes')}</label>
                             <input 
                                 type="number"
                                 value={editForm.estMinutes}
@@ -1145,19 +1336,19 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg text-xs text-blue-800 dark:text-blue-300">
                         <div className="flex items-start mb-2">
                             <Clock className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
-                            <p className="text-gray-500 dark:text-slate-400">O tempo total realizado será calculado automaticamente:</p>
+                            <p className="text-gray-500 dark:text-slate-400">{t('autoCalculateTime')}:</p>
                         </div>
                         <div className="grid grid-cols-3 gap-2 text-center">
                             <div className="bg-white dark:bg-black p-2 rounded border border-blue-100 dark:border-blue-900/50">
-                                <div className="text-[10px] text-gray-500 dark:text-slate-500">Bruto</div>
+                                <div className="text-[10px] text-gray-500 dark:text-slate-500">{t('gross')}</div>
                                 <div className="font-mono font-bold text-gray-800 dark:text-slate-200">{formatDuration(durationPreview.gross)}</div>
                             </div>
                             <div className="bg-white dark:bg-black p-2 rounded border border-blue-100 dark:border-blue-900/50">
-                                <div className="text-[10px] text-gray-500 dark:text-slate-500">Pausas</div>
+                                <div className="text-[10px] text-gray-500 dark:text-slate-500">{t('pauses')}</div>
                                 <div className="font-mono font-bold text-red-500 dark:text-red-400">-{formatDuration(durationPreview.pauses)}</div>
                             </div>
                             <div className="bg-white dark:bg-black p-2 rounded border border-blue-100 dark:border-blue-900/50 ring-1 ring-blue-200 dark:ring-blue-900/50">
-                                <div className="text-[10px] text-gray-500 dark:text-slate-500">Líquido (Real)</div>
+                                <div className="text-[10px] text-gray-500 dark:text-slate-500">{t('net')}</div>
                                 <div className="font-mono font-bold text-green-600 dark:text-green-400">{formatDuration(durationPreview.net)}</div>
                             </div>
                         </div>
@@ -1171,7 +1362,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-300">
                         <div className="flex items-start">
                             <AlertTriangle className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
-                            <p>Alterar o tempo de uma liberação concluída afetará diretamente os indicadores de produtividade e os gráficos de desempenho.</p>
+                            <p>{t('editWarning')}</p>
                         </div>
                     </div>
                 </div>
@@ -1182,7 +1373,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         className="flex-1 px-4 py-2 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 font-medium transition-colors"
                         disabled={isSaving}
                     >
-                        Cancelar
+                        {t('cancel')}
                     </button>
                     <button 
                         onClick={handleSaveEdit}
@@ -1192,10 +1383,10 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         {isSaving ? (
                             <>
                                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                                Salvando...
+                                {t('saving')}...
                             </>
                         ) : (
-                            'Salvar Alterações'
+                            t('saveChanges')
                         )}
                     </button>
                 </div>
@@ -1209,7 +1400,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
                         <AlertCircle className="w-6 h-6 mr-2 text-orange-600 dark:text-orange-400" />
-                        Resolver Duplicatas ({duplicateGroups.length})
+                        {t('resolveDuplicates')} ({duplicateGroups.length})
                     </h3>
                     <button onClick={() => setShowDuplicateModal(false)} className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
                         <X className="w-6 h-6" />
@@ -1222,40 +1413,40 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             {/* Keep */}
                             <div className="bg-white dark:bg-black p-3 rounded border border-green-200 dark:border-green-900/50 shadow-sm">
                                 <div className="flex justify-between items-start mb-2">
-                                    <span className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 text-xs font-bold px-2 py-1 rounded">MANTER</span>
-                                    <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.keep.id.slice(-4)}</span>
+                                    <span className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 text-xs font-bold px-2 py-1 rounded">{t('keep')}</span>
+                                    <span className="text-xs text-gray-400 dark:text-slate-500">{t('id')}: ...{group.keep.id.slice(-4)}</span>
                                 </div>
                                 <p className="font-bold text-gray-800 dark:text-slate-200">{group.keep.ns}</p>
-                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.keep.clientName || 'Sem cliente'}</p>
+                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.keep.clientName || t('noClient')}</p>
                                 <div className="mt-2 text-xs text-gray-500 dark:text-slate-500 space-y-1">
-                                    <p>Início: {new Date(group.keep.startTime).toLocaleString()}</p>
-                                    <p>Tempo: {(group.keep.totalActiveSeconds / 3600).toFixed(2)}h</p>
-                                    <p>Status: {group.keep.status}</p>
+                                    <p>{t('start')}: {new Date(group.keep.startTime).toLocaleString()}</p>
+                                    <p>{t('totalTime')}: {(group.keep.totalActiveSeconds / 3600).toFixed(2)}h</p>
+                                    <p>{t('status')}: {getTranslatedStatus(group.keep.status)}</p>
                                 </div>
                             </div>
 
                             {/* Discard */}
                             <div className="bg-white dark:bg-black p-3 rounded border border-red-200 dark:border-red-900/50 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
                                 <div className="flex justify-between items-start mb-2">
-                                    <span className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 text-xs font-bold px-2 py-1 rounded">APAGAR</span>
-                                    <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.discard.id.slice(-4)}</span>
+                                    <span className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 text-xs font-bold px-2 py-1 rounded">{t('discard')}</span>
+                                    <span className="text-xs text-gray-400 dark:text-slate-500">{t('id')}: ...{group.discard.id.slice(-4)}</span>
                                 </div>
                                 <p className="font-bold text-gray-800 dark:text-slate-200">{group.discard.ns}</p>
-                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.discard.clientName || 'Sem cliente'}</p>
+                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.discard.clientName || t('noClient')}</p>
                                 <div className="mt-2 text-xs text-gray-500 dark:text-slate-500 space-y-1">
-                                    <p>Início: {new Date(group.discard.startTime).toLocaleString()}</p>
-                                    <p>Tempo: {(group.discard.totalActiveSeconds / 3600).toFixed(2)}h</p>
-                                    <p>Status: {group.discard.status}</p>
+                                    <p>{t('start')}: {new Date(group.discard.startTime).toLocaleString()}</p>
+                                    <p>{t('totalTime')}: {(group.discard.totalActiveSeconds / 3600).toFixed(2)}h</p>
+                                    <p>{t('status')}: {getTranslatedStatus(group.discard.status)}</p>
                                 </div>
                                 <button 
                                     onClick={async () => {
-                                        if(!window.confirm("Confirmar exclusão deste item?")) return;
+                                        if(!window.confirm(t('deleteConfirm'))) return;
                                         console.log("Deleting duplicate:", group.discard.id);
                                         const res = await deleteProjectById(group.discard.id, group.discard.ns);
                                         if (res.success) {
                                             console.log("Deletion successful for:", group.discard.id);
                                             // Pop-up requested by user
-                                            window.alert("Projeto excluído com sucesso!");
+                                            window.alert(t('deleteSuccess'));
                                             // Update UI instantly without reload
                                             setDuplicateGroups(prev => {
                                                 const newGroups = prev.filter(g => g.discard.id !== group.discard.id);
@@ -1264,14 +1455,14 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                             });
                                         } else {
                                             console.error("Deletion failed:", res.message);
-                                            addToast("Erro ao excluir: " + res.message, "error");
-                                            window.alert("Erro ao excluir: " + res.message);
+                                            addToast(t('errorDeleting') + res.message, "error");
+                                            window.alert(t('errorDeleting') + res.message);
                                         }
                                     }}
                                     className="mt-3 w-full bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 py-1 rounded text-xs font-bold flex items-center justify-center"
                                 >
                                     <Trash2 className="w-3 h-3 mr-1" />
-                                    EXCLUIR ESTE
+                                    {t('deleteThis')}
                                 </button>
                             </div>
                             
@@ -1283,7 +1474,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     {duplicateGroups.length === 0 && (
                         <div className="text-center py-10 text-gray-500 dark:text-slate-400">
                             <CheckCircle className="w-12 h-12 mx-auto text-green-500 dark:text-green-400 mb-3" />
-                            <p>Todas as duplicatas foram resolvidas!</p>
+                            <p>{t('allDuplicatesResolved')}</p>
                         </div>
                     )}
                 </div>
@@ -1296,7 +1487,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         }}
                         className="px-4 py-2 bg-gray-800 dark:bg-black hover:bg-gray-900 dark:hover:bg-slate-600 text-white dark:text-slate-100 rounded-lg font-medium text-sm"
                     >
-                        Fechar e Atualizar
+                        {t('closeAndUpdate')}
                     </button>
                 </div>
             </div>
