@@ -707,7 +707,14 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
                   {/* Tipo e Implemento */}
                   <td className="p-4">
-                     <div className="text-xs font-bold text-black dark:text-white">{project.type}</div>
+                     <div className="flex items-center gap-2">
+                        <div className="text-xs font-bold text-black dark:text-white">{project.type}</div>
+                        {project.isOvertime && (
+                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] font-bold rounded border border-amber-200 dark:border-amber-800 uppercase">
+                            H.E.
+                          </span>
+                        )}
+                     </div>
                      <div className="flex items-center text-xs text-gray-500 dark:text-slate-500 mt-1">
                       <Truck className="w-3 h-3 mr-1 text-gray-400 dark:text-slate-500" />
                       {project.implementType || '-'}
@@ -1066,7 +1073,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
                         />
                         <label htmlFor="isOvertime" className="text-sm font-bold text-black dark:text-white cursor-pointer">
-                            Habilitar Hora Extra (Contabiliza fins de semana e fora do horário)
+                            Habilitar Hora Extra (Contabiliza domingos e fora do horário padrão)
                         </label>
                     </div>
 
