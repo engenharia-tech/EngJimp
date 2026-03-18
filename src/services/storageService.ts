@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity } from '../types';
-import { DEFAULT_INTERRUPTION_TYPES } from '../constants';
+import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 
 // Supabase Configuration
 const getSupabaseConfig = () => {
@@ -149,6 +149,41 @@ export const fetchAppState = async (): Promise<AppState> => {
       .select('*')
       .order('name', { ascending: true });
 
+    let activityTypes: ActivityType[] = (activityTypesData || []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      isActive: t.is_active
+    }));
+
+    // Seed default activity types if empty
+    if (activityTypes.length === 0) {
+      console.log("Seeding default activity types...");
+      const defaultTypes = DEFAULT_ACTIVITY_TYPES.map(name => ({
+        name,
+        is_active: true
+      }));
+      
+      const { data: seededData, error: seedError } = await supabase
+        .from('activity_types')
+        .insert(defaultTypes)
+        .select();
+
+      if (!seedError && seededData) {
+        activityTypes = seededData.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          isActive: t.is_active
+        }));
+      } else {
+        // Fallback to constants if seeding fails, so UI is not empty
+        activityTypes = DEFAULT_ACTIVITY_TYPES.map((name, index) => ({
+          id: `temp-${index}`,
+          name,
+          isActive: true
+        }));
+      }
+    }
+
     // Fetch Operational Activities
     const { data: operationalActivitiesData, error: operationalActivitiesError } = await supabase
       .from('operational_activities')
@@ -232,12 +267,6 @@ export const fetchAppState = async (): Promise<AppState> => {
     }));
 
     const interruptionTypes: InterruptionType[] = (interruptionTypesData || []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      isActive: t.is_active
-    }));
-
-    const activityTypes: ActivityType[] = (activityTypesData || []).map((t: any) => ({
       id: t.id,
       name: t.name,
       isActive: t.is_active

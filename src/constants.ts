@@ -81,6 +81,8 @@ export const DEFAULT_ACTIVITY_TYPES = [
   'FOLGA',
   'FÉRIAS',
   'VIAGEM',
+  'ALMOÇO',
+  'OFICINA',
   'OUTROS',
   'GERENCIAL',
   'P&D'
