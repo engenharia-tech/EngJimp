@@ -768,19 +768,44 @@ CREATE TABLE IF NOT EXISTS public.interruptions (
     total_time_seconds INTEGER DEFAULT 0
 );
 
--- Garantir que a coluna project_id exista caso a tabela tenha sido criada sem ela
-ALTER TABLE public.interruptions ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL;
+-- 11. Criar Tabelas de Desempenho Operacional (Engenharia)
+CREATE TABLE IF NOT EXISTS public.activity_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    is_active BOOLEAN DEFAULT true
+);
 
--- Habilitar RLS
+CREATE TABLE IF NOT EXISTS public.operational_activities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    activity_type_id UUID REFERENCES public.activity_types(id) ON DELETE SET NULL,
+    activity_name TEXT NOT NULL,
+    start_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+    end_time TIMESTAMPTZ,
+    duration_seconds INTEGER DEFAULT 0,
+    notes TEXT,
+    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
+    is_flagged BOOLEAN DEFAULT false
+);
+
+-- Habilitar RLS em todas as novas tabelas
 ALTER TABLE public.interruption_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interruptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.operational_activities ENABLE ROW LEVEL SECURITY;
 
--- Criar Políticas
+-- Criar Políticas Permissivas
 DROP POLICY IF EXISTS "Enable all for interruption_types" ON public.interruption_types;
 CREATE POLICY "Enable all for interruption_types" ON public.interruption_types FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Enable all for interruptions" ON public.interruptions;
 CREATE POLICY "Enable all for interruptions" ON public.interruptions FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Enable all for activity_types" ON public.activity_types;
+CREATE POLICY "Enable all for activity_types" ON public.activity_types FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Enable all for operational_activities" ON public.operational_activities;
+CREATE POLICY "Enable all for operational_activities" ON public.operational_activities FOR ALL USING (true) WITH CHECK (true);
 
 -- Seed default interruption types
 INSERT INTO public.interruption_types (name)
@@ -791,6 +816,17 @@ SELECT name FROM (
     ('outros')
 ) AS t(name)
 WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
+
+-- Seed default activity types
+INSERT INTO public.activity_types (name)
+SELECT name FROM (
+    VALUES 
+    ('PADRÃO'), ('FÁBRICA'), ('ALONGAMENTO'), ('REUNIÃO'), ('RETRABALHO'), 
+    ('DESENVOLVIMENTO PROJETO'), ('RETRABALHO SOLICITADO'), ('FOLGA'), 
+    ('FÉRIAS'), ('VIAGEM'), ('ALMOÇO'), ('OFICINA'), ('OUTROS'), 
+    ('GERENCIAL'), ('P&D')
+) AS t(name)
+WHERE NOT EXISTS (SELECT 1 FROM public.activity_types);
 `;
                             navigator.clipboard.writeText(sql);
                             addToast("SQL Completo copiado! Cole no SQL Editor do Supabase e execute.", 'success');
