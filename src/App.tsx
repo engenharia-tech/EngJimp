@@ -250,6 +250,19 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleRefresh = async () => {
+    try {
+      setIsLoading(true);
+      const updatedData = await fetchAppState();
+      setData(updatedData);
+      addToast(t('dataRefreshedSuccess'), 'success');
+    } catch (error) {
+      addToast(t('errorLoadingData'), 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleProjectUpdate = async (project: ProjectSession) => {
     const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
@@ -461,8 +474,11 @@ const AppContent: React.FC = () => {
     try {
       const updatedData = await addOperationalActivity(activity);
       setData(updatedData);
-    } catch (e) {
-      addToast('Error adding activity', 'error');
+      addToast(t('activityRegisteredSuccess'), 'success');
+    } catch (e: any) {
+      console.error("Failed to add activity:", e);
+      addToast(t('errorRegisteringActivity'), 'error');
+      throw e;
     }
   };
 
@@ -470,8 +486,11 @@ const AppContent: React.FC = () => {
     try {
       const updatedData = await updateOperationalActivity(activity);
       setData(updatedData);
-    } catch (e) {
-      addToast('Error updating activity', 'error');
+      addToast(t('activityUpdatedSuccess'), 'success');
+    } catch (e: any) {
+      console.error("Failed to update activity:", e);
+      addToast(t('errorUpdatingActivity'), 'error');
+      throw e;
     }
   };
 
@@ -479,8 +498,11 @@ const AppContent: React.FC = () => {
     try {
       const updatedData = await deleteOperationalActivity(id);
       setData(updatedData);
-    } catch (e) {
-      addToast('Error deleting activity', 'error');
+      addToast(t('activityDeletedSuccess'), 'success');
+    } catch (e: any) {
+      console.error("Failed to delete activity:", e);
+      addToast(t('errorDeletingActivity', { error: e.message || '' }), 'error');
+      throw e;
     }
   };
 
@@ -854,7 +876,8 @@ const AppContent: React.FC = () => {
               onUpdateActivityType={onUpdateActivityType}
               onDeleteActivityType={onDeleteActivityType}
               settings={data.settings}
-              onUpdateSettings={updateSettings}
+              onUpdateSettings={handleUpdateSettings}
+              onRefresh={handleRefresh}
             />
           )}
 

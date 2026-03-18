@@ -837,18 +837,20 @@ export const fetchOperationalActivities = async (): Promise<OperationalActivity[
 export const addOperationalActivity = async (activity: OperationalActivity): Promise<AppState> => {
     try {
         const { error } = await supabase.from('operational_activities').insert([{
-            id: activity.id,
             user_id: activity.userId,
             activity_type_id: activity.activityTypeId,
             activity_name: activity.activityName,
             start_time: activity.startTime,
-            end_time: activity.endTime,
-            duration_seconds: activity.durationSeconds,
-            notes: activity.notes,
-            project_id: activity.projectId,
-            is_flagged: activity.isFlagged
+            end_time: activity.endTime || null,
+            duration_seconds: activity.durationSeconds || 0,
+            notes: activity.notes || null,
+            project_id: activity.projectId || null,
+            is_flagged: activity.isFlagged || false
         }]);
-        if (error) throw error;
+        if (error) {
+            console.error("Supabase error adding activity:", error);
+            throw error;
+        }
         return fetchAppState();
     } catch (error) {
         console.error("Failed to add operational activity", error);
@@ -864,11 +866,11 @@ export const updateOperationalActivity = async (activity: OperationalActivity): 
                 activity_type_id: activity.activityTypeId,
                 activity_name: activity.activityName,
                 start_time: activity.startTime,
-                end_time: activity.endTime,
-                duration_seconds: activity.durationSeconds,
-                notes: activity.notes,
-                project_id: activity.projectId,
-                is_flagged: activity.isFlagged
+                end_time: activity.endTime || null,
+                duration_seconds: activity.durationSeconds || 0,
+                notes: activity.notes || null,
+                project_id: activity.projectId || null,
+                is_flagged: activity.isFlagged || false
             })
             .eq('id', activity.id);
         if (error) throw error;

@@ -43,6 +43,7 @@ import {
 import { format, startOfDay, endOfDay, isWithinInterval, parseISO, differenceInSeconds, addSeconds, subDays, addDays } from 'date-fns';
 import { ptBR, es, enUS } from 'date-fns/locale';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useToast } from './Toast';
 
 interface OperationalPerformanceProps {
   activities: OperationalActivity[];
@@ -59,6 +60,7 @@ interface OperationalPerformanceProps {
   onDeleteActivityType: (id: string) => Promise<void>;
   settings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => Promise<void>;
+  onRefresh?: () => Promise<void>;
 }
 
 export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
@@ -75,9 +77,11 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   onUpdateActivityType,
   onDeleteActivityType,
   settings,
-  onUpdateSettings
+  onUpdateSettings,
+  onRefresh
 }) => {
   const { t, language } = useLanguage();
+  const { addToast } = useToast();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'month' | 'year'>('day');
   const [selectedUserId, setSelectedUserId] = useState(currentUser.id);
@@ -86,9 +90,24 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [newTypeName, setNewTypeName] = useState('');
   const [activeTab, setActiveTab] = useState<'tracker' | 'dashboard' | 'management'>('tracker');
   const [isEditingGap, setIsEditingGap] = useState<{ start: string; end: string } | null>(null);
+  const [isEditingActivity, setIsEditingActivity] = useState<OperationalActivity | null>(null);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [selectedActivityType, setSelectedActivityType] = useState('');
   const [gapNotes, setGapNotes] = useState('');
   const [gapIsFlagged, setGapIsFlagged] = useState(false);
+
+  // Check if activity types are temporary (database error)
+  const isUsingTempActivities = useMemo(() => {
+    return activityTypes.some(t => t.id.startsWith('temp-'));
+  }, [activityTypes]);
+
+  // Set default selected activity type
+  useEffect(() => {
+    if (!selectedActivityType && activityTypes.length > 0) {
+      const firstActive = activityTypes.find(t => t.isActive !== false);
+      if (firstActive) setSelectedActivityType(firstActive.id);
+    }
+  }, [activityTypes, selectedActivityType]);
 
   const dateLocale = useMemo(() => {
     switch (language) {
@@ -229,6 +248,12 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6'];
 
   const handleStartActivity = async (typeId: string) => {
+    if (typeId.startsWith('temp-')) {
+      const msg = t('errorSeedingActivityTypes');
+      addToast(msg === 'errorSeedingActivityTypes' ? 'ERRO: Banco de dados não configurado. Vá em "Gestão de Equipe" e rode a correção SQL.' : msg, 'error');
+      return;
+    }
+
     const type = activityTypes.find(t => t.id === typeId);
     if (!type) return;
 
@@ -238,10 +263,17 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       activityTypeId: typeId,
       activityName: type.name,
       startTime: new Date().toISOString(),
-      durationSeconds: 0
+      durationSeconds: 0,
+      isFlagged: false,
+      notes: '',
+      projectId: undefined
     };
 
-    await onAddActivity(newActivity);
+    try {
+      await onAddActivity(newActivity);
+    } catch (error) {
+      // Error is already handled in App.tsx toast
+    }
   };
 
   const handleStopActivity = async (activity: OperationalActivity) => {
@@ -255,31 +287,74 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     });
   };
 
-  const handleFillGap = async () => {
-    if (!isEditingGap || !selectedActivityType) return;
+  const handleSaveActivity = async () => {
+    if ((!isEditingGap && !isEditingActivity) || !selectedActivityType) return;
+
+    if (selectedActivityType.startsWith('temp-')) {
+      const msg = t('errorSeedingActivityTypes');
+      addToast(msg === 'errorSeedingActivityTypes' ? 'ERRO: Banco de dados não configurado. Vá em "Gestão de Equipe" e rode a correção SQL.' : msg, 'error');
+      return;
+    }
 
     const type = activityTypes.find(t => t.id === selectedActivityType);
     if (!type) return;
 
-    const durationSeconds = differenceInSeconds(parseISO(isEditingGap.end), parseISO(isEditingGap.start));
+    if (isEditingActivity) {
+      // Update existing
+      try {
+        await onUpdateActivity({
+          ...isEditingActivity,
+          activityTypeId: type.id,
+          activityName: type.name,
+          notes: gapNotes,
+          isFlagged: gapIsFlagged
+        });
+        setIsEditingActivity(null);
+        setSelectedActivityType('');
+        setGapNotes('');
+        setGapIsFlagged(false);
+      } catch (error) {
+        // Error handled in App.tsx
+      }
+    } else if (isEditingGap) {
+      // Create new from gap
+      const durationSeconds = differenceInSeconds(parseISO(isEditingGap.end), parseISO(isEditingGap.start));
 
-    const newActivity: OperationalActivity = {
-      id: crypto.randomUUID(),
-      userId: currentUser.id,
-      activityTypeId: type.id,
-      activityName: type.name,
-      startTime: isEditingGap.start,
-      endTime: isEditingGap.end,
-      durationSeconds,
-      notes: gapNotes,
-      isFlagged: gapIsFlagged
-    };
+      const newActivity: OperationalActivity = {
+        id: crypto.randomUUID(),
+        userId: currentUser.id,
+        activityTypeId: type.id,
+        activityName: type.name,
+        startTime: isEditingGap.start,
+        endTime: isEditingGap.end,
+        durationSeconds,
+        notes: gapNotes,
+        isFlagged: gapIsFlagged
+      };
 
-    await onAddActivity(newActivity);
-    setIsEditingGap(null);
-    setSelectedActivityType('');
-    setGapNotes('');
-    setGapIsFlagged(false);
+      try {
+        await onAddActivity(newActivity);
+        setIsEditingGap(null);
+        setSelectedActivityType('');
+        setGapNotes('');
+        setGapIsFlagged(false);
+      } catch (error) {
+        // Error handled in App.tsx
+      }
+    }
+  };
+
+  const handleDeleteActivity = async (id: string) => {
+    try {
+      await onDeleteActivity(id);
+      setIsEditingActivity(null);
+      setIsConfirmingDelete(false);
+      setSelectedActivityType('');
+      setGapNotes('');
+      setGapIsFlagged(false);
+    } catch (error) {
+      // Error handled in App.tsx
+    }
   };
 
   const handleAddType = async () => {
@@ -335,7 +410,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
         <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => onRefresh && onRefresh()}
             className={`p-2 rounded-xl border transition-all ${
               theme === 'dark' 
                 ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' 
@@ -359,8 +434,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
               </select>
             </div>
           )}
+        </div>
+      </div>
 
-          <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-1 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+      <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-1 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
           <button
             onClick={() => setActiveTab('tracker')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
@@ -397,8 +474,22 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
             </button>
           )}
         </div>
-      </div>
-    </div>
+
+      {/* Database Warning Banner */}
+      {isUsingTempActivities && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-xl flex items-start animate-in slide-in-from-top duration-300">
+          <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mr-3 mt-0.5 flex-shrink-0" />
+          <div>
+            <h4 className="text-sm font-bold text-red-800 dark:text-red-300 mb-1">
+              Banco de Dados não Configurado
+            </h4>
+            <p className="text-xs text-red-700 dark:text-red-400">
+              As tabelas de desempenho operacional não foram encontradas no banco de dados. 
+              Peça ao GESTOR para ir em <strong>Gestão de Equipe</strong> e rodar o <strong>Script de Correção SQL</strong>.
+            </p>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'tracker' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -446,59 +537,59 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="flex flex-col gap-2">
-                    <label className={`text-xs font-semibold uppercase tracking-wider ${theme === 'dark' ? 'text-slate-300' : 'text-gray-500'}`}>
-                      {t('selectActivity') || 'Selecionar Atividade'}
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-3">
+                    <label className={`text-xs font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}`}>
+                      {t('selectActivity') || 'O que você está fazendo agora?'}
                     </label>
-                    <div className="flex gap-2">
+                    <div className="space-y-3">
                       <select
-                        className="flex-1 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleStartActivity(e.target.value);
-                            e.target.value = '';
-                          }
-                        }}
-                        defaultValue=""
+                        value={selectedActivityType}
+                        className={`w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
+                          theme === 'dark' ? 'text-white' : 'text-gray-800'
+                        }`}
+                        onChange={(e) => setSelectedActivityType(e.target.value)}
                       >
                         <option value="" disabled>{t('selectActivityType')}</option>
                         {activityTypes.filter(t => t.isActive !== false).map(type => (
                           <option key={type.id} value={type.id}>{type.name}</option>
                         ))}
                       </select>
-                      <button
-                        onClick={() => setIsAddingType(true)}
-                        className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md"
-                        title={t('addActivityType')}
-                      >
-                        <Plus size={20} />
-                      </button>
+                      
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => selectedActivityType && handleStartActivity(selectedActivityType)}
+                          disabled={!selectedActivityType}
+                          className={`flex-1 flex items-center justify-center gap-2 py-4 bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                          <Play size={24} fill="currentColor" />
+                          <span className="uppercase tracking-wider text-base">{t('play') || 'Iniciar'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => setIsAddingType(true)}
+                          className={`p-4 bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 rounded-xl hover:bg-gray-200 dark:hover:bg-slate-700 transition-all border border-gray-200 dark:border-slate-700`}
+                          title={t('addActivityType')}
+                        >
+                          <Plus size={24} />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {activityTypes.filter(t => t.isActive !== false).length === 0 ? (
-                    <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 rounded-xl text-center">
-                      <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                  {activityTypes.filter(t => t.isActive !== false).length === 0 && (
+                    <div className="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 rounded-2xl text-center">
+                      <p className="text-sm text-amber-600 dark:text-amber-400 font-bold uppercase tracking-tight">
                         {t('noActivityTypesFound') || 'Nenhum tipo de atividade encontrado. Adicione um para começar.'}
                       </p>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      {activityTypes.filter(t => t.isActive !== false).slice(0, 8).map(type => (
-                        <button
-                          key={type.id}
-                          onClick={() => handleStartActivity(type.id)}
-                          className="flex flex-col items-center justify-center p-3 bg-gray-50 dark:bg-slate-900 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-gray-200 dark:border-slate-700 rounded-xl transition-all group"
-                        >
-                          <Play size={18} className="text-gray-400 group-hover:text-blue-500 mb-1" />
-                          <span className="text-xs font-bold text-gray-700 dark:text-white text-center uppercase tracking-tight">
-                            {type.name}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
                   )}
+                  
+                  <div className="pt-4 border-t border-gray-100 dark:border-slate-700/50">
+                    <p className="text-[10px] text-center font-bold text-gray-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+                      {t('operationalPerformanceDesc') || 'Controle de atividades de engenharia'}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -679,14 +770,29 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         ? canEditCurrent 
                           ? 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/20 border-dashed hover:border-amber-300 cursor-pointer'
                           : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 border-dashed opacity-60'
-                        : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800'
+                        : canEditCurrent && item.type === 'activity'
+                          ? 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 hover:border-blue-300 cursor-pointer'
+                          : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800'
                     }`}
                     onClick={() => {
-                      if (item.isGap && canEditCurrent) {
+                      if (!canEditCurrent) return;
+                      
+                      if (item.isGap) {
                         setIsEditingGap({ 
                           start: item.start.toISOString(), 
                           end: item.end.toISOString() 
                         });
+                        setSelectedActivityType('');
+                        setGapNotes('');
+                        setGapIsFlagged(false);
+                      } else if (item.type === 'activity') {
+                        const activity = activities.find(a => a.id === item.id);
+                        if (activity) {
+                          setIsEditingActivity(activity);
+                          setSelectedActivityType(activity.activityTypeId);
+                          setGapNotes(activity.notes || '');
+                          setGapIsFlagged(activity.isFlagged || false);
+                        }
                       }
                     }}
                     >
@@ -887,15 +993,50 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         </div>
       )}
 
-      {isEditingGap && (
+      {(isEditingGap || isEditingActivity) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl border border-gray-200 dark:border-slate-700">
-            <h3 className={`text-xl font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-              {t('fillGap')}
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                {isEditingActivity ? t('editActivity') : t('fillGap')}
+              </h3>
+              {isEditingActivity && (
+                <div className="flex items-center gap-2">
+                  {isConfirmingDelete ? (
+                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 duration-200">
+                      <button
+                        onClick={() => handleDeleteActivity(isEditingActivity.id)}
+                        className="text-[10px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded border border-red-200 dark:border-red-900/30 uppercase"
+                      >
+                        {t('confirm')}
+                      </button>
+                      <button
+                        onClick={() => setIsConfirmingDelete(false)}
+                        className="text-[10px] font-bold text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 px-2 py-1 rounded border border-gray-200 dark:border-slate-700 uppercase"
+                      >
+                        {t('cancel')}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setIsConfirmingDelete(true)}
+                      className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                      title={t('delete')}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
             <p className="text-sm text-gray-500 mb-6">
-              {format(parseISO(isEditingGap.start), 'HH:mm')} - {format(parseISO(isEditingGap.end), 'HH:mm')} 
-              ({Math.round(differenceInSeconds(parseISO(isEditingGap.end), parseISO(isEditingGap.start)) / 60)} min)
+              {format(parseISO(isEditingActivity?.startTime || isEditingGap?.start || ''), 'HH:mm')} - 
+              {format(parseISO(isEditingActivity?.endTime || isEditingGap?.end || ''), 'HH:mm')} 
+              ({Math.round(differenceInSeconds(
+                parseISO(isEditingActivity?.endTime || isEditingGap?.end || ''), 
+                parseISO(isEditingActivity?.startTime || isEditingGap?.start || '')
+              ) / 60)} min)
             </p>
 
             <div className="space-y-4 mb-6">
@@ -907,7 +1048,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                     className="text-[10px] font-bold text-blue-500 hover:text-blue-600 uppercase flex items-center gap-1"
                   >
                     <Plus size={10} />
-                    {t('addType') || 'Novo Tipo'}
+                    {t('addType')}
                   </button>
                 </div>
                 <select
@@ -946,15 +1087,22 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
             <div className="flex gap-3">
               <button
-                onClick={() => setIsEditingGap(null)}
+                onClick={() => {
+                  setIsEditingGap(null);
+                  setIsEditingActivity(null);
+                  setIsConfirmingDelete(false);
+                  setSelectedActivityType('');
+                  setGapNotes('');
+                  setGapIsFlagged(false);
+                }}
                 className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 dark:hover:bg-slate-700 rounded-xl transition-all"
               >
                 {t('cancel')}
               </button>
               <button
-                onClick={handleFillGap}
+                onClick={handleSaveActivity}
                 disabled={!selectedActivityType}
-                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-600/20"
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-600/20"
               >
                 {t('save')}
               </button>
