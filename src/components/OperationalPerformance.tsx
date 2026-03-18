@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Activity,
+  RefreshCw,
   Flag,
   UserCog,
   Mail,
@@ -283,9 +284,17 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const handleAddType = async () => {
     if (!newTypeName.trim()) return;
+    const name = newTypeName.trim().toUpperCase();
+    
+    // Check if already exists
+    if (activityTypes.some(t => t.name.toUpperCase() === name)) {
+      alert(t('activityTypeAlreadyExists') || 'Este tipo de atividade já existe');
+      return;
+    }
+
     await onAddActivityType({
       id: crypto.randomUUID(),
-      name: newTypeName.trim().toUpperCase(),
+      name,
       isActive: true
     });
     setNewTypeName('');
@@ -319,12 +328,23 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
             {t('operationalPerformance')}
           </h2>
-          <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
+          <p className={theme === 'dark' ? 'text-slate-200 font-medium' : 'text-gray-500'}>
             {t('operationalPerformanceDesc')}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => window.location.reload()}
+            className={`p-2 rounded-xl border transition-all ${
+              theme === 'dark' 
+                ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' 
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+            title={t('refresh') || 'Atualizar'}
+          >
+            <RefreshCw size={20} />
+          </button>
           {canEditOthers && (
             <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-1 px-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
               <UserCog size={18} className="text-gray-400" />
@@ -426,19 +446,59 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {activityTypes.filter(t => t.isActive).map(type => (
-                    <button
-                      key={type.id}
-                      onClick={() => handleStartActivity(type.id)}
-                      className="flex flex-col items-center justify-center p-3 bg-gray-50 dark:bg-slate-900 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-gray-200 dark:border-slate-700 rounded-xl transition-all group"
-                    >
-                      <Play size={18} className="text-gray-400 group-hover:text-blue-500 mb-1" />
-                      <span className="text-xs font-medium text-gray-600 dark:text-slate-300 text-center">
-                        {type.name}
-                      </span>
-                    </button>
-                  ))}
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <label className={`text-xs font-semibold uppercase tracking-wider ${theme === 'dark' ? 'text-slate-300' : 'text-gray-500'}`}>
+                      {t('selectActivity') || 'Selecionar Atividade'}
+                    </label>
+                    <div className="flex gap-2">
+                      <select
+                        className="flex-1 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleStartActivity(e.target.value);
+                            e.target.value = '';
+                          }
+                        }}
+                        defaultValue=""
+                      >
+                        <option value="" disabled>{t('selectActivityType')}</option>
+                        {activityTypes.filter(t => t.isActive !== false).map(type => (
+                          <option key={type.id} value={type.id}>{type.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => setIsAddingType(true)}
+                        className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md"
+                        title={t('addActivityType')}
+                      >
+                        <Plus size={20} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {activityTypes.filter(t => t.isActive !== false).length === 0 ? (
+                    <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 rounded-xl text-center">
+                      <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                        {t('noActivityTypesFound') || 'Nenhum tipo de atividade encontrado. Adicione um para começar.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {activityTypes.filter(t => t.isActive !== false).slice(0, 8).map(type => (
+                        <button
+                          key={type.id}
+                          onClick={() => handleStartActivity(type.id)}
+                          className="flex flex-col items-center justify-center p-3 bg-gray-50 dark:bg-slate-900 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-gray-200 dark:border-slate-700 rounded-xl transition-all group"
+                        >
+                          <Play size={18} className="text-gray-400 group-hover:text-blue-500 mb-1" />
+                          <span className="text-xs font-bold text-gray-700 dark:text-white text-center uppercase tracking-tight">
+                            {type.name}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -636,20 +696,22 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                             <Flag size={14} className="text-red-500 fill-red-500" />
                           )}
                           <span className={`text-sm font-bold uppercase tracking-wider ${
-                            item.isGap ? 'text-amber-600 dark:text-amber-400' : theme === 'dark' ? 'text-white' : 'text-gray-800'
-                          }`}>
-                            {item.name}
-                          </span>
-                        </div>
-                        <span className="text-xs font-mono text-gray-500 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-gray-100 dark:border-slate-700">
-                          {format(item.start, 'HH:mm')} - {format(item.end, 'HH:mm')}
+                          item.isGap ? 'text-amber-600 dark:text-amber-400' : theme === 'dark' ? 'text-white' : 'text-gray-800'
+                        }`}>
+                          {item.name}
                         </span>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <Clock size={12} />
-                          {Math.round(differenceInSeconds(item.end, item.start) / 60)} min
-                        </span>
+                      <span className={`text-xs font-mono bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-gray-100 dark:border-slate-700 ${
+                        theme === 'dark' ? 'text-slate-200 font-bold' : 'text-gray-500'
+                      }`}>
+                        {format(item.start, 'HH:mm')} - {format(item.end, 'HH:mm')}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className={`text-xs flex items-center gap-1 ${theme === 'dark' ? 'text-slate-300' : 'text-gray-500'}`}>
+                        <Clock size={12} />
+                        {Math.round(differenceInSeconds(item.end, item.start) / 60)} min
+                      </span>
                         {item.isGap && (
                           <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
                             <Plus size={12} />
@@ -670,19 +732,19 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-              <p className="text-sm text-gray-500 mb-1">{t('totalTime') || 'Tempo Total'}</p>
+              <p className="text-sm text-gray-500 dark:text-slate-300 mb-1">{t('totalTime') || 'Tempo Total'}</p>
               <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                 {totalHours}h
               </p>
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-              <p className="text-sm text-gray-500 mb-1">{t('activitiesCount') || 'Atividades'}</p>
+              <p className="text-sm text-gray-500 dark:text-slate-300 mb-1">{t('activitiesCount') || 'Atividades'}</p>
               <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                 {filteredActivities.length}
               </p>
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-              <p className="text-sm text-gray-500 mb-1">{t('projectsCount') || 'Projetos'}</p>
+              <p className="text-sm text-gray-500 dark:text-slate-300 mb-1">{t('projectsCount') || 'Projetos'}</p>
               <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                 {filteredProjects.length}
               </p>
@@ -736,7 +798,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                   </div>
                   <div className="text-right">
                     <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{stat.hours}h</p>
-                    <p className="text-xs text-gray-500">{stat.value} min</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">{stat.value} min</p>
                   </div>
                 </div>
               ))}
@@ -838,14 +900,23 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">{t('activityType')}</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-gray-400 uppercase">{t('activityType')}</label>
+                  <button 
+                    onClick={() => setIsAddingType(true)}
+                    className="text-[10px] font-bold text-blue-500 hover:text-blue-600 uppercase flex items-center gap-1"
+                  >
+                    <Plus size={10} />
+                    {t('addType') || 'Novo Tipo'}
+                  </button>
+                </div>
                 <select
                   value={selectedActivityType}
                   onChange={(e) => setSelectedActivityType(e.target.value)}
-                  className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 dark:text-white font-medium"
                 >
                   <option value="">{t('selectType')}</option>
-                  {activityTypes.filter(t => t.isActive).map(type => (
+                  {activityTypes.filter(t => t.isActive !== false).map(type => (
                     <option key={type.id} value={type.id}>{type.name}</option>
                   ))}
                 </select>
@@ -855,7 +926,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                 <textarea
                   value={gapNotes}
                   onChange={(e) => setGapNotes(e.target.value)}
-                  className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none"
+                  className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none text-gray-800 dark:text-white"
                   placeholder={t('notesPlaceholder')}
                 />
               </div>
