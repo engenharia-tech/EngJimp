@@ -1024,7 +1024,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 <div className="font-medium text-gray-800 dark:text-slate-200">{getTranslatedType(selectedProject.type)}</div>
                             </div>
                             <div>
-                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('implement')}</div>
+                                <div className="text-xs text-gray-500 dark:text-slate-400">{t('implementLabel')}</div>
                                 <div className="flex items-center text-gray-800 dark:text-slate-200">
                                     <Truck className="w-3 h-3 mr-1 text-gray-400 dark:text-slate-500" />
                                     {selectedProject.implementType ? getTranslatedImplement(selectedProject.implementType) : '-'}
@@ -1202,7 +1202,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             </select>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('implement')}</label>
+                            <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('implementLabel')}</label>
                             <select 
                                 value={editForm.implementType}
                                 onChange={(e) => setEditForm({...editForm, implementType: e.target.value as ImplementType})}

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Lightbulb, Plus, TrendingDown, TrendingUp, DollarSign, Calendar, User as UserIcon, Check, X, PlayCircle, Trash2, Calculator, ArrowRight, Eye, Edit, Info, MinusCircle, PlusCircle, Settings, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
 import { InnovationType, InnovationRecord, User, AppState, CalculationType, InnovationMaterial, InnovationMachine } from '../types';
 import { fetchUsers } from '../services/storageService';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface InnovationManagerProps {
   innovations: InnovationRecord[];
@@ -13,6 +14,7 @@ interface InnovationManagerProps {
 }
 
 export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovations, onAdd, onUpdate, onStatusChange, onDelete, currentUser }) => {
+  const { t } = useLanguage();
   const [showForm, setShowForm] = useState(false);
   const [editingInnovation, setEditingInnovation] = useState<InnovationRecord | null>(null);
   const [viewingInnovation, setViewingInnovation] = useState<InnovationRecord | null>(null);
@@ -258,8 +260,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     setShowForm(false);
   };
 
+  const { language } = useLanguage();
+
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+    return new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(val);
   };
 
   const getStatusColor = (status: string) => {
@@ -273,18 +277,27 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
   const getStatusLabel = (status: string) => {
       switch(status) {
-          case 'APPROVED': return 'Aprovado';
-          case 'IMPLEMENTED': return 'Implementado';
-          case 'REJECTED': return 'Rejeitado';
-          default: return 'Pendente';
+          case 'APPROVED': return t('approved');
+          case 'IMPLEMENTED': return t('implemented');
+          case 'REJECTED': return t('rejected');
+          default: return t('pending');
       }
   }
+
+  const getInnovationTypeLabel = (type: InnovationType) => {
+    switch (type) {
+      case InnovationType.PRODUCT_IMPROVEMENT: return t('productImprovement');
+      case InnovationType.PROCESS_OPTIMIZATION: return t('processOptimization');
+      case InnovationType.NEW_PROJECT: return t('newProject');
+      default: return type;
+    }
+  };
 
   const getCalculationLabel = (type: CalculationType) => {
       switch(type) {
           case CalculationType.PER_UNIT: 
           case CalculationType.RECURRING_MONTHLY: 
-              return 'unidades/ano';
+              return t('unitsYear');
           default: return '';
       }
   }
@@ -310,18 +323,18 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         <div>
           <h2 className="text-2xl font-bold text-black dark:text-white flex items-center">
             <Lightbulb className="w-6 h-6 mr-2 text-yellow-500" />
-            Inovações e Melhorias
+            {t('innovationsTitle')}
           </h2>
-          <p className="text-gray-600 dark:text-slate-400 mt-1">Gerencie ideias e acompanhe o impacto financeiro real.</p>
+          <p className="text-gray-600 dark:text-slate-400 mt-1">{t('innovationsSubtitle')}</p>
         </div>
         
         <div className="bg-gradient-to-r from-emerald-500 to-teal-600 dark:from-black dark:to-black rounded-xl p-6 text-white shadow-lg relative overflow-hidden border dark:border-slate-700">
           <div className="relative z-10">
-              <div className="text-emerald-100 text-sm font-medium mb-1 uppercase tracking-wider">Economia Anual Prevista de Inovação</div>
+              <div className="text-emerald-100 text-sm font-medium mb-1 uppercase tracking-wider">{t('predictedAnnualSavings')}</div>
               <div className="text-4xl font-bold font-mono">{formatCurrency(totalStats.savings)}</div>
               <div className="text-emerald-100 text-xs mt-2 flex items-center">
                 <Check className="w-4 h-4 mr-1" />
-                {totalStats.count} inovações contabilizadas
+                {t('innovationsCounted', { count: totalStats.count })}
               </div>
           </div>
           <TrendingDown className="absolute right-4 bottom-4 w-24 h-24 text-white/30 dark:text-emerald-500/30" />
@@ -336,7 +349,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                   <input 
                       type="text"
-                      placeholder="Buscar inovações..."
+                      placeholder={t('searchInnovations')}
                       value={filterText}
                       onChange={e => setFilterText(e.target.value)}
                       className="w-full pl-10 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200 shadow-sm"
@@ -347,10 +360,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   onChange={e => setFilterType(e.target.value)}
                   className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200 shadow-sm text-sm"
               >
-                  <option value="">Todos os Tipos</option>
-                  <option value={InnovationType.PRODUCT_IMPROVEMENT}>Melhoria de Produto</option>
-                  <option value={InnovationType.PROCESS_OPTIMIZATION}>Otimização de Processos</option>
-                  <option value={InnovationType.NEW_PROJECT}>Novo Projeto</option>
+                  <option value="">{t('allTypes')}</option>
+                  <option value={InnovationType.PRODUCT_IMPROVEMENT}>{t('productImprovement')}</option>
+                  <option value={InnovationType.PROCESS_OPTIMIZATION}>{t('processOptimization')}</option>
+                  <option value={InnovationType.NEW_PROJECT}>{t('newProject')}</option>
               </select>
           </div>
 
@@ -363,7 +376,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg flex items-center transition-colors shadow-md"
               >
                 <Plus className="w-5 h-5 mr-2" />
-                Nova Ideia / Melhoria
+                {t('newIdea')}
               </button>
           )}
         </div>
@@ -371,10 +384,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         <div className="flex flex-wrap items-center gap-4 bg-white dark:bg-black p-3 rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm">
             <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-400 dark:text-slate-500" />
-                <span className="text-xs font-medium text-black dark:text-white uppercase tracking-wider">Filtrar por Data:</span>
+                <span className="text-xs font-medium text-black dark:text-white uppercase tracking-wider">{t('filterByDate')}</span>
             </div>
             <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 dark:text-slate-500">De:</span>
+                <span className="text-xs text-gray-400 dark:text-slate-500">{t('from')}</span>
                 <input 
                     type="date"
                     value={startDate}
@@ -383,7 +396,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 />
             </div>
             <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 dark:text-slate-500">Até:</span>
+                <span className="text-xs text-gray-400 dark:text-slate-500">{t('to')}</span>
                 <input 
                     type="date"
                     value={endDate}
@@ -401,7 +414,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     }}
                     className="text-xs text-blue-600 hover:text-blue-800 font-medium ml-auto flex items-center"
                 >
-                    <X className="w-3 h-3 mr-1" /> Limpar Filtros
+                    <X className="w-3 h-3 mr-1" /> {t('clearFilters')}
                 </button>
             )}
         </div>
@@ -412,39 +425,39 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         <div className="bg-white dark:bg-black p-6 rounded-xl shadow-lg border border-blue-100 dark:border-blue-900/30 animate-in fade-in slide-in-from-top-4 duration-300">
           <h3 className="font-bold text-lg mb-6 text-black dark:text-white flex items-center border-b dark:border-slate-700 pb-4">
             <Calculator className="w-5 h-5 mr-2 text-blue-600" />
-            {editingInnovation ? 'Editar Inovação' : 'Calculadora de Economia'}
+            {editingInnovation ? t('editInnovation') : t('savingsCalculator')}
           </h3>
           <form onSubmit={handleSubmit} className="space-y-6">
             
             {/* Basic Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-black dark:text-white mb-1">Título da Melhoria</label>
+                <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('improvementTitle')}</label>
                 <input 
                   type="text" 
                   value={title}
                   onChange={e => setTitle(e.target.value)}
                   className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-                  placeholder="Ex: Otimização de corte de chapa..."
+                  placeholder={t('improvementTitlePlaceholder')}
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black dark:text-white mb-1">Tipo de Inovação</label>
+                <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('innovationType')}</label>
                 <select 
                   value={type}
                   onChange={e => setType(e.target.value as InnovationType)}
                   className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
                 >
-                  <option value={InnovationType.PRODUCT_IMPROVEMENT}>Melhoria de Produto</option>
-                  <option value={InnovationType.PROCESS_OPTIMIZATION}>Otimização de Processos</option>
-                  <option value={InnovationType.NEW_PROJECT}>Novo Projeto</option>
+                  <option value={InnovationType.PRODUCT_IMPROVEMENT}>{t('productImprovement')}</option>
+                  <option value={InnovationType.PROCESS_OPTIMIZATION}>{t('processOptimization')}</option>
+                  <option value={InnovationType.NEW_PROJECT}>{t('newProject')}</option>
                 </select>
               </div>
 
               <div>
-                 <label className="block text-sm font-medium text-black dark:text-white mb-1">Custo de Investimento (Opcional)</label>
+                 <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('investmentCost')}</label>
                  <div className="relative">
                    <span className="absolute left-3 top-3 text-gray-400 dark:text-slate-500">R$</span>
                    <input 
@@ -461,28 +474,28 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
             {/* Calculation Logic */}
             <div className="bg-gray-50 dark:bg-black p-6 rounded-lg border border-gray-200 dark:border-slate-700">
-                <h4 className="text-sm font-bold text-black dark:text-white mb-4 uppercase tracking-wider">Cálculo de Impacto Financeiro (Base)</h4>
+                <h4 className="text-sm font-bold text-black dark:text-white mb-4 uppercase tracking-wider">{t('financialImpactMethod')}</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-1">
-                        <label className="block text-sm font-medium text-black dark:text-white mb-1">Método de Cálculo</label>
+                        <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('calculationMethod')}</label>
                         <select 
                             value={calculationType}
                             onChange={e => setCalculationType(e.target.value as CalculationType)}
                             className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
                         >
-                            <option value={CalculationType.RECURRING_MONTHLY}>Recorrente (Mensal)</option>
-                            <option value={CalculationType.PER_UNIT}>Por Unidade Produzida</option>
-                            <option value={CalculationType.ONE_TIME}>Valor Único / Fixo</option>
-                            <option value={CalculationType.ADD_EXPENSE}>Adicionar Gasto</option>
+                            <option value={CalculationType.RECURRING_MONTHLY}>{t('recurringMonthly')}</option>
+                            <option value={CalculationType.PER_UNIT}>{t('perUnit')}</option>
+                            <option value={CalculationType.ONE_TIME}>{t('oneTime')}</option>
+                            <option value={CalculationType.ADD_EXPENSE}>{t('addExpense')}</option>
                         </select>
                     </div>
 
                     <div className="md:col-span-1">
                         <label className="block text-sm font-medium text-black dark:text-white mb-1">
-                             {calculationType === CalculationType.PER_UNIT ? 'Economia por Unidade' : 
-                              calculationType === CalculationType.RECURRING_MONTHLY ? 'Economia por Mês' : 
-                              calculationType === CalculationType.ADD_EXPENSE ? 'Valor do Gasto' :
-                              'Valor da Economia'}
+                             {calculationType === CalculationType.PER_UNIT ? t('savingsPerUnit') : 
+                              calculationType === CalculationType.RECURRING_MONTHLY ? t('savingsPerMonth') : 
+                              calculationType === CalculationType.ADD_EXPENSE ? t('expenseValue') :
+                              t('savingsValue')}
                         </label>
                         <div className="relative">
                             <span className="absolute left-3 top-3 text-gray-500 dark:text-slate-400 font-bold">R$</span>
@@ -502,20 +515,20 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         {calculationType !== CalculationType.ONE_TIME && calculationType !== CalculationType.ADD_EXPENSE ? (
                             <>
                                 <label className="block text-sm font-medium text-black dark:text-white mb-1">
-                                    Qtd. Produzida/Ano
+                                    {t('producedQuantityYear')}
                                 </label>
                                 <input 
                                     type="number" 
                                     value={quantity}
                                     onChange={e => setQuantity(e.target.value)}
                                     className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-                                    placeholder="Ex: 500"
+                                    placeholder={t('quantityPlaceholder')}
                                     required
                                 />
                             </>
                         ) : (
                              <div className="flex items-center h-full pt-6 text-gray-400 dark:text-slate-500 text-sm italic">
-                                {calculationType === CalculationType.ADD_EXPENSE ? 'Cálculo de gasto único.' : 'Cálculo de valor único.'}
+                                {calculationType === CalculationType.ADD_EXPENSE ? t('oneTimeExpenseCalculation') : t('oneTimeCalculation')}
                              </div>
                         )}
                     </div>
@@ -526,13 +539,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             <div className="bg-white dark:bg-black p-6 rounded-lg border border-gray-200 dark:border-slate-700">
                 <h4 className="text-sm font-bold text-black dark:text-white mb-4 uppercase tracking-wider flex items-center">
                     <PlusCircle className="w-4 h-4 mr-2 text-emerald-500" />
-                    Materiais (Adicionar ou Retirar)
+                    {t('materialsSection')}
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                     <div className="md:col-span-1">
                         <input 
                             type="text" 
-                            placeholder="Nome do Material"
+                            placeholder={t('materialName')}
                             value={matName}
                             onChange={e => setMatName(e.target.value)}
                             onKeyDown={e => {
@@ -549,7 +562,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">R$</span>
                             <input 
                                 type="number" 
-                                placeholder="Custo"
+                                placeholder={t('investmentCost')}
                                 value={matCost}
                                 onChange={e => setMatCost(e.target.value)}
                                 onKeyDown={e => {
@@ -568,8 +581,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             onChange={e => setMatType(e.target.value as 'ADD' | 'REMOVE')}
                             className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
                         >
-                            <option value="REMOVE">Retirar (Ganha)</option>
-                            <option value="ADD">Adicionar (Gasta)</option>
+                            <option value="REMOVE">{t('removeGain')}</option>
+                            <option value="ADD">{t('addSpend')}</option>
                         </select>
                     </div>
                     <div className="md:col-span-1">
@@ -586,7 +599,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             }`}
                         >
                             <Plus className="w-4 h-4 mr-1" /> 
-                            {matType === 'ADD' ? 'Adicionar Gasto' : 'Adicionar Ganho'}
+                            {matType === 'ADD' ? t('addExpenseAction') : t('addGainAction')}
                         </button>
                     </div>
                 </div>
@@ -599,7 +612,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     {m.type === 'REMOVE' ? <TrendingUp className="w-4 h-4 mr-2 text-emerald-500" /> : <TrendingDown className="w-4 h-4 mr-2 text-red-500" />}
                                     <span className="font-medium dark:text-slate-300">{m.name}</span>
                                     <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${m.type === 'REMOVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-black dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-black dark:text-red-400'}`}>
-                                        {m.type === 'REMOVE' ? 'RETIRADO' : 'ADICIONADO'}
+                                        {m.type === 'REMOVE' ? t('removed') : t('added')}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-4">
@@ -609,7 +622,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                         </div>
                                         {calculationType !== CalculationType.ONE_TIME && calculationType !== CalculationType.ADD_EXPENSE && (
                                             <div className="text-[10px] text-gray-400 dark:text-slate-500">
-                                                {formatCurrency(m.cost)} x {quantity || 0} un
+                                                {formatCurrency(m.cost)} x {quantity || 0} {t('unitsAbbr')}
                                             </div>
                                         )}
                                     </div>
@@ -627,13 +640,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             <div className="bg-white dark:bg-black p-6 rounded-lg border border-gray-200 dark:border-slate-700">
                 <h4 className="text-sm font-bold text-black dark:text-white mb-4 uppercase tracking-wider flex items-center">
                     <Settings className="w-4 h-4 mr-2 text-blue-500" />
-                    Máquina e Depreciação
+                    {t('machineSection')}
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="md:col-span-1">
                         <input 
                             type="text" 
-                            placeholder="Nome da Máquina"
+                            placeholder={t('machineName')}
                             value={macName}
                             onChange={e => {
                                 setMacName(e.target.value);
@@ -648,7 +661,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">R$</span>
                             <input 
                                 type="number" 
-                                placeholder="Custo Máquina"
+                                placeholder={t('machineCost')}
                                 value={macCost}
                                 onChange={e => setMacCost(e.target.value)}
                                 onBlur={updateMachine}
@@ -659,7 +672,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     <div className="md:col-span-1">
                         <input 
                             type="number" 
-                            placeholder="Anos Depreciação"
+                            placeholder={t('depreciationYears')}
                             value={macDepYears}
                             onChange={e => setMacDepYears(e.target.value)}
                             onBlur={updateMachine}
@@ -669,7 +682,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     <div className="md:col-span-1 flex items-center">
                         {machine && (
                             <div className="text-xs text-blue-600 dark:text-blue-400 font-bold">
-                                Depreciação: {formatCurrency(machine.annualDepreciation)}/ano
+                                {t('depreciationPerYear', { value: formatCurrency(machine.annualDepreciation) })}
                             </div>
                         )}
                     </div>
@@ -680,10 +693,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             <div className={`mt-6 border rounded-lg p-6 flex items-center justify-between shadow-sm ${previewAnnualSavings < 0 ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900/30' : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900/30'}`}>
                 <div>
                     <div className={`text-xs font-bold uppercase tracking-widest ${previewAnnualSavings < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                        {previewAnnualSavings < 0 ? 'Impacto Anual Final (Custo)' : 'Impacto Anual Final (Líquido)'}
+                        {previewAnnualSavings < 0 ? t('finalAnnualImpactCost') : t('finalAnnualImpactNet')}
                     </div>
                     <div className={`text-sm mt-1 ${previewAnnualSavings < 0 ? 'text-red-800 dark:text-red-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
-                        Considerando base + materiais + depreciação
+                        {t('consideringBaseMaterials')}
                     </div>
                 </div>
                 <div className={`flex items-center text-3xl font-bold ${previewAnnualSavings < 0 ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
@@ -693,13 +706,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-black dark:text-white mb-1">Detalhes Técnicos</label>
+              <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('technicalDetails')}</label>
               <textarea 
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 rows={3}
                 className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-                placeholder="Descreva como essa economia será alcançada..."
+                placeholder={t('technicalDetailsPlaceholder')}
                 required
               />
             </div>
@@ -713,13 +726,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   }}
                   className="px-6 py-2 text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors font-medium"
                 >
-                  Cancelar
+                  {t('cancel')}
                 </button>
                 <button 
                   type="submit"
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-lg transition-colors shadow-lg shadow-blue-500/30"
                 >
-                  {editingInnovation ? 'Salvar Alterações' : 'Registrar Inovação'}
+                  {editingInnovation ? t('saveChanges') : t('registerInnovation')}
                 </button>
             </div>
           </form>
@@ -732,16 +745,16 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
           <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
             <tr>
               <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('title')}>
-                <div className="flex items-center">Melhoria <SortIcon columnKey="title" /></div>
+                <div className="flex items-center">{t('improvementCol')} <SortIcon columnKey="title" /></div>
               </th>
-              <th className="p-4">Cálculo</th>
+              <th className="p-4">{t('calculationCol')}</th>
               <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('status')}>
-                <div className="flex items-center">Status <SortIcon columnKey="status" /></div>
+                <div className="flex items-center">{t('statusCol')} <SortIcon columnKey="status" /></div>
               </th>
               <th className="p-4 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('totalAnnualSavings')}>
-                <div className="flex items-center justify-end">Impacto Anual <SortIcon columnKey="totalAnnualSavings" /></div>
+                <div className="flex items-center justify-end">{t('annualImpactCol')} <SortIcon columnKey="totalAnnualSavings" /></div>
               </th>
-              <th className="p-4 text-right">Ações</th>
+              <th className="p-4 text-right">{t('actionsCol')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -755,7 +768,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         inv.type === InnovationType.PROCESS_OPTIMIZATION ? 'bg-orange-50 text-orange-700 border-orange-100 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800' :
                         'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800'
                       }`}>
-                        {inv.type}
+                        {getInnovationTypeLabel(inv.type)}
                       </span>
                   </div>
                   <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-slate-500">
@@ -768,12 +781,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 <td className="p-4 text-gray-600 dark:text-slate-400">
                    {inv.calculationType === CalculationType.ONE_TIME || inv.calculationType === CalculationType.ADD_EXPENSE ? (
                        <span className={`text-xs px-2 py-1 rounded ${inv.calculationType === CalculationType.ADD_EXPENSE ? 'bg-red-50 text-red-600 border border-red-100 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800' : 'bg-gray-100 text-gray-600 dark:bg-black dark:text-slate-300'}`}>
-                           {inv.calculationType === CalculationType.ADD_EXPENSE ? 'Gasto Único' : 'Fixo'}
+                           {inv.calculationType === CalculationType.ADD_EXPENSE ? t('expenseAbbr') : t('oneTimeAbbr')}
                        </span>
                    ) : (
                        <div className="flex flex-col text-xs">
                            <span className="font-medium text-gray-700 dark:text-slate-300">{formatCurrency(inv.unitSavings)}</span>
-                           <span className="text-gray-400 dark:text-slate-500">x {inv.quantity} un</span>
+                           <span className="text-gray-400 dark:text-slate-500">x {inv.quantity} {t('unitsAbbr')}</span>
                        </div>
                    )}
                 </td>
@@ -791,14 +804,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     {formatCurrency(inv.totalAnnualSavings)}
                   </div>
                   {inv.investmentCost && inv.investmentCost > 0 && (
-                      <div className="text-xs text-red-400 dark:text-red-500 mt-1">Inv: -{formatCurrency(inv.investmentCost)}</div>
+                      <div className="text-xs text-red-400 dark:text-red-500 mt-1">{t('investmentAbbr')} -{formatCurrency(inv.investmentCost)}</div>
                   )}
                 </td>
                 <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-1">
                         <button 
                             onClick={() => setViewingInnovation(inv)}
-                            title="Ver Detalhes"
+                            title={t('viewDetails')}
                             className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-black rounded transition"
                         >
                             <Eye className="w-4 h-4" />
@@ -808,7 +821,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             <>
                                 <button 
                                     onClick={() => setEditingInnovation(inv)}
-                                    title="Editar"
+                                    title={t('editInnovation')}
                                     className="p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-black rounded transition"
                                 >
                                     <Edit className="w-4 h-4" />
@@ -818,14 +831,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     <>
                                         <button 
                                             onClick={() => onStatusChange(inv.id, 'APPROVED')}
-                                            title="Aprovar"
+                                            title={t('approve')}
                                             className="p-1.5 bg-green-50 dark:bg-black text-green-600 dark:text-green-400 rounded-md border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-black hover:border-green-300 dark:hover:border-green-700 transition shadow-sm"
                                         >
                                             <Check className="w-4 h-4" />
                                         </button>
                                         <button 
                                             onClick={() => onStatusChange(inv.id, 'REJECTED')}
-                                            title="Rejeitar"
+                                            title={t('reject')}
                                             className="p-1.5 bg-red-50 dark:bg-black text-red-600 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-black hover:border-red-300 dark:hover:border-red-700 transition shadow-sm"
                                         >
                                             <X className="w-4 h-4" />
@@ -838,12 +851,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                         className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition flex items-center shadow-sm"
                                     >
                                         <PlayCircle className="w-3 h-3 mr-1" />
-                                        Implementar
+                                        {t('implement')}
                                     </button>
                                 )}
                                 <button 
                                     onClick={() => setDeleteConfirmationId(inv.id)}
-                                    title="Excluir"
+                                    title={t('delete')}
                                     className="p-1.5 text-gray-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-black rounded transition ml-2"
                                 >
                                     <Trash2 className="w-4 h-4" />
@@ -859,7 +872,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 <td colSpan={5} className="p-12 text-center text-gray-400 dark:text-slate-500 border border-dashed border-gray-200 dark:border-slate-700 rounded-lg m-4">
                   <div className="flex flex-col items-center justify-center">
                     <Lightbulb className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-slate-600" />
-                    <span>Nenhuma inovação registrada ainda.</span>
+                    <span>{t('noInnovations')}</span>
                   </div>
                 </td>
               </tr>
@@ -875,7 +888,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
                       <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
                           <Info className="w-6 h-6 mr-2 text-blue-600" />
-                          Detalhes da Melhoria
+                          {t('innovationDetails')}
                       </h3>
                       <button onClick={() => setViewingInnovation(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">
                           <X className="w-6 h-6" />
@@ -883,23 +896,23 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   </div>
                   <div className="p-6 space-y-6">
                       <div>
-                          <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Título</h4>
+                          <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">{t('improvementTitle')}</h4>
                           <p className="text-lg font-bold text-gray-800 dark:text-slate-200">{viewingInnovation.title}</p>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                           <div>
-                              <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Tipo</h4>
+                              <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">{t('innovationType')}</h4>
                               <span className="px-2 py-1 bg-blue-50 text-blue-700 dark:bg-black dark:text-blue-400 rounded text-xs font-bold border border-blue-100 dark:border-blue-800">
-                                  {viewingInnovation.type}
+                                  {getInnovationTypeLabel(viewingInnovation.type)}
                               </span>
                           </div>
                           <div>
-                              <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Impacto Anual</h4>
+                              <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">{t('annualImpactCol')}</h4>
                               <p className="text-lg font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(viewingInnovation.totalAnnualSavings)}</p>
                           </div>
                       </div>
                       <div>
-                          <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Descrição / Detalhes Técnicos</h4>
+                          <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t('descriptionTechnical')}</h4>
                           <div className="bg-gray-50 dark:bg-black p-4 rounded-lg border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
                               {viewingInnovation.description}
                           </div>
@@ -910,7 +923,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t dark:border-slate-700">
                               {viewingInnovation.materials && viewingInnovation.materials.length > 0 && (
                                   <div>
-                                      <h4 className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-2">Materiais Impactados</h4>
+                                      <h4 className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-2">{t('impactedMaterials')}</h4>
                                       <div className="space-y-1">
                                           {viewingInnovation.materials.map(m => (
                                               <div key={m.id} className="flex justify-between items-center text-xs p-1.5 bg-gray-50 dark:bg-black rounded border border-gray-100 dark:border-slate-700">
@@ -921,7 +934,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                                       </span>
                                                       {viewingInnovation.calculationType !== CalculationType.ONE_TIME && viewingInnovation.calculationType !== CalculationType.ADD_EXPENSE && (
                                                           <span className="text-[10px] text-gray-400 dark:text-slate-500 ml-4">
-                                                              {formatCurrency(m.cost)} x {viewingInnovation.quantity} un
+                                                              {formatCurrency(m.cost)} x {viewingInnovation.quantity} {t('unitsAbbr')}
                                                           </span>
                                                       )}
                                                   </div>
@@ -935,15 +948,15 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                               )}
                               {viewingInnovation.machine && (
                                   <div>
-                                      <h4 className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-2">Máquina / Equipamento</h4>
+                                      <h4 className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-2">{t('machineEquipment')}</h4>
                                       <div className="p-2 bg-blue-50 dark:bg-black rounded border border-blue-100 dark:border-blue-800 text-xs">
                                           <div className="font-bold text-blue-800 dark:text-blue-300">{viewingInnovation.machine.name}</div>
                                           <div className="flex justify-between mt-1 text-blue-600 dark:text-blue-400">
-                                              <span>Custo: {formatCurrency(viewingInnovation.machine.cost)}</span>
-                                              <span>{viewingInnovation.machine.depreciationYears} anos</span>
+                                              <span>{t('machineCost')}: {formatCurrency(viewingInnovation.machine.cost)}</span>
+                                              <span>{viewingInnovation.machine.depreciationYears} {t('years')}</span>
                                           </div>
                                           <div className="mt-1 font-bold text-blue-700 dark:text-blue-200 border-t border-blue-200 dark:border-blue-800 pt-1">
-                                              Depreciação: {formatCurrency(viewingInnovation.machine.annualDepreciation)}/ano
+                                              {t('depreciationPerYear', { value: formatCurrency(viewingInnovation.machine.annualDepreciation) })}
                                           </div>
                                       </div>
                                   </div>
@@ -952,8 +965,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                       )}
 
                       <div className="flex items-center justify-between text-xs text-gray-400 dark:text-slate-500 pt-4 border-t dark:border-slate-700">
-                          <span>Registrado em: {new Date(viewingInnovation.createdAt).toLocaleString()}</span>
-                          <span>Autor: {usersMap[viewingInnovation.authorId || ''] || '...'}</span>
+                          <span>{t('registeredAt', { date: new Date(viewingInnovation.createdAt).toLocaleString() })}</span>
+                          <span>{t('author', { name: usersMap[viewingInnovation.authorId || ''] || '...' })}</span>
                       </div>
                   </div>
                   <div className="p-4 bg-gray-50 dark:bg-black border-t dark:border-slate-700 flex justify-end">
@@ -961,7 +974,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         onClick={() => setViewingInnovation(null)}
                         className="px-6 py-2 bg-gray-800 dark:bg-black text-white rounded-lg font-bold hover:bg-gray-900 dark:hover:bg-slate-600 transition-colors"
                       >
-                          Fechar
+                          {t('close')}
                       </button>
                   </div>
               </div>
@@ -972,16 +985,16 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
       {deleteConfirmationId && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">Confirmar Exclusão</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">{t('confirmDeletion')}</h3>
                 <p className="text-gray-600 dark:text-slate-400 mb-6">
-                    Tem certeza que deseja excluir esta inovação? Esta ação não pode ser desfeita.
+                    {t('confirmDeleteInnovation')}
                 </p>
                 <div className="flex justify-end gap-3">
                     <button 
                         onClick={() => setDeleteConfirmationId(null)}
                         className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors border dark:border-slate-700"
                     >
-                        Cancelar
+                        {t('cancel')}
                     </button>
                     <button 
                         onClick={() => {
@@ -990,7 +1003,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         }}
                         className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors shadow-sm"
                     >
-                        Sim, Excluir
+                        {t('yesDelete')}
                     </button>
                 </div>
             </div>
