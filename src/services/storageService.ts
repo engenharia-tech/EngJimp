@@ -57,11 +57,6 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     hourlyCost: Number(localStorage.getItem('hourly_cost')) || 150,
     logoUrl: localStorage.getItem('logo_url') || undefined,
     companyName: localStorage.getItem('company_name') || 'JIMP NEXUS',
-    emailHost: localStorage.getItem('email_host') || '',
-    emailPort: localStorage.getItem('email_port') || '',
-    emailUser: localStorage.getItem('email_user') || '',
-    emailPass: localStorage.getItem('email_pass') || '',
-    emailFrom: localStorage.getItem('email_from') || '',
     emailTo: localStorage.getItem('email_to') || '',
     workdayStart: localStorage.getItem('workday_start') || "07:30",
     workdayEnd: localStorage.getItem('workday_end') || "17:30",
@@ -77,11 +72,6 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       const hourlyCostRow = settingsData.find(s => s.key === 'hourly_cost');
       const logoUrlRow = settingsData.find(s => s.key === 'logo_url');
       const companyNameRow = settingsData.find(s => s.key === 'company_name');
-      const emailHostRow = settingsData.find(s => s.key === 'email_host');
-      const emailPortRow = settingsData.find(s => s.key === 'email_port');
-      const emailUserRow = settingsData.find(s => s.key === 'email_user');
-      const emailPassRow = settingsData.find(s => s.key === 'email_pass');
-      const emailFromRow = settingsData.find(s => s.key === 'email_from');
       const emailToRow = settingsData.find(s => s.key === 'email_to');
       const interruptionEmailToRow = settingsData.find(s => s.key === 'interruption_email_to');
       const workdayStartRow = settingsData.find(s => s.key === 'workday_start');
@@ -91,11 +81,6 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (hourlyCostRow) settings.hourlyCost = Number(hourlyCostRow.value);
       if (logoUrlRow) settings.logoUrl = logoUrlRow.value || '';
       if (companyNameRow) settings.companyName = companyNameRow.value || 'JIMP NEXUS';
-      if (emailHostRow) settings.emailHost = emailHostRow.value || '';
-      if (emailPortRow) settings.emailPort = emailPortRow.value || '';
-      if (emailUserRow) settings.emailUser = emailUserRow.value || '';
-      if (emailPassRow) settings.emailPass = emailPassRow.value || '';
-      if (emailFromRow) settings.emailFrom = emailFromRow.value || '';
       if (emailToRow) settings.emailTo = emailToRow.value || '';
       if (interruptionEmailToRow) settings.interruptionEmailTo = interruptionEmailToRow.value || '';
       if (workdayStartRow) settings.workdayStart = workdayStartRow.value || "07:30";
@@ -106,11 +91,6 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
       if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
       if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
-      if (settings.emailHost) localStorage.setItem('email_host', settings.emailHost);
-      if (settings.emailPort) localStorage.setItem('email_port', settings.emailPort);
-      if (settings.emailUser) localStorage.setItem('email_user', settings.emailUser);
-      if (settings.emailPass) localStorage.setItem('email_pass', settings.emailPass);
-      if (settings.emailFrom) localStorage.setItem('email_from', settings.emailFrom);
       if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
       if (settings.interruptionEmailTo) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo);
       if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
@@ -341,11 +321,6 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
     if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
     if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
-    if (settings.emailHost) localStorage.setItem('email_host', settings.emailHost);
-    if (settings.emailPort) localStorage.setItem('email_port', settings.emailPort);
-    if (settings.emailUser) localStorage.setItem('email_user', settings.emailUser);
-    if (settings.emailPass) localStorage.setItem('email_pass', settings.emailPass);
-    if (settings.emailFrom) localStorage.setItem('email_from', settings.emailFrom);
     if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
     if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
     if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
@@ -357,11 +332,6 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
 
     if (settings.logoUrl !== undefined) updates.push({ key: 'logo_url', value: settings.logoUrl });
     if (settings.companyName !== undefined) updates.push({ key: 'company_name', value: settings.companyName });
-    if (settings.emailHost !== undefined) updates.push({ key: 'email_host', value: settings.emailHost });
-    if (settings.emailPort !== undefined) updates.push({ key: 'email_port', value: settings.emailPort });
-    if (settings.emailUser !== undefined) updates.push({ key: 'email_user', value: settings.emailUser });
-    if (settings.emailPass !== undefined) updates.push({ key: 'email_pass', value: settings.emailPass });
-    if (settings.emailFrom !== undefined) updates.push({ key: 'email_from', value: settings.emailFrom });
     if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo });
     if (settings.interruptionEmailTo !== undefined) updates.push({ key: 'interruption_email_to', value: settings.interruptionEmailTo });
     if (settings.workdayStart !== undefined) updates.push({ key: 'workday_start', value: settings.workdayStart });
