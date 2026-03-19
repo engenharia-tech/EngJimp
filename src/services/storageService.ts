@@ -43,7 +43,12 @@ const defaultState: AppState = {
   activityTypes: [],
   operationalActivities: [],
   users: [],
-  settings: { hourlyCost: 150 }
+  settings: { 
+    hourlyCost: 150,
+    workdayStart: "07:30",
+    workdayEnd: "17:30",
+    workdays: [1, 2, 3, 4, 5]
+  }
 };
 
 // --- DATA MANAGEMENT ---
@@ -58,7 +63,10 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     emailUser: localStorage.getItem('email_user') || '',
     emailPass: localStorage.getItem('email_pass') || '',
     emailFrom: localStorage.getItem('email_from') || '',
-    emailTo: localStorage.getItem('email_to') || ''
+    emailTo: localStorage.getItem('email_to') || '',
+    workdayStart: localStorage.getItem('workday_start') || "07:30",
+    workdayEnd: localStorage.getItem('workday_end') || "17:30",
+    workdays: JSON.parse(localStorage.getItem('workdays') || "[1,2,3,4,5]")
   };
 
   try {
@@ -77,6 +85,9 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       const emailFromRow = settingsData.find(s => s.key === 'email_from');
       const emailToRow = settingsData.find(s => s.key === 'email_to');
       const interruptionEmailToRow = settingsData.find(s => s.key === 'interruption_email_to');
+      const workdayStartRow = settingsData.find(s => s.key === 'workday_start');
+      const workdayEndRow = settingsData.find(s => s.key === 'workday_end');
+      const workdaysRow = settingsData.find(s => s.key === 'workdays');
 
       if (hourlyCostRow) settings.hourlyCost = Number(hourlyCostRow.value);
       if (logoUrlRow) settings.logoUrl = logoUrlRow.value || '';
@@ -88,6 +99,9 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (emailFromRow) settings.emailFrom = emailFromRow.value || '';
       if (emailToRow) settings.emailTo = emailToRow.value || '';
       if (interruptionEmailToRow) settings.interruptionEmailTo = interruptionEmailToRow.value || '';
+      if (workdayStartRow) settings.workdayStart = workdayStartRow.value || "07:30";
+      if (workdayEndRow) settings.workdayEnd = workdayEndRow.value || "17:30";
+      if (workdaysRow) settings.workdays = JSON.parse(workdaysRow.value || "[1,2,3,4,5]");
 
       // Sync to localStorage for offline fallback
       localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
@@ -100,6 +114,9 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (settings.emailFrom) localStorage.setItem('email_from', settings.emailFrom);
       if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
       if (settings.interruptionEmailTo) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo);
+      if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
+      if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
+      if (settings.workdays) localStorage.setItem('workdays', JSON.stringify(settings.workdays));
     }
   } catch (e) {
     console.warn("Error fetching settings from Supabase, using localStorage/defaults:", e);
@@ -216,7 +233,8 @@ export const fetchAppState = async (): Promise<AppState> => {
       notes: p.notes,
       userId: p.user_id,
       estimatedSeconds: p.estimated_seconds,
-      isOvertime: p.is_overtime
+      isOvertime: p.is_overtime,
+      lastActiveAt: p.updated_at
     }));
 
     const issues: IssueRecord[] = (issuesData || []).map((i: any) => ({
@@ -263,7 +281,8 @@ export const fetchAppState = async (): Promise<AppState> => {
       responsiblePerson: i.responsible_person,
       description: i.description,
       status: i.status as InterruptionStatus,
-      totalTimeSeconds: i.total_time_seconds
+      totalTimeSeconds: i.total_time_seconds,
+      lastActiveAt: i.updated_at
     }));
 
     const interruptionTypes: InterruptionType[] = (interruptionTypesData || []).map((t: any) => ({
@@ -329,6 +348,9 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.emailPass) localStorage.setItem('email_pass', settings.emailPass);
     if (settings.emailFrom) localStorage.setItem('email_from', settings.emailFrom);
     if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
+    if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
+    if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
+    if (settings.workdays) localStorage.setItem('workdays', JSON.stringify(settings.workdays));
 
     const updates = [
       { key: 'hourly_cost', value: settings.hourlyCost.toString() }
@@ -343,6 +365,9 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.emailFrom !== undefined) updates.push({ key: 'email_from', value: settings.emailFrom });
     if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo });
     if (settings.interruptionEmailTo !== undefined) updates.push({ key: 'interruption_email_to', value: settings.interruptionEmailTo });
+    if (settings.workdayStart !== undefined) updates.push({ key: 'workday_start', value: settings.workdayStart });
+    if (settings.workdayEnd !== undefined) updates.push({ key: 'workday_end', value: settings.workdayEnd });
+    if (settings.workdays !== undefined) updates.push({ key: 'workdays', value: JSON.stringify(settings.workdays) });
 
     const { error } = await supabase
       .from('settings')
@@ -1374,8 +1399,7 @@ export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; 
     let costPerSecond = settings.hourlyCost / 3600;
     if (settings.hourlyCost <= 0) {
       const totalSalaries = users.reduce((acc, u) => acc + (u.salary || 0), 0);
-      const avgSalary = users.length > 0 ? totalSalaries / users.length : 0;
-      const hourlyRate = avgSalary / 220;
+      const hourlyRate = totalSalaries / 220;
       costPerSecond = hourlyRate / 3600;
     }
 

@@ -36,7 +36,8 @@ import {
   addActivityType,
   updateActivityType,
   deleteActivityType,
-  seedFebruaryData
+  seedFebruaryData,
+  getCurrentUser
 } from './services/storageService';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 import logoImg from './assets/logo.svg';
@@ -61,6 +62,7 @@ const AppContent: React.FC = () => {
   const { language, setLanguage, t } = useLanguage();
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   // App State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational'>('dashboard');
@@ -96,17 +98,35 @@ const AppContent: React.FC = () => {
     }
   }, [theme]);
 
+  // Check for existing session on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          setCurrentUser(user);
+        }
+      } catch (error) {
+        console.error("Session check failed", error);
+      } finally {
+        setIsAuthChecking(false);
+      }
+    };
+    checkSession();
+  }, []);
+
   // Load data when user logs in or mounts
   useEffect(() => {
     const load = async () => {
-      // If we already have a user, we definitely need to load data
-      // If we don't have a user, we still load data (like settings/users) but we shouldn't block the login screen forever
+      // Only load full app state if we have a user
+      if (!currentUser) return;
+
       setIsLoading(true);
 
       try {
-        // Add a timeout to prevent hanging forever (15 seconds)
+        // Add a timeout to prevent hanging forever (60 seconds)
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Timeout loading app state")), 15000)
+          setTimeout(() => reject(new Error("Timeout loading app state")), 60000)
         );
 
         const initializationPromise = (async () => {
@@ -127,9 +147,9 @@ const AppContent: React.FC = () => {
         })();
 
         await Promise.race([initializationPromise, timeoutPromise]);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to load app state", error);
-        addToast(t('errorLoadingData'), "error");
+        addToast(t('errorLoadingData') + (error.message ? ` (${error.message})` : ""), "error");
       } finally {
         setIsLoading(false);
       }
@@ -532,6 +552,18 @@ const AppContent: React.FC = () => {
       addToast('Error deleting activity type', 'error');
     }
   };
+
+  // Show loading during initial auth check
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-400 font-medium">Verificando sessão...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <Login onLogin={setCurrentUser} />;

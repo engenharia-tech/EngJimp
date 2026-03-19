@@ -122,6 +122,7 @@ export interface ProjectSession {
   notes?: string;
   userId?: string;
   isOvertime?: boolean;
+  lastActiveAt?: string; // ISO string for heartbeat/resume logic
 }
 
 export interface IssueRecord {
@@ -209,6 +210,7 @@ export interface InterruptionRecord {
   status: InterruptionStatus;
   totalTimeSeconds: number;
   otherLosses?: string;
+  lastActiveAt?: string; // ISO string for heartbeat/resume logic
 }
 
 export interface AppSettings {
@@ -223,6 +225,11 @@ export interface AppSettings {
   emailTo?: string;
   interruptionEmailTo?: string;
   interruptionEmailTemplate?: string;
+  // New fields for workday
+  workdayStart?: string; // "07:30"
+  workdayEnd?: string;   // "17:30"
+  workdays?: number[];   // [1,2,3,4,5]
+  hourlyCostCalculated?: number; // New: calculated hourly rate
 }
 
 export interface SEOKeyword {

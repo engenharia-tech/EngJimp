@@ -4,7 +4,7 @@ import { AppState, ProjectType, User, VariationRecord, ProjectSession, Implement
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, DuplicateGroup } from '../services/storageService';
 import { useToast } from './Toast';
-import { getWorkingSeconds } from '../utils/timeUtils';
+import { calcActiveSeconds } from '../utils/workdayCalc';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface ProjectHistoryProps {
@@ -218,7 +218,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             }
 
             // Calculate correct duration using Working Hours
-            const totalWorkingSeconds = getWorkingSeconds(start, end, !!project.isOvertime);
+            const totalWorkingSeconds = calcActiveSeconds(start, end, data.settings, !!project.isOvertime);
             
             // Subtract Working Time spent in Pauses
             let totalPauseWorkingSeconds = 0;
@@ -227,7 +227,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 if (dur > 0) {
                     const pStart = new Date(p.timestamp);
                     const pEnd = new Date(pStart.getTime() + dur * 1000);
-                    totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd, !!project.isOvertime);
+                    totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, data.settings, !!project.isOvertime);
                 }
             });
             
@@ -293,7 +293,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return { gross: 0, pauses: 0, net: 0, valid: false };
         if (end < start) return { gross: 0, pauses: 0, net: 0, valid: false, error: t('endDateBeforeStart') };
 
-        const totalWorkingSeconds = getWorkingSeconds(start, end, editForm.isOvertime);
+        const totalWorkingSeconds = calcActiveSeconds(start, end, data.settings, editForm.isOvertime);
         
         let totalPauseWorkingSeconds = 0;
         (editingProject?.pauses || []).forEach((p: any) => {
@@ -301,7 +301,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             if (dur > 0) {
                 const pStart = new Date(p.timestamp);
                 const pEnd = new Date(pStart.getTime() + dur * 1000);
-                totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd, editForm.isOvertime);
+                totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, data.settings, editForm.isOvertime);
             }
         });
 
@@ -392,7 +392,9 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       return { parts, assemblies };
   };
 
-  const isGestor = currentUser.role === 'GESTOR';
+  const isGestor = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
+  const totalEngineeringSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
+  const engineeringHourlyRate = totalEngineeringSalary / 220;
 
   const getTranslatedType = (type: string) => {
     switch (type) {
@@ -443,11 +445,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     
     let totalCost = 0;
     if (isGestor) {
+      const totalEngineeringSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
+      const engineeringHourlyRate = totalEngineeringSalary / 220;
+      
       filteredProjects.forEach(p => {
-        const user = usersMap[p.userId || ''];
-        const salary = user?.salary || 0;
-        const hourlyRate = salary / 220;
-        totalCost += hourlyRate * (p.totalActiveSeconds / 3600);
+        totalCost += engineeringHourlyRate * (p.totalActiveSeconds / 3600);
       });
     }
 
@@ -758,11 +760,10 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 
                 const user = usersMap[project.userId || ''];
                 const salary = user?.salary || 0;
-                const hourlyRate = salary / 220; // Assuming 220 working hours per month
+                const hourlyRate = engineeringHourlyRate;
                 const cost = hourlyRate * (project.totalActiveSeconds / 3600);
                 
-                const isGestor = currentUser.role === 'GESTOR';
-                const canEdit = isGestor;
+                const canEdit = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
 
                 return (
                 <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-black/50 transition-colors group">
@@ -936,7 +937,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     </td>
                   )}
                 </tr>
-              )})}
+                );
+              })}
               {filteredProjects.length === 0 && (
                 <tr>
                   <td colSpan={isGestor ? 10 : 9} className="p-20 text-center">

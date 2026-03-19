@@ -1,14 +1,20 @@
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
--- Users Table
+-- Helper function to get the current user's tenant_id
+create or replace function public.my_tenant_id()
+returns uuid as $$
+  select tenant_id from public.users where id = auth.uid();
+$$ language sql stable security definer;
+
+-- Users Table (Linked to Supabase Auth)
 create table if not exists public.users (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key references auth.users(id),
   username text unique not null,
-  password text not null,
   name text not null,
-  role text not null check (role in ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS')),
+  role text not null check (role in ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR')),
   salary numeric default 0,
+  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
   created_at timestamptz default now()
 );
 
@@ -30,6 +36,7 @@ create table if not exists public.projects (
   status text not null check (status in ('COMPLETED', 'IN_PROGRESS')),
   notes text,
   user_id uuid references public.users(id),
+  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
   created_at timestamptz default now()
 );
 
@@ -41,6 +48,7 @@ create table if not exists public.issues (
   description text not null,
   date text not null,
   reported_by text,
+  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
   created_at timestamptz default now()
 );
 
@@ -57,44 +65,16 @@ create table if not exists public.innovations (
   investment_cost numeric default 0,
   status text not null check (status in ('PENDING', 'APPROVED', 'REJECTED', 'IMPLEMENTED')),
   author_id uuid references public.users(id),
+  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
   created_at timestamptz default now()
 );
-
--- Enable Row Level Security (RLS)
-alter table public.users enable row level security;
-alter table public.projects enable row level security;
-alter table public.issues enable row level security;
-alter table public.innovations enable row level security;
-
--- Create policies for public access (Prototype Mode)
--- CAUTION: This allows anyone with the anon key to read/write. 
--- For production, integrate Supabase Auth and restrict these policies.
-
-create policy "Enable read access for all users" on public.users for select using (true);
-create policy "Enable insert access for all users" on public.users for insert with check (true);
-create policy "Enable update access for all users" on public.users for update using (true);
-create policy "Enable delete access for all users" on public.users for delete using (true);
-
-create policy "Enable read access for all projects" on public.projects for select using (true);
-create policy "Enable insert access for all projects" on public.projects for insert with check (true);
-create policy "Enable update access for all projects" on public.projects for update using (true);
-create policy "Enable delete access for all projects" on public.projects for delete using (true);
-
-create policy "Enable read access for all issues" on public.issues for select using (true);
-create policy "Enable insert access for all issues" on public.issues for insert with check (true);
-create policy "Enable update access for all issues" on public.issues for update using (true);
-create policy "Enable delete access for all issues" on public.issues for delete using (true);
-
-create policy "Enable read access for all innovations" on public.innovations for select using (true);
-create policy "Enable insert access for all innovations" on public.innovations for insert with check (true);
-create policy "Enable update access for all innovations" on public.innovations for update using (true);
-create policy "Enable delete access for all innovations" on public.innovations for delete using (true);
 
 -- Activity Types Table
 create table if not exists public.activity_types (
   id uuid primary key default uuid_generate_v4(),
   name text not null,
   is_active boolean default true,
+  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
   created_at timestamptz default now()
 );
 
@@ -110,20 +90,55 @@ create table if not exists public.operational_activities (
   notes text,
   project_id uuid references public.projects(id),
   is_flagged boolean default false,
+  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
   created_at timestamptz default now()
 );
 
--- Enable RLS
+-- Settings Table
+create table if not exists public.settings (
+  id uuid primary key default uuid_generate_v4(),
+  tenant_id uuid unique not null default '00000000-0000-0000-0000-000000000000',
+  hourly_cost numeric default 0,
+  company_name text,
+  logo_url text,
+  email_host text,
+  email_port text,
+  email_user text,
+  email_pass text,
+  email_from text,
+  email_to text,
+  interruption_email_to text,
+  interruption_email_template text,
+  updated_at timestamptz default now()
+);
+
+-- Enable Row Level Security (RLS)
+alter table public.users enable row level security;
+alter table public.projects enable row level security;
+alter table public.issues enable row level security;
+alter table public.innovations enable row level security;
 alter table public.activity_types enable row level security;
 alter table public.operational_activities enable row level security;
+alter table public.settings enable row level security;
 
--- Policies
-create policy "Enable read access for all activity_types" on public.activity_types for select using (true);
-create policy "Enable insert access for all activity_types" on public.activity_types for insert with check (true);
-create policy "Enable update access for all activity_types" on public.activity_types for update using (true);
-create policy "Enable delete access for all activity_types" on public.activity_types for delete using (true);
+-- Policies for Tenant Isolation
+create policy "Tenant isolation for users" on public.users 
+  for all using (tenant_id = my_tenant_id());
 
-create policy "Enable read access for all operational_activities" on public.operational_activities for select using (true);
-create policy "Enable insert access for all operational_activities" on public.operational_activities for insert with check (true);
-create policy "Enable update access for all operational_activities" on public.operational_activities for update using (true);
-create policy "Enable delete access for all operational_activities" on public.operational_activities for delete using (true);
+create policy "Tenant isolation for projects" on public.projects 
+  for all using (tenant_id = my_tenant_id());
+
+create policy "Tenant isolation for issues" on public.issues 
+  for all using (tenant_id = my_tenant_id());
+
+create policy "Tenant isolation for innovations" on public.innovations 
+  for all using (tenant_id = my_tenant_id());
+
+create policy "Tenant isolation for activity_types" on public.activity_types 
+  for all using (tenant_id = my_tenant_id());
+
+create policy "Tenant isolation for operational_activities" on public.operational_activities 
+  for all using (tenant_id = my_tenant_id());
+
+create policy "Tenant isolation for settings" on public.settings 
+  for all using (tenant_id = my_tenant_id());
