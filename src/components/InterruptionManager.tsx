@@ -249,7 +249,7 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
         addToast(status === InterruptionStatus.OPEN ? 'Interrupção registrada e cronômetro iniciado' : 'Interrupção registrada com sucesso', 'success');
 
         // Trigger email notification if configured
-        if (data.settings.interruptionEmailTo && data.settings.emailUser && data.settings.emailPass) {
+        if (data.settings.interruptionEmailTo) {
           try {
             fetch('/api/send-email', {
               method: 'POST',
