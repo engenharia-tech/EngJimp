@@ -1,4 +1,5 @@
 import { ProjectSession, IssueRecord, InterruptionRecord, AppSettings } from '../types';
+import { askGemini } from '../lib/gemini';
 
 export const analyzePerformance = async (
   projects: ProjectSession[], 
@@ -40,7 +41,7 @@ export const analyzePerformance = async (
       2. Impacto das interrupções no fluxo de trabalho.
       3. Análise de custos (por projeto e global).
       4. Sugestões de melhoria baseadas nos problemas reportados.
-
+      
       DADOS GLOBAIS:
       - Tempo Produtivo Total: ${(totalProductiveSeconds / 3600).toFixed(1)}h (Custo: R$ ${globalProductiveCost.toFixed(2)})
       - Tempo de Interrupção Total: ${(totalInterruptionSeconds / 3600).toFixed(1)}h (Custo: R$ ${globalInterruptionCost.toFixed(2)})
@@ -58,23 +59,11 @@ export const analyzePerformance = async (
       Responda de forma profissional e direta, destacando onde o dinheiro está sendo perdido e como otimizar.
     `;
 
-    const response = await fetch('/api/gemini', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ prompt }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to fetch Gemini analysis');
-    }
-
-    const data = await response.json();
-    return data.text;
+    // Use the client-side library that proxies to the server
+    const analysis = await askGemini(prompt);
+    return analysis;
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Não foi possível gerar a análise no momento. Verifique sua chave de API.";
+    return "Não foi possível gerar a análise no momento. Verifique sua chave de API no servidor.";
   }
 };

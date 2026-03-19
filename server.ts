@@ -17,24 +17,24 @@ async function startServer() {
 
   app.use(express.json());
 
-  // API Route for Gemini
+  // API Route for Gemini (Server-side only)
   app.post("/api/gemini", async (req, res) => {
     const { prompt } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return res.status(500).json({ error: "GEMINI_API_KEY not configured on server." });
+      return res.status(500).json({ error: "Gemini API Key is not configured on the server." });
     }
 
     try {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: 'gemini-3-flash-preview',
         contents: prompt,
       });
       res.json({ text: response.text });
     } catch (error) {
-      console.error("Gemini API error:", error);
+      console.error("Gemini API Error:", error);
       res.status(500).json({ error: String(error) });
     }
   });
@@ -52,7 +52,7 @@ async function startServer() {
 
     if (!user || !pass) {
       console.warn("Email credentials not configured. Skipping email send.");
-      return res.status(200).json({ success: true, message: "Email simulation: Credentials missing." });
+      return res.status(200).json({ success: true, message: "Email simulado: credenciais não configuradas." });
     }
 
     const transporter = nodemailer.createTransport({
