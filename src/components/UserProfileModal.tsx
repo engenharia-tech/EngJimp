@@ -12,17 +12,28 @@ interface UserProfileModalProps {
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClose, onUpdateUser }) => {
   const { addToast } = useToast();
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const [name, setName] = useState(user.name);
   const [surname, setSurname] = useState(user.surname || '');
-  const [phone, setPhone] = useState(user.phone || '');
-  const [username, setUsername] = useState(user.username || '');
   const [email, setEmail] = useState(user.email || '');
+  const [phone, setPhone] = useState(user.phone || '');
 
   const handleSave = async () => {
+    // Validate current password
+    if (currentPasswordInput !== user.password) {
+      addToast('A senha atual está incorreta.', 'error');
+      return;
+    }
+
+    if (newPassword && newPassword !== confirmPassword) {
+      addToast('As senhas não coincidem.', 'error');
+      return;
+    }
+
     // Email validation
     if (email && !email.includes('@')) {
         addToast('O e-mail deve conter "@".', 'error');
@@ -36,9 +47,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
       ...user,
       name,
       surname,
+      email,
       phone,
-      username,
-      email
+      password: newPassword || user.password
     };
 
     const result = await updateUser(updatedUser);
@@ -55,9 +66,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
 
   const getRoleLabel = (role: UserRole) => {
       switch(role) {
-          case UserRole.GESTOR: return 'Gestor';
-          case UserRole.CEO: return 'CEO';
-          case UserRole.COORDENADOR: return 'Coordenador';
+          case 'GESTOR': return 'Gestor';
+          case 'CEO': return 'CEO';
+          case 'COORDENADOR': return 'Coordenador';
           default: return 'Projetista';
       }
   };
@@ -93,7 +104,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                     </span>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="text-xs text-black dark:text-white block mb-1">Nome</label>
                         <input 
@@ -114,31 +125,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label className="text-xs text-black dark:text-white block mb-1 flex items-center">
-                            <UserIcon className="w-3 h-3 mr-1" /> Usuário
-                        </label>
-                        <input 
-                            type="text" 
-                            value={username}
-                            onChange={e => setUsername(e.target.value)}
-                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs text-black dark:text-white block mb-1 flex items-center">
-                            <Phone className="w-3 h-3 mr-1" /> Telefone
-                        </label>
-                        <input 
-                            type="text" 
-                            value={phone}
-                            onChange={e => setPhone(e.target.value)}
-                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
-                        />
-                    </div>
-                </div>
-
                 <div>
                     <label className="text-xs text-black dark:text-white block mb-1 flex items-center">
                         <Mail className="w-3 h-3 mr-1" /> E-mail
@@ -151,26 +137,60 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                     />
                 </div>
 
-                {user.salary !== undefined && (
-                    <div>
-                        <label className="text-xs text-black dark:text-white block mb-1">Salário (Base)</label>
-                        <div className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg bg-gray-100 dark:bg-slate-800 text-sm text-gray-500">
-                            R$ {Number(user.salary).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-1">O salário é usado para calcular o custo dos projetos e só pode ser alterado por um administrador.</p>
-                    </div>
-                )}
+                <div>
+                    <label className="text-xs text-black dark:text-white block mb-1 flex items-center">
+                        <Phone className="w-3 h-3 mr-1" /> Celular
+                    </label>
+                    <input 
+                        type="text" 
+                        value={phone}
+                        onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
+                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
+                        placeholder="Somente números"
+                    />
+                </div>
             </div>
 
-            <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-100 dark:border-amber-800 space-y-2">
-                <p className="text-xs font-bold text-amber-800 dark:text-amber-400 flex items-center">
-                    <Lock className="w-4 h-4 mr-2" />
-                    Segurança da Conta
-                </p>
-                <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
-                    Por motivos de segurança, sua senha é criptografada e não pode ser revelada, nem mesmo por administradores. 
-                    Se você esqueceu sua senha, utilize a opção <strong>"Esqueceu a senha?"</strong> na tela de login para receber um link de recuperação por e-mail.
-                </p>
+            {/* Change Password */}
+            <div>
+                <h3 className="text-sm font-bold text-black dark:text-white mb-3 flex items-center">
+                    <Lock className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
+                    Segurança & Senha
+                </h3>
+                <div className="space-y-3">
+                    <div>
+                        <label className="block text-xs font-medium text-black dark:text-white mb-1">Senha Atual</label>
+                        <input 
+                            type="password" 
+                            value={currentPasswordInput}
+                            onChange={e => setCurrentPasswordInput(e.target.value)}
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-black dark:text-white"
+                            placeholder="Digite sua senha atual para confirmar alterações"
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-medium text-black dark:text-white mb-1">Nova Senha</label>
+                        <input 
+                            type="password" 
+                            value={newPassword}
+                            onChange={e => setNewPassword(e.target.value)}
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-black dark:text-white"
+                            placeholder="Digite a nova senha para alterar"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-black dark:text-white mb-1">Confirmar Nova Senha</label>
+                        <input 
+                            type="password" 
+                            value={confirmPassword}
+                            onChange={e => setConfirmPassword(e.target.value)}
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-black dark:text-white"
+                            placeholder="Confirme a nova senha"
+                        />
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -184,7 +204,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
             </button>
             <button 
                 onClick={handleSave}
-                disabled={isSaving}
+                disabled={isSaving || !currentPasswordInput || (!!newPassword && newPassword !== confirmPassword)}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors flex items-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}

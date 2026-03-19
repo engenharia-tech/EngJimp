@@ -1,20 +1,17 @@
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
--- Helper function to get the current user's tenant_id
-create or replace function public.my_tenant_id()
-returns uuid as $$
-  select tenant_id from public.users where id = auth.uid();
-$$ language sql stable security definer;
-
--- Users Table (Linked to Supabase Auth)
+-- Users Table
 create table if not exists public.users (
-  id uuid primary key references auth.users(id),
+  id uuid primary key default uuid_generate_v4(),
   username text unique not null,
+  password text not null,
   name text not null,
+  surname text,
+  phone text,
   role text not null check (role in ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR')),
   salary numeric default 0,
-  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
+  tenant_id uuid,
   created_at timestamptz default now()
 );
 
@@ -36,7 +33,7 @@ create table if not exists public.projects (
   status text not null check (status in ('COMPLETED', 'IN_PROGRESS')),
   notes text,
   user_id uuid references public.users(id),
-  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
+  tenant_id uuid,
   created_at timestamptz default now()
 );
 
@@ -48,7 +45,7 @@ create table if not exists public.issues (
   description text not null,
   date text not null,
   reported_by text,
-  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
+  tenant_id uuid,
   created_at timestamptz default now()
 );
 
@@ -65,7 +62,7 @@ create table if not exists public.innovations (
   investment_cost numeric default 0,
   status text not null check (status in ('PENDING', 'APPROVED', 'REJECTED', 'IMPLEMENTED')),
   author_id uuid references public.users(id),
-  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
+  tenant_id uuid,
   created_at timestamptz default now()
 );
 
@@ -74,7 +71,7 @@ create table if not exists public.activity_types (
   id uuid primary key default uuid_generate_v4(),
   name text not null,
   is_active boolean default true,
-  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
+  tenant_id uuid,
   created_at timestamptz default now()
 );
 
@@ -90,26 +87,8 @@ create table if not exists public.operational_activities (
   notes text,
   project_id uuid references public.projects(id),
   is_flagged boolean default false,
-  tenant_id uuid not null default '00000000-0000-0000-0000-000000000000',
+  tenant_id uuid,
   created_at timestamptz default now()
-);
-
--- Settings Table
-create table if not exists public.settings (
-  id uuid primary key default uuid_generate_v4(),
-  tenant_id uuid unique not null default '00000000-0000-0000-0000-000000000000',
-  hourly_cost numeric default 0,
-  company_name text,
-  logo_url text,
-  email_host text,
-  email_port text,
-  email_user text,
-  email_pass text,
-  email_from text,
-  email_to text,
-  interruption_email_to text,
-  interruption_email_template text,
-  updated_at timestamptz default now()
 );
 
 -- Enable Row Level Security (RLS)
@@ -119,26 +98,73 @@ alter table public.issues enable row level security;
 alter table public.innovations enable row level security;
 alter table public.activity_types enable row level security;
 alter table public.operational_activities enable row level security;
-alter table public.settings enable row level security;
 
--- Policies for Tenant Isolation
-create policy "Tenant isolation for users" on public.users 
-  for all using (tenant_id = my_tenant_id());
+-- Tenant Helper Function
+CREATE OR REPLACE FUNCTION public.my_tenant_id()
+RETURNS uuid LANGUAGE sql STABLE
+AS $$ SELECT tenant_id FROM public.users WHERE id = auth.uid() $$;
 
-create policy "Tenant isolation for projects" on public.projects 
-  for all using (tenant_id = my_tenant_id());
+-- RLS Policies
 
-create policy "Tenant isolation for issues" on public.issues 
-  for all using (tenant_id = my_tenant_id());
+-- Users
+create policy "Users can see users from same tenant" on public.users 
+  for select using (tenant_id = public.my_tenant_id());
+create policy "Users can insert users for same tenant" on public.users 
+  for insert with check (tenant_id = public.my_tenant_id());
+create policy "Users can update users from same tenant" on public.users 
+  for update using (tenant_id = public.my_tenant_id());
+create policy "Users can delete users from same tenant" on public.users 
+  for delete using (tenant_id = public.my_tenant_id());
 
-create policy "Tenant isolation for innovations" on public.innovations 
-  for all using (tenant_id = my_tenant_id());
+-- Projects
+create policy "Users can see projects from same tenant" on public.projects 
+  for select using (tenant_id = public.my_tenant_id());
+create policy "Users can insert projects for same tenant" on public.projects 
+  for insert with check (tenant_id = public.my_tenant_id());
+create policy "Users can update projects from same tenant" on public.projects 
+  for update using (tenant_id = public.my_tenant_id());
+create policy "Users can delete projects from same tenant" on public.projects 
+  for delete using (tenant_id = public.my_tenant_id());
 
-create policy "Tenant isolation for activity_types" on public.activity_types 
-  for all using (tenant_id = my_tenant_id());
+-- Issues
+create policy "Users can see issues from same tenant" on public.issues 
+  for select using (tenant_id = public.my_tenant_id());
+create policy "Users can insert issues for same tenant" on public.issues 
+  for insert with check (tenant_id = public.my_tenant_id());
+create policy "Users can update issues from same tenant" on public.issues 
+  for update using (tenant_id = public.my_tenant_id());
+create policy "Users can delete issues from same tenant" on public.issues 
+  for delete using (tenant_id = public.my_tenant_id());
 
-create policy "Tenant isolation for operational_activities" on public.operational_activities 
-  for all using (tenant_id = my_tenant_id());
+-- Innovations
+create policy "Users can see innovations from same tenant" on public.innovations 
+  for select using (tenant_id = public.my_tenant_id());
+create policy "Users can insert innovations for same tenant" on public.innovations 
+  for insert with check (tenant_id = public.my_tenant_id());
+create policy "Users can update innovations from same tenant" on public.innovations 
+  for update using (tenant_id = public.my_tenant_id());
+create policy "Users can delete innovations from same tenant" on public.innovations 
+  for delete using (tenant_id = public.my_tenant_id());
 
-create policy "Tenant isolation for settings" on public.settings 
-  for all using (tenant_id = my_tenant_id());
+-- Activity Types
+create policy "Users can see activity_types from same tenant" on public.activity_types 
+  for select using (tenant_id = public.my_tenant_id());
+create policy "Users can insert activity_types for same tenant" on public.activity_types 
+  for insert with check (tenant_id = public.my_tenant_id());
+create policy "Users can update activity_types from same tenant" on public.activity_types 
+  for update using (tenant_id = public.my_tenant_id());
+create policy "Users can delete activity_types from same tenant" on public.activity_types 
+  for delete using (tenant_id = public.my_tenant_id());
+
+-- Operational Activities
+create policy "Users can see operational_activities from same tenant" on public.operational_activities 
+  for select using (tenant_id = public.my_tenant_id());
+create policy "Users can insert operational_activities for same tenant" on public.operational_activities 
+  for insert with check (tenant_id = public.my_tenant_id());
+create policy "Users can update operational_activities from same tenant" on public.operational_activities 
+  for update using (tenant_id = public.my_tenant_id());
+create policy "Users can delete operational_activities from same tenant" on public.operational_activities 
+  for delete using (tenant_id = public.my_tenant_id());
+
+-- Reload PostgREST cache
+NOTIFY pgrst, 'reload config';
