@@ -74,6 +74,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       const companyNameRow = settingsData.find(s => s.key === 'company_name');
       const emailToRow = settingsData.find(s => s.key === 'email_to');
       const interruptionEmailToRow = settingsData.find(s => s.key === 'interruption_email_to');
+      const interruptionEmailTemplateRow = settingsData.find(s => s.key === 'interruption_email_template');
       const workdayStartRow = settingsData.find(s => s.key === 'workday_start');
       const workdayEndRow = settingsData.find(s => s.key === 'workday_end');
       const workdaysRow = settingsData.find(s => s.key === 'workdays');
@@ -83,6 +84,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (companyNameRow) settings.companyName = companyNameRow.value || 'JIMP NEXUS';
       if (emailToRow) settings.emailTo = emailToRow.value || '';
       if (interruptionEmailToRow) settings.interruptionEmailTo = interruptionEmailToRow.value || '';
+      if (interruptionEmailTemplateRow) settings.interruptionEmailTemplate = interruptionEmailTemplateRow.value || '';
       if (workdayStartRow) settings.workdayStart = workdayStartRow.value || "07:30";
       if (workdayEndRow) settings.workdayEnd = workdayEndRow.value || "17:30";
       if (workdaysRow) settings.workdays = JSON.parse(workdaysRow.value || "[1,2,3,4,5]");
@@ -93,6 +95,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
       if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
       if (settings.interruptionEmailTo) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo);
+      if (settings.interruptionEmailTemplate) localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate);
       if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
       if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
       if (settings.workdays) localStorage.setItem('workdays', JSON.stringify(settings.workdays));
@@ -322,6 +325,8 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
     if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
     if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
+    if (settings.interruptionEmailTo) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo);
+    if (settings.interruptionEmailTemplate) localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate);
     if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
     if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
     if (settings.workdays) localStorage.setItem('workdays', JSON.stringify(settings.workdays));
@@ -334,6 +339,7 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.companyName !== undefined) updates.push({ key: 'company_name', value: settings.companyName });
     if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo });
     if (settings.interruptionEmailTo !== undefined) updates.push({ key: 'interruption_email_to', value: settings.interruptionEmailTo });
+    if (settings.interruptionEmailTemplate !== undefined) updates.push({ key: 'interruption_email_template', value: settings.interruptionEmailTemplate });
     if (settings.workdayStart !== undefined) updates.push({ key: 'workday_start', value: settings.workdayStart });
     if (settings.workdayEnd !== undefined) updates.push({ key: 'workday_end', value: settings.workdayEnd });
     if (settings.workdays !== undefined) updates.push({ key: 'workdays', value: JSON.stringify(settings.workdays) });
