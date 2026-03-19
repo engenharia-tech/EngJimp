@@ -80,12 +80,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   // Form State
   const [name, setName] = useState('');
   const [surname, setSurname] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<UserRole>('PROJETISTA');
   const [salary, setSalary] = useState<number>(0);
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<UserRole>(UserRole.PROJETISTA);
-  const [isActive, setIsActive] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [deleteConfirmationUser, setDeleteConfirmationUser] = useState<User | null>(null);
@@ -109,12 +109,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       id: editingUserId || crypto.randomUUID(),
       name,
       surname,
+      email,
       phone,
       username,
-      salary,
-      email,
+      password,
       role,
-      isActive
+      salary
     };
 
     let result;
@@ -178,39 +178,39 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const resetForm = () => {
     setName('');
     setSurname('');
+    setEmail('');
     setPhone('');
     setUsername('');
+    setPassword('');
     setSalary(0);
-    setEmail('');
-    setIsActive(true);
-    setRole(UserRole.PROJETISTA);
+    setRole('PROJETISTA');
     setEditingUserId(null);
   };
 
   const handleEdit = (user: User) => {
     setName(user.name);
     setSurname(user.surname || '');
-    setPhone(user.phone || '');
-    setUsername(user.username || '');
-    setSalary(user.salary || 0);
     setEmail(user.email || '');
+    setPhone(user.phone || '');
+    setUsername(user.username);
+    setPassword(user.password);
     setRole(user.role);
-    setIsActive(user.isActive);
+    setSalary(user.salary || 0);
     setEditingUserId(user.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const getRoleIcon = (role: UserRole) => {
       switch(role) {
-          case UserRole.GESTOR: return <Shield className="w-3 h-3 text-blue-600" />;
-          case UserRole.CEO: return <Briefcase className="w-3 h-3 text-yellow-600" />;
-          case UserRole.COORDENADOR: return <Eye className="w-3 h-3 text-teal-600" />;
+          case 'GESTOR': return <Shield className="w-3 h-3 text-blue-600" />;
+          case 'CEO': return <Briefcase className="w-3 h-3 text-yellow-600" />;
+          case 'COORDENADOR': return <Eye className="w-3 h-3 text-teal-600" />;
           default: return <UserIcon className="w-3 h-3 text-gray-600" />;
       }
   };
 
-  const isGestor = currentUser.role === UserRole.GESTOR;
-  const isCoordenador = currentUser.role === UserRole.COORDENADOR;
+  const isGestor = currentUser.role === 'GESTOR';
+  const isCoordenador = currentUser.role === 'COORDENADOR';
   // Gestor can do everything. Coordenador can view. Everyone can edit themselves.
   
   const canCreateUser = isGestor;
@@ -244,14 +244,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
         <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome (Primeiro Nome)</label>
             <input 
               type="text" 
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               required
-              placeholder="Nome"
+              placeholder="Somente letras"
             />
           </div>
           <div>
@@ -259,29 +259,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             <input 
               type="text" 
               value={surname}
-              onChange={e => setSurname(e.target.value)}
+              onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-              placeholder="Sobrenome"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Usuário</label>
-            <input 
-              type="text" 
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-              placeholder="Nome de usuário"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Telefone</label>
-            <input 
-              type="text" 
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-              placeholder="(00) 00000-0000"
+              placeholder="Somente letras"
             />
           </div>
           <div>
@@ -292,18 +272,37 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               onChange={e => setEmail(e.target.value)}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               placeholder="exemplo@exemplo.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Celular</label>
+            <input 
+              type="text" 
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+              placeholder="xx-xxxxx-xxxx"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome de Usuário (Login)</label>
+            <input 
+              type="text" 
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Salário Base (R$)</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Senha</label>
             <input 
-              type="number" 
-              step="0.01"
-              value={salary}
-              onChange={e => setSalary(Number(e.target.value))}
+              type="text" 
+              value={password}
+              onChange={e => setPassword(e.target.value)}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-              placeholder="0,00"
+              placeholder="Defina uma senha"
+              required
             />
           </div>
           <div>
@@ -320,16 +319,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               <option value="COORDENADOR">Coordenador</option>
             </select>
           </div>
-          <div className="flex items-end pb-2">
-            <label className="flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={isActive}
-                onChange={e => setIsActive(e.target.checked)}
-                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-              />
-              <span className="ml-2 text-sm font-medium text-black dark:text-white">Usuário Ativo</span>
-            </label>
+          <div>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Salário (R$) {(!isGestor) && <span className="text-xs text-gray-400 dark:text-slate-500">(Somente Gestor)</span>}</label>
+            <input 
+              type="text"
+              value={salary === 0 ? '' : salary}
+              onChange={e => {
+                  const val = e.target.value.replace(/[^0-9.]/g, '');
+                  setSalary(Number(val));
+              }}
+              disabled={!isGestor}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-black text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-black dark:text-slate-200'}`}
+              placeholder="Ex: 5000.00"
+            />
           </div>
           <div className="md:col-span-2">
             <button 
@@ -356,9 +358,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium">
             <tr>
               <th className="p-4">Nome</th>
-              <th className="p-4">E-mail</th>
+              <th className="p-4">Usuário</th>
+              <th className="p-4">E-mail / Celular</th>
+              <th className="p-4">Senha</th>
               <th className="p-4">Função</th>
-              <th className="p-4">Status</th>
+              <th className="p-4">Salário</th>
               <th className="p-4 text-center">Ações</th>
             </tr>
           </thead>
@@ -376,22 +380,30 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                       {u.name.charAt(0)}
                     </div>
                     <div>
-                      <div className="font-bold">{u.name}</div>
+                      <div className="font-bold">{u.name} {u.surname}</div>
                       {currentUser.id === u.id && <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded-full">Você</span>}
                     </div>
                   </div>
                 </td>
-                <td className="p-4 text-black dark:text-white">{u.email}</td>
+                <td className="p-4 text-black dark:text-white">{u.username}</td>
+                <td className="p-4 text-black dark:text-white">
+                  <div className="text-xs">{u.email || '-'}</div>
+                  <div className="text-[10px] text-gray-500 dark:text-slate-400">{u.phone || '-'}</div>
+                </td>
+                <td className="p-4 text-black dark:text-white font-mono text-xs">
+                  {u.password}
+                </td>
                 <td className="p-4">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-black text-black dark:text-white`}>
                     {getRoleIcon(u.role)}
                     {u.role}
                   </span>
                 </td>
-                <td className="p-4">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {u.isActive ? 'Ativo' : 'Inativo'}
-                  </span>
+                <td className="p-4 text-black dark:text-white">
+                  {/* Only show salary if user is GESTOR or viewing their own salary */}
+                  {(isGestor || currentUser.id === u.id) 
+                    ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
+                    : '***'}
                 </td>
                 <td className="p-4 text-center">
                   <div className="flex items-center justify-center gap-2">
@@ -635,145 +647,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     >
                         {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
                         Buscar Duplicatas
-                    </button>
-                </div>
-
-                {/* Fix RLS */}
-                <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-900/30">
-                    <h4 className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center">
-                        <AlertCircle className="w-5 h-5 mr-2" />
-                        CORREÇÃO DE ERROS DE BANCO DE DADOS
-                    </h4>
-                    <p className="text-sm text-red-600 dark:text-red-500/80 mb-4">
-                        Se você está vendo erros como <strong>"violates check constraint"</strong>, <strong>"policy violated"</strong> ou não consegue salvar/excluir nada, é OBRIGATÓRIO rodar este script no Supabase.
-                    </p>
-                    <button 
-                        onClick={() => {
-                            const sql = `
--- 1. Função Auxiliar para Tenant ID
-CREATE OR REPLACE FUNCTION my_tenant_id() RETURNS uuid AS $$
-  SELECT tenant_id FROM public.users WHERE id = auth.uid();
-$$ LANGUAGE sql STABLE;
-
--- 2. Bootstrap de Tenant ID (Caso existam dados sem tenant_id)
-DO $$
-DECLARE
-    first_tenant_id uuid;
-BEGIN
-    -- Pegar o primeiro tenant_id existente ou criar um novo
-    SELECT tenant_id INTO first_tenant_id FROM public.users WHERE tenant_id IS NOT NULL LIMIT 1;
-    IF first_tenant_id IS NULL THEN
-        first_tenant_id := gen_random_uuid();
-    END IF;
-
-    -- Atribuir a todos que não tem
-    UPDATE public.users SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
-    UPDATE public.projects SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
-    UPDATE public.innovations SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
-    UPDATE public.issues SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
-    UPDATE public.interruption_types SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
-    UPDATE public.interruptions SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
-    UPDATE public.activity_types SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
-    UPDATE public.operational_activities SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
-    UPDATE public.settings SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
-END $$;
-
--- 3. Habilitar RLS em todas as tabelas
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.innovations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.issues ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.interruption_types ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.interruptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.activity_types ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.operational_activities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
-
--- 4. Políticas de Isolamento por Tenant
--- Users
-DROP POLICY IF EXISTS "Tenant isolation for users" ON public.users;
-CREATE POLICY "Users can see their own profile" ON public.users FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Users can insert their own profile" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Admins can see all users in tenant" ON public.users FOR SELECT USING (tenant_id = my_tenant_id());
-CREATE POLICY "Admins can manage users in tenant" ON public.users FOR ALL USING (tenant_id = my_tenant_id());
-
--- Projects
-DROP POLICY IF EXISTS "Tenant isolation for projects" ON public.projects;
-CREATE POLICY "Tenant isolation for projects" ON public.projects FOR ALL USING (tenant_id = my_tenant_id());
-
--- Innovations
-DROP POLICY IF EXISTS "Tenant isolation for innovations" ON public.innovations;
-CREATE POLICY "Tenant isolation for innovations" ON public.innovations FOR ALL USING (tenant_id = my_tenant_id());
-
--- Issues
-DROP POLICY IF EXISTS "Tenant isolation for issues" ON public.issues;
-CREATE POLICY "Tenant isolation for issues" ON public.issues FOR ALL USING (tenant_id = my_tenant_id());
-
--- Interruption Types
-DROP POLICY IF EXISTS "Tenant isolation for interruption_types" ON public.interruption_types;
-CREATE POLICY "Tenant isolation for interruption_types" ON public.interruption_types FOR ALL USING (tenant_id = my_tenant_id());
-
--- Interruptions
-DROP POLICY IF EXISTS "Tenant isolation for interruptions" ON public.interruptions;
-CREATE POLICY "Tenant isolation for interruptions" ON public.interruptions FOR ALL USING (tenant_id = my_tenant_id());
-
--- Activity Types
-DROP POLICY IF EXISTS "Tenant isolation for activity_types" ON public.activity_types;
-CREATE POLICY "Tenant isolation for activity_types" ON public.activity_types FOR ALL USING (tenant_id = my_tenant_id());
-
--- Operational Activities
-DROP POLICY IF EXISTS "Tenant isolation for operational_activities" ON public.operational_activities;
-CREATE POLICY "Tenant isolation for operational_activities" ON public.operational_activities FOR ALL USING (tenant_id = my_tenant_id());
-
--- Settings
-DROP POLICY IF EXISTS "Tenant isolation for settings" ON public.settings;
-CREATE POLICY "Tenant isolation for settings" ON public.settings FOR ALL USING (tenant_id = my_tenant_id());
-
--- 5. Correções de Estrutura e Constraints
--- Ajustar FKs para permitir deleção de usuários sem perder dados (set null)
-ALTER TABLE public.projects DROP CONSTRAINT IF EXISTS projects_user_id_fkey;
-ALTER TABLE public.projects ADD CONSTRAINT projects_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-
-ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_user_id_fkey;
-ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_author_id_fkey;
-ALTER TABLE public.innovations ADD CONSTRAINT innovations_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(id) ON DELETE SET NULL;
-
-ALTER TABLE public.issues DROP CONSTRAINT IF EXISTS issues_user_id_fkey;
-ALTER TABLE public.issues DROP CONSTRAINT IF EXISTS issues_reported_by_fkey;
-ALTER TABLE public.issues ADD CONSTRAINT issues_reported_by_fkey FOREIGN KEY (reported_by) REFERENCES public.users(id) ON DELETE SET NULL;
-
--- Corrigir constraint de roles
-ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE public.users ADD CONSTRAINT users_role_check CHECK (role IN ('PROJETISTA', 'GESTOR', 'CEO', 'COORDENADOR'));
-
--- Tornar project_code opcional se necessário
-ALTER TABLE public.projects ALTER COLUMN project_code DROP NOT NULL;
-
--- Adicionar colunas faltantes se não existirem
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS surname TEXT;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS username TEXT;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS password TEXT;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS salary NUMERIC DEFAULT 0;
-
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS estimated_seconds NUMERIC DEFAULT 0;
-
-ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS materials JSONB;
-ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS machine JSONB;
-
--- 6. Política para permitir que novos usuários vejam o tenant_id inicial (opcional, para facilitar Primeiro Acesso)
-DROP POLICY IF EXISTS "Allow authenticated to see tenant_ids" ON public.users;
-CREATE POLICY "Allow authenticated to see tenant_ids" ON public.users 
-FOR SELECT USING (auth.role() = 'authenticated');
-`;
-                            navigator.clipboard.writeText(sql);
-                            addToast("SQL Completo copiado! Cole no SQL Editor do Supabase e execute.", 'success');
-                        }}
-                        className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg text-sm font-bold transition-colors flex items-center justify-center shadow-md"
-                    >
-                        <Shield className="w-5 h-5 mr-2" />
-                        COPIAR SCRIPT DE CORREÇÃO (SQL)
                     </button>
                 </div>
 

@@ -41,18 +41,25 @@ async function startServer() {
 
   // API Route for sending email
   app.post("/api/send-email", async (req, res) => {
-    const { subject, body } = req.body;
+    const { subject, body, to: bodyTo } = req.body;
 
-    const host = process.env.EMAIL_HOST || "smtp.gmail.com";
+    // Read all SMTP configurations from environment variables
+    const host = process.env.EMAIL_HOST;
     const port = parseInt(process.env.EMAIL_PORT || "587");
     const user = process.env.EMAIL_USER;
     const pass = process.env.EMAIL_PASS;
     const from = process.env.EMAIL_FROM || user;
-    const to = process.env.EMAIL_TO;
+    
+    // Use recipient from body if provided, otherwise fallback to env var
+    const to = bodyTo || process.env.EMAIL_TO;
 
-    if (!user || !pass) {
-      console.warn("Email credentials not configured. Skipping email send.");
-      return res.status(200).json({ success: true, message: "Email simulado: credenciais não configuradas." });
+    // Basic validation: Ensure essential credentials are set
+    if (!host || !user || !pass || !to) {
+      console.warn("Email configuration is incomplete. Please set all required environment variables (EMAIL_HOST, EMAIL_USER, EMAIL_PASS, EMAIL_TO).");
+      return res.status(500).json({ 
+        success: false, 
+        error: "Configuração de e-mail incompleta no servidor. Verifique os Secrets (EMAIL_HOST, EMAIL_USER, EMAIL_PASS)." 
+      });
     }
 
     const transporter = nodemailer.createTransport({
@@ -63,11 +70,10 @@ async function startServer() {
         user,
         pass,
       },
-      connectionTimeout: 10000, // 10 seconds
+      connectionTimeout: 10000,
       greetingTimeout: 10000,
       socketTimeout: 15000,
       tls: {
-        // Do not fail on invalid certs (common with custom SMTP servers)
         rejectUnauthorized: false
       }
     });
@@ -75,16 +81,24 @@ async function startServer() {
     try {
       console.log(`Attempting to send email to ${to} via ${host}:${port}...`);
       await transporter.sendMail({
-        from: from || user,
-        to,
+        from: from,
+        to: to,
         subject,
         text: body,
+        html: body.includes('<br>') || body.includes('<p>') ? body : undefined // Support HTML if tags are present
       });
       console.log("Email sent successfully!");
       res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending email:", error);
-      res.status(500).json({ success: false, error: String(error) });
+      let errorMessage = String(error);
+      
+      // Specific hint for common 535 error
+      if (errorMessage.includes("535")) {
+        errorMessage = "Erro de Autenticação (535): Usuário ou senha incorretos. Se estiver usando Gmail, você DEVE usar uma 'Senha de App'.";
+      }
+      
+      res.status(500).json({ success: false, error: errorMessage });
     }
   });
 
