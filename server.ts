@@ -50,6 +50,9 @@ async function startServer() {
     const pass = process.env.EMAIL_PASS;
     const from = process.env.EMAIL_FROM || user;
     
+    // Debug log (without password)
+    console.log(`[Email Debug] Host: ${host}, Port: ${port}, User: ${user}, From: ${from}`);
+    
     // Use recipient from body if provided, otherwise fallback to env var
     const to = bodyTo || process.env.EMAIL_TO;
 
@@ -79,6 +82,11 @@ async function startServer() {
     });
 
     try {
+      // Verify connection configuration
+      console.log(`Verifying SMTP connection...`);
+      await transporter.verify();
+      console.log(`SMTP connection verified!`);
+
       console.log(`Attempting to send email to ${to} via ${host}:${port}...`);
       await transporter.sendMail({
         from: from,
@@ -120,6 +128,9 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  return app;
 }
 
-startServer();
+// Export for Vercel
+export default startServer();
