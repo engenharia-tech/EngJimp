@@ -7,12 +7,11 @@ const getSupabaseConfig = () => {
   const url = import.meta.env.VITE_SUPABASE_URL;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  // Check if they are valid URLs/Strings
   const isValidUrl = (u: string | undefined): u is string => {
     if (!u) return false;
     try {
-      new URL(u);
-      return true;
+      const parsed = new URL(u);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
     } catch (e) {
       return false;
     }
@@ -22,11 +21,11 @@ const getSupabaseConfig = () => {
     return { url, key };
   }
 
-  // Fallback to hardcoded defaults if env vars are missing/invalid
-  // Note: In a production app, you'd want to handle this more strictly
+  // If missing or invalid, return placeholder values to avoid crashing during initialization.
+  // The app will fail to fetch data until real credentials are provided in the environment.
   return {
-    url: 'https://otajfsjtpucdmkwgmeku.supabase.co',
-    key: 'sb_publishable_tUhxD-ixI7mhxhvB5FYVGQ_FCkLGa6h'
+    url: 'https://placeholder.supabase.co',
+    key: 'placeholder-key'
   };
 };
 

@@ -640,14 +640,7 @@ JIMPNEXUS
         body: JSON.stringify({ 
           subject, 
           body,
-          config: {
-            emailHost: settings.emailHost,
-            emailPort: settings.emailPort,
-            emailUser: settings.emailUser,
-            emailPass: settings.emailPass,
-            emailFrom: settings.emailFrom,
-            emailTo: settings.emailTo
-          }
+          to: settings.emailTo
         })
       });
 

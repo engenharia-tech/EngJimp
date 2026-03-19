@@ -257,14 +257,7 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
               body: JSON.stringify({
                 subject: `[ALERTA] Nova Interrupção - NS: ${ns}`,
                 body: emailBody.replace(/\n/g, '<br>'),
-                config: {
-                  emailHost: data.settings.emailHost,
-                  emailPort: data.settings.emailPort,
-                  emailUser: data.settings.emailUser,
-                  emailPass: data.settings.emailPass,
-                  emailFrom: data.settings.emailFrom,
-                  emailTo: data.settings.interruptionEmailTo
-                }
+                to: data.settings.interruptionEmailTo
               })
             });
           } catch (emailErr) {

@@ -49,14 +49,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
         body: JSON.stringify({
           subject: 'Teste de Conexão - JIMPNEXUS',
           body: 'Este é um e-mail de teste para validar as configurações do sistema.',
-          config: {
-            emailHost: formData.emailHost,
-            emailPort: formData.emailPort,
-            emailUser: formData.emailUser,
-            emailPass: formData.emailPass,
-            emailFrom: formData.emailFrom,
-            emailTo: formData.emailTo
-          }
+          to: formData.emailTo
         })
       });
 
