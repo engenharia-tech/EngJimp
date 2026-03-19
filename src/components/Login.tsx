@@ -3,7 +3,8 @@ import { Lock, User as UserIcon, LogIn, Loader2 } from 'lucide-react';
 import { authenticateUser, fetchSettings } from '../services/storageService';
 import { User, AppSettings } from '../types';
 import { Logo } from './Logo';
-// import logoImg from '../assets/logo.svg'; // REMOVIDO — Logo.tsx já usa o asset internamente como fallback
+// Logo em public/logo.svg — sem import de módulo
+const logoImg = '/logo.svg';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -43,9 +44,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
-  // Não passa logoImg diretamente — Logo.tsx usa seu próprio fallback interno (defaultLogoAsset)
-  const COMPANY_LOGO = settings?.logoUrl || undefined;
+  const COMPANY_LOGO = settings?.logoUrl || logoImg;
   const COMPANY_NAME = settings?.companyName || 'JIMP NEXUS';
+
+  console.log("Rendering Login component, settings:", settings);
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
