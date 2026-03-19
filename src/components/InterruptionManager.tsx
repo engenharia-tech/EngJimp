@@ -17,6 +17,7 @@ import {
   addInterruption, updateInterruption, deleteInterruption,
   addInterruptionType, updateInterruptionType, deleteInterruptionType
 } from '../services/storageService';
+import { calcActiveSeconds } from '../utils/workdayCalc';
 
 interface InterruptionManagerProps {
   data: AppState;
@@ -58,6 +59,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
 
   // Type Manager State
   const [newTypeName, setNewTypeName] = useState('');
+  const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
 
   const canManage = currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR';
   const isCEO = currentUser.role === 'CEO';
@@ -85,8 +87,29 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+    
+    // Heartbeat for open interruptions
+    const heartbeat = setInterval(() => {
+      const currentTime = Date.now();
+      if (currentTime - lastHeartbeat >= 60000) {
+        const openInterruptions = data.interruptions.filter(i => i.status === InterruptionStatus.OPEN && i.designerId === currentUser.id);
+        openInterruptions.forEach(async (i) => {
+          const startTime = new Date(i.startTime);
+          const currentDuration = calcActiveSeconds(startTime, new Date(), data.settings);
+          await updateInterruption({
+            ...i,
+            totalTimeSeconds: currentDuration
+          });
+        });
+        setLastHeartbeat(currentTime);
+      }
+    }, 10000);
+
+    return () => {
+      clearInterval(timer);
+      clearInterval(heartbeat);
+    };
+  }, [data.interruptions, currentUser.id, data.settings, lastHeartbeat]);
 
   // Update email body when form fields change
   useEffect(() => {
@@ -131,13 +154,8 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
   }, [ns, client, problemType, area, responsible, description, otherLosses, formStartDate, formStartTime, isFormOpen, data.settings.interruptionEmailTemplate, editingInterruption]);
 
   const costPerSecond = useMemo(() => {
-    const designers = data.users.filter(u => u.role === 'PROJETISTA');
-    if (designers.length === 0) {
-      const avgSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0) / (data.users.length || 1);
-      return (avgSalary / 220) / 3600;
-    }
-    const avgDesignerSalary = designers.reduce((acc, u) => acc + (u.salary || 0), 0) / designers.length;
-    return (avgDesignerSalary / 220) / 3600;
+    const totalSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
+    return (totalSalary / 220) / 3600;
   }, [data.users]);
 
   const formatCurrency = (val: number) => {
@@ -201,7 +219,7 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
           startTime: startIso,
           endTime: endIso,
           totalTimeSeconds: endIso 
-            ? Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000)
+            ? calcActiveSeconds(new Date(startIso), new Date(endIso), data.settings)
             : 0
         };
         const newState = await updateInterruption(updated);
@@ -223,7 +241,7 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
           otherLosses,
           status: status,
           totalTimeSeconds: endIso 
-            ? Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000)
+            ? calcActiveSeconds(new Date(startIso), new Date(endIso), data.settings)
             : 0
         };
         const newState = await addInterruption(newItem);
@@ -343,9 +361,9 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
   };
 
   const getElapsedTime = (startTime: string, endTime?: string | null) => {
-    const start = new Date(startTime).getTime();
-    const end = endTime ? new Date(endTime).getTime() : now.getTime();
-    return Math.floor((end - start) / 1000);
+    const start = new Date(startTime);
+    const end = endTime ? new Date(endTime) : now;
+    return calcActiveSeconds(start, end, data.settings);
   };
 
   const getAlertLevel = (startTime: string, status: InterruptionStatus) => {
@@ -357,26 +375,30 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
   };
 
   const exportData = (format: 'CSV' | 'PDF' | 'EXCEL') => {
-    const headers = ['NS', 'Cliente', 'Projetista', 'Início', 'Fim', 'Tipo', 'Área', 'Responsável', 'Status', 'Tempo Total(s)'];
-    const data = filteredInterruptions.map(i => [
-      i.projectNs,
-      i.clientName,
-      i.designerId, // Ideally map to name
-      i.startTime,
-      i.endTime || '',
-      i.problemType,
-      i.responsibleArea,
-      i.responsiblePerson,
-      i.status,
-      i.totalTimeSeconds
-    ]);
+    const headers = ['NS', 'Cliente', 'Projetista', 'Problema', 'Área', 'Responsável', 'Status', 'Início', 'Fim', 'Duração (s)'];
+    const exportRows = filteredInterruptions.map(i => {
+      const designer = data.users.find(u => u.id === i.designerId);
+      const designerName = designer ? `${designer.name} ${designer.surname || ''}`.trim() : 'Desconhecido';
+      return [
+        i.projectNs,
+        i.clientName,
+        designerName,
+        i.problemType,
+        i.responsibleArea,
+        i.responsiblePerson,
+        i.status,
+        new Date(i.startTime).toLocaleString('pt-BR'),
+        i.endTime ? new Date(i.endTime).toLocaleString('pt-BR') : '-',
+        i.totalTimeSeconds
+      ];
+    });
 
     if (format === 'CSV') {
-      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...data.map(r => r.join(','))].join('\n');
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `interrupcoes_${new Date().toISOString().slice(0,10)}.csv`);
+      const csvContent = [headers, ...exportRows].map(e => e.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute('download', `interrupcoes_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -385,16 +407,16 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
       doc.text(`Relatório de Paradas - ${new Date().toLocaleDateString()}`, 14, 15);
       (doc as any).autoTable({
         head: [headers],
-        body: data,
+        body: exportRows,
         startY: 20,
-        styles: { fontSize: 8 }
+        styles: { fontSize: 7 }
       });
-      doc.save(`interrupcoes_${new Date().toISOString().slice(0,10)}.pdf`);
+      doc.save(`interrupcoes_${new Date().toISOString().slice(0, 10)}.pdf`);
     } else if (format === 'EXCEL') {
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...exportRows]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Paradas");
-      XLSX.writeFile(wb, `interrupcoes_${new Date().toISOString().slice(0,10)}.xlsx`);
+      XLSX.writeFile(wb, `interrupcoes_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
     
     addToast(`Exportando em ${format}...`, 'info');

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X, Loader2 } from 'lucide-react';
 import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
-import { getWorkingSeconds, isWorkingHour } from '../utils/timeUtils';
+import { calcActiveSeconds, isWorkingHour } from '../utils/workdayCalc';
 import { fetchUsers } from '../services/storageService';
 import { triggerExcelUpdate } from '../services/webhookService';
 import { useToast } from './Toast';
@@ -86,6 +86,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [pauseSector, setPauseSector] = useState('');
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [sentEmailProjectIds, setSentEmailProjectIds] = useState<string[]>([]);
+  const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingProjects = existingProjects.filter(p => p.status === 'IN_PROGRESS');
@@ -119,7 +120,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       
       // For the VISUAL timer, we'll show the actual elapsed working time
       // to give the user feedback that it's running.
-      const totalWorkingSeconds = getWorkingSeconds(start, now, activeProject.isOvertime);
+      const totalWorkingSeconds = calcActiveSeconds(start, now, settings, activeProject.isOvertime);
 
       // Calculate Total Working Time consumed by CLOSED pauses
       let totalPauseWorkingSeconds = 0;
@@ -127,11 +128,11 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           if (p.durationSeconds > 0) {
               const pStart = new Date(p.timestamp);
               const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
-              totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd, activeProject.isOvertime);
+              totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, activeProject.isOvertime);
           } else if (p.durationSeconds === -1) {
               // If currently paused, subtract working time from pause start to now
               const pStart = new Date(p.timestamp);
-              totalPauseWorkingSeconds += getWorkingSeconds(pStart, now, activeProject.isOvertime);
+              totalPauseWorkingSeconds += calcActiveSeconds(pStart, now, settings, activeProject.isOvertime);
           }
       });
 
@@ -145,6 +146,23 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     if (activeProject && !showPauseModal) {
       updateTimer(); // Initial call
       timerRef.current = setInterval(updateTimer, 1000);
+      
+      // Heartbeat every 60 seconds to update lastActiveAt (updated_at in DB)
+      const heartbeatInterval = setInterval(() => {
+        const now = Date.now();
+        if (now - lastHeartbeat >= 60000) {
+          onUpdate({
+            ...activeProject,
+            totalActiveSeconds: elapsedSeconds
+          });
+          setLastHeartbeat(now);
+        }
+      }, 10000); // Check every 10s if 60s passed
+
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+        clearInterval(heartbeatInterval);
+      };
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
@@ -161,8 +179,15 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       return;
     }
 
+    // MELHORIA 3: Bloqueio de NS duplicada
+    const isDuplicate = allProjects.some(p => p.ns === ns.trim() && p.status === 'IN_PROGRESS');
+    if (isDuplicate) {
+      alert(`Já existe um projeto em andamento com a NS ${ns}. Por favor, retome o projeto existente ou use outra NS.`);
+      return;
+    }
+
     // Check Working Hours
-    if (!isWorkingHour(new Date(), isOvertime)) {
+    if (!isWorkingHour(new Date(), settings, isOvertime)) {
       alert("Fora do horário de expediente. Marque 'Hora Extra' para iniciar.");
       return;
     }
@@ -204,41 +229,58 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
   const handleResumeFromList = (project: ProjectSession) => {
     // Check Working Hours
-    if (!isWorkingHour(new Date(), project.isOvertime)) {
+    if (!isWorkingHour(new Date(), settings, project.isOvertime)) {
       alert("Fora do horário de expediente. Este projeto não está marcado como 'Hora Extra'.");
       return;
     }
 
-    // Logic to close open pause if needed
-    const lastPauseIndex = project.pauses.length - 1;
-    if (lastPauseIndex >= 0 && project.pauses[lastPauseIndex].durationSeconds === -1) {
-       const pauseStart = new Date(project.pauses[lastPauseIndex].timestamp);
-       const now = new Date();
-       
-       // Calculate wall-clock duration for the record (standard practice for "duration")
-       // But for accounting, we'll use getWorkingSeconds in the timer logic
-       const duration = Math.floor((now.getTime() - pauseStart.getTime()) / 1000);
+    // MELHORIA 1: Pausar tempo fora do expediente
+    // Se o projeto estava IN_PROGRESS e o app foi fechado, calculamos o tempo produtivo desde o último save
+    let updatedProject = { ...project };
+    const now = new Date();
+    
+    if (project.lastActiveAt) {
+      const lastActive = new Date(project.lastActiveAt);
+      const productiveSecondsSinceLastSave = calcActiveSeconds(lastActive, now, settings, project.isOvertime);
+      
+      // Se passou tempo produtivo desde o último save, adicionamos ao total
+      if (productiveSecondsSinceLastSave > 0) {
+        updatedProject.totalActiveSeconds += productiveSecondsSinceLastSave;
+        console.log(`Resuming project ${project.ns}: adding ${productiveSecondsSinceLastSave}s of productive time since last save.`);
+      }
+    }
 
-       const updatedPauses = [...project.pauses];
+    // Logic to close open pause if needed
+    const lastPauseIndex = updatedProject.pauses.length - 1;
+    if (lastPauseIndex >= 0 && updatedProject.pauses[lastPauseIndex].durationSeconds === -1) {
+       const pauseStart = new Date(updatedProject.pauses[lastPauseIndex].timestamp);
+       
+       // Calculate productive duration for the pause record
+       const pauseDuration = calcActiveSeconds(pauseStart, now, settings, updatedProject.isOvertime);
+
+       const updatedPauses = [...updatedProject.pauses];
        updatedPauses[lastPauseIndex] = {
          ...updatedPauses[lastPauseIndex],
-         durationSeconds: duration
+         durationSeconds: pauseDuration
        };
 
-       const updatedProject = { ...project, pauses: updatedPauses };
+       updatedProject = { ...updatedProject, pauses: updatedPauses };
        
        // Check if there's an open interruption for this project and close it
        const openInterruption = interruptions.find(i => 
-           i.projectNs === project.ns && 
+           i.projectNs === updatedProject.ns && 
            i.status === InterruptionStatus.OPEN && 
            i.designerId === currentUser?.id
        );
 
        if (openInterruption) {
+           const interruptionStart = new Date(openInterruption.startTime);
+           const interruptionDuration = calcActiveSeconds(interruptionStart, now, settings, updatedProject.isOvertime);
+           
            const updatedInterruption: InterruptionRecord = {
                ...openInterruption,
                endTime: now.toISOString(),
-               totalTimeSeconds: Math.floor((now.getTime() - new Date(openInterruption.startTime).getTime()) / 1000),
+               totalTimeSeconds: (openInterruption.totalTimeSeconds || 0) + interruptionDuration,
                status: InterruptionStatus.RESOLVED
            };
            onUpdateInterruption(updatedInterruption);
@@ -247,8 +289,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
        onUpdate(updatedProject);
        setActiveProject(updatedProject);
     } else {
-       setActiveProject(project);
+       // Se não estava pausado, mas estava IN_PROGRESS, o tempo continuou contando
+       // Já atualizamos o totalActiveSeconds acima se havia lastActiveAt
+       onUpdate(updatedProject);
+       setActiveProject(updatedProject);
     }
+    setLastHeartbeat(Date.now());
   };
 
   const handlePauseProject = () => setShowPauseModal(true);
@@ -343,7 +389,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     const now = new Date();
     
     // 1. Total Working Time
-    const totalWorkingSeconds = getWorkingSeconds(start, now, activeProject.isOvertime);
+    const totalWorkingSeconds = calcActiveSeconds(start, now, settings, activeProject.isOvertime);
 
     // 2. Subtract Working Time spent in Pauses
     let totalPauseWorkingSeconds = 0;
@@ -351,7 +397,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         if (p.durationSeconds > 0) {
             const pStart = new Date(p.timestamp);
             const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
-            totalPauseWorkingSeconds += getWorkingSeconds(pStart, pEnd, activeProject.isOvertime);
+            totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, activeProject.isOvertime);
         }
     });
 
@@ -368,17 +414,11 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
     const totalSeconds = finalSeconds + interruptionSeconds;
     
-    // Calculate cost based on settings or dynamic hourly cost based on designer salaries
+    // Calculate cost based on settings or dynamic hourly cost based on total engineering salary
     let hourlyRate = settings.hourlyCost;
     if (hourlyRate <= 0) {
-        const designers = users.filter(u => u.role === 'PROJETISTA');
-        if (designers.length === 0) {
-          const avgSalary = users.reduce((acc, u) => acc + (u.salary || 0), 0) / (users.length || 1);
-          hourlyRate = avgSalary / 220;
-        } else {
-          const avgDesignerSalary = designers.reduce((acc, u) => acc + (u.salary || 0), 0) / designers.length;
-          hourlyRate = avgDesignerSalary / 220;
-        }
+        const totalSalary = users.reduce((acc, u) => acc + (u.salary || 0), 0);
+        hourlyRate = totalSalary / 220;
     }
 
     const productiveCost = (finalSeconds / 3600) * hourlyRate;

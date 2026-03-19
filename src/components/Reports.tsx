@@ -62,15 +62,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
       return data.settings.hourlyCost / 3600;
     }
     
-    const designers = data.users.filter(u => u.role === 'PROJETISTA');
-    if (designers.length === 0) {
-      // Fallback to all users if no designers found, or 0
-      const totalSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
-      return data.users.length > 0 ? (totalSalary / data.users.length) / (220 * 3600) : 0;
-    }
-    const totalSalary = designers.reduce((acc, u) => acc + (u.salary || 0), 0);
-    const avgSalary = totalSalary / designers.length;
-    return avgSalary / (220 * 3600);
+    const totalSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
+    return (totalSalary / 220) / 3600;
   }, [data.users, data.settings]);
 
   const isDateInPeriod = (date: Date) => {

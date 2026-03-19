@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, Mail, Server, Shield, User, DollarSign, Globe, Send, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Mail, Server, Shield, User, DollarSign, Globe, Send, CheckCircle2, AlertCircle, Eye, EyeOff, Clock } from 'lucide-react';
 import { AppSettings } from '../types';
 import { useToast } from './Toast';
 
@@ -128,6 +128,70 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
                   placeholder="150.00"
                 />
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Workday Settings */}
+        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+          <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
+            <Clock className="w-5 h-5 mr-2 text-amber-500" />
+            Configuração de Expediente
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
+            Defina o horário de trabalho e os dias da semana para o cálculo automático de tempo produtivo.
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Início do Expediente</label>
+              <input
+                type="time"
+                disabled={!isEditing}
+                value={formData.workdayStart || '07:30'}
+                onChange={e => setFormData({ ...formData, workdayStart: e.target.value })}
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Fim do Expediente</label>
+              <input
+                type="time"
+                disabled={!isEditing}
+                value={formData.workdayEnd || '17:30'}
+                onChange={e => setFormData({ ...formData, workdayEnd: e.target.value })}
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Dias de Trabalho</label>
+            <div className="flex flex-wrap gap-2">
+              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, index) => {
+                const isSelected = (formData.workdays || [1, 2, 3, 4, 5]).includes(index);
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    disabled={!isEditing}
+                    onClick={() => {
+                      const current = formData.workdays || [1, 2, 3, 4, 5];
+                      const next = isSelected 
+                        ? current.filter(d => d !== index)
+                        : [...current, index].sort();
+                      setFormData({ ...formData, workdays: next });
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                      isSelected 
+                        ? 'bg-amber-100 border-amber-300 text-amber-700 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-400' 
+                        : 'bg-gray-50 border-gray-200 text-gray-400 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-500'
+                    } ${!isEditing ? 'opacity-60 cursor-not-allowed' : 'hover:border-amber-400'}`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

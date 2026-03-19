@@ -1,4 +1,3 @@
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { ProjectSession, IssueRecord, InterruptionRecord, AppSettings } from '../types';
 
 export const analyzePerformance = async (
@@ -8,15 +7,6 @@ export const analyzePerformance = async (
   settings?: AppSettings
 ) => {
   try {
-    const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
-    
-    if (!apiKey) {
-      console.warn("Gemini API Key is missing. Skipping analysis.");
-      return "Análise indisponível: Chave de API não configurada.";
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-
     // Project Summary with Costs
     const hourlyCost = settings?.hourlyCost || 0;
     const projectSummary = projects.slice(0, 15).map(p => {
@@ -68,15 +58,21 @@ export const analyzePerformance = async (
       Responda de forma profissional e direta, destacando onde o dinheiro está sendo perdido e como otimizar.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-      }
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prompt }),
     });
 
-    return response.text;
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to fetch Gemini analysis');
+    }
+
+    const data = await response.json();
+    return data.text;
   } catch (error) {
     console.error("Gemini Error:", error);
     return "Não foi possível gerar a análise no momento. Verifique sua chave de API.";

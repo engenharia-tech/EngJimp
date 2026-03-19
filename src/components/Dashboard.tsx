@@ -200,13 +200,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
   };
 
   const costPerSecond = useMemo(() => {
-    const designers = data.users.filter(u => u.role === 'PROJETISTA');
-    if (designers.length === 0) {
-      const avgSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0) / (data.users.length || 1);
-      return (avgSalary / 220) / 3600;
-    }
-    const avgDesignerSalary = designers.reduce((acc, u) => acc + (u.salary || 0), 0) / designers.length;
-    return (avgDesignerSalary / 220) / 3600;
+    const totalSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
+    return (totalSalary / 220) / 3600;
   }, [data.users]);
 
   const costData = useMemo(() => {

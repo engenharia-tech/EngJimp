@@ -80,12 +80,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   // Form State
   const [name, setName] = useState('');
   const [surname, setSurname] = useState('');
-  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('PROJETISTA');
   const [salary, setSalary] = useState<number>(0);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<UserRole>(UserRole.PROJETISTA);
+  const [isActive, setIsActive] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [deleteConfirmationUser, setDeleteConfirmationUser] = useState<User | null>(null);
@@ -109,12 +109,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       id: editingUserId || crypto.randomUUID(),
       name,
       surname,
-      email,
       phone,
       username,
-      password,
+      salary,
+      email,
       role,
-      salary
+      isActive
     };
 
     let result;
@@ -178,39 +178,39 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const resetForm = () => {
     setName('');
     setSurname('');
-    setEmail('');
     setPhone('');
     setUsername('');
-    setPassword('');
     setSalary(0);
-    setRole('PROJETISTA');
+    setEmail('');
+    setIsActive(true);
+    setRole(UserRole.PROJETISTA);
     setEditingUserId(null);
   };
 
   const handleEdit = (user: User) => {
     setName(user.name);
     setSurname(user.surname || '');
-    setEmail(user.email || '');
     setPhone(user.phone || '');
-    setUsername(user.username);
-    setPassword(user.password);
-    setRole(user.role);
+    setUsername(user.username || '');
     setSalary(user.salary || 0);
+    setEmail(user.email || '');
+    setRole(user.role);
+    setIsActive(user.isActive);
     setEditingUserId(user.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const getRoleIcon = (role: UserRole) => {
       switch(role) {
-          case 'GESTOR': return <Shield className="w-3 h-3 text-blue-600" />;
-          case 'CEO': return <Briefcase className="w-3 h-3 text-yellow-600" />;
-          case 'COORDENADOR': return <Eye className="w-3 h-3 text-teal-600" />;
+          case UserRole.GESTOR: return <Shield className="w-3 h-3 text-blue-600" />;
+          case UserRole.CEO: return <Briefcase className="w-3 h-3 text-yellow-600" />;
+          case UserRole.COORDENADOR: return <Eye className="w-3 h-3 text-teal-600" />;
           default: return <UserIcon className="w-3 h-3 text-gray-600" />;
       }
   };
 
-  const isGestor = currentUser.role === 'GESTOR';
-  const isCoordenador = currentUser.role === 'COORDENADOR';
+  const isGestor = currentUser.role === UserRole.GESTOR;
+  const isCoordenador = currentUser.role === UserRole.COORDENADOR;
   // Gestor can do everything. Coordenador can view. Everyone can edit themselves.
   
   const canCreateUser = isGestor;
@@ -244,14 +244,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
         <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome (Primeiro Nome)</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome</label>
             <input 
               type="text" 
               value={name}
-              onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
+              onChange={e => setName(e.target.value)}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               required
-              placeholder="Somente letras"
+              placeholder="Nome"
             />
           </div>
           <div>
@@ -259,9 +259,29 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             <input 
               type="text" 
               value={surname}
-              onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
+              onChange={e => setSurname(e.target.value)}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-              placeholder="Somente letras"
+              placeholder="Sobrenome"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Usuário</label>
+            <input 
+              type="text" 
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+              placeholder="Nome de usuário"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Telefone</label>
+            <input 
+              type="text" 
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+              placeholder="(00) 00000-0000"
             />
           </div>
           <div>
@@ -272,37 +292,18 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               onChange={e => setEmail(e.target.value)}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               placeholder="exemplo@exemplo.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Celular</label>
-            <input 
-              type="text" 
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-              placeholder="xx-xxxxx-xxxx"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome de Usuário (Login)</label>
-            <input 
-              type="text" 
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Senha</label>
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Salário Base (R$)</label>
             <input 
-              type="text" 
-              value={password}
-              onChange={e => setPassword(e.target.value)}
+              type="number" 
+              step="0.01"
+              value={salary}
+              onChange={e => setSalary(Number(e.target.value))}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-              placeholder="Defina uma senha"
-              required
+              placeholder="0,00"
             />
           </div>
           <div>
@@ -319,19 +320,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               <option value="COORDENADOR">Coordenador</option>
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Salário (R$) {(!isGestor) && <span className="text-xs text-gray-400 dark:text-slate-500">(Somente Gestor)</span>}</label>
-            <input 
-              type="text"
-              value={salary === 0 ? '' : salary}
-              onChange={e => {
-                  const val = e.target.value.replace(/[^0-9.]/g, '');
-                  setSalary(Number(val));
-              }}
-              disabled={!isGestor}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-black text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-black dark:text-slate-200'}`}
-              placeholder="Ex: 5000.00"
-            />
+          <div className="flex items-end pb-2">
+            <label className="flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={isActive}
+                onChange={e => setIsActive(e.target.checked)}
+                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+              />
+              <span className="ml-2 text-sm font-medium text-black dark:text-white">Usuário Ativo</span>
+            </label>
           </div>
           <div className="md:col-span-2">
             <button 
@@ -358,11 +356,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium">
             <tr>
               <th className="p-4">Nome</th>
-              <th className="p-4">Usuário</th>
-              <th className="p-4">E-mail / Celular</th>
-              <th className="p-4">Senha</th>
+              <th className="p-4">E-mail</th>
               <th className="p-4">Função</th>
-              <th className="p-4">Salário</th>
+              <th className="p-4">Status</th>
               <th className="p-4 text-center">Ações</th>
             </tr>
           </thead>
@@ -380,30 +376,22 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                       {u.name.charAt(0)}
                     </div>
                     <div>
-                      <div className="font-bold">{u.name} {u.surname}</div>
+                      <div className="font-bold">{u.name}</div>
                       {currentUser.id === u.id && <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded-full">Você</span>}
                     </div>
                   </div>
                 </td>
-                <td className="p-4 text-black dark:text-white">{u.username}</td>
-                <td className="p-4 text-black dark:text-white">
-                  <div className="text-xs">{u.email || '-'}</div>
-                  <div className="text-[10px] text-gray-500 dark:text-slate-400">{u.phone || '-'}</div>
-                </td>
-                <td className="p-4 text-black dark:text-white font-mono text-xs">
-                  {u.password}
-                </td>
+                <td className="p-4 text-black dark:text-white">{u.email}</td>
                 <td className="p-4">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-black text-black dark:text-white`}>
                     {getRoleIcon(u.role)}
                     {u.role}
                   </span>
                 </td>
-                <td className="p-4 text-black dark:text-white">
-                  {/* Only show salary if user is GESTOR or viewing their own salary */}
-                  {(isGestor || currentUser.id === u.id) 
-                    ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
-                    : '***'}
+                <td className="p-4">
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {u.isActive ? 'Ativo' : 'Inativo'}
+                  </span>
                 </td>
                 <td className="p-4 text-center">
                   <div className="flex items-center justify-center gap-2">
@@ -662,171 +650,122 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     <button 
                         onClick={() => {
                             const sql = `
--- 1. Habilitar RLS (Segurança) em todas as tabelas
+-- 1. Função Auxiliar para Tenant ID
+CREATE OR REPLACE FUNCTION my_tenant_id() RETURNS uuid AS $$
+  SELECT tenant_id FROM public.users WHERE id = auth.uid();
+$$ LANGUAGE sql STABLE;
+
+-- 2. Bootstrap de Tenant ID (Caso existam dados sem tenant_id)
+DO $$
+DECLARE
+    first_tenant_id uuid;
+BEGIN
+    -- Pegar o primeiro tenant_id existente ou criar um novo
+    SELECT tenant_id INTO first_tenant_id FROM public.users WHERE tenant_id IS NOT NULL LIMIT 1;
+    IF first_tenant_id IS NULL THEN
+        first_tenant_id := gen_random_uuid();
+    END IF;
+
+    -- Atribuir a todos que não tem
+    UPDATE public.users SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
+    UPDATE public.projects SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
+    UPDATE public.innovations SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
+    UPDATE public.issues SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
+    UPDATE public.interruption_types SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
+    UPDATE public.interruptions SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
+    UPDATE public.activity_types SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
+    UPDATE public.operational_activities SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
+    UPDATE public.settings SET tenant_id = first_tenant_id WHERE tenant_id IS NULL;
+END $$;
+
+-- 3. Habilitar RLS em todas as tabelas
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.innovations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.issues ENABLE ROW LEVEL SECURITY;
-
--- 2. Criar Políticas Permissivas (Liberar INSERT, UPDATE, DELETE para todos)
--- Users
-DROP POLICY IF EXISTS "Enable all for users" ON public.users;
-CREATE POLICY "Enable all for users" ON public.users FOR ALL USING (true) WITH CHECK (true);
-
--- Projects
-DROP POLICY IF EXISTS "Enable all for projects" ON public.projects;
-CREATE POLICY "Enable all for projects" ON public.projects FOR ALL USING (true) WITH CHECK (true);
-
--- Innovations
-DROP POLICY IF EXISTS "Enable all for innovations" ON public.innovations;
-CREATE POLICY "Enable all for innovations" ON public.innovations FOR ALL USING (true) WITH CHECK (true);
-
--- Issues
-DROP POLICY IF EXISTS "Enable all for issues" ON public.issues;
-CREATE POLICY "Enable all for issues" ON public.issues FOR ALL USING (true) WITH CHECK (true);
-
--- 3. Corrigir Travamentos de Exclusão (ON DELETE SET NULL)
--- Projects
-ALTER TABLE public.projects DROP CONSTRAINT IF EXISTS projects_user_id_fkey;
-ALTER TABLE public.projects ADD CONSTRAINT projects_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
-
--- Innovations
-ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_author_id_fkey;
-ALTER TABLE public.innovations ADD CONSTRAINT innovations_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(id) ON DELETE SET NULL;
-
--- Issues
-ALTER TABLE public.issues DROP CONSTRAINT IF EXISTS issues_reported_by_fkey;
-ALTER TABLE public.issues ADD CONSTRAINT issues_reported_by_fkey FOREIGN KEY (reported_by) REFERENCES public.users(id) ON DELETE SET NULL;
-
--- 4. Atualizar Constraint de Cargos (Adicionar COORDENADOR, Remover PROCESSOS/QUALIDADE)
--- Isso corrige o erro "violates check constraint users_role_check"
-ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE public.users ADD CONSTRAINT users_role_check CHECK (role IN ('PROJETISTA', 'GESTOR', 'CEO', 'COORDENADOR'));
-
--- 5. Garantir que project_code não seja obrigatório
-ALTER TABLE public.projects ALTER COLUMN project_code DROP NOT NULL;
-
--- 6. Adicionar coluna de Tempo Estimado (Correção do erro "estimated_seconds not found")
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS estimated_seconds NUMERIC DEFAULT 0;
-
--- 7. Corrigir bloqueios de exclusão (Foreign Keys)
--- Remove vínculos que impedem apagar projetos
-
--- Issues: Tentar vincular por ID se possível, ou garantir que não trave
-ALTER TABLE public.issues DROP CONSTRAINT IF EXISTS issues_project_id_fkey;
-ALTER TABLE public.issues DROP CONSTRAINT IF EXISTS issues_project_ns_fkey;
-
--- Recriar FK para issues (se a coluna project_id existir)
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'issues' AND column_name = 'project_id') THEN
-        ALTER TABLE public.issues ADD CONSTRAINT issues_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE SET NULL;
-    END IF;
-END $$;
-
--- Innovations: Garantir que não trave e adicionar novas colunas
-ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_project_id_fkey;
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'innovations' AND column_name = 'project_id') THEN
-        ALTER TABLE public.innovations ADD CONSTRAINT innovations_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE SET NULL;
-    END IF;
-END $$;
-
--- 8. Corrigir Constraint de Tipo de Inovação e Adicionar Colunas de Cálculo
-ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_type_check;
-ALTER TABLE public.innovations ADD CONSTRAINT innovations_type_check CHECK (type IN ('Melhoria de Produto', 'Otimização de Processos', 'Novo Projeto'));
-
-ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS materials JSONB;
-ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS machine JSONB;
-
--- 9. Adicionar colunas de Perfil (Nome, Sobrenome, Email, Celular)
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS surname TEXT;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email TEXT;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
-
--- 10. Criar Tabelas de Interrupções
-CREATE TABLE IF NOT EXISTS public.interruption_types (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL UNIQUE,
-    is_active BOOLEAN DEFAULT true
-);
-
-CREATE TABLE IF NOT EXISTS public.interruptions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
-    project_ns TEXT NOT NULL,
-    client_name TEXT,
-    designer_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
-    start_time TIMESTAMPTZ NOT NULL DEFAULT now(),
-    end_time TIMESTAMPTZ,
-    problem_type TEXT NOT NULL,
-    responsible_area TEXT NOT NULL,
-    responsible_person TEXT,
-    description TEXT,
-    status TEXT NOT NULL DEFAULT 'Aberto',
-    total_time_seconds INTEGER DEFAULT 0
-);
-
--- 11. Criar Tabelas de Desempenho Operacional (Engenharia)
-CREATE TABLE IF NOT EXISTS public.activity_types (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL UNIQUE,
-    is_active BOOLEAN DEFAULT true
-);
-
-CREATE TABLE IF NOT EXISTS public.operational_activities (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
-    activity_type_id UUID REFERENCES public.activity_types(id) ON DELETE SET NULL,
-    activity_name TEXT NOT NULL,
-    start_time TIMESTAMPTZ NOT NULL DEFAULT now(),
-    end_time TIMESTAMPTZ,
-    duration_seconds INTEGER DEFAULT 0,
-    notes TEXT,
-    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
-    is_flagged BOOLEAN DEFAULT false
-);
-
--- Habilitar RLS em todas as novas tabelas
 ALTER TABLE public.interruption_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interruptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.operational_activities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
--- Criar Políticas Permissivas
-DROP POLICY IF EXISTS "Enable all for interruption_types" ON public.interruption_types;
-CREATE POLICY "Enable all for interruption_types" ON public.interruption_types FOR ALL USING (true) WITH CHECK (true);
+-- 4. Políticas de Isolamento por Tenant
+-- Users
+DROP POLICY IF EXISTS "Tenant isolation for users" ON public.users;
+CREATE POLICY "Users can see their own profile" ON public.users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can insert their own profile" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Admins can see all users in tenant" ON public.users FOR SELECT USING (tenant_id = my_tenant_id());
+CREATE POLICY "Admins can manage users in tenant" ON public.users FOR ALL USING (tenant_id = my_tenant_id());
 
-DROP POLICY IF EXISTS "Enable all for interruptions" ON public.interruptions;
-CREATE POLICY "Enable all for interruptions" ON public.interruptions FOR ALL USING (true) WITH CHECK (true);
+-- Projects
+DROP POLICY IF EXISTS "Tenant isolation for projects" ON public.projects;
+CREATE POLICY "Tenant isolation for projects" ON public.projects FOR ALL USING (tenant_id = my_tenant_id());
 
-DROP POLICY IF EXISTS "Enable all for activity_types" ON public.activity_types;
-CREATE POLICY "Enable all for activity_types" ON public.activity_types FOR ALL USING (true) WITH CHECK (true);
+-- Innovations
+DROP POLICY IF EXISTS "Tenant isolation for innovations" ON public.innovations;
+CREATE POLICY "Tenant isolation for innovations" ON public.innovations FOR ALL USING (tenant_id = my_tenant_id());
 
-DROP POLICY IF EXISTS "Enable all for operational_activities" ON public.operational_activities;
-CREATE POLICY "Enable all for operational_activities" ON public.operational_activities FOR ALL USING (true) WITH CHECK (true);
+-- Issues
+DROP POLICY IF EXISTS "Tenant isolation for issues" ON public.issues;
+CREATE POLICY "Tenant isolation for issues" ON public.issues FOR ALL USING (tenant_id = my_tenant_id());
 
--- Seed default interruption types
-INSERT INTO public.interruption_types (name)
-SELECT name FROM (
-    VALUES 
-    ('falta de informações'),
-    ('Informações erradas'),
-    ('outros')
-) AS t(name)
-WHERE NOT EXISTS (SELECT 1 FROM public.interruption_types);
+-- Interruption Types
+DROP POLICY IF EXISTS "Tenant isolation for interruption_types" ON public.interruption_types;
+CREATE POLICY "Tenant isolation for interruption_types" ON public.interruption_types FOR ALL USING (tenant_id = my_tenant_id());
 
--- Seed default activity types
-INSERT INTO public.activity_types (name)
-SELECT name FROM (
-    VALUES 
-    ('PADRÃO'), ('FÁBRICA'), ('ALONGAMENTO'), ('REUNIÃO'), ('RETRABALHO'), 
-    ('DESENVOLVIMENTO PROJETO'), ('RETRABALHO SOLICITADO'), ('FOLGA'), 
-    ('FÉRIAS'), ('VIAGEM'), ('ALMOÇO'), ('OFICINA'), ('OUTROS'), 
-    ('GERENCIAL'), ('P&D')
-) AS t(name)
-WHERE NOT EXISTS (SELECT 1 FROM public.activity_types);
+-- Interruptions
+DROP POLICY IF EXISTS "Tenant isolation for interruptions" ON public.interruptions;
+CREATE POLICY "Tenant isolation for interruptions" ON public.interruptions FOR ALL USING (tenant_id = my_tenant_id());
+
+-- Activity Types
+DROP POLICY IF EXISTS "Tenant isolation for activity_types" ON public.activity_types;
+CREATE POLICY "Tenant isolation for activity_types" ON public.activity_types FOR ALL USING (tenant_id = my_tenant_id());
+
+-- Operational Activities
+DROP POLICY IF EXISTS "Tenant isolation for operational_activities" ON public.operational_activities;
+CREATE POLICY "Tenant isolation for operational_activities" ON public.operational_activities FOR ALL USING (tenant_id = my_tenant_id());
+
+-- Settings
+DROP POLICY IF EXISTS "Tenant isolation for settings" ON public.settings;
+CREATE POLICY "Tenant isolation for settings" ON public.settings FOR ALL USING (tenant_id = my_tenant_id());
+
+-- 5. Correções de Estrutura e Constraints
+-- Ajustar FKs para permitir deleção de usuários sem perder dados (set null)
+ALTER TABLE public.projects DROP CONSTRAINT IF EXISTS projects_user_id_fkey;
+ALTER TABLE public.projects ADD CONSTRAINT projects_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_user_id_fkey;
+ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_author_id_fkey;
+ALTER TABLE public.innovations ADD CONSTRAINT innovations_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.issues DROP CONSTRAINT IF EXISTS issues_user_id_fkey;
+ALTER TABLE public.issues DROP CONSTRAINT IF EXISTS issues_reported_by_fkey;
+ALTER TABLE public.issues ADD CONSTRAINT issues_reported_by_fkey FOREIGN KEY (reported_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+-- Corrigir constraint de roles
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE public.users ADD CONSTRAINT users_role_check CHECK (role IN ('PROJETISTA', 'GESTOR', 'CEO', 'COORDENADOR'));
+
+-- Tornar project_code opcional se necessário
+ALTER TABLE public.projects ALTER COLUMN project_code DROP NOT NULL;
+
+-- Adicionar colunas faltantes se não existirem
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS surname TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS username TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS password TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS salary NUMERIC DEFAULT 0;
+
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS estimated_seconds NUMERIC DEFAULT 0;
+
+ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS materials JSONB;
+ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS machine JSONB;
+
+-- 6. Política para permitir que novos usuários vejam o tenant_id inicial (opcional, para facilitar Primeiro Acesso)
+DROP POLICY IF EXISTS "Allow authenticated to see tenant_ids" ON public.users;
+CREATE POLICY "Allow authenticated to see tenant_ids" ON public.users 
+FOR SELECT USING (auth.role() = 'authenticated');
 `;
                             navigator.clipboard.writeText(sql);
                             addToast("SQL Completo copiado! Cole no SQL Editor do Supabase e execute.", 'success');
