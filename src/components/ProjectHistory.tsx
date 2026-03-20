@@ -192,7 +192,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   };
 
   const handleRecalculateClick = () => {
-    if (!currentUser || currentUser.role !== 'GESTOR') return;
+    const allowedRoles = ['GESTOR', 'COORDENADOR'];
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) return;
     setShowRecalculateConfirm(true);
   };
 
@@ -763,7 +764,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const hourlyRate = engineeringHourlyRate;
                 const cost = hourlyRate * (project.totalActiveSeconds / 3600);
                 
-                const canEdit = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
+                const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
 
                 return (
                 <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-black/50 transition-colors group">

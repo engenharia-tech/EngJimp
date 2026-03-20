@@ -290,7 +290,8 @@ const AppContent: React.FC = () => {
 
   const handleProjectDelete = async (id: string) => {
     console.log("handleProjectDelete called for id:", id);
-    if (currentUser?.role !== 'GESTOR') {
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
       addToast(t('onlyManagerDelete'), 'error');
       return;
     }
@@ -705,6 +706,7 @@ const AppContent: React.FC = () => {
             <Logo 
                 theme={theme}
                 logoUrl={COMPANY_LOGO_URL}
+                companyName={COMPANY_NAME}
                 className="h-full w-auto object-contain max-w-[150px]"
             />
         </div>
