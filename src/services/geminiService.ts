@@ -1,15 +1,22 @@
-import { ProjectSession, IssueRecord, InterruptionRecord, AppSettings } from '../types';
+import { ProjectSession, IssueRecord, InterruptionRecord, AppSettings, User } from '../types';
 import { askGemini } from '../lib/gemini';
 
 export const analyzePerformance = async (
   projects: ProjectSession[], 
   issues: IssueRecord[],
   interruptions: InterruptionRecord[] = [],
-  settings?: AppSettings
+  settings?: AppSettings,
+  users: User[] = []
 ) => {
   try {
     // Project Summary with Costs
-    const hourlyCost = settings?.hourlyCost || 0;
+    let hourlyCost = settings?.hourlyCost || 0;
+    if (hourlyCost <= 0 && users.length > 0) {
+      const relevantUsers = users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+      const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+      const numUsers = relevantUsers.length || 1;
+      hourlyCost = (totalSalary / numUsers) / 220;
+    }
     const projectSummary = projects.slice(0, 15).map(p => {
       const productiveMins = (p.totalActiveSeconds / 60).toFixed(1);
       const interruptionMins = ((p.interruptionSeconds || 0) / 60).toFixed(1);

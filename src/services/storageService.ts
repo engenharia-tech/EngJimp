@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
+import { calcActiveSeconds } from '../utils/workdayCalc';
 
 // Supabase Configuration
 const getSupabaseConfig = () => {
@@ -55,6 +56,7 @@ const defaultState: AppState = {
 export const fetchSettings = async (): Promise<AppSettings> => {
   let settings: AppSettings = { 
     hourlyCost: Number(localStorage.getItem('hourly_cost')) || 150,
+    useAutomaticCost: localStorage.getItem('use_automatic_cost') === 'true',
     logoUrl: localStorage.getItem('logo_url') || undefined,
     companyName: localStorage.getItem('company_name') || 'JIMP NEXUS',
     emailTo: localStorage.getItem('email_to') || '',
@@ -73,6 +75,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       const logoUrlRow = settingsData.find(s => s.key === 'logo_url');
       const companyNameRow = settingsData.find(s => s.key === 'company_name');
       const emailToRow = settingsData.find(s => s.key === 'email_to');
+      const useAutomaticCostRow = settingsData.find(s => s.key === 'use_automatic_cost');
       const interruptionEmailToRow = settingsData.find(s => s.key === 'interruption_email_to');
       const interruptionEmailTemplateRow = settingsData.find(s => s.key === 'interruption_email_template');
       const workdayStartRow = settingsData.find(s => s.key === 'workday_start');
@@ -83,6 +86,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (logoUrlRow) settings.logoUrl = logoUrlRow.value || '';
       if (companyNameRow) settings.companyName = companyNameRow.value || 'JIMP NEXUS';
       if (emailToRow) settings.emailTo = emailToRow.value || '';
+      if (useAutomaticCostRow) settings.useAutomaticCost = useAutomaticCostRow.value === 'true';
       if (interruptionEmailToRow) settings.interruptionEmailTo = interruptionEmailToRow.value || '';
       if (interruptionEmailTemplateRow) settings.interruptionEmailTemplate = interruptionEmailTemplateRow.value || '';
       if (workdayStartRow) settings.workdayStart = workdayStartRow.value || "07:30";
@@ -94,6 +98,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
       if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
       if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
+      localStorage.setItem('use_automatic_cost', String(settings.useAutomaticCost || false));
       if (settings.interruptionEmailTo) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo);
       if (settings.interruptionEmailTemplate) localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate);
       if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
@@ -325,6 +330,7 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
     if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
     if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
+    localStorage.setItem('use_automatic_cost', String(settings.useAutomaticCost || false));
     if (settings.interruptionEmailTo) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo);
     if (settings.interruptionEmailTemplate) localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate);
     if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
@@ -338,6 +344,7 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.logoUrl !== undefined) updates.push({ key: 'logo_url', value: settings.logoUrl });
     if (settings.companyName !== undefined) updates.push({ key: 'company_name', value: settings.companyName });
     if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo });
+    if (settings.useAutomaticCost !== undefined) updates.push({ key: 'use_automatic_cost', value: String(settings.useAutomaticCost) });
     if (settings.interruptionEmailTo !== undefined) updates.push({ key: 'interruption_email_to', value: settings.interruptionEmailTo });
     if (settings.interruptionEmailTemplate !== undefined) updates.push({ key: 'interruption_email_template', value: settings.interruptionEmailTemplate });
     if (settings.workdayStart !== undefined) updates.push({ key: 'workday_start', value: settings.workdayStart });
@@ -1373,8 +1380,10 @@ export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; 
     
     let costPerSecond = settings.hourlyCost / 3600;
     if (settings.hourlyCost <= 0) {
-      const totalSalaries = users.reduce((acc, u) => acc + (u.salary || 0), 0);
-      const hourlyRate = totalSalaries / 220;
+      const relevantUsers = users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+      const totalSalaries = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+      const numUsers = relevantUsers.length || 1;
+      const hourlyRate = (totalSalaries / numUsers) / 220;
       costPerSecond = hourlyRate / 3600;
     }
 
@@ -1401,6 +1410,70 @@ export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; 
     return { success: true, message: `${updatedCount} projetos atualizados com novos custos.` };
   } catch (error: any) {
     console.error("Failed to recalculate costs", error);
+    return { success: false, message: error.message };
+  }
+};
+
+export const recalculateAllInterruptionTimes = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    const settings = await fetchSettings();
+    const { data: interruptions, error: fetchError } = await supabase
+      .from('interruptions')
+      .select('*')
+      .not('end_time', 'is', null);
+    
+    if (fetchError) throw fetchError;
+
+    let updatedCount = 0;
+    for (const i of interruptions || []) {
+      const newDuration = calcActiveSeconds(new Date(i.start_time), new Date(i.end_time), settings);
+      
+      if (newDuration !== i.total_time_seconds) {
+        const { error: updateError } = await supabase
+          .from('interruptions')
+          .update({ total_time_seconds: newDuration })
+          .eq('id', i.id);
+        
+        if (!updateError) updatedCount++;
+      }
+    }
+
+    return { success: true, message: `${updatedCount} paradas recalculadas com base no novo expediente.` };
+  } catch (error: any) {
+    console.error("Failed to recalculate interruption times", error);
+    return { success: false, message: error.message };
+  }
+};
+
+export const recalculateAllProjectTimes = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    const settings = await fetchSettings();
+    const { data: projects, error: fetchError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('status', 'COMPLETED');
+    
+    if (fetchError) throw fetchError;
+
+    let updatedCount = 0;
+    for (const p of projects || []) {
+      if (p.start_time && p.end_time) {
+        const newDuration = calcActiveSeconds(new Date(p.start_time), new Date(p.end_time), settings);
+        
+        if (newDuration !== p.total_active_seconds) {
+          const { error: updateError } = await supabase
+            .from('projects')
+            .update({ total_active_seconds: newDuration })
+            .eq('id', p.id);
+          
+          if (!updateError) updatedCount++;
+        }
+      }
+    }
+
+    return { success: true, message: `${updatedCount} projetos recalculados com base no novo expediente.` };
+  } catch (error: any) {
+    console.error("Failed to recalculate project times", error);
     return { success: false, message: error.message };
   }
 };

@@ -417,8 +417,10 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     // Calculate cost based on settings or dynamic hourly cost based on total engineering salary
     let hourlyRate = settings.hourlyCost;
     if (hourlyRate <= 0) {
-        const totalSalary = users.reduce((acc, u) => acc + (u.salary || 0), 0);
-        hourlyRate = totalSalary / 220;
+        const relevantUsers = users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+        const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+        const numUsers = relevantUsers.length || 1;
+        hourlyRate = (totalSalary / numUsers) / 220;
     }
 
     const productiveCost = (finalSeconds / 3600) * hourlyRate;

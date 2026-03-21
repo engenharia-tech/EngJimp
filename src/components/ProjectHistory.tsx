@@ -394,8 +394,6 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   };
 
   const isGestor = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
-  const totalEngineeringSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
-  const engineeringHourlyRate = totalEngineeringSalary / 220;
 
   const getTranslatedType = (type: string) => {
     switch (type) {
@@ -438,6 +436,17 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     }
   };
 
+  const engineeringHourlyRate = useMemo(() => {
+    let rate = data.settings.hourlyCost;
+    if (rate <= 0) {
+      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+      const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+      const numUsers = relevantUsers.length || 1;
+      rate = (totalSalary / numUsers) / 220;
+    }
+    return rate;
+  }, [data.users, data.settings.hourlyCost]);
+
   // Calculate Stats
   const stats = useMemo(() => {
     const totalProjects = filteredProjects.length;
@@ -446,9 +455,6 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     
     let totalCost = 0;
     if (isGestor) {
-      const totalEngineeringSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
-      const engineeringHourlyRate = totalEngineeringSalary / 220;
-      
       filteredProjects.forEach(p => {
         totalCost += engineeringHourlyRate * (p.totalActiveSeconds / 3600);
       });
@@ -462,7 +468,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       avgMinutes: Math.floor((avgSeconds % 3600) / 60),
       totalCost
     };
-  }, [filteredProjects, isGestor, usersMap]);
+  }, [filteredProjects, isGestor, engineeringHourlyRate]);
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -761,8 +767,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 
                 const user = usersMap[project.userId || ''];
                 const salary = user?.salary || 0;
-                const hourlyRate = engineeringHourlyRate;
-                const cost = hourlyRate * (project.totalActiveSeconds / 3600);
+                const cost = engineeringHourlyRate * (project.totalActiveSeconds / 3600);
                 
                 const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
 
@@ -929,7 +934,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             {new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(cost)}
                           </span>
                           <span className="text-[10px] text-gray-500 dark:text-slate-500">
-                            {new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(hourlyRate)}/h
+                            {new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(engineeringHourlyRate)}/h
                           </span>
                         </div>
                       ) : (

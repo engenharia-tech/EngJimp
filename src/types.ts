@@ -215,6 +215,7 @@ export interface InterruptionRecord {
 
 export interface AppSettings {
   hourlyCost: number;
+  useAutomaticCost?: boolean;
   logoUrl?: string;
   companyName?: string;
   emailTo?: string;
