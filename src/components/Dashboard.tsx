@@ -200,9 +200,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
   };
 
   const costPerSecond = useMemo(() => {
-    const totalSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
-    return (totalSalary / 220) / 3600;
-  }, [data.users]);
+    if (data.settings && !data.settings.useAutomaticCost && data.settings.hourlyCost > 0) {
+      return data.settings.hourlyCost / 3600;
+    }
+    
+    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+    const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+    const numUsers = relevantUsers.length || 1;
+    return ((totalSalary / numUsers) / 220) / 3600;
+  }, [data.users, data.settings]);
 
   const costData = useMemo(() => {
     let totalProductive = 0;
@@ -499,7 +505,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
 
   const handleAiAnalysis = async () => {
     setIsLoadingAi(true);
-    const result = await analyzePerformance(filteredProjects, filteredIssues, filteredInterruptions, data.settings);
+    const result = await analyzePerformance(filteredProjects, filteredIssues, filteredInterruptions, data.settings, data.users);
     setAiAnalysis(result);
     setIsLoadingAi(false);
   };

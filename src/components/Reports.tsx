@@ -58,12 +58,14 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
   }, []);
 
   const costPerSecond = useMemo(() => {
-    if (data.settings && data.settings.hourlyCost > 0) {
+    if (data.settings && !data.settings.useAutomaticCost && data.settings.hourlyCost > 0) {
       return data.settings.hourlyCost / 3600;
     }
     
-    const totalSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
-    return (totalSalary / 220) / 3600;
+    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+    const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+    const numUsers = relevantUsers.length || 1;
+    return ((totalSalary / numUsers) / 220) / 3600;
   }, [data.users, data.settings]);
 
   const isDateInPeriod = (date: Date) => {
@@ -414,7 +416,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
     const filteredIssues = data.issues.filter(i => isDateInPeriod(new Date(i.date)));
     const filteredInterruptions = data.interruptions.filter(i => isDateInPeriod(new Date(i.startTime)));
     
-    const result = await analyzePerformance(filteredProjects, filteredIssues, filteredInterruptions, data.settings);
+    const result = await analyzePerformance(filteredProjects, filteredIssues, filteredInterruptions, data.settings, data.users);
     setAiAnalysis(result);
     setIsLoadingAi(false);
   };

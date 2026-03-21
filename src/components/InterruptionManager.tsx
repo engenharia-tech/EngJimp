@@ -154,9 +154,15 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
   }, [ns, client, problemType, area, responsible, description, otherLosses, formStartDate, formStartTime, isFormOpen, data.settings.interruptionEmailTemplate, editingInterruption]);
 
   const costPerSecond = useMemo(() => {
-    const totalSalary = data.users.reduce((acc, u) => acc + (u.salary || 0), 0);
-    return (totalSalary / 220) / 3600;
-  }, [data.users]);
+    let hourlyRate = data.settings.hourlyCost;
+    if (data.settings.useAutomaticCost || hourlyRate <= 0) {
+      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+      const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+      const numUsers = relevantUsers.length || 1;
+      hourlyRate = (totalSalary / numUsers) / 220;
+    }
+    return hourlyRate / 3600;
+  }, [data.users, data.settings.hourlyCost, data.settings.useAutomaticCost]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);

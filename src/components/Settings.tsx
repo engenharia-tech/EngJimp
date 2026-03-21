@@ -1,20 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, Mail, Server, Shield, User, DollarSign, Globe, Send, CheckCircle2, AlertCircle, Eye, EyeOff, Clock } from 'lucide-react';
-import { AppSettings } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Settings as SettingsIcon, Save, Mail, Server, Shield, User as UserIcon, DollarSign, Globe, Send, CheckCircle2, AlertCircle, Eye, EyeOff, Clock } from 'lucide-react';
+import { AppSettings, User } from '../types';
 import { useToast } from './Toast';
+import { recalculateAllInterruptionTimes, recalculateAllProjectTimes } from '../services/storageService';
 
 interface SettingsProps {
   settings: AppSettings;
+  users: User[];
   onUpdate: (settings: AppSettings) => void;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
+export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate }) => {
   const [formData, setFormData] = useState<AppSettings>({ ...settings });
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const { addToast } = useToast();
+
+  const calculatedRate = useMemo(() => {
+    const relevantUsers = users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+    const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+    const numUsers = relevantUsers.length || 1;
+    return (totalSalary / numUsers) / 220;
+  }, [users]);
 
   // Sync formData when settings prop changes (e.g. after initial load or save)
   useEffect(() => {
@@ -66,6 +76,26 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
     }
   };
 
+  const handleRecalculateTimes = async () => {
+    if (!window.confirm('Isso irá recalcular o tempo total de todas as paradas e projetos finalizados com base no expediente atual. Deseja continuar?')) return;
+    
+    setIsRecalculating(true);
+    try {
+      const resInt = await recalculateAllInterruptionTimes();
+      const resProj = await recalculateAllProjectTimes();
+      
+      if (resInt.success && resProj.success) {
+        addToast('Tempos recalculados com sucesso!', 'success');
+      } else {
+        addToast('Erro parcial ao recalcular tempos.', 'warning');
+      }
+    } catch (error) {
+      addToast('Erro ao recalcular tempos.', 'error');
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-between mb-2">
@@ -109,17 +139,50 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Custo Hora Padrão (R$)</label>
-              <div className="relative">
-                <DollarSign className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
-                <input
-                  type="number"
-                  disabled={!isEditing}
-                  value={formData.hourlyCost}
-                  onChange={e => setFormData({ ...formData, hourlyCost: parseFloat(e.target.value) || 0 })}
-                  className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
-                  placeholder="150.00"
-                />
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Custo Hora (R$)</label>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        disabled={!isEditing}
+                        className="sr-only"
+                        checked={formData.useAutomaticCost || false}
+                        onChange={() => {
+                          const newValue = !formData.useAutomaticCost;
+                          setFormData({ ...formData, useAutomaticCost: newValue });
+                        }}
+                      />
+                      <div className={`block w-10 h-6 rounded-full transition-colors ${formData.useAutomaticCost ? 'bg-blue-600' : 'bg-gray-300 dark:bg-slate-700'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.useAutomaticCost ? 'transform translate-x-4' : ''}`}></div>
+                    </div>
+                    <span className="ml-3 text-sm font-medium text-gray-700 dark:text-slate-300">Cálculo Automático (Baseado em Salários)</span>
+                  </label>
+                </div>
+
+                {!formData.useAutomaticCost ? (
+                  <div className="relative">
+                    <DollarSign className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
+                    <input
+                      type="number"
+                      disabled={!isEditing}
+                      value={formData.hourlyCost}
+                      onChange={e => setFormData({ ...formData, hourlyCost: parseFloat(e.target.value) || 0 })}
+                      className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                      placeholder="150.00"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                    <p className="text-xs text-blue-700 dark:text-blue-300 font-bold mb-1">
+                      Custo Hora Calculado: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calculatedRate)}
+                    </p>
+                    <p className="text-[10px] text-blue-600 dark:text-blue-400">
+                      O custo hora será calculado automaticamente somando os salários de todos os usuários (exceto CEO e salários zerados) e dividindo por 220 horas mensais.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -286,7 +349,20 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdate }) => {
         )}
         
         {!isEditing && (
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={handleRecalculateTimes}
+              disabled={isRecalculating}
+              className="px-6 py-3 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-400 font-bold rounded-lg flex items-center transition-all disabled:opacity-50"
+            >
+              {isRecalculating ? (
+                <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mr-2"></div>
+              ) : (
+                <Clock className="w-5 h-5 mr-2" />
+              )}
+              Recalcular Tempos Históricos
+            </button>
             <button
               type="button"
               onClick={handleTestEmail}

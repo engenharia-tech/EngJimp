@@ -906,6 +906,7 @@ const AppContent: React.FC = () => {
           {activeTab === 'settings' && ['GESTOR', 'CEO'].includes(currentUser.role) && (
             <Settings 
               settings={data.settings}
+              users={data.users}
               onUpdate={handleUpdateSettings}
             />
           )}
