@@ -548,6 +548,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const sendTeamsNotification = async (project: ProjectSession) => {
     if (!TEAMS_WEBHOOK_URL || TEAMS_WEBHOOK_URL.includes("YOUR_WEBHOOK_URL_HERE")) return;
 
+    const designerName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : 'Não identificado';
     const duration = formatTime(project.totalActiveSeconds);
     const message = {
       "@type": "MessageCard",
@@ -560,6 +561,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         "facts": [
           { "name": "NS:", "value": project.ns },
           { "name": "Cliente:", "value": project.clientName || "-" },
+          { "name": "Projetista:", "value": designerName },
           { "name": "Tipo:", "value": project.type },
           { "name": "Variações:", "value": project.variations.length.toString() },
           { "name": "Duração:", "value": duration }
@@ -607,6 +609,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       `- ${i.problemType}: ${i.description || 'Sem descrição'} (${formatTime(i.totalTimeSeconds)})`
     ).join('\n');
 
+    const designerName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : 'Não identificado';
+
     const subject = `Conclusão Projeto NS: ${project.ns} - ${project.clientName || 'Sem Cliente'}`;
     const body = `${greeting},
 
@@ -615,6 +619,7 @@ Informamos a conclusão do projeto abaixo:
 NS: ${project.ns}
 Cliente: ${project.clientName || 'Não informado'}
 Código Projeto: ${project.projectCode || 'Não informado'}
+Projetista: ${designerName}
 
 Tempo Planejado: ${plannedHours} horas
 Tempo Executado: ${hours} horas
