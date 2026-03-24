@@ -20,7 +20,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
   const { addToast } = useToast();
 
   const calculatedRate = useMemo(() => {
-    const relevantUsers = users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+    const relevantUsers = users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
     const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
     const numUsers = relevantUsers.length || 1;
     return (totalSalary / numUsers) / 220;

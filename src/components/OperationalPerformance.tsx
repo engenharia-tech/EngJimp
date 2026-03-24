@@ -95,6 +95,20 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [selectedActivityType, setSelectedActivityType] = useState('');
   const [gapNotes, setGapNotes] = useState('');
   const [gapIsFlagged, setGapIsFlagged] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+
+  // Sync edit times when modal opens
+  useEffect(() => {
+    if (isEditingActivity) {
+      setEditStartTime(format(parseISO(isEditingActivity.startTime), 'HH:mm'));
+      setEditEndTime(format(parseISO(isEditingActivity.endTime), 'HH:mm'));
+    } else if (isEditingGap) {
+      setEditStartTime(format(parseISO(isEditingGap.start), 'HH:mm'));
+      setEditEndTime(format(parseISO(isEditingGap.end), 'HH:mm'));
+    }
+  }, [isEditingActivity, isEditingGap]);
 
   // Check if activity types are temporary (database error)
   const isUsingTempActivities = useMemo(() => {
@@ -154,6 +168,41 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       }
     });
   }, [projects, selectedDate, selectedUserId, viewMode]);
+
+  // Automated Weekend Marking
+  useEffect(() => {
+    const checkWeekend = async () => {
+      const dayOfWeek = selectedDate.getDay(); // 0 = Sunday, 6 = Saturday
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      
+      if (isWeekend && filteredActivities.length === 0 && filteredProjects.length === 0 && currentUser.id === selectedUserId) {
+        const folgaType = activityTypes.find(t => t.name.toUpperCase() === 'FOLGA');
+        if (folgaType) {
+          const startTime = new Date(selectedDate);
+          startTime.setHours(8, 0, 0, 0);
+          const endTime = new Date(selectedDate);
+          endTime.setHours(18, 0, 0, 0);
+
+          const newActivity: OperationalActivity = {
+            id: crypto.randomUUID(),
+            userId: currentUser.id,
+            activityTypeId: folgaType.id,
+            activityName: folgaType.name,
+            startTime: startTime.toISOString(),
+            endTime: endTime.toISOString(),
+            durationSeconds: differenceInSeconds(endTime, startTime),
+            isFlagged: false,
+            notes: 'Automático: Fim de semana',
+            projectId: undefined
+          };
+          
+          await onAddActivity(newActivity);
+        }
+      }
+    };
+
+    checkWeekend();
+  }, [selectedDate, filteredActivities.length, filteredProjects.length, activityTypes, currentUser.id, selectedUserId, onAddActivity]);
 
   // Combine projects and activities for a full timeline
   const timelineItems = useMemo(() => {
@@ -247,6 +296,20 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6'];
 
+  const updateTimeInISO = (isoString: string, timeStr: string) => {
+    try {
+      const date = parseISO(isoString);
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      if (isNaN(hours) || isNaN(minutes)) return isoString;
+      
+      const newDate = new Date(date);
+      newDate.setHours(hours, minutes, 0, 0);
+      return newDate.toISOString();
+    } catch (e) {
+      return isoString;
+    }
+  };
+
   const handleStartActivity = async (typeId: string) => {
     if (typeId.startsWith('temp-')) {
       const msg = t('errorSeedingActivityTypes');
@@ -270,9 +333,13 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     };
 
     try {
+      setIsSaving(true);
       await onAddActivity(newActivity);
+      addToast(t('saved') || 'Gravado com sucesso!', 'success');
     } catch (error) {
       // Error is already handled in App.tsx toast
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -280,11 +347,19 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     const endTime = new Date().toISOString();
     const durationSeconds = differenceInSeconds(parseISO(endTime), parseISO(activity.startTime));
     
-    await onUpdateActivity({
-      ...activity,
-      endTime,
-      durationSeconds
-    });
+    try {
+      setIsSaving(true);
+      await onUpdateActivity({
+        ...activity,
+        endTime,
+        durationSeconds
+      });
+      addToast(t('saved') || 'Gravado com sucesso!', 'success');
+    } catch (error) {
+      // Error handled in App.tsx
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSaveActivity = async () => {
@@ -299,13 +374,33 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     const type = activityTypes.find(t => t.id === selectedActivityType);
     if (!type) return;
 
+    // Validate times
+    if (!editStartTime || !editEndTime) {
+      addToast(t('errorRequiredFields') || 'Preencha todos os campos.', 'error');
+      return;
+    }
+
+    setIsSaving(true);
     if (isEditingActivity) {
       // Update existing
+      const newStartTime = updateTimeInISO(isEditingActivity.startTime, editStartTime);
+      const newEndTime = updateTimeInISO(isEditingActivity.endTime, editEndTime);
+      const durationSeconds = differenceInSeconds(parseISO(newEndTime), parseISO(newStartTime));
+
+      if (durationSeconds <= 0) {
+        addToast(t('errorInvalidDuration') || 'A hora de término deve ser após a hora de início.', 'error');
+        setIsSaving(false);
+        return;
+      }
+
       try {
         await onUpdateActivity({
           ...isEditingActivity,
           activityTypeId: type.id,
           activityName: type.name,
+          startTime: newStartTime,
+          endTime: newEndTime,
+          durationSeconds,
           notes: gapNotes,
           isFlagged: gapIsFlagged
         });
@@ -313,20 +408,31 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         setSelectedActivityType('');
         setGapNotes('');
         setGapIsFlagged(false);
+        addToast(t('saved') || 'Gravado com sucesso!', 'success');
       } catch (error) {
         // Error handled in App.tsx
+      } finally {
+        setIsSaving(false);
       }
     } else if (isEditingGap) {
       // Create new from gap
-      const durationSeconds = differenceInSeconds(parseISO(isEditingGap.end), parseISO(isEditingGap.start));
+      const newStartTime = updateTimeInISO(isEditingGap.start, editStartTime);
+      const newEndTime = updateTimeInISO(isEditingGap.end, editEndTime);
+      const durationSeconds = differenceInSeconds(parseISO(newEndTime), parseISO(newStartTime));
+
+      if (durationSeconds <= 0) {
+        addToast(t('errorInvalidDuration') || 'A hora de término deve ser após a hora de início.', 'error');
+        setIsSaving(false);
+        return;
+      }
 
       const newActivity: OperationalActivity = {
         id: crypto.randomUUID(),
         userId: currentUser.id,
         activityTypeId: type.id,
         activityName: type.name,
-        startTime: isEditingGap.start,
-        endTime: isEditingGap.end,
+        startTime: newStartTime,
+        endTime: newEndTime,
         durationSeconds,
         notes: gapNotes,
         isFlagged: gapIsFlagged
@@ -338,22 +444,29 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         setSelectedActivityType('');
         setGapNotes('');
         setGapIsFlagged(false);
+        addToast(t('saved') || 'Gravado com sucesso!', 'success');
       } catch (error) {
         // Error handled in App.tsx
+      } finally {
+        setIsSaving(false);
       }
     }
   };
 
   const handleDeleteActivity = async (id: string) => {
     try {
+      setIsSaving(true);
       await onDeleteActivity(id);
       setIsEditingActivity(null);
       setIsConfirmingDelete(false);
       setSelectedActivityType('');
       setGapNotes('');
       setGapIsFlagged(false);
+      addToast(t('activityDeletedSuccess') || 'Atividade excluída com sucesso.', 'success');
     } catch (error) {
       // Error handled in App.tsx
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -765,7 +878,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                       }`} />
                     </div>
 
-                    <div className={`p-4 rounded-xl border transition-all ${
+                    <div className={`p-4 rounded-xl border transition-all relative group/item ${
                       item.isGap
                         ? canEditCurrent 
                           ? 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/20 border-dashed hover:border-amber-300 cursor-pointer'
@@ -796,6 +909,22 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                       }
                     }}
                     >
+                      {/* Direct Delete Button for activities */}
+                      {!item.isGap && item.type === 'activity' && canEditCurrent && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(t('confirmDeletion') || 'Tem certeza que deseja excluir?')) {
+                              handleDeleteActivity(item.id);
+                            }
+                          }}
+                          className="absolute -right-2 -top-2 p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full opacity-0 group-hover/item:opacity-100 transition-all hover:scale-110 shadow-sm z-20"
+                          title={t('delete')}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
                           {item.type === 'activity' && activities.find(a => a.id === item.id)?.isFlagged && (
@@ -961,6 +1090,17 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       )}
 
       {/* Modals */}
+      {isSaving && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-4 border border-gray-200 dark:border-slate-700 animate-in zoom-in duration-200">
+            <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
+            <p className="font-bold text-gray-800 dark:text-white uppercase tracking-wider">
+              {t('saving') || 'Gravando...'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {isAddingType && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl border border-gray-200 dark:border-slate-700">
@@ -1030,16 +1170,28 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
               )}
             </div>
 
-            <p className="text-sm text-gray-500 mb-6">
-              {format(parseISO(isEditingActivity?.startTime || isEditingGap?.start || ''), 'HH:mm')} - 
-              {format(parseISO(isEditingActivity?.endTime || isEditingGap?.end || ''), 'HH:mm')} 
-              ({Math.round(differenceInSeconds(
-                parseISO(isEditingActivity?.endTime || isEditingGap?.end || ''), 
-                parseISO(isEditingActivity?.startTime || isEditingGap?.start || '')
-              ) / 60)} min)
-            </p>
-
             <div className="space-y-4 mb-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">{t('startTime')}</label>
+                  <input
+                    type="time"
+                    value={editStartTime}
+                    onChange={(e) => setEditStartTime(e.target.value)}
+                    className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">{t('endTime')}</label>
+                  <input
+                    type="time"
+                    value={editEndTime}
+                    onChange={(e) => setEditEndTime(e.target.value)}
+                    className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-bold text-gray-400 uppercase">{t('activityType')}</label>

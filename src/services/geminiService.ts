@@ -12,7 +12,7 @@ export const analyzePerformance = async (
     // Project Summary with Costs
     let hourlyCost = settings?.hourlyCost || 0;
     if (hourlyCost <= 0 && users.length > 0) {
-      const relevantUsers = users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+      const relevantUsers = users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
       const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
       const numUsers = relevantUsers.length || 1;
       hourlyCost = (totalSalary / numUsers) / 220;

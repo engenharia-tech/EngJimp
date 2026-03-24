@@ -54,7 +54,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [macCost, setMacCost] = useState('');
   const [macDepYears, setMacDepYears] = useState('');
 
-  const canManage = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
+  const canManage = ['GESTOR', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
+  const canDelete = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
 
   useEffect(() => {
     if (editingInnovation) {
@@ -854,13 +855,15 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                         {t('implement')}
                                     </button>
                                 )}
-                                <button 
-                                    onClick={() => setDeleteConfirmationId(inv.id)}
-                                    title={t('delete')}
-                                    className="p-1.5 text-gray-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-black rounded transition ml-2"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
+                                {canDelete && (
+                                    <button 
+                                        onClick={() => setDeleteConfirmationId(inv.id)}
+                                        title={t('delete')}
+                                        className="p-1.5 text-gray-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-black rounded transition ml-2"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                )}
                             </>
                         )}
                     </div>

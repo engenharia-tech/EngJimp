@@ -43,7 +43,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
       if (i.projectNs) stats[designerId].projectIds.add(i.projectNs);
     });
 
-    return Object.values(stats).sort((a, b) => b.totalInterruptions - a.totalInterruptions);
+    return Object.values(stats).sort((a, b) => a.name.localeCompare(b.name));
   }, [interruptions, data.users]);
 
   const areaStats = useMemo(() => {
@@ -62,7 +62,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
       stats[area].totalLostTime += i.totalTimeSeconds;
     });
 
-    return Object.values(stats).sort((a, b) => b.totalLostTime - a.totalLostTime);
+    return Object.values(stats).sort((a, b) => a.area.localeCompare(b.area));
   }, [interruptions]);
 
   const selectedDesignerData = useMemo(() => {
@@ -79,7 +79,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
   const costPerSecond = useMemo(() => {
     let hourlyRate = data.settings.hourlyCost;
     if (data.settings.useAutomaticCost || hourlyRate <= 0) {
-      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
       const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
       const numUsers = relevantUsers.length || 1;
       hourlyRate = (totalSalary / numUsers) / 220;

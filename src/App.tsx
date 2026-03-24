@@ -190,10 +190,10 @@ const AppContent: React.FC = () => {
       return ['PROJETISTA', 'GESTOR', 'COORDENADOR'].includes(currentUser.role);
   }, [currentUser]);
 
-  // Who can manage Innovations? (CEO, Manager, Designer, Coordinator)
+  // Who can manage Innovations? (CEO, Manager, Designer, Coordinator, Processos)
   const canSeeInnovations = useMemo(() => {
       if (!currentUser) return false;
-      return ['GESTOR', 'CEO', 'PROJETISTA', 'COORDENADOR'].includes(currentUser.role);
+      return ['GESTOR', 'CEO', 'PROJETISTA', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
   }, [currentUser]);
   
   // Who can see Dashboard? (Everyone)
@@ -206,7 +206,7 @@ const AppContent: React.FC = () => {
     const role = currentUser.role;
 
     // "Super Viewers" - See everything in DB
-    if (['GESTOR', 'CEO', 'COORDENADOR'].includes(role)) {
+    if (['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(role)) {
       return data;
     }
 
@@ -327,7 +327,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleInnovationAdd = async (innovation: InnovationRecord) => {
-    const allowedRoles = ['GESTOR', 'COORDENADOR'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
       addToast(t('noPermissionAddInnovation'), 'error');
       return;
@@ -358,7 +358,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleInnovationStatusChange = async (id: string, status: string) => {
-    const allowedRoles = ['GESTOR', 'COORDENADOR'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
       addToast(t('noPermissionChangeInnovationStatus'), 'error');
       return;
@@ -376,7 +376,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleInnovationUpdate = async (innovation: InnovationRecord) => {
-    const allowedRoles = ['GESTOR', 'COORDENADOR'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
       addToast(t('noPermissionEditInnovation'), 'error');
       return;
@@ -673,7 +673,7 @@ const AppContent: React.FC = () => {
              <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} />
           )}
 
-          {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+          {['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
             <NavItem id="reports" labelKey="reports" icon={FileText} />
           )}
 
@@ -750,7 +750,7 @@ const AppContent: React.FC = () => {
             {canSeeInnovations && (
                 <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} />
             )}
-            {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+            {['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
                 <NavItem id="reports" labelKey="reports" icon={FileText} />
             )}
             {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (

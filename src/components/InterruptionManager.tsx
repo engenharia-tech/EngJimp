@@ -156,7 +156,7 @@ aguardamos as informações para retornarmos o projeto, enquanto isso estará co
   const costPerSecond = useMemo(() => {
     let hourlyRate = data.settings.hourlyCost;
     if (data.settings.useAutomaticCost || hourlyRate <= 0) {
-      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
       const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
       const numUsers = relevantUsers.length || 1;
       hourlyRate = (totalSalary / numUsers) / 220;

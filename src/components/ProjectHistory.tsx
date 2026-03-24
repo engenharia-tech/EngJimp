@@ -30,8 +30,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   const [recalculateProgress, setRecalculateProgress] = useState({ current: 0, total: 0 });
 
   // Sorting State
-  const [sortKey, setSortKey] = useState<string>('startTime');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [sortKey, setSortKey] = useState<string>('clientName');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   // Duplicate Management State
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
@@ -441,7 +441,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   const engineeringHourlyRate = useMemo(() => {
     let rate = data.settings.hourlyCost;
     if (rate <= 0) {
-      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
       const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
       const numUsers = relevantUsers.length || 1;
       rate = (totalSalary / numUsers) / 220;
