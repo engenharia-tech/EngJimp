@@ -19,6 +19,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   const { addToast } = useToast();
   const [filterNs, setFilterNs] = useState('');
   const [filterType, setFilterType] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filterSuspicious, setFilterSuspicious] = useState(false);
@@ -104,6 +105,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         (p.notes || '').toLowerCase().includes(searchLower);
       
       const matchType = filterType ? p.type === filterType : true;
+      const matchStatus = filterStatus ? p.status === filterStatus : true;
       
       let matchDate = true;
       if (startDate || endDate) {
@@ -122,7 +124,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           matchSuspicious = isTooShort || isTooLong || isFuture;
       }
 
-      return matchSearch && matchType && matchDate && matchSuspicious;
+      return matchSearch && matchType && matchStatus && matchDate && matchSuspicious;
     });
 
     return filtered.sort((a, b) => {
@@ -564,11 +566,12 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             <Filter className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
             {activeSubTab === 'search' ? t('advancedSearchTool') : t('searchFilters')}
           </div>
-          {(filterNs || filterType || startDate || endDate || filterSuspicious) && (
+          {(filterNs || filterType || filterStatus || startDate || endDate || filterSuspicious) && (
             <button 
               onClick={() => {
                 setFilterNs('');
                 setFilterType('');
+                setFilterStatus('');
                 setStartDate('');
                 setEndDate('');
                 setFilterSuspicious(false);
@@ -580,7 +583,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             </button>
           )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
             <input
@@ -599,6 +602,16 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           >
             <option value="">{t('allTypes')}</option>
             {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+          >
+            <option value="">{t('allStatus') || 'Todos os Status'}</option>
+            <option value="COMPLETED">{t('completed')}</option>
+            <option value="IN_PROGRESS">{t('inProgress')}</option>
           </select>
 
           <div className="flex items-center gap-2">
