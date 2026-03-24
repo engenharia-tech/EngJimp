@@ -314,7 +314,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       phone: u.phone,
       role: u.role,
       salary: Number(u.salary) || 0
-    }));
+    })).sort((a, b) => a.name.localeCompare(b.name));
 
     return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, users, settings };
   } catch (error) {
@@ -915,7 +915,7 @@ export const fetchUsers = async (): Promise<User[]> => {
       phone: u.phone,
       role: u.role,
       salary: Number(u.salary) || 0
-    }));
+    })).sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
     console.error("Failed to fetch users", error);
     return [];
@@ -1380,7 +1380,7 @@ export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; 
     
     let costPerSecond = settings.hourlyCost / 3600;
     if (settings.hourlyCost <= 0) {
-      const relevantUsers = users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+      const relevantUsers = users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
       const totalSalaries = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
       const numUsers = relevantUsers.length || 1;
       const hourlyRate = (totalSalaries / numUsers) / 220;

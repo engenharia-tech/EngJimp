@@ -89,7 +89,11 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pendingProjects = existingProjects.filter(p => p.status === 'IN_PROGRESS');
+  const pendingProjects = useMemo(() => {
+    return existingProjects
+      .filter(p => p.status === 'IN_PROGRESS')
+      .sort((a, b) => a.ns.localeCompare(b.ns));
+  }, [existingProjects]);
 
   // Helper to check if flooring field should show
   const shouldShowFlooring = [
@@ -101,7 +105,10 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   ].includes(implementType);
 
   useEffect(() => {
-    fetchUsers().then(setUsers);
+    fetchUsers().then(list => {
+      const sorted = [...list].sort((a, b) => a.name.localeCompare(b.name));
+      setUsers(sorted);
+    });
   }, []);
 
   useEffect(() => {
@@ -417,7 +424,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     // Calculate cost based on settings or dynamic hourly cost based on total engineering salary
     let hourlyRate = settings.hourlyCost;
     if (hourlyRate <= 0) {
-        const relevantUsers = users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+        const relevantUsers = users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
         const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
         const numUsers = relevantUsers.length || 1;
         hourlyRate = (totalSalary / numUsers) / 220;

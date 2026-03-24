@@ -62,7 +62,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
       return data.settings.hourlyCost / 3600;
     }
     
-    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
     const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
     const numUsers = relevantUsers.length || 1;
     return ((totalSalary / numUsers) / 220) / 3600;
@@ -157,7 +157,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
       stats[clientName].interruptionSeconds += p.interruptionSeconds || 0;
     });
 
-    return Object.values(stats).sort((a, b) => b.totalCost - a.totalCost);
+    return Object.values(stats).sort((a, b) => a.clientName.localeCompare(b.clientName));
   }, [data.projects, selectedMonth, selectedYear, currentUser]);
 
   const bottleneckData = useMemo(() => {
@@ -189,7 +189,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
         avgMinutes: s.count > 0 ? Math.round((s.totalSeconds / s.count) / 60) : 0,
         totalCost: s.totalSeconds * costPerSecond
       }))
-      .sort((a, b) => b.totalSeconds - a.totalSeconds);
+      .sort((a, b) => a.area.localeCompare(b.area));
   }, [data.interruptions, selectedMonth, selectedYear, currentUser, costPerSecond]);
 
   const detailedInterruptionData = useMemo(() => {
@@ -272,7 +272,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
       });
     });
 
-    return Object.values(stats).sort((a, b) => b.count - a.count);
+    return Object.values(stats).sort((a, b) => a.name.localeCompare(b.name));
   }, [data.projects, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser]);
 
   const projectStatusData = useMemo(() => {

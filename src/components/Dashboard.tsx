@@ -45,9 +45,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     // Load users for the manager chart
     const load = async () => {
       const users = await fetchUsers();
-      const map = users.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
+      const sortedUsers = [...users].sort((a, b) => a.name.localeCompare(b.name));
+      const map = sortedUsers.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
       setUsersMap(map);
-      setAvailableDesigners(users.filter(u => u.role !== 'CEO'));
+      setAvailableDesigners(sortedUsers.filter(u => u.role !== 'CEO'));
     };
     load();
   }, []);
@@ -131,7 +132,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
     return Object.entries(sums).map(([type, stats]) => ({
       type,
       avgSeconds: Math.round(stats.total / stats.count)
-    }));
+    })).sort((a, b) => a.type.localeCompare(b.type));
   }, [filteredProjects]);
 
   // 1.5 Calculate Total Savings (ONLY APPROVED/IMPLEMENTED)
@@ -204,7 +205,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
       return data.settings.hourlyCost / 3600;
     }
     
-    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && (u.salary || 0) > 0);
+    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
     const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
     const numUsers = relevantUsers.length || 1;
     return ((totalSalary / numUsers) / 220) / 3600;
@@ -593,7 +594,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
 
       {/* KPI Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {averageTimes.length > 0 && averageTimes.map((stat) => (
+          {currentUser.role !== 'PROCESSOS' && averageTimes.length > 0 && averageTimes.map((stat) => (
             <div key={stat.type} className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-black dark:text-white uppercase tracking-wider mb-1">{t('avgTime')} {stat.type}</p>
@@ -605,21 +606,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
             </div>
           ))}
           
-          <div className="bg-white dark:bg-black p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">{t('totalHours')}</p>
-              <p className="text-xl font-bold text-indigo-800 dark:text-indigo-300">{totalHours}h</p>
-              <div className="flex items-center gap-2 mt-1">
-                <div className="flex-1 h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-indigo-500" style={{ width: `${goalProgress}%` }}></div>
+          {currentUser.role !== 'PROCESSOS' && (
+            <div className="bg-white dark:bg-black p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">{t('totalHours')}</p>
+                <p className="text-xl font-bold text-indigo-800 dark:text-indigo-300">{totalHours}h</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="flex-1 h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-indigo-500" style={{ width: `${goalProgress}%` }}></div>
+                  </div>
+                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{goalProgress}%</span>
                 </div>
-                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{goalProgress}%</span>
+              </div>
+              <div className="h-8 w-8 bg-indigo-50 dark:bg-black rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                <Activity className="w-4 h-4" />
               </div>
             </div>
-            <div className="h-8 w-8 bg-indigo-50 dark:bg-black rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-              <Activity className="w-4 h-4" />
-            </div>
-          </div>
+          )}
 
           {/* Innovation KPI */}
            <div className="bg-white dark:bg-black p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex items-center justify-between">
@@ -658,103 +661,107 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
         </div>
 
       {/* AI Insights Section */}
-        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-black p-6 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-300 flex items-center">
-              <Sparkles className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
-              Análise Inteligente (IA)
-            </h3>
-            <button 
-              onClick={handleAiAnalysis}
-              disabled={isLoadingAi}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm"
-            >
-              {isLoadingAi ? 'Analisando...' : 'Gerar Relatório'}
-            </button>
-          </div>
-          
-          {aiAnalysis ? (
-            <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-4 rounded-lg">
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{aiAnalysis}</pre>
-            </div>
-          ) : (
-            <p className="text-black dark:text-white text-sm">
-              Clique em "Gerar Relatório" para que a IA analise o desempenho do período selecionado.
-            </p>
-          )}
-        </div>
-
-      {/* NOVO: Gráfico Horas Realizadas vs Meta Mensal */}
-        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[400px]">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-            <div className="flex flex-col">
-                <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
-                    <Target className="w-5 h-5 mr-2 text-indigo-500" />
-                    {t('hoursVsGoalTitle')}
-                </h3>
-                <p className="text-xs text-black dark:text-white ml-7 opacity-70">{t('hoursVsGoalSub')}</p>
+        {currentUser.role !== 'PROCESSOS' && (
+          <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-black p-6 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-300 flex items-center">
+                <Sparkles className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
+                Análise Inteligente (IA)
+              </h3>
+              <button 
+                onClick={handleAiAnalysis}
+                disabled={isLoadingAi}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm"
+              >
+                {isLoadingAi ? 'Analisando...' : 'Gerar Relatório'}
+              </button>
             </div>
             
-            <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500 dark:text-slate-400">{t('goalLabel')}</span>
-                    <input 
-                        type="number" 
-                        value={monthlyGoal}
-                        onChange={(e) => setMonthlyGoal(Number(e.target.value))}
-                        className="w-16 p-1 border dark:border-slate-600 rounded text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:bg-black dark:text-white"
-                    />
-                </div>
-
-                {currentUser.role === 'GESTOR' && (
-                <select
-                    value={selectedDesignerForChart}
-                    onChange={(e) => setSelectedDesignerForChart(e.target.value)}
-                    className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
-                >
-                    <option value="ALL">{t('allDesigners')}</option>
-                    {availableDesigners.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                </select>
-                )}
-            </div>
-          </div>
-
-          <div className="h-[300px] w-full">
-            {hoursVsGoalData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={hoursVsGoalData} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }} />
-                  <YAxis 
-                    allowDecimals={false} 
-                    tickLine={false} 
-                    axisLine={false} 
-                    style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }}
-                    label={{ value: t('hours'), angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }}
-                  />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
-                    cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }}
-                    formatter={(value: number) => [`${value}h`, '']}
-                  />
-                  <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                  <Bar dataKey="Realizado" name={t('realizedHours')} fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} />
-                  <Line type="monotone" dataKey="Meta" name={t('goal')} stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
-                <Target className="w-8 h-8 text-gray-200 dark:text-slate-700 mb-2" />
-                {t('noHoursData')}
+            {aiAnalysis ? (
+              <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-4 rounded-lg">
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{aiAnalysis}</pre>
               </div>
+            ) : (
+              <p className="text-black dark:text-white text-sm">
+                Clique em "Gerar Relatório" para que a IA analise o desempenho do período selecionado.
+              </p>
             )}
           </div>
-        </div>
+        )}
+
+      {/* NOVO: Gráfico Horas Realizadas vs Meta Mensal */}
+        {currentUser.role !== 'PROCESSOS' && (
+          <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[400px]">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+              <div className="flex flex-col">
+                  <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
+                      <Target className="w-5 h-5 mr-2 text-indigo-500" />
+                      {t('hoursVsGoalTitle')}
+                  </h3>
+                  <p className="text-xs text-black dark:text-white ml-7 opacity-70">{t('hoursVsGoalSub')}</p>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 dark:text-slate-400">{t('goalLabel')}</span>
+                      <input 
+                          type="number" 
+                          value={monthlyGoal}
+                          onChange={(e) => setMonthlyGoal(Number(e.target.value))}
+                          className="w-16 p-1 border dark:border-slate-600 rounded text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:bg-black dark:text-white"
+                      />
+                  </div>
+
+                  {currentUser.role === 'GESTOR' && (
+                  <select
+                      value={selectedDesignerForChart}
+                      onChange={(e) => setSelectedDesignerForChart(e.target.value)}
+                      className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
+                  >
+                      <option value="ALL">{t('allDesigners')}</option>
+                      {availableDesigners.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                  </select>
+                  )}
+              </div>
+            </div>
+
+            <div className="h-[300px] w-full">
+              {hoursVsGoalData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={hoursVsGoalData} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }} />
+                    <YAxis 
+                      allowDecimals={false} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }}
+                      label={{ value: t('hours'), angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                      cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }}
+                      formatter={(value: number) => [`${value}h`, '']}
+                    />
+                    <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                    <Bar dataKey="Realizado" name={t('realizedHours')} fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} />
+                    <Line type="monotone" dataKey="Meta" name={t('goal')} stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
+                  <Target className="w-8 h-8 text-gray-200 dark:text-slate-700 mb-2" />
+                  {t('noHoursData')}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* NOVO: Ranking do Mês (CEO/GESTOR/COORDENADOR) */}
-      {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR') && (
+      {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR') && currentUser.role !== 'PROCESSOS' && (
         <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
             <div className="flex flex-col md:flex-row items-center justify-between mb-4 gap-4">
                 <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
@@ -872,59 +879,61 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
         {/* Removed: Issue Distribution (Pie Chart) */}
 
         {/* Releases per Month (Bar Chart) */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
-            <div className="flex justify-between items-center mb-4">
-                <div className="flex flex-col">
-                    <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
-                        <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
-                        {currentUser.role === 'GESTOR' || currentUser.role === 'CEO' ? t('teamReleases') : t('yourPerformance')}
-                    </h3>
-                    {selectedDesignerForReleases !== 'ALL' && (
-                        <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7">{t('filteredBy')}: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
-                    )}
-                </div>
-                <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
-                    <button 
-                        onClick={() => setReleaseGrouping('MONTHLY')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
-                    >
-                        {t('monthly')}
-                    </button>
-                    <button 
-                        onClick={() => setReleaseGrouping('YEARLY')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'YEARLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
-                    >
-                        {t('yearly')}
-                    </button>
-                    <button 
-                        onClick={() => setReleaseGrouping('GLOBAL')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'GLOBAL' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
-                    >
-                        {t('global')}
-                    </button>
-                </div>
-            </div>
-            <div className="h-[250px] w-full">
-                {barData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={barData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
-                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
-                    <Tooltip 
-                        contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
-                        cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
-                    />
-                    <Bar dataKey="liberacoes" name={t('releases')} fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={releaseGrouping === 'GLOBAL' ? 80 : 40} />
-                    </BarChart>
-                </ResponsiveContainer>
-                ) : (
-                <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
-                    {t('noData')}
-                </div>
-                )}
-            </div>
-            </div>
+            {currentUser.role !== 'PROCESSOS' && (
+              <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
+              <div className="flex justify-between items-center mb-4">
+                  <div className="flex flex-col">
+                      <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
+                          <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
+                          {currentUser.role === 'GESTOR' || currentUser.role === 'CEO' ? t('teamReleases') : t('yourPerformance')}
+                      </h3>
+                      {selectedDesignerForReleases !== 'ALL' && (
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7">{t('filteredBy')}: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
+                      )}
+                  </div>
+                  <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
+                      <button 
+                          onClick={() => setReleaseGrouping('MONTHLY')}
+                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                      >
+                          {t('monthly')}
+                      </button>
+                      <button 
+                          onClick={() => setReleaseGrouping('YEARLY')}
+                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'YEARLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                      >
+                          {t('yearly')}
+                      </button>
+                      <button 
+                          onClick={() => setReleaseGrouping('GLOBAL')}
+                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'GLOBAL' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                      >
+                          {t('global')}
+                      </button>
+                  </div>
+              </div>
+              <div className="h-[250px] w-full">
+                  {barData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={barData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
+                      <Tooltip 
+                          contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                          cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
+                      />
+                      <Bar dataKey="liberacoes" name={t('releases')} fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={releaseGrouping === 'GLOBAL' ? 80 : 40} />
+                      </BarChart>
+                  </ResponsiveContainer>
+                  ) : (
+                  <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
+                      {t('noData')}
+                  </div>
+                  )}
+              </div>
+              </div>
+            )}
 
         {/* Innovations Chart */}
             <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
