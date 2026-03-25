@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { updateUser } from '../services/storageService';
 import { useToast } from './Toast';
+import { useLanguage } from '../i18n/LanguageContext';
 import { User as UserIcon, Mail, Phone, Lock, Save, X, Loader2, Shield } from 'lucide-react';
 
 interface UserProfileModalProps {
@@ -12,6 +13,7 @@ interface UserProfileModalProps {
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClose, onUpdateUser }) => {
   const { addToast } = useToast();
+  const { t } = useLanguage();
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -66,10 +68,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
 
   const getRoleLabel = (role: UserRole) => {
       switch(role) {
-          case 'GESTOR': return 'Gestor';
-          case 'CEO': return 'CEO';
-          case 'COORDENADOR': return 'Coordenador';
-          default: return 'Projetista';
+          case 'GESTOR': return t('gestor');
+          case 'CEO': return t('ceo');
+          case 'COORDENADOR': return t('coordenador');
+          case 'PROJETISTA': return t('projetista');
+          case 'PROCESSOS': return t('processos');
+          default: return role;
       }
   };
 

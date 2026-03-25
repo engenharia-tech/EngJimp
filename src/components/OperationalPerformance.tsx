@@ -505,7 +505,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   };
 
   const filteredUsers = useMemo(() => {
-    return users.filter(u => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(u.role));
+    return users.filter(u => ['PROJETISTA', 'COORDENADOR', 'GESTOR', 'PROCESSOS', 'CEO'].includes(u.role));
   }, [users]);
 
   return (
@@ -542,7 +542,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                 className="bg-transparent border-none text-sm font-medium focus:ring-0 outline-none min-w-[150px]"
               >
                 {filteredUsers.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  <option key={u.id} value={u.id}>{u.name} ({t(u.role.toLowerCase() as any)})</option>
                 ))}
               </select>
             </div>

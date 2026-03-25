@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity } from '../types';
+import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 
@@ -1069,20 +1069,34 @@ export const seedFebruaryData = async (): Promise<{ success: boolean; count: num
     const users = await fetchUsers();
     
     // Ensure users exist
-    const namesToEnsure = ['Luiz', 'Cobo', 'Rogerio', 'Edson'];
-    for (const name of namesToEnsure) {
-      const exists = users.find(u => u.name.toLowerCase().includes(name.toLowerCase()));
+    const namesToEnsure = [
+      { name: 'Luiz', role: 'PROJETISTA' as UserRole },
+      { name: 'Cobo', role: 'PROJETISTA' as UserRole },
+      { name: 'Rogerio', role: 'PROJETISTA' as UserRole },
+      { name: 'Edson', role: 'PROJETISTA' as UserRole },
+      { name: 'Gustavo Padilha', role: 'PROCESSOS' as UserRole }
+    ];
+
+    for (const item of namesToEnsure) {
+      const exists = users.find(u => u.name.toLowerCase().includes(item.name.toLowerCase()) || (u.surname && u.surname.toLowerCase().includes(item.name.toLowerCase())));
+      
       if (!exists) {
         const res = await registerUser({
           id: crypto.randomUUID(),
-          name: name,
-          username: name.toLowerCase(),
+          name: item.name,
+          username: item.name.toLowerCase().split(' ')[0],
           password: '123', // Default password
-          role: 'PROJETISTA'
+          role: item.role
         });
         if (!res.success) {
-          errors.push(`Failed to create user ${name}: ${res.message}`);
+          errors.push(`Failed to create user ${item.name}: ${res.message}`);
         }
+      } else if (item.name === 'Gustavo Padilha' && exists.role === 'PROJETISTA') {
+        // Specifically fix Padilha if he exists but with wrong role
+        await updateUser({
+          ...exists,
+          role: 'PROCESSOS'
+        });
       }
     }
 
