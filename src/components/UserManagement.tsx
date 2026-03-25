@@ -4,6 +4,7 @@ import { User, UserRole } from '../types';
 import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts } from '../services/storageService';
 import { getWebhookUrl, saveWebhookUrl } from '../services/webhookService';
 import { useToast } from './Toast';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface UserManagementProps {
     currentUser: User;
@@ -11,6 +12,7 @@ interface UserManagementProps {
 
 export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) => {
   const { addToast } = useToast();
+  const { t } = useLanguage();
   const [users, setUsers] = useState<User[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -316,11 +318,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
               disabled={!isGestor}
               className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-black text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-black dark:text-slate-200'}`}
             >
-              <option value="PROJETISTA">Projetista</option>
-              <option value="GESTOR">Gestor</option>
-              <option value="CEO">CEO</option>
-              <option value="COORDENADOR">Coordenador</option>
-              <option value="PROCESSOS">Processos</option>
+              <option value="PROJETISTA">{t('projetista')}</option>
+              <option value="GESTOR">{t('gestor')}</option>
+              <option value="CEO">{t('ceo')}</option>
+              <option value="COORDENADOR">{t('coordenador')}</option>
+              <option value="PROCESSOS">{t('processos')}</option>
             </select>
           </div>
           <div>
@@ -400,7 +402,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 <td className="p-4">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-black text-black dark:text-white`}>
                     {getRoleIcon(u.role)}
-                    {u.role}
+                    {t(u.role.toLowerCase() as any)}
                   </span>
                 </td>
                 <td className="p-4 text-black dark:text-white">

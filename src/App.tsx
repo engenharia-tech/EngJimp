@@ -646,7 +646,7 @@ const AppContent: React.FC = () => {
           </div>
           <div className="flex items-center mt-2 gap-2">
             <span className={`text-[10px] uppercase tracking-wider font-bold ${theme === 'dark' ? 'text-slate-400 bg-black border-slate-700' : 'text-gray-500 bg-gray-100 border-gray-200'} border px-2 py-0.5 rounded-full inline-block`}>
-                {currentUser.role}
+                {t(currentUser.role.toLowerCase() as any)}
             </span>
           </div>
         </div>

@@ -434,6 +434,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       case 'PROJETISTA': return t('projetista');
       case 'CEO': return t('ceo');
       case 'COORDENADOR': return t('coordenador');
+      case 'PROCESSOS': return t('processos');
       default: return role;
     }
   };

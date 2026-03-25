@@ -376,6 +376,7 @@ export const translations = {
     projetista: 'Projetista',
     ceo: 'CEO',
     coordenador: 'Coordenador',
+    processos: 'Processos',
   },
   'es-ES': {
     // Navigation
@@ -743,6 +744,7 @@ export const translations = {
     projetista: 'Diseñador',
     ceo: 'CEO',
     coordenador: 'Coordinador',
+    processos: 'Procesos',
   },
   'en-US': {
     // Navigation
@@ -1110,5 +1112,6 @@ export const translations = {
     projetista: 'Designer',
     ceo: 'CEO',
     coordenador: 'Coordinator',
+    processos: 'Processes',
   }
 };
