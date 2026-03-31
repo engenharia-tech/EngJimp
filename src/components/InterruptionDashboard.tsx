@@ -5,6 +5,7 @@ import {
   PauseCircle, Info
 } from 'lucide-react';
 import { AppState, InterruptionRecord, InterruptionStatus, User } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface InterruptionDashboardProps {
   data: AppState;
@@ -12,6 +13,7 @@ interface InterruptionDashboardProps {
 }
 
 export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ data, theme }) => {
+  const { t, language } = useLanguage();
   const interruptions = data.interruptions;
   const [selectedDesigner, setSelectedDesigner] = useState<string | null>(null);
 
@@ -27,7 +29,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
     interruptions.forEach(i => {
       const designerId = i.designerId;
       const designer = data.users.find(u => u.id === designerId);
-      const designerName = designer ? `${designer.name} ${designer.surname || ''}`.trim() : 'Desconhecido';
+      const designerName = designer ? `${designer.name} ${designer.surname || ''}`.trim() : t('unknown');
       
       if (!stats[designerId]) {
         stats[designerId] = { 
@@ -88,7 +90,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
   }, [data.users, data.settings.hourlyCost, data.settings.useAutomaticCost]);
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+    return new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(val);
   };
 
   return (
@@ -98,24 +100,24 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
         <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black flex items-center justify-between">
           <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
             <BarChart3 className="w-5 h-5 mr-2 text-amber-500" />
-            Paradas por Departamento / Área
+            {t('stopsByArea')}
           </h3>
         </div>
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {areaStats.map((stat) => (
             <div key={stat.area} className="p-4 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-100 dark:border-slate-800">
               <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{stat.area}</span>
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t(stat.area.toLowerCase())}</span>
                 <span className="text-xs font-bold text-red-600 dark:text-red-400">{formatDuration(stat.totalLostTime)}</span>
               </div>
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-2xl font-black text-black dark:text-white">{stat.totalInterruptions}</p>
-                  <p className="text-[10px] text-gray-400 uppercase font-bold">Interrupções</p>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">{t('interruptionCount')}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-bold text-red-600 dark:text-red-400">{formatCurrency(stat.totalLostTime * costPerSecond)}</p>
-                  <p className="text-[10px] text-gray-400 uppercase font-bold">Custo Estimado</p>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">{t('estimatedCost')}</p>
                 </div>
               </div>
               <div className="mt-3 w-full bg-gray-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
@@ -128,7 +130,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
           ))}
           {areaStats.length === 0 && (
             <div className="col-span-full py-8 text-center text-gray-500 italic">
-              Nenhuma parada registrada por área.
+              {t('noStopsByArea')}
             </div>
           )}
         </div>
@@ -138,10 +140,10 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
         <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black flex items-center justify-between">
           <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
             <Users className="w-5 h-5 mr-2 text-blue-500" />
-            Paradas por Projetista
+            {t('stopsByDesigner')}
           </h3>
           <span className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">
-            Total de {designerStats.length} Projetistas
+            {t('totalDesigners').replace('{count}', designerStats.length.toString())}
           </span>
         </div>
         
@@ -161,7 +163,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
                     {stat.name}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-slate-400">
-                    {stat.totalInterruptions} paradas registradas
+                    {t('stopsRecorded').replace('{count}', stat.totalInterruptions.toString())}
                   </p>
                 </div>
               </div>
@@ -170,7 +172,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
                   <p className="text-sm font-bold text-red-600 dark:text-red-400">
                     {formatDuration(stat.totalLostTime)}
                   </p>
-                  <p className="text-[10px] text-gray-400 uppercase font-bold">Tempo Perdido</p>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">{t('lostTime')}</p>
                 </div>
                 <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-blue-500 transition-colors" />
               </div>
@@ -178,7 +180,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
           ))}
           {designerStats.length === 0 && (
             <div className="p-12 text-center text-gray-500 italic">
-              Nenhuma interrupção registrada até o momento.
+              {t('noStopsRecorded')}
             </div>
           )}
         </div>
@@ -195,7 +197,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-black dark:text-white">{selectedDesignerData.name}</h3>
-                  <p className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold tracking-wider">Detalhamento de Impacto</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold tracking-wider">{t('impactDetail')}</p>
                 </div>
               </div>
               <button 
@@ -208,7 +210,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
 
             <div className="p-8 grid grid-cols-2 gap-6">
               <div className="space-y-1">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Projetos Impactados</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('impactedProjects')}</p>
                 <div className="flex items-center gap-2">
                   <BarChart3 className="w-5 h-5 text-blue-500" />
                   <p className="text-2xl font-black text-black dark:text-white">{selectedDesignerData.projectIds.size}</p>
@@ -216,7 +218,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
               </div>
 
               <div className="space-y-1">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Interrupções</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('totalInterruptions')}</p>
                 <div className="flex items-center gap-2">
                   <PauseCircle className="w-5 h-5 text-amber-500" />
                   <p className="text-2xl font-black text-black dark:text-white">{selectedDesignerData.totalInterruptions}</p>
@@ -224,7 +226,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
               </div>
 
               <div className="space-y-1">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tempo Total Perdido</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('totalLostTime')}</p>
                 <div className="flex items-center gap-2">
                   <Clock className="w-5 h-5 text-red-500" />
                   <p className="text-2xl font-black text-red-600 dark:text-red-400">{formatDuration(selectedDesignerData.totalLostTime)}</p>
@@ -232,7 +234,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
               </div>
 
               <div className="space-y-1">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Média por Interrupção</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('avgPerInterruption')}</p>
                 <div className="flex items-center gap-2">
                   <TrendingDown className="w-5 h-5 text-indigo-500" />
                   <p className="text-2xl font-black text-black dark:text-white">
@@ -242,7 +244,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
               </div>
 
               <div className="space-y-1 col-span-2 pt-4 border-t border-gray-100 dark:border-slate-700">
-                <p className="text-xs font-bold text-red-500 uppercase tracking-wider">Custo Total das Paradas</p>
+                <p className="text-xs font-bold text-red-500 uppercase tracking-wider">{t('totalStopCost')}</p>
                 <div className="flex items-center gap-2">
                   <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
                     <TrendingDown className="w-6 h-6 text-red-600 dark:text-red-400" />
@@ -258,14 +260,16 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
               <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
                 <Info className="w-5 h-5 text-blue-600 mt-0.5" />
                 <p className="text-sm text-blue-800 dark:text-blue-200">
-                  Este projetista teve paradas em <strong>{selectedDesignerData.projectIds.size}</strong> projetos diferentes, resultando em uma perda de produtividade de <strong>{formatDuration(selectedDesignerData.totalLostTime)}</strong>.
+                  {t('designerImpactSummary')
+                    .replace('{projects}', selectedDesignerData.projectIds.size.toString())
+                    .replace('{time}', formatDuration(selectedDesignerData.totalLostTime))}
                 </p>
               </div>
               <button 
                 onClick={() => setSelectedDesigner(null)}
                 className="w-full mt-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors shadow-lg"
               >
-                Fechar Detalhes
+                {t('closeDetails')}
               </button>
             </div>
           </div>

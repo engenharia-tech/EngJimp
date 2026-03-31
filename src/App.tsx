@@ -181,7 +181,7 @@ const AppContent: React.FC = () => {
   // Who can see ALL project history?
   const canSeeAllHistory = useMemo(() => {
       if (!currentUser) return false;
-      return ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role);
+      return ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
   }, [currentUser]);
 
   const canUseTracker = useMemo(() => {
@@ -201,25 +201,17 @@ const AppContent: React.FC = () => {
 
   // Filter Data based on User Role
   const displayData = useMemo(() => {
-    if (!currentUser) return { projects: [], issues: [], innovations: [], interruptions: [], interruptionTypes: [] };
+    if (!currentUser) return data;
 
     const role = currentUser.role;
 
     // "Super Viewers" - See everything in DB
-    if (['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(role)) {
+    if (['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS', 'PROJETISTA'].includes(role)) {
       return data;
     }
 
-    // PROJETISTA - Sees own data + All Innovations (usually shared knowledge)
-    return {
-      projects: data.projects.filter(p => p.userId === currentUser.id),
-      issues: data.issues.filter(i => i.reportedBy === currentUser.id),
-      innovations: data.innovations,
-      interruptions: data.interruptions.filter(i => i.designerId === currentUser.id),
-      interruptionTypes: data.interruptionTypes,
-      users: data.users,
-      settings: data.settings
-    };
+    // Default return for any other roles (none currently)
+    return data;
   }, [data, currentUser]);
 
   // --- HANDLERS ---
@@ -654,19 +646,12 @@ const AppContent: React.FC = () => {
           <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} />
 
           {canUseTracker && (
-             <NavItem id="tracker" labelKey="tracker" icon={PenTool} />
-          )}
-          
-          {canUseTracker && (
-            <NavItem id="history" labelKey="history" icon={History} />
-          )}
-
-          {canUseTracker && (
-            <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} />
-          )}
-
-          {canUseTracker && (
-            <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} />
+            <>
+              <NavItem id="tracker" labelKey="tracker" icon={PenTool} />
+              <NavItem id="history" labelKey="history" icon={History} />
+              <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} />
+              <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} />
+            </>
           )}
           
           {canSeeInnovations && (
@@ -736,16 +721,12 @@ const AppContent: React.FC = () => {
           <nav className="flex flex-col h-full overflow-y-auto">
             <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} />
             {canUseTracker && (
+              <>
                 <NavItem id="tracker" labelKey="tracker" icon={PenTool} />
-            )}
-            {canUseTracker && (
                 <NavItem id="history" labelKey="history" icon={History} />
-            )}
-            {canUseTracker && (
                 <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} />
-            )}
-            {canUseTracker && (
                 <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} />
+              </>
             )}
             {canSeeInnovations && (
                 <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} />
@@ -843,7 +824,7 @@ const AppContent: React.FC = () => {
                  </div>
               </div>
               <Dashboard data={displayData} currentUser={currentUser} theme={theme} />
-              {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+              {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) && (
                 <div className="mt-12">
                   <div className="mb-6">
                     <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('interruptionReports')}</h2>

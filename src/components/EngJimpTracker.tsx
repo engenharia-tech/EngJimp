@@ -182,20 +182,20 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
   const handleStartNew = () => {
     if (!ns.trim()) {
-      alert("Por favor, informe o NS do projeto antes de começar.");
+      alert(t('nsRequired'));
       return;
     }
 
     // MELHORIA 3: Bloqueio de NS duplicada
     const isDuplicate = allProjects.some(p => p.ns === ns.trim() && p.status === 'IN_PROGRESS');
     if (isDuplicate) {
-      alert(`Já existe um projeto em andamento com a NS ${ns}. Por favor, retome o projeto existente ou use outra NS.`);
+      alert(t('nsDuplicate', { ns: ns.trim() }));
       return;
     }
 
     // Check Working Hours
     if (!isWorkingHour(new Date(), settings, isOvertime)) {
-      alert("Fora do horário de expediente. Marque 'Hora Extra' para iniciar.");
+      alert(t('outsideWorkingHours'));
       return;
     }
 
@@ -237,7 +237,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const handleResumeFromList = (project: ProjectSession) => {
     // Check Working Hours
     if (!isWorkingHour(new Date(), settings, project.isOvertime)) {
-      alert("Fora do horário de expediente. Este projeto não está marcado como 'Hora Extra'.");
+      alert(t('outsideWorkingHoursNoOvertime'));
       return;
     }
 
@@ -314,7 +314,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
                           pauseReason.toLowerCase().includes('incompatibilidade');
     
     if (isInterruption && !pauseSector) {
-        alert("Por favor, selecione o setor causador do problema.");
+        alert(t('selectProblemSector'));
         return;
     }
 
@@ -485,7 +485,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const handleAddVariation = () => {
       if (!activeProject) return;
       if (!varOldCode.trim() && !varNewCode.trim()) {
-          alert("Insira pelo menos um código (antigo ou novo).");
+          alert(t('enterOneCode'));
           return;
       }
 
@@ -555,23 +555,23 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const sendTeamsNotification = async (project: ProjectSession) => {
     if (!TEAMS_WEBHOOK_URL || TEAMS_WEBHOOK_URL.includes("YOUR_WEBHOOK_URL_HERE")) return;
 
-    const designerName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : 'Não identificado';
+    const designerName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : t('unidentified');
     const duration = formatTime(project.totalActiveSeconds);
     const message = {
       "@type": "MessageCard",
       "@context": "http://schema.org/extensions",
       "themeColor": "0076D7",
-      "summary": "Projeto Finalizado",
+      "summary": t('projectFinished'),
       "sections": [{
-        "activityTitle": "✅ Projeto Finalizado",
+        "activityTitle": `✅ ${t('projectFinished')}`,
         "activitySubtitle": `DesignTrack Pro`,
         "facts": [
-          { "name": "NS:", "value": project.ns },
-          { "name": "Cliente:", "value": project.clientName || "-" },
-          { "name": "Projetista:", "value": designerName },
-          { "name": "Tipo:", "value": project.type },
-          { "name": "Variações:", "value": project.variations.length.toString() },
-          { "name": "Duração:", "value": duration }
+          { "name": `${t('ns')}:`, "value": project.ns },
+          { "name": `${t('client')}:`, "value": project.clientName || "-" },
+          { "name": `${t('designer')}:`, "value": designerName },
+          { "name": `${t('type')}:`, "value": t(project.type.toLowerCase()) },
+          { "name": `${t('variations')}:`, "value": project.variations.length.toString() },
+          { "name": `${t('duration')}:`, "value": duration }
         ],
         "markdown": true
       }]
@@ -591,13 +591,13 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const sendEmailNotification = async (project: ProjectSession) => {
     const now = new Date();
     const hour = now.getHours();
-    let greeting = "Bom dia";
-    if (hour >= 12 && hour < 18) greeting = "Boa tarde";
-    else if (hour >= 18 || hour < 5) greeting = "Boa noite";
+    let greeting = t('goodMorning');
+    if (hour >= 12 && hour < 18) greeting = t('goodAfternoon');
+    else if (hour >= 18 || hour < 5) greeting = t('goodNight');
 
     const hours = (project.totalActiveSeconds / 3600).toFixed(2);
     const plannedHours = ((project.estimatedSeconds || 0) / 3600).toFixed(2);
-    const cost = (project.totalCost || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const cost = (project.totalCost || 0).toLocaleString(settings.language === 'pt-BR' ? 'pt-BR' : settings.language === 'es-ES' ? 'es-ES' : 'en-US', { style: 'currency', currency: 'BRL' });
     
     // Get interruptions for this project
     const projectInterruptions = interruptions.filter(i => {
@@ -613,37 +613,37 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     const productiveCost = Math.max(0, (project.totalCost || 0) - interruptionCost);
 
     const interruptionReasons = projectInterruptions.map(i => 
-      `- ${i.problemType}: ${i.description || 'Sem descrição'} (${formatTime(i.totalTimeSeconds)})`
+      `- ${i.problemType}: ${i.description || t('noDescription')} (${formatTime(i.totalTimeSeconds)})`
     ).join('\n');
 
-    const designerName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : 'Não identificado';
+    const designerName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : t('unidentified');
 
-    const subject = `Conclusão Projeto NS: ${project.ns} - ${project.clientName || 'Sem Cliente'}`;
+    const subject = t('projectConclusionSubject', { ns: project.ns, client: project.clientName || t('noClient') });
     const body = `${greeting},
 
-Informamos a conclusão do projeto abaixo:
+${t('informConclusion')}:
 
-NS: ${project.ns}
-Cliente: ${project.clientName || 'Não informado'}
-Código Projeto: ${project.projectCode || 'Não informado'}
-Projetista: ${designerName}
+${t('ns')}: ${project.ns}
+${t('client')}: ${project.clientName || t('notInformed')}
+${t('projectCode')}: ${project.projectCode || t('notInformed')}
+${t('designer')}: ${designerName}
 
-Tempo Planejado: ${plannedHours} horas
-Tempo Executado: ${hours} horas
-Tempo de Interrupção: ${formatTime(interruptionSeconds)}
+${t('plannedTime')}: ${plannedHours} ${t('hours')}
+${t('executedTime')}: ${hours} ${t('hours')}
+${t('interruptionTime')}: ${formatTime(interruptionSeconds)}
 
-Custo Produtivo: ${productiveCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-Custo de Interrupção: ${interruptionCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-Custo Total do Projeto: ${cost}
+${t('productiveCost')}: ${productiveCost.toLocaleString(settings.language === 'pt-BR' ? 'pt-BR' : settings.language === 'es-ES' ? 'es-ES' : 'en-US', { style: 'currency', currency: 'BRL' })}
+${t('interruptionCost')}: ${interruptionCost.toLocaleString(settings.language === 'pt-BR' ? 'pt-BR' : settings.language === 'es-ES' ? 'es-ES' : 'en-US', { style: 'currency', currency: 'BRL' })}
+${t('totalProjectCost')}: ${cost}
 
-Número de interrupções: ${interruptionCount}
+${t('interruptionCount')}: ${interruptionCount}
 
-Detalhamento das interrupções:
-${interruptionReasons || 'Nenhuma interrupção registrada.'}
+${t('interruptionDetail')}:
+${interruptionReasons || t('noInterruptions')}
 
-Notas: ${project.notes || 'Nenhuma'}
+${t('notes')}: ${project.notes || t('none')}
 
-Atenciosamente.
+${t('sincerely')}.
 JIMPNEXUS
 `;
 
@@ -660,13 +660,13 @@ JIMPNEXUS
 
       const result = await response.json();
       if (result.success) {
-        addToast(`E-mail de conclusão enviado para: ${settings.emailTo}`, 'success');
+        addToast(t('emailSentTo', { email: settings.emailTo }), 'success');
       } else {
-        addToast(`Erro ao enviar e-mail: ${result.error || 'Verifique as configurações'}`, 'error');
+        addToast(`${t('emailError')}: ${result.error || t('checkSettings')}`, 'error');
       }
     } catch (error) {
       console.error("Erro ao enviar e-mail", error);
-      addToast('Erro de conexão ao tentar enviar e-mail.', 'error');
+      addToast(t('connectionErrorEmail'), 'error');
     }
   };
 
@@ -687,7 +687,7 @@ JIMPNEXUS
             <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/30">
                <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
                  <Briefcase className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
-                 Projetos em Andamento / Pausados
+                 {t('projectsInProgressPaused')}
                </h3>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  {pendingProjects.map(p => {
@@ -699,14 +699,14 @@ JIMPNEXUS
                           <div>
                             <div className="font-bold text-black dark:text-white text-lg">{p.ns}</div>
                             <div className="text-sm text-gray-600 dark:text-slate-400">{p.clientName}</div>
-                            <div className="text-xs text-gray-500 dark:text-slate-500 mt-1">{p.type} • {p.implementType}</div>
+                            <div className="text-xs text-gray-500 dark:text-slate-500 mt-1">{t(p.type.toLowerCase())} • {t(p.implementType.toLowerCase())}</div>
                             <div className="text-xs text-gray-600 dark:text-slate-400 mt-2 flex items-center">
-                                <span className="font-semibold mr-1 text-black dark:text-white">Responsável:</span>
-                                {pUser ? pUser.name : 'Não atribuído'}
+                                <span className="font-semibold mr-1 text-black dark:text-white">{t('responsible')}:</span>
+                                {pUser ? pUser.name : t('notAssigned')}
                             </div>
                           </div>
                           <span className={`px-2 py-1 rounded text-xs font-bold ${isPaused ? 'bg-yellow-100 text-yellow-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
-                             {isPaused ? 'PAUSADO' : 'ABERTO'}
+                             {isPaused ? t('paused') : t('open').toUpperCase()}
                           </span>
                         </div>
                         
@@ -717,7 +717,7 @@ JIMPNEXUS
                                   className="flex-1 bg-white dark:bg-black border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center group-hover:bg-blue-600 dark:group-hover:bg-blue-500 group-hover:text-white shadow-sm"
                                 >
                                   <Play className="w-4 h-4 mr-2" />
-                                  {isPaused ? 'Retomar Timer' : 'Continuar'}
+                                  {isPaused ? t('resume') : t('continue')}
                                 </button>
                             )}
 
@@ -725,7 +725,7 @@ JIMPNEXUS
                                 <button 
                                     onClick={() => setSelectedProjectDetails(p)}
                                     className="px-3 bg-white dark:bg-black border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 font-bold py-2 rounded hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors flex items-center justify-center shadow-sm"
-                                    title="Ver Detalhes"
+                                    title={t('viewDetails')}
                                 >
                                     <Info className="w-4 h-4" />
                                 </button>
@@ -743,32 +743,32 @@ JIMPNEXUS
               <div className="bg-white dark:bg-black p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
                 <h2 className="text-xl font-bold mb-4 flex items-center text-black dark:text-white">
                   <Clock className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
-                  Iniciar Novo Projeto
+                  {t('startProject')}
                 </h2>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">NS do Produto</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('productNs')}</label>
                       <input 
                         type="text" 
                         value={ns}
                         onChange={e => setNs(e.target.value)}
                         className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
-                        placeholder="Ex: 123456"
+                        placeholder={t('nsPlaceholder')}
                       />
                       {aggregatedInfo && (
                         <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-1.5 rounded-md border border-amber-100 dark:border-amber-900/30">
                           <Info className="w-3 h-3" />
                           <span>
                             {aggregatedInfo.totalSeconds > 0 
-                              ? `Acumulado: ${formatTime(aggregatedInfo.totalSeconds)} (${aggregatedInfo.contributors} projetistas)`
-                              : "NS já registrado (sem tempo acumulado)"}
+                              ? t('accumulated', { time: formatTime(aggregatedInfo.totalSeconds), count: aggregatedInfo.contributors })
+                              : t('nsAlreadyRegistered')}
                           </span>
                         </div>
                       )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Cliente</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('client')}</label>
                       <div className="relative">
                         <Building className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <input 
@@ -776,12 +776,12 @@ JIMPNEXUS
                           value={clientName}
                           onChange={e => setClientName(e.target.value)}
                           className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
-                          placeholder="Nome do Cliente"
+                          placeholder={t('clientName')}
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Cód. Projeto (Opcional)</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('projectCodeOptional')}</label>
                       <div className="relative">
                         <Hash className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <input 
@@ -789,12 +789,12 @@ JIMPNEXUS
                           value={projectCode}
                           onChange={e => setProjectCode(e.target.value)}
                           className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
-                          placeholder="Ex: PRJ-001"
+                          placeholder={t('projectCodePlaceholder')}
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Tipo de Projeto</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('projectType')}</label>
                       <select 
                         value={type}
                         onChange={e => setType(e.target.value as ProjectType)}
@@ -807,7 +807,7 @@ JIMPNEXUS
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Implemento</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('implementationType')}</label>
                       <div className="relative">
                         <Truck className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <select 
@@ -815,14 +815,14 @@ JIMPNEXUS
                           onChange={e => setImplementType(e.target.value as ImplementType)}
                           className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                         >
-                          {IMPLEMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          {IMPLEMENT_TYPES.map(type => <option key={type} value={type}>{t(type.toLowerCase())}</option>)}
                         </select>
                       </div>
                     </div>
 
                     {shouldShowFlooring && (
                         <div>
-                        <label className="block text-sm font-medium text-black dark:text-white mb-1">Tipo de Assoalho</label>
+                        <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('flooringType')}</label>
                         <div className="relative">
                             <Layers className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
                             <select 
@@ -830,7 +830,7 @@ JIMPNEXUS
                             onChange={e => setFlooringType(e.target.value)}
                             className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
                             >
-                                <option value="">Selecione...</option>
+                                <option value="">{t('select')}</option>
                                 {FLOORING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
                         </div>
@@ -838,7 +838,7 @@ JIMPNEXUS
                     )}
 
                     <div className="md:col-span-2 lg:col-span-1">
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">Tempo Estimado</label>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('estimatedTime')}</label>
                       <div className="flex gap-2">
                         <div className="flex-1 relative">
                           <input 
@@ -846,7 +846,7 @@ JIMPNEXUS
                             value={estHours}
                             onChange={e => setEstHours(e.target.value)}
                             className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
-                            placeholder="Horas"
+                            placeholder={t('hours')}
                             min="0"
                           />
                           <span className="absolute right-2 top-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">H</span>
@@ -857,7 +857,7 @@ JIMPNEXUS
                             value={estMinutes}
                             onChange={e => setEstMinutes(e.target.value)}
                             className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
-                            placeholder="Min"
+                            placeholder={t('minutes')}
                             min="0"
                             max="59"
                           />
@@ -874,7 +874,7 @@ JIMPNEXUS
                           onChange={e => setIsOvertime(e.target.checked)}
                           className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
                         />
-                        <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Hora Extra</span>
+                        <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{t('overtime')}</span>
                       </label>
                     </div>
                   </div>
@@ -883,7 +883,7 @@ JIMPNEXUS
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
                   >
                     <Play className="w-5 h-5 mr-2" />
-                    Começar Cronômetro
+                    {t('startTimer')}
                   </button>
                 </div>
               </div>
@@ -892,9 +892,9 @@ JIMPNEXUS
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-black mb-4">
                     <Clock className="w-8 h-8 text-gray-400 dark:text-slate-500" />
                 </div>
-                <h3 className="text-lg font-bold text-black dark:text-white mb-2">Modo Visualização</h3>
+                <h3 className="text-lg font-bold text-black dark:text-white mb-2">{t('viewMode')}</h3>
                 <p className="text-black dark:text-white max-w-md mx-auto">
-                    Você está logado como <strong>{currentUser?.role}</strong>. Você não tem permissão para iniciar, pausar ou finalizar projetos.
+                    {t('viewModeDesc', { role: currentUser?.role })}
                 </p>
             </div>
           )}
@@ -908,7 +908,7 @@ JIMPNEXUS
                 <div className="flex justify-between items-start mb-6">
                     <h2 className="text-xl font-bold flex items-center text-black dark:text-white">
                         <Clock className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
-                        Rastreador Ativo
+                        {t('activeTracker')}
                     </h2>
                     <div className="text-right">
                         <div className="font-bold text-lg text-black dark:text-white">{activeProject.ns}</div>
@@ -916,25 +916,25 @@ JIMPNEXUS
                         <div className="flex flex-col items-end gap-1 mt-1">
                             {activeProject.isOvertime && (
                                 <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold">
-                                    HORA EXTRA
+                                    {t('overtime').toUpperCase()}
                                 </span>
                             )}
                             {activeProject.estimatedSeconds && (
                                 <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full inline-block">
-                                    Estimado: {formatTime(activeProject.estimatedSeconds)}
+                                    {t('estimated')}: {formatTime(activeProject.estimatedSeconds)}
                                 </div>
                             )}
                         </div>
                         <div className="text-xs text-gray-400 dark:text-slate-500 flex flex-col items-end mt-1">
-                            <span>{activeProject.implementType} {activeProject.flooringType ? `• ${activeProject.flooringType}` : ''}</span>
+                            <span>{t(activeProject.type.toLowerCase())} {activeProject.flooringType ? `• ${activeProject.flooringType}` : ''}</span>
                             <div className="mt-1 flex items-center">
-                                <span className="mr-1 text-gray-500 dark:text-slate-400">Cod:</span>
+                                <span className="mr-1 text-gray-500 dark:text-slate-400">{t('code')}:</span>
                                 <input 
                                     type="text" 
                                     value={activeProject.projectCode || ''}
                                     onChange={(e) => handleUpdateActiveProjectCode(e.target.value)}
                                     onBlur={saveProjectCode}
-                                    placeholder="Inserir Código"
+                                    placeholder={t('insertCode')}
                                     className="border-b border-gray-300 dark:border-slate-600 text-right text-xs focus:border-blue-500 focus:outline-none w-24 bg-transparent dark:text-white"
                                 />
                                 <Edit className="w-3 h-3 ml-1 text-gray-400 dark:text-slate-500" />
@@ -946,18 +946,18 @@ JIMPNEXUS
                 <div className="flex flex-col items-center justify-center bg-gray-50 dark:bg-black p-8 rounded-xl border border-gray-200 dark:border-slate-700 mb-6">
                     <span className="text-sm text-gray-500 dark:text-slate-400 font-medium tracking-wider uppercase mb-2 flex items-center animate-pulse">
                         <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
-                        Executando
+                        {t('running')}
                     </span>
                     <div className="text-7xl font-mono font-bold text-blue-600 dark:text-blue-400 tracking-tight">
                         {formatTime(elapsedSeconds)}
                     </div>
                     {elapsedSeconds === 0 && !showPauseModal && (
                         <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-3 py-1 rounded-full border border-amber-100 dark:border-amber-900/30">
-                            Fora do horário comercial - Cronômetro pausado
+                            {t('outsideWorkingHoursPaused')}
                         </div>
                     )}
                     <div className="mt-4 flex gap-4 text-sm text-gray-500 dark:text-slate-400">
-                        <span>Início: {new Date(activeProject.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        <span>{t('start')}: {new Date(activeProject.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                 </div>
 
@@ -969,7 +969,7 @@ JIMPNEXUS
                                 className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors shadow-sm"
                             >
                                 <Pause className="w-5 h-5 mr-2" />
-                                Pausar / Trocar Projeto
+                                {t('pauseSwitchProject')}
                             </button>
 
                             <button 
@@ -977,7 +977,7 @@ JIMPNEXUS
                                 className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors shadow-sm"
                             >
                                 <Square className="w-5 h-5 mr-2 fill-current" />
-                                Finalizar Projeto
+                                {t('finishProject')}
                             </button>
                         </>
                     )}
@@ -988,13 +988,13 @@ JIMPNEXUS
             <div className="bg-white dark:bg-black p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
                  <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center border-b dark:border-slate-700 pb-2">
                     <Layers className="w-5 h-5 mr-2 text-purple-600 dark:text-purple-400" />
-                    Lista de Variações de Projeto
+                    {t('variationList')}
                  </h3>
                  
                  {/* Input Row */}
                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2 mb-4 bg-gray-50 dark:bg-black p-3 rounded-lg items-end">
                      <div className="md:col-span-2">
-                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Cód. Antigo</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">{t('oldCode')}</label>
                         <input 
                             type="text" 
                             value={varOldCode}
@@ -1003,7 +1003,7 @@ JIMPNEXUS
                         />
                      </div>
                      <div className="md:col-span-4">
-                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Descrição / Nome</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">{t('description')}</label>
                         <input 
                             type="text" 
                             value={varDesc}
@@ -1012,7 +1012,7 @@ JIMPNEXUS
                         />
                      </div>
                      <div className="md:col-span-2">
-                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Cód. Novo</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">{t('newCode')}</label>
                         <input 
                             type="text" 
                             value={varNewCode}
@@ -1021,18 +1021,18 @@ JIMPNEXUS
                         />
                      </div>
                      <div className="md:col-span-2">
-                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Tipo</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">{t('type')}</label>
                         <select 
                             value={varType}
                             onChange={e => setVarType(e.target.value as any)}
                             className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-black dark:text-white"
                         >
-                            <option value="Peça">Peça</option>
-                            <option value="Montagem">Montagem</option>
+                            <option value="Peça">{t('peca')}</option>
+                            <option value="Montagem">{t('montagem')}</option>
                         </select>
                      </div>
                      <div className="md:col-span-1 flex items-center justify-center pb-2">
-                         <label className="flex items-center cursor-pointer" title="Marcar como já feito?">
+                         <label className="flex items-center cursor-pointer" title={t('markAsDone')}>
                              <input 
                                 type="checkbox" 
                                 checked={varFiles}
@@ -1058,10 +1058,10 @@ JIMPNEXUS
                      <table className="w-full text-sm text-left">
                          <thead className="bg-gray-100 dark:bg-black text-black dark:text-white font-semibold">
                              <tr>
-                                 <th className="p-3 rounded-tl-lg">Código Antigo</th>
-                                 <th className="p-3">Descrição</th>
-                                 <th className="p-3">Código Novo</th>
-                                 <th className="p-3">Tipo</th>
+                                 <th className="p-3 rounded-tl-lg">{t('oldCode')}</th>
+                                 <th className="p-3">{t('description')}</th>
+                                 <th className="p-3">{t('newCode')}</th>
+                                 <th className="p-3">{t('type')}</th>
                                  <th className="p-3 text-center">DXF/PDF</th>
                                  <th className="p-3 rounded-tr-lg"></th>
                              </tr>
@@ -1181,8 +1181,8 @@ JIMPNEXUS
                                         <tr>
                                             <th className="p-3">De (Antigo)</th>
                                             <th className="p-3">Para (Novo)</th>
-                                            <th className="p-3">Descrição</th>
-                                            <th className="p-3">Tipo</th>
+                                            <th className="p-3">{t('description')}</th>
+                                            <th className="p-3">{t('type')}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
