@@ -57,11 +57,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
   const filteredProjects = useMemo(() => {
     return data.projects.filter(p => {
       if (p.status !== 'COMPLETED') return false;
-
-      // Restrict visibility for PROJETISTA to their own projects only
-      if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
-          return false;
-      }
       
       let matchDate = true;
       if (startDate || endDate) {
@@ -102,11 +97,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
 
   const filteredInterruptions = useMemo(() => {
     return data.interruptions.filter(i => {
-      // Restrict visibility for PROJETISTA to their own interruptions only
-      if (currentUser.role === 'PROJETISTA' && i.designerId !== currentUser.id) {
-          return false;
-      }
-      
       let matchDate = true;
       if (startDate || endDate) {
         const iDate = new Date(i.startTime).getTime();

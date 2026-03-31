@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Filter, Calendar, Search, Clock, Hash, User as UserIcon, Truck, Trash2, Layers, Box, Eye, X, FileCheck, FileX, AlertTriangle, Edit, Timer, RefreshCw, AlertCircle, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { AppState, ProjectType, User, VariationRecord, ProjectSession, ImplementType } from '../types';
+import { Filter, Calendar, Search, Clock, Hash, User as UserIcon, Truck, Trash2, Layers, Box, Eye, X, FileCheck, FileX, AlertTriangle, Edit, Timer, RefreshCw, AlertCircle, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, Plus } from 'lucide-react';
+import { AppState, ProjectType, User, VariationRecord, ProjectSession, ImplementType, PauseRecord, InterruptionRecord, InterruptionStatus, InterruptionArea } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, DuplicateGroup } from '../services/storageService';
 import { useToast } from './Toast';
@@ -62,7 +62,9 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       startTime: '',
       endDate: '',
       endTime: '',
-      isOvertime: false
+      isOvertime: false,
+      pauses: [] as PauseRecord[],
+      interruptions: [] as InterruptionRecord[]
   });
 
   // Helper to format date for input
@@ -189,7 +191,9 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           startTime: getLocalTime(project.startTime),
           endDate: project.endTime ? getLocalDate(project.endTime) : '',
           endTime: project.endTime ? getLocalTime(project.endTime) : '',
-          isOvertime: !!project.isOvertime
+          isOvertime: !!project.isOvertime,
+          pauses: project.pauses ? [...project.pauses] : [],
+          interruptions: data.interruptions.filter(i => i.projectId === project.id)
       });
   };
 
@@ -284,22 +288,61 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     }
   };
 
+  const recalculateSingleProject = async (project: ProjectSession) => {
+    if (!project.startTime || !project.endTime || !onUpdate) return;
+    
+    try {
+      const start = new Date(project.startTime);
+      const end = new Date(project.endTime);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+
+      const totalWorkingSeconds = calcActiveSeconds(start, end, data.settings, !!project.isOvertime);
+      
+      let totalPauseWorkingSeconds = 0;
+      (project.pauses || []).forEach((p: any) => {
+          const dur = Number(p.durationSeconds);
+          if (dur > 0) {
+              const pStart = new Date(p.timestamp);
+              const pEnd = new Date(pStart.getTime() + dur * 1000);
+              totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, data.settings, !!project.isOvertime);
+          }
+      });
+      
+      const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
+      
+      if (Math.abs(project.totalActiveSeconds - netSeconds) > 1) {
+        await onUpdate({
+          ...project,
+          totalActiveSeconds: netSeconds
+        });
+        addToast(t('projectUpdatedSuccess'), 'success');
+      } else {
+        addToast(t('allDuplicatesResolved'), 'info');
+      }
+    } catch (error) {
+      console.error("Single recalculation failed", error);
+      addToast(t('errorUpdatingProject'), 'error');
+    }
+  };
+
     // Calculate preview of duration
     const durationPreview = useMemo(() => {
         if (!editForm.startDate || !editForm.startTime || !editForm.endDate || !editForm.endTime) {
-            return { gross: 0, pauses: 0, net: 0, valid: false };
+            return { gross: 0, pauses: 0, net: 0, wallClock: 0, valid: false };
         }
 
         const start = new Date(`${editForm.startDate}T${editForm.startTime}`);
         const end = new Date(`${editForm.endDate}T${editForm.endTime}`);
         
-        if (isNaN(start.getTime()) || isNaN(end.getTime())) return { gross: 0, pauses: 0, net: 0, valid: false };
-        if (end < start) return { gross: 0, pauses: 0, net: 0, valid: false, error: t('endDateBeforeStart') };
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return { gross: 0, pauses: 0, net: 0, wallClock: 0, valid: false };
+        if (end < start) return { gross: 0, pauses: 0, net: 0, wallClock: 0, valid: false, error: t('endDateBeforeStart') };
 
+        const wallClockSeconds = Math.floor((end.getTime() - start.getTime()) / 1000);
         const totalWorkingSeconds = calcActiveSeconds(start, end, data.settings, editForm.isOvertime);
         
         let totalPauseWorkingSeconds = 0;
-        (editingProject?.pauses || []).forEach((p: any) => {
+        (editForm.pauses || []).forEach((p: any) => {
             const dur = Number(p.durationSeconds);
             if (dur > 0) {
                 const pStart = new Date(p.timestamp);
@@ -314,9 +357,10 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             gross: totalWorkingSeconds, 
             pauses: totalPauseWorkingSeconds, 
             net: netSeconds, 
+            wallClock: wallClockSeconds,
             valid: true 
         };
-    }, [editForm.startDate, editForm.startTime, editForm.endDate, editForm.endTime, editForm.isOvertime, editingProject]);
+    }, [editForm.startDate, editForm.startTime, editForm.endDate, editForm.endTime, editForm.isOvertime, editForm.pauses, data.settings, t]);
 
     const handleSaveEdit = async () => {
       if (!editingProject || !onUpdate) return;
@@ -330,6 +374,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         
         let endIso: string | null = null;
         let totalActiveSeconds = 0;
+        let interruptionSeconds = 0;
 
         if (editForm.endDate && editForm.endTime) {
             endIso = new Date(`${editForm.endDate}T${editForm.endTime}`).toISOString();
@@ -345,6 +390,13 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             totalActiveSeconds = editingProject.totalActiveSeconds;
         }
 
+        // Calculate interruption seconds from the edited interruptions
+        interruptionSeconds = editForm.interruptions
+            .filter(i => i.status === 'Resolvido')
+            .reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
+
+        const totalSeconds = totalActiveSeconds + interruptionSeconds;
+
         const updatedProject = {
             ...editingProject,
             ns: editForm.ns,
@@ -354,18 +406,63 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             implementType: editForm.implementType,
             flooringType: editForm.flooringType,
             totalActiveSeconds: totalActiveSeconds,
+            interruptionSeconds: interruptionSeconds,
+            totalSeconds: totalSeconds,
             estimatedSeconds: estimatedSeconds > 0 ? estimatedSeconds : undefined,
             userId: editForm.userId || undefined,
             startTime: startIso,
             endTime: endIso,
-            isOvertime: editForm.isOvertime
+            isOvertime: editForm.isOvertime,
+            pauses: editForm.pauses
         };
         
+        // Save project
         await onUpdate(updatedProject);
+
+        // Save interruptions
+        // We need to handle additions, updates, and deletions
+        const originalInterruptions = data.interruptions.filter(i => i.projectId === editingProject.id);
+        
+        // 1. Find deleted interruptions
+        const deletedIds = originalInterruptions
+            .filter(orig => !editForm.interruptions.find(curr => curr.id === orig.id))
+            .map(i => i.id);
+        
+        for (const id of deletedIds) {
+            await supabase.from('interruptions').delete().eq('id', id);
+        }
+
+        // 2. Find new or updated interruptions
+        for (const interruption of editForm.interruptions) {
+            const payload: any = {
+                project_id: editingProject.id,
+                project_ns: updatedProject.ns,
+                client_name: updatedProject.clientName,
+                designer_id: updatedProject.userId,
+                start_time: interruption.startTime,
+                end_time: interruption.endTime || null,
+                problem_type: interruption.problemType,
+                responsible_area: interruption.responsibleArea,
+                responsible_person: interruption.responsiblePerson,
+                description: interruption.description,
+                status: interruption.status,
+                total_time_seconds: interruption.totalTimeSeconds
+            };
+
+            if (originalInterruptions.find(orig => orig.id === interruption.id)) {
+                // Update
+                await supabase.from('interruptions').update(payload).eq('id', interruption.id);
+            } else {
+                // Insert
+                await supabase.from('interruptions').insert([{ ...payload, id: interruption.id }]);
+            }
+        }
+
+        addToast(t('saveSuccess'), 'success');
         setEditingProject(null);
       } catch (error) {
         console.error("Failed to save project", error);
-        alert("Erro ao salvar alterações. Tente novamente.");
+        addToast(t('saveError'), 'error');
       } finally {
         setIsSaving(false);
       }
@@ -814,6 +911,15 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 >
                                     <Edit className="w-4 h-4" />
                                 </button>
+                                {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
+                                    <button 
+                                        onClick={() => recalculateSingleProject(project)}
+                                        className="text-gray-400 dark:text-slate-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 p-1.5 rounded transition"
+                                        title={t('recalculate')}
+                                    >
+                                        <RefreshCw className="w-4 h-4" />
+                                    </button>
+                                )}
                                 <button 
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -1168,7 +1274,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
                     <h3 className="text-lg font-bold text-gray-800 dark:text-slate-100 flex items-center">
                         <Edit className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
-                        {t('editRelease')}
+                        {t('editProject')}
                     </h3>
                     <button 
                         onClick={() => setEditingProject(null)}
@@ -1354,13 +1460,322 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             />
                         </div>
                     </div>
+                    
+                    <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
+                        <div className="flex items-center">
+                            <Timer className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
+                            <span className="text-sm font-medium text-blue-900 dark:text-blue-200">{t('overtimeMode')}</span>
+                        </div>
+                        <button
+                            onClick={() => setEditForm({ ...editForm, isOvertime: !editForm.isOvertime })}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                                editForm.isOvertime ? 'bg-blue-600' : 'bg-gray-200 dark:bg-slate-700'
+                            }`}
+                        >
+                            <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    editForm.isOvertime ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                            />
+                        </button>
+                    </div>
+
+                    {/* Pauses Section */}
+                    <div className="space-y-3 border-t border-gray-100 dark:border-slate-700 pt-4 mt-2">
+                        <div className="flex justify-between items-center">
+                            <label className="text-sm font-bold text-gray-800 dark:text-slate-200 flex items-center">
+                                <Timer className="w-4 h-4 mr-2 text-amber-500" />
+                                {t('pauses')}
+                            </label>
+                            <button 
+                                onClick={() => {
+                                    const newPause: PauseRecord = {
+                                        reason: t('manualPause'),
+                                        timestamp: new Date().toISOString(),
+                                        durationSeconds: 3600 // Default 1h
+                                    };
+                                    setEditForm({ ...editForm, pauses: [...editForm.pauses, newPause] });
+                                }}
+                                className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded border border-amber-200 dark:border-amber-800 flex items-center hover:bg-amber-100 transition-colors"
+                            >
+                                <Plus className="w-3 h-3 mr-1" />
+                                {t('addPause')}
+                            </button>
+                        </div>
+
+                        {editForm.pauses.length === 0 ? (
+                            <p className="text-xs text-gray-500 dark:text-slate-500 italic text-center py-2">{t('noPauses')}</p>
+                        ) : (
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                {editForm.pauses.map((pause, idx) => (
+                                    <div key={idx} className="bg-gray-50 dark:bg-black p-3 rounded-lg border border-gray-200 dark:border-slate-700 relative group">
+                                        <div className="grid grid-cols-1 gap-2">
+                                            <input 
+                                                type="text"
+                                                value={pause.reason}
+                                                onChange={(e) => {
+                                                    const newPauses = [...editForm.pauses];
+                                                    newPauses[idx].reason = e.target.value;
+                                                    setEditForm({ ...editForm, pauses: newPauses });
+                                                }}
+                                                placeholder={t('reason')}
+                                                className="w-full text-xs p-1 bg-transparent border-b border-gray-200 dark:border-slate-700 outline-none focus:border-amber-500 dark:text-white"
+                                            />
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div className="col-span-2 flex gap-1">
+                                                    <input 
+                                                        type="date"
+                                                        value={getLocalDate(pause.timestamp)}
+                                                        onChange={(e) => {
+                                                            const time = getLocalTime(pause.timestamp);
+                                                            const newPauses = [...editForm.pauses];
+                                                            newPauses[idx].timestamp = new Date(`${e.target.value}T${time}`).toISOString();
+                                                            setEditForm({ ...editForm, pauses: newPauses });
+                                                        }}
+                                                        className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                    />
+                                                    <input 
+                                                        type="time"
+                                                        value={getLocalTime(pause.timestamp)}
+                                                        onChange={(e) => {
+                                                            const date = getLocalDate(pause.timestamp);
+                                                            const newPauses = [...editForm.pauses];
+                                                            newPauses[idx].timestamp = new Date(`${date}T${e.target.value}`).toISOString();
+                                                            setEditForm({ ...editForm, pauses: newPauses });
+                                                        }}
+                                                        className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <input 
+                                                        type="number"
+                                                        value={Math.floor(pause.durationSeconds / 60)}
+                                                        onChange={(e) => {
+                                                            const newPauses = [...editForm.pauses];
+                                                            newPauses[idx].durationSeconds = (parseInt(e.target.value) || 0) * 60;
+                                                            setEditForm({ ...editForm, pauses: newPauses });
+                                                        }}
+                                                        className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                    />
+                                                    <span className="text-[10px] text-gray-500">min</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                const newPauses = editForm.pauses.filter((_, i) => i !== idx);
+                                                setEditForm({ ...editForm, pauses: newPauses });
+                                            }}
+                                            className="absolute -top-2 -right-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity border border-red-200 dark:border-red-800 shadow-sm"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Interruptions Section */}
+                    <div className="space-y-3 border-t border-gray-100 dark:border-slate-700 pt-4 mt-2">
+                        <div className="flex justify-between items-center">
+                            <label className="text-sm font-bold text-gray-800 dark:text-slate-200 flex items-center">
+                                <AlertCircle className="w-4 h-4 mr-2 text-red-500" />
+                                {t('interruptions')}
+                            </label>
+                            <button 
+                                onClick={() => {
+                                    const newInterruption: InterruptionRecord = {
+                                        id: crypto.randomUUID(),
+                                        projectId: editingProject?.id,
+                                        projectNs: editForm.ns,
+                                        clientName: editForm.clientName,
+                                        designerId: editForm.userId || currentUser.id,
+                                        startTime: new Date().toISOString(),
+                                        endTime: null,
+                                        problemType: data.interruptionTypes[0]?.name || '',
+                                        responsibleArea: InterruptionArea.OUTROS,
+                                        responsiblePerson: '',
+                                        description: '',
+                                        status: InterruptionStatus.OPEN,
+                                        totalTimeSeconds: 0
+                                    };
+                                    setEditForm({ ...editForm, interruptions: [...editForm.interruptions, newInterruption] });
+                                }}
+                                className="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-1 rounded border border-red-200 dark:border-red-800 flex items-center hover:bg-red-100 transition-colors"
+                            >
+                                <Plus className="w-3 h-3 mr-1" />
+                                {t('addInterruption')}
+                            </button>
+                        </div>
+
+                        {editForm.interruptions.length === 0 ? (
+                            <p className="text-xs text-gray-500 dark:text-slate-500 italic text-center py-2">{t('noInterruptions')}</p>
+                        ) : (
+                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                {editForm.interruptions.map((interruption, idx) => (
+                                    <div key={interruption.id} className="bg-gray-50 dark:bg-black p-3 rounded-lg border border-gray-200 dark:border-slate-700 relative group">
+                                        <div className="grid grid-cols-1 gap-2">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <select 
+                                                    value={interruption.problemType}
+                                                    onChange={(e) => {
+                                                        const newInts = [...editForm.interruptions];
+                                                        newInts[idx].problemType = e.target.value;
+                                                        setEditForm({ ...editForm, interruptions: newInts });
+                                                    }}
+                                                    className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                >
+                                                    {data.interruptionTypes.map(type => (
+                                                        <option key={type.id} value={type.name}>{type.name}</option>
+                                                    ))}
+                                                </select>
+                                                <select 
+                                                    value={interruption.status}
+                                                    onChange={(e) => {
+                                                        const newInts = [...editForm.interruptions];
+                                                        newInts[idx].status = e.target.value as InterruptionStatus;
+                                                        setEditForm({ ...editForm, interruptions: newInts });
+                                                    }}
+                                                    className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                >
+                                                    <option value={InterruptionStatus.OPEN}>{InterruptionStatus.OPEN}</option>
+                                                    <option value={InterruptionStatus.WAITING}>{InterruptionStatus.WAITING}</option>
+                                                    <option value={InterruptionStatus.RESOLVED}>{InterruptionStatus.RESOLVED}</option>
+                                                    <option value={InterruptionStatus.CANCELLED}>{InterruptionStatus.CANCELLED}</option>
+                                                </select>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="flex gap-1">
+                                                    <div className="flex flex-col gap-1 w-full">
+                                                        <span className="text-[9px] text-gray-400 uppercase">{t('startAbbr')}</span>
+                                                        <div className="flex gap-1">
+                                                            <input 
+                                                                type="date"
+                                                                value={getLocalDate(interruption.startTime)}
+                                                                onChange={(e) => {
+                                                                    const time = getLocalTime(interruption.startTime);
+                                                                    const newInts = [...editForm.interruptions];
+                                                                    const newStart = new Date(`${e.target.value}T${time}`).toISOString();
+                                                                    newInts[idx].startTime = newStart;
+                                                                    if (newInts[idx].endTime) {
+                                                                        const diff = (new Date(newInts[idx].endTime!).getTime() - new Date(newStart).getTime()) / 1000;
+                                                                        newInts[idx].totalTimeSeconds = Math.max(0, diff);
+                                                                    }
+                                                                    setEditForm({ ...editForm, interruptions: newInts });
+                                                                }}
+                                                                className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                            />
+                                                            <input 
+                                                                type="time"
+                                                                value={getLocalTime(interruption.startTime)}
+                                                                onChange={(e) => {
+                                                                    const date = getLocalDate(interruption.startTime);
+                                                                    const newInts = [...editForm.interruptions];
+                                                                    const newStart = new Date(`${date}T${e.target.value}`).toISOString();
+                                                                    newInts[idx].startTime = newStart;
+                                                                    if (newInts[idx].endTime) {
+                                                                        const diff = (new Date(newInts[idx].endTime!).getTime() - new Date(newStart).getTime()) / 1000;
+                                                                        newInts[idx].totalTimeSeconds = Math.max(0, diff);
+                                                                    }
+                                                                    setEditForm({ ...editForm, interruptions: newInts });
+                                                                }}
+                                                                className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col gap-1 w-full">
+                                                        <span className="text-[9px] text-gray-400 uppercase">{t('endAbbr')}</span>
+                                                        <div className="flex gap-1">
+                                                            <input 
+                                                                type="date"
+                                                                value={interruption.endTime ? getLocalDate(interruption.endTime) : ''}
+                                                                onChange={(e) => {
+                                                                    const time = interruption.endTime ? getLocalTime(interruption.endTime) : '00:00';
+                                                                    const newInts = [...editForm.interruptions];
+                                                                    const newEnd = new Date(`${e.target.value}T${time}`).toISOString();
+                                                                    newInts[idx].endTime = newEnd;
+                                                                    const diff = (new Date(newEnd).getTime() - new Date(newInts[idx].startTime).getTime()) / 1000;
+                                                                    newInts[idx].totalTimeSeconds = Math.max(0, diff);
+                                                                    setEditForm({ ...editForm, interruptions: newInts });
+                                                                }}
+                                                                className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                            />
+                                                            <input 
+                                                                type="time"
+                                                                value={interruption.endTime ? getLocalTime(interruption.endTime) : ''}
+                                                                onChange={(e) => {
+                                                                    const date = interruption.endTime ? getLocalDate(interruption.endTime) : getLocalDate(interruption.startTime);
+                                                                    const newInts = [...editForm.interruptions];
+                                                                    const newEnd = new Date(`${date}T${e.target.value}`).toISOString();
+                                                                    newInts[idx].endTime = newEnd;
+                                                                    const diff = (new Date(newEnd).getTime() - new Date(newInts[idx].startTime).getTime()) / 1000;
+                                                                    newInts[idx].totalTimeSeconds = Math.max(0, diff);
+                                                                    setEditForm({ ...editForm, interruptions: newInts });
+                                                                }}
+                                                                className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <input 
+                                                        type="number"
+                                                        value={Math.floor(interruption.totalTimeSeconds / 60)}
+                                                        onChange={(e) => {
+                                                            const newInts = [...editForm.interruptions];
+                                                            newInts[idx].totalTimeSeconds = (parseInt(e.target.value) || 0) * 60;
+                                                            setEditForm({ ...editForm, interruptions: newInts });
+                                                        }}
+                                                        className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
+                                                    />
+                                                    <span className="text-[10px] text-gray-500">min</span>
+                                                </div>
+                                            </div>
+                                            <textarea 
+                                                value={interruption.description}
+                                                onChange={(e) => {
+                                                    const newInts = [...editForm.interruptions];
+                                                    newInts[idx].description = e.target.value;
+                                                    setEditForm({ ...editForm, interruptions: newInts });
+                                                }}
+                                                placeholder={t('description')}
+                                                className="w-full text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded dark:text-white"
+                                                rows={2}
+                                            />
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                const newInts = editForm.interruptions.filter((_, i) => i !== idx);
+                                                setEditForm({ ...editForm, interruptions: newInts });
+                                            }}
+                                            className="absolute -top-2 -right-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity border border-red-200 dark:border-red-800 shadow-sm"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
 
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg text-xs text-blue-800 dark:text-blue-300">
                         <div className="flex items-start mb-2">
                             <Clock className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
-                            <p className="text-gray-500 dark:text-slate-400">{t('autoCalculateTime')}:</p>
+                            <div className="flex-1">
+                                <p className="text-gray-500 dark:text-slate-400 font-bold">{t('autoCalculateTime')}:</p>
+                                <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5">
+                                    {editForm.isOvertime 
+                                        ? t('overtimeModeEnabled')
+                                        : `${t('workingHoursRule')}: ${data.settings.workdayStart || '07:30'} - ${data.settings.workdayEnd || '17:30'}`}
+                                </p>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="grid grid-cols-4 gap-2 text-center">
+                            <div className="bg-white dark:bg-black p-2 rounded border border-blue-100 dark:border-blue-900/50">
+                                <div className="text-[10px] text-gray-500 dark:text-slate-500">{t('wallClock')}</div>
+                                <div className="font-mono font-bold text-gray-400 dark:text-slate-500">{formatDuration(durationPreview.wallClock)}</div>
+                            </div>
                             <div className="bg-white dark:bg-black p-2 rounded border border-blue-100 dark:border-blue-900/50">
                                 <div className="text-[10px] text-gray-500 dark:text-slate-500">{t('gross')}</div>
                                 <div className="font-mono font-bold text-gray-800 dark:text-slate-200">{formatDuration(durationPreview.gross)}</div>
@@ -1379,6 +1794,34 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 {durationPreview.error}
                             </div>
                         )}
+                    </div>
+
+                    <div className="p-3 bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-700 rounded-lg text-[10px] text-gray-500 dark:text-slate-400">
+                        <p className="font-bold mb-1 flex items-center text-blue-600 dark:text-blue-400">
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            {t('ruleAnalysis')}
+                        </p>
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between border-b border-gray-100 dark:border-slate-800 pb-1">
+                                <span>1. {t('ruleStep1')}</span>
+                                <span className="font-mono font-bold">{formatDuration(durationPreview.wallClock)}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 dark:border-slate-800 pb-1">
+                                <span>2. {t('ruleStep2')}</span>
+                                <span className="font-mono font-bold">{formatDuration(durationPreview.gross)}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 dark:border-slate-800 pb-1">
+                                <span>3. {t('ruleStep3')}</span>
+                                <span className="font-mono font-bold text-red-500">-{formatDuration(durationPreview.pauses)}</span>
+                            </div>
+                            <div className="flex justify-between pt-1 font-bold text-gray-700 dark:text-slate-200">
+                                <span>4. {t('ruleStep4')}</span>
+                                <span className="font-mono">{formatDuration(durationPreview.net)}</span>
+                            </div>
+                        </div>
+                        <p className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 italic text-[9px]">
+                            {editForm.isOvertime ? t('ruleOvertime') : t('ruleStandard')}
+                        </p>
                     </div>
 
                     <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-300">
