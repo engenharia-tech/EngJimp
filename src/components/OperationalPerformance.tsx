@@ -131,6 +131,14 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     }
   }, [language]);
 
+  const canEditOthers = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role);
+  const canEditCurrent = selectedUserId === currentUser.id || canEditOthers;
+
+  const filteredUsers = useMemo(() => {
+    if (canEditOthers) return users;
+    return users.filter(u => u.id === currentUser.id);
+  }, [users, currentUser.id, canEditOthers]);
+
   const filteredActivities = useMemo(() => {
     return activities.filter(a => {
       const activityStart = parseISO(a.startTime);
@@ -168,6 +176,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       }
     });
   }, [projects, selectedDate, selectedUserId, viewMode]);
+
+  const currentActivity = useMemo(() => {
+    return activities.find(a => !a.endTime && a.userId === selectedUserId);
+  }, [activities, selectedUserId]);
 
   // Automated Weekend Marking
   useEffect(() => {
@@ -287,6 +299,41 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         hours: (value / 3600).toFixed(2)
       }));
   }, [timelineItems, activityTypes, t]);
+
+  const chartData = useMemo(() => {
+    if (viewMode === 'day') return [];
+
+    const data: Record<string, number> = {};
+    
+    if (viewMode === 'month') {
+      const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
+      for (let i = 1; i <= daysInMonth; i++) {
+        data[i.toString().padStart(2, '0')] = 0;
+      }
+      
+      timelineItems.forEach(item => {
+        const day = format(item.start, 'dd');
+        const duration = differenceInSeconds(item.end, item.start) / 3600;
+        data[day] = (data[day] || 0) + duration;
+      });
+    } else {
+      for (let i = 0; i < 12; i++) {
+        const monthName = format(new Date(selectedDate.getFullYear(), i, 1), 'MMM', { locale: dateLocale });
+        data[monthName] = 0;
+      }
+      
+      timelineItems.forEach(item => {
+        const monthName = format(item.start, 'MMM', { locale: dateLocale });
+        const duration = differenceInSeconds(item.end, item.start) / 3600;
+        data[monthName] = (data[monthName] || 0) + duration;
+      });
+    }
+
+    return Object.entries(data).map(([name, hours]) => ({
+      name,
+      hours: parseFloat(hours.toFixed(2))
+    }));
+  }, [timelineItems, viewMode, selectedDate, dateLocale]);
 
   const totalMinutes = useMemo(() => {
     return stats.reduce((acc, curr) => acc + curr.value, 0);
@@ -490,11 +537,6 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   };
 
   const isReadOnly = currentUser.role === 'CEO';
-  const canEditOthers = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
-  const isViewingSelf = selectedUserId === currentUser.id;
-  const canEditCurrent = !isReadOnly && (isViewingSelf || canEditOthers);
-
-  const currentRunningActivity = activities.find(a => !a.endTime && a.userId === selectedUserId);
 
   const toggleFlag = async (activity: OperationalActivity) => {
     if (!canEditCurrent) return;
@@ -503,10 +545,6 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       isFlagged: !activity.isFlagged
     });
   };
-
-  const filteredUsers = useMemo(() => {
-    return users.filter(u => ['PROJETISTA', 'COORDENADOR', 'GESTOR', 'PROCESSOS', 'CEO'].includes(u.role));
-  }, [users]);
 
   return (
     <div className="space-y-6">
@@ -588,6 +626,122 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           )}
         </div>
 
+      {/* View Mode & Date Selector - Common for all tabs */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex p-1 bg-gray-100 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 w-full sm:w-auto">
+          <button
+            onClick={() => setViewMode('day')}
+            className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+              viewMode === 'day'
+                ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t('daily')}
+          </button>
+          <button
+            onClick={() => setViewMode('month')}
+            className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+              viewMode === 'month'
+                ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t('monthly')}
+          </button>
+          <button
+            onClick={() => setViewMode('year')}
+            className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+              viewMode === 'year'
+                ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t('yearly')}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between bg-gray-50 dark:bg-slate-900 p-1 rounded-xl border border-gray-200 dark:border-slate-700 w-full sm:w-auto min-w-[240px]">
+          <button 
+            onClick={() => {
+              if (viewMode === 'day') setSelectedDate(subDays(selectedDate, 1));
+              else if (viewMode === 'month') {
+                const d = new Date(selectedDate);
+                d.setMonth(d.getMonth() - 1);
+                setSelectedDate(d);
+              } else {
+                const d = new Date(selectedDate);
+                d.setFullYear(d.getFullYear() - 1);
+                setSelectedDate(d);
+              }
+            }}
+            className="p-2 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all text-gray-500"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <div className="relative flex-1 flex justify-center items-center cursor-pointer hover:bg-white dark:hover:bg-slate-800 rounded-lg py-1 transition-all mx-2">
+            {viewMode === 'day' ? (
+              <>
+                <input 
+                  type="date"
+                  value={format(selectedDate, 'yyyy-MM-dd')}
+                  onChange={(e) => {
+                    const [year, month, day] = e.target.value.split('-').map(Number);
+                    const newDate = new Date(year, month - 1, day, 12, 0, 0);
+                    if (!isNaN(newDate.getTime())) {
+                      setSelectedDate(newDate);
+                    }
+                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <span className={`font-bold uppercase tracking-wider text-sm ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                  {format(selectedDate, 'dd/MM/yyyy')}
+                </span>
+              </>
+            ) : viewMode === 'month' ? (
+              <>
+                <input 
+                  type="month"
+                  value={format(selectedDate, 'yyyy-MM')}
+                  onChange={(e) => {
+                    const [year, month] = e.target.value.split('-').map(Number);
+                    const newDate = new Date(year, month - 1, 1, 12, 0, 0);
+                    if (!isNaN(newDate.getTime())) {
+                      setSelectedDate(newDate);
+                    }
+                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <span className={`font-bold uppercase tracking-wider text-sm ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                  {format(selectedDate, 'MMMM yyyy', { locale: dateLocale })}
+                </span>
+              </>
+            ) : (
+              <span className={`font-bold uppercase tracking-wider text-sm ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                {format(selectedDate, 'yyyy')}
+              </span>
+            )}
+          </div>
+          <button 
+            onClick={() => {
+              if (viewMode === 'day') setSelectedDate(addDays(selectedDate, 1));
+              else if (viewMode === 'month') {
+                const d = new Date(selectedDate);
+                d.setMonth(d.getMonth() + 1);
+                setSelectedDate(d);
+              } else {
+                const d = new Date(selectedDate);
+                d.setFullYear(d.getFullYear() + 1);
+                setSelectedDate(d);
+              }
+            }}
+            className="p-2 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all text-gray-500"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      </div>
+
       {/* Database Warning Banner */}
       {isUsingTempActivities && (
         <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-xl flex items-start animate-in slide-in-from-top duration-300">
@@ -613,232 +767,18 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                 <Activity className="text-blue-500" size={20} />
                 {t('currentActivity')}
               </h3>
-
-              {!canEditCurrent ? (
-                <div className="p-4 bg-gray-50 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 text-center">
-                  <p className="text-sm text-gray-500 italic">{t('readOnlyMode') || 'Modo apenas leitura'}</p>
-                </div>
-              ) : currentRunningActivity ? (
-                <div className="space-y-4">
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
-                    <p className="text-sm text-blue-600 dark:text-blue-400 font-medium uppercase tracking-wider">
-                      {currentRunningActivity.activityName}
-                    </p>
-                    <div className="text-3xl font-mono font-bold text-blue-700 dark:text-blue-300 mt-1">
-                      <Timer startTime={currentRunningActivity.startTime} />
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => toggleFlag(currentRunningActivity)}
-                      className={`p-3 rounded-xl transition-all border ${
-                        currentRunningActivity.isFlagged
-                          ? 'bg-red-50 border-red-200 text-red-600 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400'
-                          : 'bg-gray-50 border-gray-200 text-gray-400 dark:bg-slate-900 dark:border-slate-700 hover:text-red-500'
-                      }`}
-                      title={t('flagActivity') || 'Sinalizar Atividade'}
-                    >
-                      <Flag size={20} fill={currentRunningActivity.isFlagged ? 'currentColor' : 'none'} />
-                    </button>
-                    <button
-                      onClick={() => handleStopActivity(currentRunningActivity)}
-                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-600/20"
-                    >
-                      <Square size={20} fill="currentColor" />
-                      {t('stopActivity')}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-3">
-                    <label className={`text-xs font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}`}>
-                      {t('selectActivity') || 'O que você está fazendo agora?'}
-                    </label>
-                    <div className="space-y-3">
-                      <select
-                        value={selectedActivityType}
-                        className={`w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
-                          theme === 'dark' ? 'text-white' : 'text-gray-800'
-                        }`}
-                        onChange={(e) => setSelectedActivityType(e.target.value)}
-                      >
-                        <option value="" disabled>{t('selectActivityType')}</option>
-                        {activityTypes.filter(t => t.isActive !== false).map(type => (
-                          <option key={type.id} value={type.id}>{type.name}</option>
-                        ))}
-                      </select>
-                      
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => selectedActivityType && handleStartActivity(selectedActivityType)}
-                          disabled={!selectedActivityType}
-                          className={`flex-1 flex items-center justify-center gap-2 py-4 bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
-                        >
-                          <Play size={24} fill="currentColor" />
-                          <span className="uppercase tracking-wider text-base">{t('play') || 'Iniciar'}</span>
-                        </button>
-
-                        <button
-                          onClick={() => setIsAddingType(true)}
-                          className={`p-4 bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 rounded-xl hover:bg-gray-200 dark:hover:bg-slate-700 transition-all border border-gray-200 dark:border-slate-700`}
-                          title={t('addActivityType')}
-                        >
-                          <Plus size={24} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {activityTypes.filter(t => t.isActive !== false).length === 0 && (
-                    <div className="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 rounded-2xl text-center">
-                      <p className="text-sm text-amber-600 dark:text-amber-400 font-bold uppercase tracking-tight">
-                        {t('noActivityTypesFound') || 'Nenhum tipo de atividade encontrado. Adicione um para começar.'}
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div className="pt-4 border-t border-gray-100 dark:border-slate-700/50">
-                    <p className="text-[10px] text-center font-bold text-gray-400 dark:text-slate-500 uppercase tracking-[0.2em]">
-                      {t('operationalPerformanceDesc') || 'Controle de atividades de engenharia'}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* View Mode & Date Selector */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700 space-y-6">
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                    {t('viewMode')}
-                  </h3>
-                  <BarChart3 size={18} className="text-gray-400" />
-                </div>
-                <div className="flex p-1 bg-gray-100 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700">
-                  <button
-                    onClick={() => setViewMode('day')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                      viewMode === 'day'
-                        ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {t('daily')}
-                  </button>
-                  <button
-                    onClick={() => setViewMode('month')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                      viewMode === 'month'
-                        ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {t('monthly')}
-                  </button>
-                  <button
-                    onClick={() => setViewMode('year')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                      viewMode === 'year'
-                        ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {t('yearly')}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                    {viewMode === 'day' ? t('selectDate') : viewMode === 'month' ? t('selectMonth') : t('selectYear')}
-                  </h3>
-                  <Calendar size={18} className="text-gray-400" />
-                </div>
-                <div className="flex items-center justify-between bg-gray-50 dark:bg-slate-900 p-2 rounded-xl border border-gray-200 dark:border-slate-700">
-                  <button 
-                    onClick={() => {
-                      if (viewMode === 'day') setSelectedDate(subDays(selectedDate, 1));
-                      else if (viewMode === 'month') {
-                        const d = new Date(selectedDate);
-                        d.setMonth(d.getMonth() - 1);
-                        setSelectedDate(d);
-                      } else {
-                        const d = new Date(selectedDate);
-                        d.setFullYear(d.getFullYear() - 1);
-                        setSelectedDate(d);
-                      }
-                    }}
-                    className="p-2 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all text-gray-500 z-10"
-                  >
-                    <ChevronLeft size={20} />
-                  </button>
-                  <div className="relative flex-1 flex justify-center items-center cursor-pointer hover:bg-white dark:hover:bg-slate-800 rounded-lg py-1 transition-all mx-2">
-                    {viewMode === 'day' ? (
-                      <>
-                        <input 
-                          type="date"
-                          value={format(selectedDate, 'yyyy-MM-dd')}
-                          onChange={(e) => {
-                            const [year, month, day] = e.target.value.split('-').map(Number);
-                            const newDate = new Date(year, month - 1, day, 12, 0, 0);
-                            if (!isNaN(newDate.getTime())) {
-                              setSelectedDate(newDate);
-                            }
-                          }}
-                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                        />
-                        <span className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                          {format(selectedDate, 'dd/MM/yyyy')}
-                        </span>
-                      </>
-                    ) : viewMode === 'month' ? (
-                      <>
-                        <input 
-                          type="month"
-                          value={format(selectedDate, 'yyyy-MM')}
-                          onChange={(e) => {
-                            const [year, month] = e.target.value.split('-').map(Number);
-                            const newDate = new Date(year, month - 1, 1, 12, 0, 0);
-                            if (!isNaN(newDate.getTime())) {
-                              setSelectedDate(newDate);
-                            }
-                          }}
-                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                        />
-                        <span className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                          {format(selectedDate, 'MMMM yyyy', { locale: dateLocale })}
-                        </span>
-                      </>
-                    ) : (
-                      <span className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                        {format(selectedDate, 'yyyy')}
-                      </span>
-                    )}
-                  </div>
-                  <button 
-                    onClick={() => {
-                      if (viewMode === 'day') setSelectedDate(addDays(selectedDate, 1));
-                      else if (viewMode === 'month') {
-                        const d = new Date(selectedDate);
-                        d.setMonth(d.getMonth() + 1);
-                        setSelectedDate(d);
-                      } else {
-                        const d = new Date(selectedDate);
-                        d.setFullYear(d.getFullYear() + 1);
-                        setSelectedDate(d);
-                      }
-                    }}
-                    className="p-2 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all text-gray-500 z-10"
-                  >
-                    <ChevronRight size={20} />
-                  </button>
-                </div>
+              
+                <CurrentActivityTracker 
+                  currentActivity={currentActivity}
+                  activityTypes={activityTypes}
+                  onStartActivity={handleStartActivity}
+                  onStopActivity={handleStopActivity}
+                  canEditCurrent={canEditCurrent}
+                  theme={theme}
+                  t={t}
+                />
               </div>
             </div>
-          </div>
 
           {/* Timeline & Gaps */}
           <div className="lg:col-span-2 space-y-6">
@@ -985,6 +925,44 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
               </p>
             </div>
           </div>
+
+          {viewMode !== 'day' && (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+              <h3 className={`text-lg font-semibold mb-6 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                {t('productivityByPeriod') || 'Produtividade por Período'}
+              </h3>
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#f1f5f9'} />
+                    <XAxis 
+                      dataKey="name" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                    />
+                    <YAxis 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                      unit="h"
+                    />
+                    <Tooltip 
+                      cursor={{ fill: theme === 'dark' ? '#1e293b' : '#f8fafc' }}
+                      contentStyle={{ 
+                        backgroundColor: theme === 'dark' ? '#1e293b' : '#fff',
+                        borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
+                        color: theme === 'dark' ? '#fff' : '#000',
+                        borderRadius: '12px',
+                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
+                      }}
+                    />
+                    <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={viewMode === 'month' ? 15 : 40} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
@@ -1260,6 +1238,100 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CurrentActivityTracker: React.FC<{
+  currentActivity: OperationalActivity | undefined;
+  activityTypes: ActivityType[];
+  onStartActivity: (typeId: string) => Promise<void>;
+  onStopActivity: (activity: OperationalActivity) => Promise<void>;
+  canEditCurrent: boolean;
+  theme: 'light' | 'dark';
+  t: any;
+}> = ({ currentActivity, activityTypes, onStartActivity, onStopActivity, canEditCurrent, theme, t }) => {
+  const [selectedType, setSelectedType] = useState('');
+
+  useEffect(() => {
+    if (!selectedType && activityTypes.length > 0) {
+      const firstActive = activityTypes.find(t => t.isActive !== false);
+      if (firstActive) setSelectedType(firstActive.id);
+    }
+  }, [activityTypes, selectedType]);
+
+  if (currentActivity) {
+    return (
+      <div className="space-y-4">
+        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-xl">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+              {t('ongoing') || 'Em andamento'}
+            </span>
+            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-mono font-bold">
+              <Clock size={14} className="animate-pulse" />
+              <Timer startTime={currentActivity.startTime} />
+            </div>
+          </div>
+          <h4 className={`text-lg font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            {currentActivity.activityName}
+          </h4>
+          {currentActivity.notes && (
+            <p className="text-sm text-gray-500 dark:text-slate-400 mt-1 italic">
+              "{currentActivity.notes}"
+            </p>
+          )}
+        </div>
+        
+        {canEditCurrent && (
+          <button
+            onClick={() => onStopActivity(currentActivity)}
+            className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 group"
+          >
+            <Square size={20} className="group-hover:scale-110 transition-transform" />
+            {t('stopActivity') || 'Parar Atividade'}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-gray-400 uppercase ml-1">
+          {t('selectActivityType') || 'Selecione o tipo'}
+        </label>
+        <select
+          value={selectedType}
+          onChange={(e) => setSelectedType(e.target.value)}
+          className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 dark:text-white font-medium"
+        >
+          {activityTypes.filter(t => t.isActive !== false).map(type => (
+            <option key={type.id} value={type.id}>{type.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {canEditCurrent && (
+        <button
+          onClick={() => onStartActivity(selectedType)}
+          disabled={!selectedType}
+          className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 group"
+        >
+          <Play size={20} className="group-hover:scale-110 transition-transform" />
+          {t('startActivity') || 'Iniciar Atividade'}
+        </button>
+      )}
+      
+      {!canEditCurrent && (
+        <div className="py-8 text-center border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
+          <Clock size={32} className="mx-auto text-gray-200 mb-2" />
+          <p className="text-xs text-gray-400 uppercase font-bold tracking-widest">
+            {t('viewingOnly') || 'Apenas Visualização'}
+          </p>
         </div>
       )}
     </div>
