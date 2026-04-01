@@ -538,25 +538,40 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   const engineeringHourlyRate = useMemo(() => {
     let rate = data.settings.hourlyCost;
-    if (rate <= 0) {
-      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
-      const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
-      const numUsers = relevantUsers.length || 1;
-      rate = (totalSalary / numUsers) / 220;
+    
+    // Calculate average rate as a fallback
+    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
+    const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+    const numUsers = relevantUsers.length || 1;
+    const averageRate = (totalSalary / numUsers) / 220;
+
+    if (data.settings.useAutomaticCost) {
+      // If automatic cost is enabled, we use the average as the base, 
+      // but individual projects will use the specific user's rate if available.
+      return averageRate;
     }
+
+    if (rate <= 0) {
+      return averageRate;
+    }
+    
     return rate;
-  }, [data.users, data.settings.hourlyCost]);
+  }, [data.users, data.settings.hourlyCost, data.settings.useAutomaticCost]);
 
   // Calculate Stats
   const stats = useMemo(() => {
     const totalProjects = filteredProjects.length;
-    const totalSeconds = filteredProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const totalSeconds = filteredProjects.reduce((acc, p) => {
+      const pTotalSeconds = p.totalSeconds || (p.totalActiveSeconds + (p.interruptionSeconds || 0));
+      return acc + pTotalSeconds;
+    }, 0);
     const avgSeconds = totalProjects > 0 ? totalSeconds / totalProjects : 0;
     
     let totalCost = 0;
     if (isGestor) {
       filteredProjects.forEach(p => {
-        totalCost += engineeringHourlyRate * (p.totalActiveSeconds / 3600);
+        const pTotalSeconds = p.totalSeconds || (p.totalActiveSeconds + (p.interruptionSeconds || 0));
+        totalCost += engineeringHourlyRate * (pTotalSeconds / 3600);
       });
     }
 
@@ -877,8 +892,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const totalVariations = (project.variations || []).length;
                 
                 const user = usersMap[project.userId || ''];
-                const salary = user?.salary || 0;
-                const cost = engineeringHourlyRate * (project.totalActiveSeconds / 3600);
+                const pTotalSeconds = project.totalSeconds || (project.totalActiveSeconds + (project.interruptionSeconds || 0));
+                const cost = engineeringHourlyRate * (pTotalSeconds / 3600);
                 
                 const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
 
@@ -1013,7 +1028,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                               </span>
                               <span className="text-gray-500 dark:text-slate-500 flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
-                                  {formatDuration(project.totalActiveSeconds)}
+                                  {formatDuration(pTotalSeconds)}
                               </span>
                           </div>
                           
@@ -1021,11 +1036,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             <div className="w-full h-1 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                               <div 
                                 className={`h-full rounded-full transition-all duration-500 ${
-                                  project.totalActiveSeconds <= project.estimatedSeconds 
+                                  pTotalSeconds <= project.estimatedSeconds 
                                     ? 'bg-green-500' 
                                     : 'bg-red-500'
                                 }`}
-                                style={{ width: `${Math.min(100, (project.totalActiveSeconds / project.estimatedSeconds) * 100)}%` }}
+                                style={{ width: `${Math.min(100, (pTotalSeconds / project.estimatedSeconds) * 100)}%` }}
                               ></div>
                             </div>
                           ) : (
@@ -1034,11 +1049,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
                           {project.estimatedSeconds && (
                               <div className={`text-[9px] font-black uppercase tracking-tighter ${
-                                  project.totalActiveSeconds <= project.estimatedSeconds ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                                  pTotalSeconds <= project.estimatedSeconds ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                               }`}>
-                                  {project.totalActiveSeconds <= project.estimatedSeconds 
-                                      ? `✓ +${formatDuration(project.estimatedSeconds - project.totalActiveSeconds)}`
-                                      : `⚠ -${formatDuration(project.totalActiveSeconds - project.estimatedSeconds)}`
+                                  {pTotalSeconds <= project.estimatedSeconds 
+                                      ? `✓ +${formatDuration(project.estimatedSeconds - pTotalSeconds)}`
+                                      : `⚠ -${formatDuration(pTotalSeconds - project.estimatedSeconds)}`
                                   }
                               </div>
                           )}
@@ -1048,7 +1063,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
                   {isGestor && (
                     <td className="p-4">
-                      {salary > 0 ? (
+                      {engineeringHourlyRate > 0 ? (
                         <div className="flex flex-col">
                           <span className="text-sm font-bold text-red-600 dark:text-red-400">
                             {new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(cost)}
