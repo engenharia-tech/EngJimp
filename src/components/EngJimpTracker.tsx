@@ -421,14 +421,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
     const totalSeconds = finalSeconds + interruptionSeconds;
     
-    // Calculate cost based on settings or dynamic hourly cost based on total engineering salary
-    let hourlyRate = settings.hourlyCost;
-    if (hourlyRate <= 0) {
-        const relevantUsers = users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
-        const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
-        const numUsers = relevantUsers.length || 1;
-        hourlyRate = (totalSalary / numUsers) / 220;
-    }
+    // Use the hourly rate passed from settings (which is already the effective rate)
+    const hourlyRate = settings.hourlyCost;
 
     const productiveCost = (finalSeconds / 3600) * hourlyRate;
     const interruptionCost = (interruptionSeconds / 3600) * hourlyRate;
@@ -449,22 +443,29 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
     // 1. Update DB
     try {
+        console.log("Finalizing project in DB:", finishedProject.ns);
         await onUpdate(finishedProject);
+        console.log("Project updated successfully in DB.");
         
         // Close modal and clear active project immediately after DB success
         setActiveProject(null);
         setShowFinishModal(false);
         
         // 2. Send Notifications (in background, don't block UI)
+        console.log("Triggering notifications...");
         sendTeamsNotification(finishedProject);
         
         // Only send email if it hasn't been sent for this project in this session
         if (!sentEmailProjectIds.includes(finishedProject.id)) {
+            console.log("Sending email notification for project:", finishedProject.ns);
             sendEmailNotification(finishedProject).then(() => {
+                console.log("Email notification process finished.");
                 setSentEmailProjectIds(prev => [...prev, finishedProject.id]);
             }).catch(err => {
                 console.error("Delayed email error:", err);
             });
+        } else {
+            console.log("Email already sent for this project ID in this session.");
         }
         
         // 3. Trigger Excel Integration
@@ -589,6 +590,14 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   };
 
   const sendEmailNotification = async (project: ProjectSession) => {
+    console.log("sendEmailNotification started for NS:", project.ns);
+    
+    if (!settings.emailTo) {
+      console.warn("No email recipient configured in settings.");
+      addToast(t('emailToNotConfigured') || 'Destinatário de e-mail não configurado nas configurações.', 'warning');
+      return;
+    }
+
     const now = new Date();
     const hour = now.getHours();
     let greeting = t('goodMorning');
@@ -648,6 +657,13 @@ JIMPNEXUS
 `;
 
     try {
+      console.log("Email Payload Debug:", {
+        to: settings.emailTo,
+        subject: subject,
+        bodyLength: body.length
+      });
+      
+      console.log("Fetching /api/send-email with recipient:", settings.emailTo);
       const response = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -658,15 +674,24 @@ JIMPNEXUS
         })
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Email API HTTP error:", response.status, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
       const result = await response.json();
+      console.log("Email API response:", result);
+      
       if (result.success) {
         addToast(t('emailSentTo', { email: settings.emailTo }), 'success');
       } else {
+        console.error("Email API returned failure:", result.error, "Code:", result.code);
         addToast(`${t('emailError')}: ${result.error || t('checkSettings')}`, 'error');
       }
-    } catch (error) {
-      console.error("Erro ao enviar e-mail", error);
-      addToast(t('connectionErrorEmail'), 'error');
+    } catch (error: any) {
+      console.error("Erro ao enviar e-mail (catch block):", error);
+      addToast(`${t('connectionErrorEmail')}: ${error.message || error}`, 'error');
     }
   };
 

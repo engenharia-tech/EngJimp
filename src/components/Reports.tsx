@@ -33,9 +33,10 @@ interface ReportsProps {
   data: AppState;
   currentUser: User;
   theme: 'light' | 'dark';
+  settings: any;
 }
 
-export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) => {
+export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, settings }) => {
   const [filterType, setFilterType] = useState<'MONTH' | 'QUARTER' | 'SEMESTER' | 'YEAR'>('MONTH');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedQuarter, setSelectedQuarter] = useState(Math.floor(new Date().getMonth() / 3) + 1);
@@ -58,15 +59,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme }) =>
   }, []);
 
   const costPerSecond = useMemo(() => {
-    if (data.settings && !data.settings.useAutomaticCost && data.settings.hourlyCost > 0) {
-      return data.settings.hourlyCost / 3600;
-    }
-    
-    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
-    const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
-    const numUsers = relevantUsers.length || 1;
-    return ((totalSalary / numUsers) / 220) / 3600;
-  }, [data.users, data.settings]);
+    return (settings?.hourlyCost || 0) / 3600;
+  }, [settings]);
 
   const isDateInPeriod = (date: Date) => {
     const year = date.getFullYear();

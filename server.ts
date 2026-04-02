@@ -40,7 +40,7 @@ app.post("/api/gemini", async (req, res) => {
 // API Route for sending email
 app.post("/api/send-email", async (req, res) => {
   const { subject, body, to: bodyTo } = req.body;
-
+  
   // Read all SMTP configurations from environment variables
   const host = process.env.EMAIL_HOST;
   const port = parseInt(process.env.EMAIL_PORT || "587");
@@ -48,18 +48,25 @@ app.post("/api/send-email", async (req, res) => {
   const pass = process.env.EMAIL_PASS;
   const from = process.env.EMAIL_FROM || user;
   
-  // Debug log (without password)
-  console.log(`[Email Debug] Host: ${host}, Port: ${port}, User: ${user}, From: ${from}`);
-  
   // Use recipient from body if provided, otherwise fallback to env var
   const to = bodyTo || process.env.EMAIL_TO;
 
+  // Debug log (without password)
+  console.log(`[Email API] Request: To=${to}, Subject=${subject}, BodyLength=${body?.length}`);
+  console.log(`[Email API] Config: Host=${host}, Port=${port}, User=${user}, From=${from}`);
+  
   // Basic validation: Ensure essential credentials are set
   if (!host || !user || !pass || !to) {
-    console.warn("Email configuration is incomplete. Please set all required environment variables (EMAIL_HOST, EMAIL_USER, EMAIL_PASS, EMAIL_TO).");
+    const missing = [];
+    if (!host) missing.push("EMAIL_HOST");
+    if (!user) missing.push("EMAIL_USER");
+    if (!pass) missing.push("EMAIL_PASS");
+    if (!to) missing.push("EMAIL_TO (env or body)");
+    
+    console.warn(`[Email API] Incomplete configuration. Missing: ${missing.join(", ")}`);
     return res.status(500).json({ 
       success: false, 
-      error: "Configuração de e-mail incompleta no servidor. Verifique os Secrets (EMAIL_HOST, EMAIL_USER, EMAIL_PASS)." 
+      error: `Configuração de e-mail incompleta no servidor. Faltando: ${missing.join(", ")}` 
     });
   }
 
@@ -71,9 +78,9 @@ app.post("/api/send-email", async (req, res) => {
       user,
       pass,
     },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
     tls: {
       rejectUnauthorized: false
     }
@@ -81,30 +88,39 @@ app.post("/api/send-email", async (req, res) => {
 
   try {
     // Verify connection configuration
-    console.log(`Verifying SMTP connection...`);
+    console.log(`[Email API] Verifying SMTP connection...`);
     await transporter.verify();
-    console.log(`SMTP connection verified!`);
+    console.log(`[Email API] SMTP connection verified!`);
 
-    console.log(`Attempting to send email to ${to} via ${host}:${port}...`);
+    console.log(`[Email API] Sending email...`);
     await transporter.sendMail({
-      from: from,
+      from: `"JIMPNEXUS" <${from}>`,
       to: to,
       subject,
-      text: body,
+      text: body.replace(/<br>/g, '\n').replace(/<p>/g, '').replace(/<\/p>/g, '\n'),
       html: body.includes('<br>') || body.includes('<p>') ? body : undefined // Support HTML if tags are present
     });
-    console.log("Email sent successfully!");
+    console.log("[Email API] Email sent successfully!");
     res.json({ success: true });
   } catch (error: any) {
-    console.error("Error sending email:", error);
-    let errorMessage = String(error);
+    console.error("[Email API] Error sending email:", error);
+    let errorMessage = "Falha ao enviar e-mail.";
     
-    // Specific hint for common 535 error
-    if (errorMessage.includes("535")) {
+    // Specific hint for common errors
+    if (error.message.includes("535")) {
       errorMessage = "Erro de Autenticação (535): Usuário ou senha incorretos. Se estiver usando Gmail, você DEVE usar uma 'Senha de App'.";
+    } else if (error.code === 'ECONNREFUSED') {
+      errorMessage = `Não foi possível conectar ao servidor SMTP ${host}:${port}. Verifique o Host e a Porta.`;
+    } else if (error.code === 'ETIMEDOUT') {
+      errorMessage = "Tempo limite de conexão esgotado (Timeout). O servidor SMTP demorou muito para responder.";
     }
     
-    res.status(500).json({ success: false, error: errorMessage });
+    res.status(500).json({ 
+      success: false, 
+      error: errorMessage,
+      details: error.message,
+      code: error.code
+    });
   }
 });
 

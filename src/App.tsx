@@ -216,6 +216,18 @@ const AppContent: React.FC = () => {
 
   // --- HANDLERS ---
 
+  const calculatedHourlyRate = useMemo(() => {
+    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
+    const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
+    const numUsers = relevantUsers.length || 1;
+    return (totalSalary / numUsers) / 220;
+  }, [data.users]);
+
+  const effectiveSettings = useMemo(() => ({
+    ...data.settings,
+    hourlyCost: data.settings.useAutomaticCost ? calculatedHourlyRate : data.settings.hourlyCost
+  }), [data.settings, calculatedHourlyRate]);
+
   const handleProjectCreate = async (project: ProjectSession) => {
     const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
@@ -776,7 +788,7 @@ const AppContent: React.FC = () => {
               existingProjects={displayData.projects}
               allProjects={data.projects}
               interruptions={displayData.interruptions}
-              settings={data.settings}
+              settings={effectiveSettings}
               onCreate={handleProjectCreate}
               onUpdate={handleProjectUpdate}
               onAddInterruption={onAddInterruption}
@@ -823,7 +835,7 @@ const AppContent: React.FC = () => {
                     </p>
                  </div>
               </div>
-              <Dashboard data={displayData} currentUser={currentUser} theme={theme} />
+              <Dashboard data={displayData} currentUser={currentUser} theme={theme} settings={effectiveSettings} />
               {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) && (
                 <div className="mt-12">
                   <div className="mb-6">
@@ -881,12 +893,13 @@ const AppContent: React.FC = () => {
               data={displayData} 
               currentUser={currentUser} 
               theme={theme} 
+              settings={effectiveSettings}
             />
           )}
 
           {activeTab === 'settings' && ['GESTOR', 'CEO'].includes(currentUser.role) && (
             <Settings 
-              settings={data.settings}
+              settings={effectiveSettings}
               users={data.users}
               onUpdate={handleUpdateSettings}
             />
