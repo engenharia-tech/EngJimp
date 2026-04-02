@@ -13,11 +13,12 @@ interface DashboardProps {
   data: AppState;
   currentUser: User;
   theme: 'light' | 'dark';
+  settings: any;
 }
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#ec4899'];
 
-export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, settings }) => {
   const { t } = useLanguage();
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
@@ -191,15 +192,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme }
   };
 
   const costPerSecond = useMemo(() => {
-    if (data.settings && !data.settings.useAutomaticCost && data.settings.hourlyCost > 0) {
-      return data.settings.hourlyCost / 3600;
-    }
-    
-    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
-    const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
-    const numUsers = relevantUsers.length || 1;
-    return ((totalSalary / numUsers) / 220) / 3600;
-  }, [data.users, data.settings]);
+    return (settings?.hourlyCost || 0) / 3600;
+  }, [settings]);
 
   const costData = useMemo(() => {
     let totalProductive = 0;
