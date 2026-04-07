@@ -39,54 +39,54 @@ app.post("/api/gemini", async (req, res) => {
 
 // API Route for sending email
 app.post("/api/send-email", async (req, res) => {
-  const { subject, body, to: bodyTo } = req.body;
-  
-  // Read all SMTP configurations from environment variables
-  const host = process.env.EMAIL_HOST;
-  const port = parseInt(process.env.EMAIL_PORT || "587");
-  const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASS;
-  const from = process.env.EMAIL_FROM || user;
-  
-  // Use recipient from body if provided, otherwise fallback to env var
-  const to = bodyTo || process.env.EMAIL_TO;
-
-  // Debug log (without password)
-  console.log(`[Email API] Request: To=${to}, Subject=${subject}, BodyLength=${body?.length}`);
-  console.log(`[Email API] Config: Host=${host}, Port=${port}, User=${user}, From=${from}`);
-  
-  // Basic validation: Ensure essential credentials are set
-  if (!host || !user || !pass || !to) {
-    const missing = [];
-    if (!host) missing.push("EMAIL_HOST");
-    if (!user) missing.push("EMAIL_USER");
-    if (!pass) missing.push("EMAIL_PASS");
-    if (!to) missing.push("EMAIL_TO (env or body)");
-    
-    console.warn(`[Email API] Incomplete configuration. Missing: ${missing.join(", ")}`);
-    return res.status(500).json({ 
-      success: false, 
-      error: `Configuração de e-mail incompleta no servidor. Faltando: ${missing.join(", ")}` 
-    });
-  }
-
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465, // true for 465, false for other ports
-    auth: {
-      user,
-      pass,
-    },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
-    tls: {
-      rejectUnauthorized: false
-    }
-  });
-
   try {
+    const { subject, body, to: bodyTo } = req.body;
+    
+    // Read all SMTP configurations from environment variables
+    const host = process.env.EMAIL_HOST;
+    const port = parseInt(process.env.EMAIL_PORT || "587");
+    const user = process.env.EMAIL_USER;
+    const pass = process.env.EMAIL_PASS;
+    const from = process.env.EMAIL_FROM || user;
+    
+    // Use recipient from body if provided, otherwise fallback to env var
+    const to = bodyTo || process.env.EMAIL_TO;
+
+    // Debug log (without password)
+    console.log(`[Email API] Request: To=${to}, Subject=${subject}, BodyLength=${body?.length}`);
+    console.log(`[Email API] Config: Host=${host}, Port=${port}, User=${user}, From=${from}`);
+    
+    // Basic validation: Ensure essential credentials are set
+    if (!host || !user || !pass || !to) {
+      const missing = [];
+      if (!host) missing.push("EMAIL_HOST");
+      if (!user) missing.push("EMAIL_USER");
+      if (!pass) missing.push("EMAIL_PASS");
+      if (!to) missing.push("EMAIL_TO (env or body)");
+      
+      console.warn(`[Email API] Incomplete configuration. Missing: ${missing.join(", ")}`);
+      return res.status(500).json({ 
+        success: false, 
+        error: `Configuração de e-mail incompleta no servidor. Faltando: ${missing.join(", ")}` 
+      });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465, // true for 465, false for other ports
+      auth: {
+        user,
+        pass,
+      },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
     // Verify connection configuration
     console.log(`[Email API] Verifying SMTP connection...`);
     await transporter.verify();
@@ -107,21 +107,33 @@ app.post("/api/send-email", async (req, res) => {
     let errorMessage = "Falha ao enviar e-mail.";
     
     // Specific hint for common errors
-    if (error.message.includes("535")) {
-      errorMessage = "Erro de Autenticação (535): Usuário ou senha incorretos. Se estiver usando Gmail, você DEVE usar uma 'Senha de App'.";
-    } else if (error.code === 'ECONNREFUSED') {
-      errorMessage = `Não foi possível conectar ao servidor SMTP ${host}:${port}. Verifique o Host e a Porta.`;
-    } else if (error.code === 'ETIMEDOUT') {
-      errorMessage = "Tempo limite de conexão esgotado (Timeout). O servidor SMTP demorou muito para responder.";
+    if (error.message && typeof error.message === 'string') {
+      if (error.message.includes("535")) {
+        errorMessage = "Erro de Autenticação (535): Usuário ou senha incorretos. Se estiver usando Gmail, você DEVE usar uma 'Senha de App'.";
+      } else if (error.code === 'ECONNREFUSED') {
+        errorMessage = `Não foi possível conectar ao servidor SMTP. Verifique o Host e a Porta.`;
+      } else if (error.code === 'ETIMEDOUT') {
+        errorMessage = "Tempo limite de conexão esgotado (Timeout). O servidor SMTP demorou muito para responder.";
+      }
     }
     
     res.status(500).json({ 
       success: false, 
       error: errorMessage,
-      details: error.message,
+      details: error.message || String(error),
       code: error.code
     });
   }
+});
+
+// Global error handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Global Error Handler:", err);
+  res.status(500).json({
+    success: false,
+    error: "Erro interno do servidor.",
+    details: err.message || String(err)
+  });
 });
 
 // Vite middleware for development or Static serving for production
