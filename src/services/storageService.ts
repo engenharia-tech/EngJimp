@@ -47,7 +47,12 @@ const defaultState: AppState = {
     hourlyCost: 150,
     workdayStart: "07:30",
     workdayEnd: "17:30",
-    workdays: [1, 2, 3, 4, 5]
+    workdays: [1, 2, 3, 4, 5],
+    emailTo: '',
+    interruptionEmailTo: '',
+    interruptionEmailTemplate: '',
+    companyName: 'JIMP NEXUS',
+    language: 'pt-BR'
   }
 };
 
@@ -60,6 +65,8 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     logoUrl: localStorage.getItem('logo_url') || undefined,
     companyName: localStorage.getItem('company_name') || 'JIMP NEXUS',
     emailTo: localStorage.getItem('email_to') || '',
+    interruptionEmailTo: localStorage.getItem('interruption_email_to') || '',
+    interruptionEmailTemplate: localStorage.getItem('interruption_email_template') || '',
     workdayStart: localStorage.getItem('workday_start') || "07:30",
     workdayEnd: localStorage.getItem('workday_end') || "17:30",
     workdays: JSON.parse(localStorage.getItem('workdays') || "[1,2,3,4,5]"),
@@ -73,7 +80,10 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       .from('settings')
       .select('*');
     
-    if (!settingsError && settingsData && settingsData.length > 0) {
+    if (settingsError) throw settingsError;
+
+    if (settingsData && settingsData.length > 0) {
+      console.log("Fetched settings from Supabase:", settingsData);
       const hourlyCostRow = settingsData.find(s => s.key === 'hourly_cost');
       const logoUrlRow = settingsData.find(s => s.key === 'logo_url');
       const companyNameRow = settingsData.find(s => s.key === 'company_name');
@@ -108,8 +118,8 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
       if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
       localStorage.setItem('use_automatic_cost', String(settings.useAutomaticCost || false));
-      if (settings.interruptionEmailTo) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo);
-      if (settings.interruptionEmailTemplate) localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate);
+      localStorage.setItem('interruption_email_to', settings.interruptionEmailTo || '');
+      localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate || '');
       if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
       if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
       if (settings.workdays) localStorage.setItem('workdays', JSON.stringify(settings.workdays));
@@ -120,6 +130,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
   } catch (e) {
     console.warn("Error fetching settings from Supabase, using localStorage/defaults:", e);
   }
+  console.log("Final settings object:", settings);
   return settings;
 };
 
@@ -337,14 +348,15 @@ export const fetchAppState = async (): Promise<AppState> => {
 
 export const updateSettings = async (settings: AppSettings): Promise<AppState> => {
   try {
+    console.log("Updating settings with:", settings);
     // Update LocalStorage first for immediate feedback
     localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
     if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
     if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
-    if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
+    if (settings.emailTo !== undefined) localStorage.setItem('email_to', settings.emailTo || '');
     localStorage.setItem('use_automatic_cost', String(settings.useAutomaticCost || false));
-    if (settings.interruptionEmailTo) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo);
-    if (settings.interruptionEmailTemplate) localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate);
+    localStorage.setItem('interruption_email_to', settings.interruptionEmailTo || '');
+    localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate || '');
     if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
     if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
     if (settings.workdays) localStorage.setItem('workdays', JSON.stringify(settings.workdays));
@@ -355,10 +367,10 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
 
     if (settings.logoUrl !== undefined) updates.push({ key: 'logo_url', value: settings.logoUrl });
     if (settings.companyName !== undefined) updates.push({ key: 'company_name', value: settings.companyName });
-    if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo });
+    if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo || '' });
     if (settings.useAutomaticCost !== undefined) updates.push({ key: 'use_automatic_cost', value: String(settings.useAutomaticCost) });
-    if (settings.interruptionEmailTo !== undefined) updates.push({ key: 'interruption_email_to', value: settings.interruptionEmailTo });
-    if (settings.interruptionEmailTemplate !== undefined) updates.push({ key: 'interruption_email_template', value: settings.interruptionEmailTemplate });
+    if (settings.interruptionEmailTo !== undefined) updates.push({ key: 'interruption_email_to', value: settings.interruptionEmailTo || '' });
+    if (settings.interruptionEmailTemplate !== undefined) updates.push({ key: 'interruption_email_template', value: settings.interruptionEmailTemplate || '' });
     if (settings.workdayStart !== undefined) updates.push({ key: 'workday_start', value: settings.workdayStart });
     if (settings.workdayEnd !== undefined) updates.push({ key: 'workday_end', value: settings.workdayEnd });
     if (settings.workdays !== undefined) updates.push({ key: 'workdays', value: JSON.stringify(settings.workdays) });
@@ -366,11 +378,16 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.lunchEnd !== undefined) updates.push({ key: 'lunch_end', value: settings.lunchEnd });
     if (settings.language !== undefined) updates.push({ key: 'language', value: settings.language });
 
+    console.log("Supabase updates payload:", updates);
+
     const { error } = await supabase
       .from('settings')
       .upsert(updates, { onConflict: 'key' });
     
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase settings update error:", error);
+      throw error;
+    }
     return fetchAppState();
   } catch (error) {
     console.error("Failed to update settings in Supabase", error);

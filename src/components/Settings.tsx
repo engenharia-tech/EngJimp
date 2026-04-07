@@ -305,32 +305,29 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
             Configuração de E-mail
           </h3>
           
-          <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800">
-            <div className="flex items-start">
-              <AlertCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mr-3 mt-0.5" />
-              <div className="text-sm">
-                <p className="font-bold text-emerald-800 dark:text-emerald-300 mb-1">Atenção: Configuração do Servidor</p>
-                <p className="text-emerald-700 dark:text-emerald-400 leading-relaxed">
-                  Para que o envio de e-mails funcione, você <strong>DEVE</strong> configurar as seguintes variáveis no menu 
-                  <span className="font-mono bg-emerald-100 dark:bg-emerald-800 px-1 rounded mx-1 text-emerald-900 dark:text-emerald-200">Settings &gt; Secrets</span> do AI Studio:
-                </p>
-                <ul className="list-disc list-inside mt-2 space-y-1 text-emerald-600 dark:text-emerald-500 font-mono text-xs">
-                  <li>EMAIL_HOST (ex: mail.exemplo.com.br)</li>
-                  <li>EMAIL_PORT (ex: 465 ou 587)</li>
-                  <li>EMAIL_USER (seu e-mail)</li>
-                  <li>EMAIL_PASS (sua senha ou senha de app)</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
-            Defina os destinatários padrão para as notificações do sistema.
-          </p>
-          
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Destinatários Padrão (To)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Destinatários Padrão (To)</label>
+                {isEditing && (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      const email = window.prompt('Digite o e-mail para adicionar:');
+                      if (email && email.includes('@')) {
+                        const current = formData.emailTo ? formData.emailTo.split(',').map(e => e.trim()) : [];
+                        if (!current.includes(email)) {
+                          setFormData({ ...formData, emailTo: [...current, email].join(', ') });
+                        }
+                      }
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center"
+                  >
+                    <Mail className="w-3 h-3 mr-1" />
+                    + Adicionar E-mail
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 disabled={!isEditing}
@@ -339,21 +336,57 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
                 className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
                 placeholder="email1@exemplo.com, email2@exemplo.com"
               />
-              <p className="text-[10px] text-gray-500 mt-1">Separe múltiplos e-mails por vírgula.</p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(formData.emailTo || '').split(',').filter(e => e.trim()).map((email, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-medium rounded-full border border-blue-100 dark:border-blue-800 flex items-center">
+                    <Mail className="w-2.5 h-2.5 mr-1" />
+                    {email.trim()}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1">E-mails que recebem notificações de projetos finalizados.</p>
             </div>
-          </div>
 
-          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800">
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Destinatários para Interrupções</label>
-            <input
-              type="text"
-              disabled={!isEditing}
-              value={formData.interruptionEmailTo || ''}
-              onChange={e => setFormData({ ...formData, interruptionEmailTo: e.target.value })}
-              className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
-              placeholder="email-interrupcao@exemplo.com"
-            />
-            <p className="text-[10px] text-gray-500 mt-1">E-mails que receberão alertas automáticos quando uma interrupção for criada.</p>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Destinatários para Interrupções</label>
+                {isEditing && (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      const email = window.prompt('Digite o e-mail para adicionar:');
+                      if (email && email.includes('@')) {
+                        const current = formData.interruptionEmailTo ? formData.interruptionEmailTo.split(',').map(e => e.trim()) : [];
+                        if (!current.includes(email)) {
+                          setFormData({ ...formData, interruptionEmailTo: [...current, email].join(', ') });
+                        }
+                      }
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center"
+                  >
+                    <Mail className="w-3 h-3 mr-1" />
+                    + Adicionar E-mail
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                disabled={!isEditing}
+                value={formData.interruptionEmailTo || ''}
+                onChange={e => setFormData({ ...formData, interruptionEmailTo: e.target.value })}
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                placeholder="email-interrupcao@exemplo.com"
+              />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(formData.interruptionEmailTo || '').split(',').filter(e => e.trim()).map((email, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-medium rounded-full border border-emerald-100 dark:border-emerald-800 flex items-center">
+                    <Mail className="w-2.5 h-2.5 mr-1" />
+                    {email.trim()}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1">E-mails que recebem alertas automáticos de interrupções.</p>
+            </div>
           </div>
 
           <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">
