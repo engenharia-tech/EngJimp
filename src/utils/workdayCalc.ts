@@ -9,11 +9,6 @@ export function calcActiveSeconds(from: Date, to: Date, settings: AppSettings, i
   
   if (start >= end) return 0;
 
-  // If it's overtime, we don't filter by schedule, just return total wall-clock seconds
-  if (isOvertime) {
-    return Math.floor((end - start) / 1000);
-  }
-
   const workdayStartStr = settings.workdayStart || "07:30";
   const workdayEndStr = settings.workdayEnd || "17:30";
   const lunchStartStr = settings.lunchStart || "12:00";
@@ -34,13 +29,20 @@ export function calcActiveSeconds(from: Date, to: Date, settings: AppSettings, i
   while (current.getTime() < end) {
     const dayOfWeek = current.getDay();
     
-    if (workdays.includes(dayOfWeek)) {
+    // If overtime, we count every day. If not, only workdays.
+    if (isOvertime || workdays.includes(dayOfWeek)) {
       // Define the workday boundaries for the current day
       const dayStart = new Date(current);
-      dayStart.setHours(startH, startM, 0, 0);
-      
       const dayEnd = new Date(current);
-      dayEnd.setHours(endH, endM, 0, 0);
+
+      if (isOvertime) {
+          // In overtime mode, the whole day is potentially active
+          dayStart.setHours(0, 0, 0, 0);
+          dayEnd.setHours(23, 59, 59, 999);
+      } else {
+          dayStart.setHours(startH, startM, 0, 0);
+          dayEnd.setHours(endH, endM, 0, 0);
+      }
 
       // Calculate the intersection of [from, to] and [dayStart, dayEnd]
       const overlapStart = Math.max(start, dayStart.getTime());
@@ -78,12 +80,10 @@ export function calcActiveSeconds(from: Date, to: Date, settings: AppSettings, i
  * Checks if a given date is within the configured workday.
  */
 export function isWorkingHour(date: Date, settings: AppSettings, isOvertime: boolean = false): boolean {
-  if (isOvertime) return true;
-
   const dayOfWeek = date.getDay();
   const workdays = settings.workdays || [1, 2, 3, 4, 5];
   
-  if (!workdays.includes(dayOfWeek)) return false;
+  if (!isOvertime && !workdays.includes(dayOfWeek)) return false;
 
   const workdayStartStr = settings.workdayStart || "07:30";
   const workdayEndStr = settings.workdayEnd || "17:30";
@@ -102,6 +102,8 @@ export function isWorkingHour(date: Date, settings: AppSettings, isOvertime: boo
   const currentMinutes = date.getHours() * 60 + date.getMinutes();
 
   const isLunch = currentMinutes >= lunchStartMinutes && currentMinutes < lunchEndMinutes;
+
+  if (isOvertime) return !isLunch;
 
   return currentMinutes >= startMinutes && currentMinutes < endMinutes && !isLunch;
 }

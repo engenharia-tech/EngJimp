@@ -235,10 +235,9 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   };
 
   const handleResumeFromList = (project: ProjectSession) => {
-    // Check Working Hours
+    // Check Working Hours - Warn but don't block, so they can toggle overtime if needed
     if (!isWorkingHour(new Date(), settings, project.isOvertime)) {
-      alert(t('outsideWorkingHoursNoOvertime'));
-      return;
+      addToast(t('outsideWorkingHoursNoOvertime'), 'warning');
     }
 
     // MELHORIA 1: Pausar tempo fora do expediente
@@ -546,6 +545,14 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       if (!activeProject) return;
       const updated = { ...activeProject, projectCode: newCode };
       setActiveProject(updated);
+  };
+
+  const handleToggleOvertime = () => {
+      if (!activeProject) return;
+      const updated = { ...activeProject, isOvertime: !activeProject.isOvertime };
+      setActiveProject(updated);
+      onUpdate(updated);
+      addToast(updated.isOvertime ? t('overtimeModeEnabled') : t('ruleStandard'), 'info');
   };
 
   const saveProjectCode = () => {
@@ -939,12 +946,21 @@ JIMPNEXUS
                     <div className="text-right">
                         <div className="font-bold text-lg text-black dark:text-white">{activeProject.ns}</div>
                         <div className="text-xs text-gray-600 dark:text-slate-400 font-semibold">{activeProject.clientName}</div>
-                        <div className="flex flex-col items-end gap-1 mt-1">
-                            {activeProject.isOvertime && (
-                                <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold">
-                                    {t('overtime').toUpperCase()}
+                        <div className="flex flex-col items-end gap-2 mt-1">
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <div className="relative inline-flex items-center">
+                                    <input 
+                                        type="checkbox" 
+                                        className="sr-only peer"
+                                        checked={activeProject.isOvertime}
+                                        onChange={handleToggleOvertime}
+                                    />
+                                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 dark:peer-focus:ring-amber-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-amber-500"></div>
+                                </div>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider ${activeProject.isOvertime ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-slate-500'}`}>
+                                    {t('overtime')}
                                 </span>
-                            )}
+                            </label>
                             {activeProject.estimatedSeconds && (
                                 <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full inline-block">
                                     {t('estimated')}: {formatTime(activeProject.estimatedSeconds)}

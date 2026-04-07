@@ -3,6 +3,7 @@ export type Language = 'pt-BR' | 'es-ES' | 'en-US';
 
 export const translations = {
   "pt-BR": {
+    "monthlyViewNotice": "A visualização padrão é do mês atual. Para ver todo o histórico, limpe ou altere os filtros de data.",
     "aberto": "Aberto",
     "accumulated": "Acumulado: {time} ({count} projetistas)",
     "actionsCol": "Ações",
@@ -584,6 +585,7 @@ export const translations = {
     "yourProductivityIndicators": "Seus indicadores de produtividade."
   },
   "es-ES": {
+    "monthlyViewNotice": "La vista predeterminada es para el mes actual. Para ver todo el historial, borre o cambie los filtros de fecha.",
     "aberto": "Abierto",
     "accumulated": "Acumulado: {time} ({count} diseñadores)",
     "actionsCol": "Acciones",
@@ -1165,6 +1167,7 @@ export const translations = {
     "yourProductivityIndicators": "Tus indicadores de productividad."
   },
   "en-US": {
+    "monthlyViewNotice": "The default view is for the current month. To see the full history, clear or change the date filters.",
     "aberto": "Open",
     "accumulated": "Accumulated: {time} ({count} designers)",
     "actionsCol": "Actions",
