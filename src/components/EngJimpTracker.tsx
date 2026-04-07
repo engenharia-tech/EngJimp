@@ -604,9 +604,10 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     if (hour >= 12 && hour < 18) greeting = t('goodAfternoon');
     else if (hour >= 18 || hour < 5) greeting = t('goodNight');
 
+    const lang = settings.language || 'pt-BR';
     const hours = (project.totalActiveSeconds / 3600).toFixed(2);
     const plannedHours = ((project.estimatedSeconds || 0) / 3600).toFixed(2);
-    const cost = (project.totalCost || 0).toLocaleString(settings.language === 'pt-BR' ? 'pt-BR' : settings.language === 'es-ES' ? 'es-ES' : 'en-US', { style: 'currency', currency: 'BRL' });
+    const cost = (project.totalCost || 0).toLocaleString(lang, { style: 'currency', currency: 'BRL' });
     
     // Get interruptions for this project
     const projectInterruptions = interruptions.filter(i => {
@@ -641,8 +642,8 @@ ${t('plannedTime')}: ${plannedHours} ${t('hours')}
 ${t('executedTime')}: ${hours} ${t('hours')}
 ${t('interruptionTime')}: ${formatTime(interruptionSeconds)}
 
-${t('productiveCost')}: ${productiveCost.toLocaleString(settings.language === 'pt-BR' ? 'pt-BR' : settings.language === 'es-ES' ? 'es-ES' : 'en-US', { style: 'currency', currency: 'BRL' })}
-${t('interruptionCost')}: ${interruptionCost.toLocaleString(settings.language === 'pt-BR' ? 'pt-BR' : settings.language === 'es-ES' ? 'es-ES' : 'en-US', { style: 'currency', currency: 'BRL' })}
+${t('productiveCost')}: ${productiveCost.toLocaleString(lang, { style: 'currency', currency: 'BRL' })}
+${t('interruptionCost')}: ${interruptionCost.toLocaleString(lang, { style: 'currency', currency: 'BRL' })}
 ${t('totalProjectCost')}: ${cost}
 
 ${t('interruptionCount')}: ${interruptionCount}
@@ -657,6 +658,12 @@ JIMPNEXUS
 `;
 
     try {
+      if (!settings.emailTo) {
+        console.warn("Email notification skipped: No recipient configured in settings.");
+        addToast(t('checkSettings'), 'warning');
+        return;
+      }
+
       console.log("Email Payload Debug:", {
         to: settings.emailTo,
         subject: subject,
@@ -674,16 +681,10 @@ JIMPNEXUS
         })
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Email API HTTP error:", response.status, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
       const result = await response.json();
       console.log("Email API response:", result);
       
-      if (result.success) {
+      if (response.ok && result.success) {
         addToast(t('emailSentTo', { email: settings.emailTo }), 'success');
       } else {
         console.error("Email API returned failure:", result.error, "Code:", result.code);

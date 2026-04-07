@@ -16,10 +16,14 @@ export function calcActiveSeconds(from: Date, to: Date, settings: AppSettings, i
 
   const workdayStartStr = settings.workdayStart || "07:30";
   const workdayEndStr = settings.workdayEnd || "17:30";
+  const lunchStartStr = settings.lunchStart || "12:00";
+  const lunchEndStr = settings.lunchEnd || "13:00";
   const workdays = settings.workdays || [1, 2, 3, 4, 5];
 
   const [startH, startM] = workdayStartStr.split(':').map(Number);
   const [endH, endM] = workdayEndStr.split(':').map(Number);
+  const [lunchStartH, lunchStartM] = lunchStartStr.split(':').map(Number);
+  const [lunchEndH, lunchEndM] = lunchEndStr.split(':').map(Number);
 
   let totalSeconds = 0;
   
@@ -43,7 +47,22 @@ export function calcActiveSeconds(from: Date, to: Date, settings: AppSettings, i
       const overlapEnd = Math.min(end, dayEnd.getTime());
 
       if (overlapStart < overlapEnd) {
-        totalSeconds += (overlapEnd - overlapStart) / 1000;
+        let activeMs = overlapEnd - overlapStart;
+
+        // Subtract lunch break if it overlaps
+        const lunchStart = new Date(current);
+        lunchStart.setHours(lunchStartH, lunchStartM, 0, 0);
+        const lunchEnd = new Date(current);
+        lunchEnd.setHours(lunchEndH, lunchEndM, 0, 0);
+
+        const lunchOverlapStart = Math.max(overlapStart, lunchStart.getTime());
+        const lunchOverlapEnd = Math.min(overlapEnd, lunchEnd.getTime());
+
+        if (lunchOverlapStart < lunchOverlapEnd) {
+          activeMs -= (lunchOverlapEnd - lunchOverlapStart);
+        }
+
+        totalSeconds += activeMs / 1000;
       }
     }
 
@@ -68,13 +87,21 @@ export function isWorkingHour(date: Date, settings: AppSettings, isOvertime: boo
 
   const workdayStartStr = settings.workdayStart || "07:30";
   const workdayEndStr = settings.workdayEnd || "17:30";
+  const lunchStartStr = settings.lunchStart || "12:00";
+  const lunchEndStr = settings.lunchEnd || "13:00";
 
   const [startH, startM] = workdayStartStr.split(':').map(Number);
   const [endH, endM] = workdayEndStr.split(':').map(Number);
+  const [lStartH, lStartM] = lunchStartStr.split(':').map(Number);
+  const [lEndH, lEndM] = lunchEndStr.split(':').map(Number);
 
   const startMinutes = startH * 60 + startM;
   const endMinutes = endH * 60 + endM;
+  const lunchStartMinutes = lStartH * 60 + lStartM;
+  const lunchEndMinutes = lEndH * 60 + lEndM;
   const currentMinutes = date.getHours() * 60 + date.getMinutes();
 
-  return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  const isLunch = currentMinutes >= lunchStartMinutes && currentMinutes < lunchEndMinutes;
+
+  return currentMinutes >= startMinutes && currentMinutes < endMinutes && !isLunch;
 }

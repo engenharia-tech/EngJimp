@@ -225,6 +225,9 @@ export interface AppSettings {
   workdayStart?: string; // "07:30"
   workdayEnd?: string;   // "17:30"
   workdays?: number[];   // [1,2,3,4,5]
+  lunchStart?: string;   // "12:00"
+  lunchEnd?: string;     // "13:00"
+  language?: 'pt-BR' | 'en-US' | 'es-ES';
   hourlyCostCalculated?: number; // New: calculated hourly rate
 }
 

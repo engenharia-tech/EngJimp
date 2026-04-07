@@ -62,7 +62,10 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     emailTo: localStorage.getItem('email_to') || '',
     workdayStart: localStorage.getItem('workday_start') || "07:30",
     workdayEnd: localStorage.getItem('workday_end') || "17:30",
-    workdays: JSON.parse(localStorage.getItem('workdays') || "[1,2,3,4,5]")
+    workdays: JSON.parse(localStorage.getItem('workdays') || "[1,2,3,4,5]"),
+    lunchStart: localStorage.getItem('lunch_start') || "12:00",
+    lunchEnd: localStorage.getItem('lunch_end') || "13:00",
+    language: (localStorage.getItem('language') as any) || "pt-BR"
   };
 
   try {
@@ -81,7 +84,10 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       const workdayStartRow = settingsData.find(s => s.key === 'workday_start');
       const workdayEndRow = settingsData.find(s => s.key === 'workday_end');
       const workdaysRow = settingsData.find(s => s.key === 'workdays');
-
+      const lunchStartRow = settingsData.find(s => s.key === 'lunch_start');
+      const lunchEndRow = settingsData.find(s => s.key === 'lunch_end');
+      const languageRow = settingsData.find(s => s.key === 'language');
+ 
       if (hourlyCostRow) settings.hourlyCost = Number(hourlyCostRow.value);
       if (logoUrlRow) settings.logoUrl = logoUrlRow.value || '';
       if (companyNameRow) settings.companyName = companyNameRow.value || 'JIMP NEXUS';
@@ -92,7 +98,10 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (workdayStartRow) settings.workdayStart = workdayStartRow.value || "07:30";
       if (workdayEndRow) settings.workdayEnd = workdayEndRow.value || "17:30";
       if (workdaysRow) settings.workdays = JSON.parse(workdaysRow.value || "[1,2,3,4,5]");
-
+      if (lunchStartRow) settings.lunchStart = lunchStartRow.value || "12:00";
+      if (lunchEndRow) settings.lunchEnd = lunchEndRow.value || "13:00";
+      if (languageRow) settings.language = (languageRow.value as any) || "pt-BR";
+ 
       // Sync to localStorage for offline fallback
       localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
       if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
@@ -104,6 +113,9 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
       if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
       if (settings.workdays) localStorage.setItem('workdays', JSON.stringify(settings.workdays));
+      if (settings.lunchStart) localStorage.setItem('lunch_start', settings.lunchStart);
+      if (settings.lunchEnd) localStorage.setItem('lunch_end', settings.lunchEnd);
+      if (settings.language) localStorage.setItem('language', settings.language);
     }
   } catch (e) {
     console.warn("Error fetching settings from Supabase, using localStorage/defaults:", e);
@@ -350,6 +362,9 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.workdayStart !== undefined) updates.push({ key: 'workday_start', value: settings.workdayStart });
     if (settings.workdayEnd !== undefined) updates.push({ key: 'workday_end', value: settings.workdayEnd });
     if (settings.workdays !== undefined) updates.push({ key: 'workdays', value: JSON.stringify(settings.workdays) });
+    if (settings.lunchStart !== undefined) updates.push({ key: 'lunch_start', value: settings.lunchStart });
+    if (settings.lunchEnd !== undefined) updates.push({ key: 'lunch_end', value: settings.lunchEnd });
+    if (settings.language !== undefined) updates.push({ key: 'language', value: settings.language });
 
     const { error } = await supabase
       .from('settings')
