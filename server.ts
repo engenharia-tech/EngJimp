@@ -1,4 +1,4 @@
-import app from "./api/app";
+import app from "./api/index";
 import path from "path";
 import express from "express";
 import dotenv from "dotenv";
