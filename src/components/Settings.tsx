@@ -63,14 +63,24 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
         })
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Server response was not JSON:", responseText);
+        addToast(`Erro crítico do servidor (não JSON): ${responseText.substring(0, 50)}...`, 'error');
+        return;
+      }
+
       if (result.success) {
         addToast('E-mail de teste enviado com sucesso!', 'success');
       } else {
         addToast(`Erro ao enviar: ${result.error || 'Verifique as configurações'}`, 'error');
+        if (result.details) console.error("Detalhes do erro:", result.details);
       }
-    } catch (error) {
-      addToast('Erro de conexão com o servidor.', 'error');
+    } catch (error: any) {
+      addToast(`Erro de conexão: ${error.message || 'Falha ao contatar o servidor'}`, 'error');
     } finally {
       setIsTesting(false);
     }
@@ -294,6 +304,26 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
             <Mail className="w-5 h-5 mr-2 text-emerald-500" />
             Configuração de E-mail
           </h3>
+          
+          <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mr-3 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-bold text-emerald-800 dark:text-emerald-300 mb-1">Atenção: Configuração do Servidor</p>
+                <p className="text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                  Para que o envio de e-mails funcione, você <strong>DEVE</strong> configurar as seguintes variáveis no menu 
+                  <span className="font-mono bg-emerald-100 dark:bg-emerald-800 px-1 rounded mx-1 text-emerald-900 dark:text-emerald-200">Settings &gt; Secrets</span> do AI Studio:
+                </p>
+                <ul className="list-disc list-inside mt-2 space-y-1 text-emerald-600 dark:text-emerald-500 font-mono text-xs">
+                  <li>EMAIL_HOST (ex: mail.exemplo.com.br)</li>
+                  <li>EMAIL_PORT (ex: 465 ou 587)</li>
+                  <li>EMAIL_USER (seu e-mail)</li>
+                  <li>EMAIL_PASS (sua senha ou senha de app)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
             Defina os destinatários padrão para as notificações do sistema.
           </p>
