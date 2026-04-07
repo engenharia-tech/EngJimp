@@ -17,11 +17,23 @@ interface ProjectHistoryProps {
 export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUser, onDelete, onUpdate }) => {
   const { t, language } = useLanguage();
   const { addToast } = useToast();
+
+  // Default dates for current month
+  const defaultDates = useMemo(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      start: firstDay.toISOString().split('T')[0],
+      end: lastDay.toISOString().split('T')[0]
+    };
+  }, []);
+
   const [filterNs, setFilterNs] = useState('');
   const [filterType, setFilterType] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(defaultDates.start);
+  const [endDate, setEndDate] = useState(defaultDates.end);
   const [filterSuspicious, setFilterSuspicious] = useState(false);
   const [usersMap, setUsersMap] = useState<Record<string, User>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -674,7 +686,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
       {/* Filters Section */}
       <div className={`bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 ${activeSubTab === 'list' ? 'hidden md:block' : 'block'}`}>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center text-black dark:text-white font-bold text-lg">
             <Filter className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
             {activeSubTab === 'search' ? t('advancedSearchTool') : t('searchFilters')}
@@ -696,6 +708,15 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             </button>
           )}
         </div>
+
+        {/* Monthly View Notice */}
+        {!startDate && !endDate ? null : (
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg flex items-center gap-2 text-blue-700 dark:text-blue-400 text-xs font-medium">
+            <AlertCircle className="w-4 h-4" />
+            {t('monthlyViewNotice')}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
