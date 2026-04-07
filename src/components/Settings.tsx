@@ -139,6 +139,19 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Idioma do Sistema</label>
+              <select
+                disabled={!isEditing}
+                value={formData.language || 'pt-BR'}
+                onChange={e => setFormData({ ...formData, language: e.target.value as any })}
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+              >
+                <option value="pt-BR">Português (Brasil)</option>
+                <option value="en-US">English (US)</option>
+                <option value="es-ES">Español</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Custo Hora (R$)</label>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-4">
@@ -216,6 +229,29 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
                 disabled={!isEditing}
                 value={formData.workdayEnd || '17:30'}
                 onChange={e => setFormData({ ...formData, workdayEnd: e.target.value })}
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Início do Almoço</label>
+              <input
+                type="time"
+                disabled={!isEditing}
+                value={formData.lunchStart || '12:00'}
+                onChange={e => setFormData({ ...formData, lunchStart: e.target.value })}
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Fim do Almoço</label>
+              <input
+                type="time"
+                disabled={!isEditing}
+                value={formData.lunchEnd || '13:00'}
+                onChange={e => setFormData({ ...formData, lunchEnd: e.target.value })}
                 className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               />
             </div>
