@@ -18,7 +18,7 @@ export const askGemini = async (prompt: string): Promise<string> => {
     }
 
     const data = await response.json();
-    return data.text;
+    return data.text || '';
   } catch (error) {
     console.error("askGemini Error:", error);
     throw error;

@@ -17,23 +17,23 @@ app.use(express.json());
 
 // API Route for Gemini (Server-side only)
 app.post("/api/gemini", async (req, res) => {
-  const { prompt } = req.body;
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    return res.status(500).json({ error: "Gemini API Key is not configured on the server." });
-  }
-
   try {
+    const { prompt } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({ success: false, error: "Gemini API Key is not configured on the server." });
+    }
+
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
-    res.json({ text: response.text });
-  } catch (error) {
+    res.json({ success: true, text: response.text });
+  } catch (error: any) {
     console.error("Gemini API Error:", error);
-    res.status(500).json({ error: String(error) });
+    res.status(500).json({ success: false, error: String(error) });
   }
 });
 
@@ -42,82 +42,76 @@ app.post("/api/send-email", async (req, res) => {
   try {
     const { subject, body, to: bodyTo } = req.body;
     
-    // Read all SMTP configurations from environment variables
+    // Explicitly read from process.env for Vercel/Local compatibility
     const host = process.env.EMAIL_HOST;
     const port = parseInt(process.env.EMAIL_PORT || "587");
     const user = process.env.EMAIL_USER;
     const pass = process.env.EMAIL_PASS;
     const from = process.env.EMAIL_FROM || user;
-    
-    // Use recipient from body if provided, otherwise fallback to env var
     const to = bodyTo || process.env.EMAIL_TO;
 
-    // Debug log (without password)
-    console.log(`[Email API] Request: To=${to}, Subject=${subject}, BodyLength=${body?.length}`);
-    console.log(`[Email API] Config: Host=${host}, Port=${port}, User=${user}, From=${from}`);
+    console.log(`[Email API] Attempting send: To=${to}, Host=${host}, Port=${port}, User=${user}`);
     
-    // Basic validation: Ensure essential credentials are set
     if (!host || !user || !pass || !to) {
       const missing = [];
       if (!host) missing.push("EMAIL_HOST");
       if (!user) missing.push("EMAIL_USER");
       if (!pass) missing.push("EMAIL_PASS");
-      if (!to) missing.push("EMAIL_TO (env or body)");
+      if (!to) missing.push("EMAIL_TO");
       
-      console.warn(`[Email API] Incomplete configuration. Missing: ${missing.join(", ")}`);
-      return res.status(500).json({ 
-        success: false, 
-        error: `Configuração de e-mail incompleta no servidor. Faltando: ${missing.join(", ")}` 
-      });
+      const errorMsg = `Configuração incompleta. Faltando: ${missing.join(", ")}. Certifique-se de configurar estas variáveis no menu Settings > Secrets do AI Studio ou no Dashboard da Vercel.`;
+      console.warn(`[Email API] ${errorMsg}`);
+      return res.status(400).json({ success: false, error: errorMsg });
     }
+
+    const isSecure = port === 465;
+    console.log(`[Email API] Using secure=${isSecure} for port=${port}`);
 
     const transporter = nodemailer.createTransport({
       host,
       port,
-      secure: port === 465, // true for 465, false for other ports
+      secure: isSecure,
       auth: {
         user,
         pass,
       },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       tls: {
         rejectUnauthorized: false
       }
     });
 
-    // Verify connection configuration
-    console.log(`[Email API] Verifying SMTP connection...`);
+    console.log(`[Email API] Verifying connection...`);
     await transporter.verify();
-    console.log(`[Email API] SMTP connection verified!`);
-
-    console.log(`[Email API] Sending email...`);
+    
+    console.log(`[Email API] Sending...`);
     await transporter.sendMail({
       from: `"JIMPNEXUS" <${from}>`,
-      to: to,
+      to,
       subject,
       text: body.replace(/<br>/g, '\n').replace(/<p>/g, '').replace(/<\/p>/g, '\n'),
-      html: body.includes('<br>') || body.includes('<p>') ? body : undefined // Support HTML if tags are present
+      html: body.includes('<br>') || body.includes('<p>') ? body : undefined
     });
-    console.log("[Email API] Email sent successfully!");
-    res.json({ success: true });
+
+    console.log("[Email API] Success!");
+    return res.json({ success: true });
   } catch (error: any) {
-    console.error("[Email API] Error sending email:", error);
-    let errorMessage = "Falha ao enviar e-mail.";
+    console.error("[Email API] Error details:", error);
     
-    // Specific hint for common errors
-    if (error.message && typeof error.message === 'string') {
-      if (error.message.includes("535")) {
-        errorMessage = "Erro de Autenticação (535): Usuário ou senha incorretos. Se estiver usando Gmail, você DEVE usar uma 'Senha de App'.";
-      } else if (error.code === 'ECONNREFUSED') {
-        errorMessage = `Não foi possível conectar ao servidor SMTP. Verifique o Host e a Porta.`;
-      } else if (error.code === 'ETIMEDOUT') {
-        errorMessage = "Tempo limite de conexão esgotado (Timeout). O servidor SMTP demorou muito para responder.";
-      }
+    let errorMessage = "Erro ao enviar e-mail.";
+    if (error.code === 'EAUTH' || (error.message && error.message.includes("535"))) {
+      errorMessage = "Erro de Autenticação: Usuário ou senha incorretos. Se usar Gmail, use uma 'Senha de App'.";
+    } else if (error.code === 'ECONNREFUSED') {
+      errorMessage = "Conexão recusada: O servidor SMTP não respondeu. Verifique o Host e a Porta.";
+    } else if (error.code === 'ETIMEDOUT') {
+      errorMessage = "Timeout: O servidor SMTP demorou muito para responder.";
+    } else if (error.message) {
+      errorMessage = `Erro do Servidor SMTP: ${error.message}`;
     }
     
-    res.status(500).json({ 
+    return res.status(500).json({ 
       success: false, 
       error: errorMessage,
       details: error.message || String(error),
@@ -138,6 +132,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 // Vite middleware for development or Static serving for production
 async function setupVite() {
+  // In Vercel, we don't need to serve static files from Express if vercel.json handles it,
+  // but keeping it for local production builds and general compatibility.
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -155,7 +151,7 @@ async function setupVite() {
 }
 
 // Only run setupVite and listen if not in Vercel environment
-// Vercel will handle the routing and serving via vercel.json
+// Vercel will handle the routing and serving via vercel.json and /api/index.ts
 if (!process.env.VERCEL) {
   setupVite().then(() => {
     app.listen(PORT, "0.0.0.0", () => {
