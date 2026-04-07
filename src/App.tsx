@@ -72,7 +72,14 @@ const AppContent: React.FC = () => {
     interruptions: [],
     interruptionTypes: [],
     users: [],
-    settings: { hourlyCost: 150 },
+    settings: { 
+      hourlyCost: 150,
+      emailTo: '',
+      interruptionEmailTo: '',
+      interruptionEmailTemplate: '',
+      companyName: 'JIMP NEXUS',
+      language: 'pt-BR'
+    },
     seoData: { keywords: [], metrics: [], tasks: [] },
     activityTypes: [],
     operationalActivities: []
