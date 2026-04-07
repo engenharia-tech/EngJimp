@@ -688,7 +688,15 @@ JIMPNEXUS
         })
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Server response was not JSON:", responseText);
+        throw new Error(`Resposta do servidor inválida (não JSON): ${responseText.substring(0, 100)}...`);
+      }
+      
       console.log("Email API response:", result);
       
       if (response.ok && result.success) {
