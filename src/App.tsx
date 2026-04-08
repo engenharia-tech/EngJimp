@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Sparkles } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
+import { AIChat } from './components/AIChat';
 import { Dashboard } from './components/Dashboard';
 import { ProjectHistory } from './components/ProjectHistory';
 import { UserManagement } from './components/UserManagement';
@@ -49,12 +50,85 @@ import { ToastProvider, useToast } from './components/Toast';
 import { useLanguage } from './i18n/LanguageContext';
 import { Language } from './i18n/translations';
 
+interface NavItemProps {
+  id: any;
+  labelKey: any;
+  icon: any;
+  activeTab: string;
+  theme: string;
+  t: any;
+  onClick: (id: any) => void;
+}
+
+const NavItem: React.FC<NavItemProps> = ({ id, labelKey, icon: Icon, activeTab, theme, t, onClick }) => (
+  <button
+    onClick={() => onClick(id)}
+    className={`flex items-center w-full px-6 py-4 text-left transition-colors border-l-4 ${
+      activeTab === id 
+        ? theme === 'dark' 
+          ? 'bg-blue-900/20 border-orange-500 text-blue-400 font-medium' 
+          : 'bg-blue-50 border-orange-500 text-blue-600 font-medium'
+        : theme === 'dark'
+          ? 'border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+          : 'border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+    }`}
+  >
+    <Icon className={`w-5 h-5 mr-3 ${activeTab === id ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
+    {t(labelKey)}
+  </button>
+);
+
+const LanguageSwitcher = ({ 
+  language, 
+  setLanguage, 
+  isMobile = false 
+}: { 
+  language: Language, 
+  setLanguage: (lang: Language) => void, 
+  isMobile?: boolean 
+}) => (
+  <div className={`flex items-center gap-1 ${isMobile ? 'px-4 py-2' : ''}`}>
+    <button 
+      onClick={() => setLanguage('pt-BR')}
+      className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${language === 'pt-BR' ? 'bg-blue-600 shadow-md ring-2 ring-blue-400' : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
+      title="Português (Brasil)"
+    >
+      <img 
+        src="https://flagcdn.com/w40/br.png" 
+        alt="Português (Brasil)" 
+        className="w-6 h-4 object-cover rounded-sm"
+        referrerPolicy="no-referrer"
+      />
+    </button>
+    <button 
+      onClick={() => setLanguage('es-ES')}
+      className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${language === 'es-ES' ? 'bg-blue-600 shadow-md ring-2 ring-blue-400' : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
+      title="Español (España)"
+    >
+      <img 
+        src="https://flagcdn.com/w40/es.png" 
+        alt="Español (España)" 
+        className="w-6 h-4 object-cover rounded-sm"
+        referrerPolicy="no-referrer"
+      />
+    </button>
+    <button 
+      onClick={() => setLanguage('en-US')}
+      className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${language === 'en-US' ? 'bg-blue-600 shadow-md ring-2 ring-blue-400' : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
+      title="English (US)"
+    >
+      <img 
+        src="https://flagcdn.com/w40/us.png" 
+        alt="English (US)" 
+        className="w-6 h-4 object-cover rounded-sm"
+        referrerPolicy="no-referrer"
+      />
+    </button>
+  </div>
+);
+
 const App: React.FC = () => {
-  return (
-    <ToastProvider>
-      <AppContent />
-    </ToastProvider>
-  );
+  return <AppContent />;
 };
 
 const AppContent: React.FC = () => {
@@ -64,7 +138,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'assistant'>('dashboard');
   const [data, setData] = useState<AppState>({ 
     projects: [], 
     issues: [], 
@@ -546,74 +620,17 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleNavClick = (id: any) => {
+    setActiveTab(id);
+    setIsMobileMenuOpen(false);
+  };
+
   if (!currentUser) {
     return <Login onLogin={setCurrentUser} />;
   }
 
   const COMPANY_LOGO_URL = data.settings.logoUrl || logoImg;
   const COMPANY_NAME = data.settings.companyName || 'JIMP NEXUS';
-
-  const LanguageSwitcher = ({ isMobile = false }: { isMobile?: boolean }) => (
-    <div className={`flex items-center gap-1 ${isMobile ? 'px-4 py-2' : ''}`}>
-      <button 
-        onClick={() => setLanguage('pt-BR')}
-        className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${language === 'pt-BR' ? 'bg-blue-600 shadow-md ring-2 ring-blue-400' : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
-        title="Português (Brasil)"
-      >
-        <img 
-          src="https://flagcdn.com/w40/br.png" 
-          alt="Português (Brasil)" 
-          className="w-6 h-4 object-cover rounded-sm"
-          referrerPolicy="no-referrer"
-        />
-      </button>
-      <button 
-        onClick={() => setLanguage('es-ES')}
-        className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${language === 'es-ES' ? 'bg-blue-600 shadow-md ring-2 ring-blue-400' : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
-        title="Español (España)"
-      >
-        <img 
-          src="https://flagcdn.com/w40/es.png" 
-          alt="Español (España)" 
-          className="w-6 h-4 object-cover rounded-sm"
-          referrerPolicy="no-referrer"
-        />
-      </button>
-      <button 
-        onClick={() => setLanguage('en-US')}
-        className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${language === 'en-US' ? 'bg-blue-600 shadow-md ring-2 ring-blue-400' : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
-        title="English (US)"
-      >
-        <img 
-          src="https://flagcdn.com/w40/us.png" 
-          alt="English (US)" 
-          className="w-6 h-4 object-cover rounded-sm"
-          referrerPolicy="no-referrer"
-        />
-      </button>
-    </div>
-  );
-
-  const NavItem = ({ id, labelKey, icon: Icon }: { id: typeof activeTab, labelKey: any, icon: any }) => (
-    <button
-      onClick={() => {
-        setActiveTab(id);
-        setIsMobileMenuOpen(false);
-      }}
-      className={`flex items-center w-full px-6 py-4 text-left transition-colors border-l-4 ${
-        activeTab === id 
-          ? theme === 'dark' 
-            ? 'bg-blue-900/20 border-orange-500 text-blue-400 font-medium' 
-            : 'bg-blue-50 border-orange-500 text-blue-600 font-medium'
-          : theme === 'dark'
-            ? 'border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            : 'border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-      }`}
-    >
-      <Icon className={`w-5 h-5 mr-3 ${activeTab === id ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
-      {t(labelKey)}
-    </button>
-  );
 
   return (
     <div className={`flex min-h-screen ${theme === 'dark' ? 'bg-black text-slate-200' : 'bg-gray-50 text-gray-900'}`}>
@@ -639,7 +656,7 @@ const AppContent: React.FC = () => {
           </div>
 
           <div className="mb-6">
-            <LanguageSwitcher />
+            <LanguageSwitcher language={language} setLanguage={setLanguage} />
           </div>
           
           <div className={`flex items-center ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'} text-xs mb-1 uppercase tracking-wider font-semibold`}>
@@ -662,35 +679,39 @@ const AppContent: React.FC = () => {
           </div>
         </div>
         <nav className="flex-1 mt-6 overflow-y-auto">
-          <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} />
+          <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+
+          {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+            <NavItem id="assistant" labelKey="jimpAssistant" icon={Sparkles} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+          )}
 
           {canUseTracker && (
             <>
-              <NavItem id="tracker" labelKey="tracker" icon={PenTool} />
-              <NavItem id="history" labelKey="history" icon={History} />
-              <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} />
-              <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} />
+              <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              <NavItem id="history" labelKey="history" icon={History} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             </>
           )}
           
           {canSeeInnovations && (
-             <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} />
+             <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
           )}
 
           {['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
-            <NavItem id="reports" labelKey="reports" icon={FileText} />
+            <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
           )}
 
           {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
-            <NavItem id="team" labelKey="team" icon={Users} />
+            <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
           )}
 
           {['GESTOR', 'CEO'].includes(currentUser.role) && (
-            <NavItem id="settings" labelKey="settings" icon={UserCog} />
+            <NavItem id="settings" labelKey="settings" icon={UserCog} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
           )}
           
           {['GESTOR', 'CEO'].includes(currentUser.role) && (
-            <NavItem id="seo" labelKey="seo" icon={Search} />
+            <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
           )}
         </nav>
         <div className={`p-6 border-t ${theme === 'dark' ? 'border-slate-800 bg-black' : 'border-gray-100 bg-gray-50'}`}>
@@ -715,7 +736,7 @@ const AppContent: React.FC = () => {
             />
         </div>
         <div className="flex items-center gap-3">
-            <LanguageSwitcher />
+            <LanguageSwitcher language={language} setLanguage={setLanguage} />
             <button 
                 onClick={toggleTheme}
                 className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700' : 'bg-slate-800'} hover:bg-slate-700 transition-colors text-slate-300`}
@@ -738,29 +759,34 @@ const AppContent: React.FC = () => {
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-black z-10 pt-20 md:hidden animate-in slide-in-from-right duration-200">
           <nav className="flex flex-col h-full overflow-y-auto">
-            <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} />
+            <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            
+            {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+              <NavItem id="assistant" labelKey="jimpAssistant" icon={Sparkles} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            )}
+
             {canUseTracker && (
               <>
-                <NavItem id="tracker" labelKey="tracker" icon={PenTool} />
-                <NavItem id="history" labelKey="history" icon={History} />
-                <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} />
-                <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} />
+                <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+                <NavItem id="history" labelKey="history" icon={History} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+                <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+                <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
               </>
             )}
             {canSeeInnovations && (
-                <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} />
+                <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             {['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
-                <NavItem id="reports" labelKey="reports" icon={FileText} />
+                <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
-               <NavItem id="team" labelKey="team" icon={Users} />
+               <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             {['GESTOR', 'CEO'].includes(currentUser.role) && (
-                <NavItem id="settings" labelKey="settings" icon={UserCog} />
+                <NavItem id="settings" labelKey="settings" icon={UserCog} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             {['GESTOR', 'CEO'].includes(currentUser.role) && (
-                <NavItem id="seo" labelKey="seo" icon={Search} />
+                <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             <div className="mt-auto p-6 border-t border-slate-800">
               <button 
@@ -893,6 +919,10 @@ const AppContent: React.FC = () => {
                 onDelete={handleInnovationDelete}
                 currentUser={currentUser}
              />
+          )}
+
+          {activeTab === 'assistant' && (
+            <AIChat appState={data} currentUser={currentUser} />
           )}
 
           {activeTab === 'reports' && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
