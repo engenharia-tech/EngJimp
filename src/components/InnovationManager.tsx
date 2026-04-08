@@ -43,6 +43,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [productivityBefore, setProductivityBefore] = useState<string>('');
   const [productivityAfter, setProductivityAfter] = useState<string>('');
   const [unitProductCost, setUnitProductCost] = useState<string>('');
+  const [unitProductValue, setUnitProductValue] = useState<string>('');
 
   // New Form State
   const [materials, setMaterials] = useState<InnovationMaterial[]>([]);
@@ -75,6 +76,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setProductivityBefore(editingInnovation.productivityBefore?.toString() || '');
         setProductivityAfter(editingInnovation.productivityAfter?.toString() || '');
         setUnitProductCost(editingInnovation.unitProductCost?.toString() || '');
+        setUnitProductValue(editingInnovation.unitProductValue?.toString() || '');
         setShowForm(true);
     } else {
         setTitle('');
@@ -89,6 +91,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setProductivityBefore('');
         setProductivityAfter('');
         setUnitProductCost('');
+        setUnitProductValue('');
     }
   }, [editingInnovation]);
 
@@ -194,16 +197,25 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     const prodBefore = parseFloat(productivityBefore);
     const prodAfter = parseFloat(productivityAfter);
     const prodCost = parseFloat(unitProductCost) || 0;
+    const prodValue = parseFloat(unitProductValue) || 0;
 
-    if (prodBefore > 0 && prodAfter > 0 && qty > 0 && hourlyCost > 0) {
+    if (prodBefore > 0 && prodAfter > 0 && qty > 0) {
         // Labor Saving per unit = (Time Before - Time After) * Hourly Cost
         const timeBefore = 1 / prodBefore;
         const timeAfter = 1 / prodAfter;
-        productivityImpact = (timeBefore - timeAfter) * hourlyCost * qty;
+        const laborSaving = (timeBefore - timeAfter) * (settings?.hourlyCost || 0) * qty;
+
+        // Profit from Extra Capacity
+        // Extra Units = qty * (prodAfter / prodBefore - 1)
+        const extraUnits = qty * (prodAfter / prodBefore - 1);
+        const profitFromExtraUnits = extraUnits * (prodValue - prodCost);
+
+        // If product value is provided, we assume the goal is increasing capacity/profit
+        productivityImpact = prodValue > 0 ? profitFromExtraUnits : laborSaving;
     }
 
     return base + materialImpact + machineImpact + productivityImpact;
-  }, [unitSavings, quantity, calculationType, materials, machine, productivityBefore, productivityAfter, unitProductCost, settings]);
+  }, [unitSavings, quantity, calculationType, materials, machine, productivityBefore, productivityAfter, unitProductCost, unitProductValue, settings]);
 
   const addMaterial = () => {
     if (matName.trim() === '' || matCost === '') return;
@@ -245,6 +257,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     const prodBefore = parseFloat(productivityBefore) || undefined;
     const prodAfter = parseFloat(productivityAfter) || undefined;
     const prodCost = parseFloat(unitProductCost) || undefined;
+    const prodValue = parseFloat(unitProductValue) || undefined;
 
     if (editingInnovation) {
         const updatedRecord: InnovationRecord = {
@@ -261,7 +274,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             machine: machine || undefined,
             productivityBefore: prodBefore,
             productivityAfter: prodAfter,
-            unitProductCost: prodCost
+            unitProductCost: prodCost,
+            unitProductValue: prodValue
         };
         onUpdate(updatedRecord);
         setEditingInnovation(null);
@@ -282,6 +296,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             productivityBefore: prodBefore,
             productivityAfter: prodAfter,
             unitProductCost: prodCost,
+            unitProductValue: prodValue,
 
             status: 'PENDING',
             authorId: currentUser.id,
@@ -729,7 +744,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     <TrendingUp className="w-4 h-4 mr-2 text-blue-500" />
                     {t('productivityYield')}
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div>
                         <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">{t('productivityBefore')}</label>
                         <input 
@@ -763,36 +778,56 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             />
                         </div>
                     </div>
-                    <div className="md:col-span-3">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">{t('unitProductValue')}</label>
+                        <div className="relative">
+                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">R$</span>
+                            <input 
+                                type="number" 
+                                value={unitProductValue}
+                                onChange={e => setUnitProductValue(e.target.value)}
+                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                                placeholder="Ex: 50.00"
+                            />
+                        </div>
+                    </div>
+                    <div className="md:col-span-4">
                         {parseFloat(productivityBefore) > 0 && parseFloat(productivityAfter) > 0 && (
-                            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg flex flex-wrap gap-6 items-center">
+                            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg flex flex-wrap gap-8 items-center">
                                 <div>
                                     <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase">{t('productivityGain')}</div>
-                                    <div className="text-xl font-bold text-blue-700 dark:text-blue-300">
+                                    <div className="text-2xl font-black text-blue-700 dark:text-blue-300">
                                         +{((parseFloat(productivityAfter) - parseFloat(productivityBefore)) / parseFloat(productivityBefore) * 100).toFixed(1)}%
                                     </div>
                                 </div>
                                 
+                                {parseFloat(unitProductValue) > 0 && parseFloat(unitProductCost) > 0 && (
+                                    <div className="border-l border-blue-200 dark:border-blue-800 pl-8">
+                                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase">{t('profitFromCapacity')}</div>
+                                        <div className="text-2xl font-black text-emerald-600">
+                                            {formatCurrency(parseFloat(quantity) * (parseFloat(productivityAfter) / parseFloat(productivityBefore) - 1) * (parseFloat(unitProductValue) - parseFloat(unitProductCost)))}
+                                        </div>
+                                        <div className="text-[10px] text-gray-400">
+                                            ({(parseFloat(quantity) * (parseFloat(productivityAfter) / parseFloat(productivityBefore) - 1)).toFixed(0)} {t('extraUnits')} / {t('year')})
+                                        </div>
+                                    </div>
+                                )}
+
                                 {parseFloat(unitProductCost) > 0 && (
-                                    <div className="border-l border-blue-200 dark:border-blue-800 pl-6 grid grid-cols-2 gap-x-8 gap-y-2">
+                                    <div className="border-l border-blue-200 dark:border-blue-800 pl-8 grid grid-cols-2 gap-x-8 gap-y-1">
+                                        <div className="col-span-2 mb-1">
+                                            <div className="text-[10px] text-gray-400 uppercase font-bold">{t('costPerUnit')}</div>
+                                        </div>
                                         <div>
-                                            <div className="text-[10px] text-gray-400 uppercase font-bold">{t('costPerUnit')} ({t('current')})</div>
-                                            <div className="text-sm font-bold text-gray-600 dark:text-slate-400">
+                                            <div className="text-[10px] text-gray-400 uppercase">{t('current')}</div>
+                                            <div className="text-xs font-bold text-gray-600 dark:text-slate-400">
                                                 {formatCurrency(((settings?.hourlyCost || 0) / parseFloat(productivityBefore)) + parseFloat(unitProductCost))}
                                             </div>
                                         </div>
                                         <div>
-                                            <div className="text-[10px] text-blue-600 dark:text-blue-400 uppercase font-bold">{t('costPerUnit')} ({t('improved')})</div>
-                                            <div className="text-sm font-bold text-blue-700 dark:text-blue-300">
+                                            <div className="text-[10px] text-blue-600 dark:text-blue-400 uppercase">{t('improved')}</div>
+                                            <div className="text-xs font-bold text-blue-700 dark:text-blue-300">
                                                 {formatCurrency(((settings?.hourlyCost || 0) / parseFloat(productivityAfter)) + parseFloat(unitProductCost))}
-                                            </div>
-                                        </div>
-                                        <div className="col-span-2 pt-1 border-t border-blue-100 dark:border-blue-900/30">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-[10px] text-emerald-600 font-bold uppercase">{t('savingPerUnit')}</span>
-                                                <span className="text-sm font-black text-emerald-600">
-                                                    {formatCurrency(((settings?.hourlyCost || 0) / parseFloat(productivityBefore)) - ((settings?.hourlyCost || 0) / parseFloat(productivityAfter)))}
-                                                </span>
                                             </div>
                                         </div>
                                     </div>
@@ -1106,8 +1141,29 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                   </div>
                               </div>
 
-                              {viewingInnovation.unitProductCost && viewingInnovation.unitProductCost > 0 && (
+                              {viewingInnovation.unitProductValue && viewingInnovation.unitProductValue > 0 && viewingInnovation.unitProductCost && viewingInnovation.unitProductCost > 0 && (
                                   <div className="mt-4 p-4 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-lg">
+                                      <div className="flex justify-between items-center">
+                                          <div>
+                                              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase">{t('profitFromCapacity')}</div>
+                                              <div className="text-xs text-gray-500 dark:text-slate-400">
+                                                  {t('unitProductValue')}: {formatCurrency(viewingInnovation.unitProductValue)}
+                                              </div>
+                                          </div>
+                                          <div className="text-right">
+                                              <div className="text-2xl font-black text-emerald-600">
+                                                  {formatCurrency(viewingInnovation.quantity * ((viewingInnovation.productivityAfter || 1) / (viewingInnovation.productivityBefore || 1) - 1) * (viewingInnovation.unitProductValue - viewingInnovation.unitProductCost))}
+                                              </div>
+                                              <div className="text-[10px] text-gray-400">
+                                                  {(viewingInnovation.quantity * ((viewingInnovation.productivityAfter || 1) / (viewingInnovation.productivityBefore || 1) - 1)).toFixed(0)} {t('extraUnits')} / {t('year')}
+                                              </div>
+                                          </div>
+                                      </div>
+                                  </div>
+                              )}
+
+                              {viewingInnovation.unitProductCost && viewingInnovation.unitProductCost > 0 && (
+                                  <div className="mt-4 p-4 bg-gray-50 dark:bg-black border border-gray-100 dark:border-slate-800 rounded-lg">
                                       <div className="grid grid-cols-2 gap-4">
                                           <div>
                                               <div className="text-[10px] text-gray-400 uppercase font-bold">{t('costPerUnit')} ({t('current')})</div>
@@ -1116,12 +1172,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                               </div>
                                           </div>
                                           <div>
-                                              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">{t('costPerUnit')} ({t('improved')})</div>
-                                              <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                                              <div className="text-[10px] text-blue-600 dark:text-blue-400 uppercase font-bold">{t('costPerUnit')} ({t('improved')})</div>
+                                              <div className="text-lg font-bold text-blue-700 dark:text-blue-300">
                                                   {formatCurrency(((settings?.hourlyCost || 0) / (viewingInnovation.productivityAfter || 1)) + viewingInnovation.unitProductCost)}
                                               </div>
                                           </div>
-                                          <div className="col-span-2 pt-2 border-t border-emerald-200 dark:border-emerald-800 flex justify-between items-center">
+                                          <div className="col-span-2 pt-2 border-t border-gray-200 dark:border-slate-800 flex justify-between items-center">
                                               <span className="text-xs font-bold text-emerald-600 uppercase">{t('savingPerUnit')}</span>
                                               <span className="text-xl font-black text-emerald-600">
                                                   {formatCurrency(((settings?.hourlyCost || 0) / (viewingInnovation.productivityBefore || 1)) - ((settings?.hourlyCost || 0) / (viewingInnovation.productivityAfter || 1)))}

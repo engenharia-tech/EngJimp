@@ -278,7 +278,8 @@ export const fetchAppState = async (): Promise<AppState> => {
       machine: typeof inv.machine === 'string' ? JSON.parse(inv.machine) : (inv.machine || undefined),
       productivityBefore: inv.productivity_before,
       productivityAfter: inv.productivity_after,
-      unitProductCost: inv.unit_product_cost
+      unitProductCost: inv.unit_product_cost,
+      unitProductValue: inv.unit_product_value
     }));
 
     const interruptions: InterruptionRecord[] = (interruptionsData || []).map((i: any) => ({
@@ -574,6 +575,7 @@ export const addInnovation = async (innovation: InnovationRecord): Promise<AppSt
       productivity_before: innovation.productivityBefore,
       productivity_after: innovation.productivityAfter,
       unit_product_cost: innovation.unitProductCost,
+      unit_product_value: innovation.unitProductValue,
 
       status: innovation.status,
       author_id: innovation.authorId,
@@ -624,6 +626,7 @@ export const updateInnovation = async (innovation: InnovationRecord): Promise<Ap
         productivity_before: innovation.productivityBefore,
         productivity_after: innovation.productivityAfter,
         unit_product_cost: innovation.unitProductCost,
+        unit_product_value: innovation.unitProductValue,
         status: innovation.status,
       })
       .eq('id', innovation.id);
