@@ -918,6 +918,7 @@ const AppContent: React.FC = () => {
                 onStatusChange={handleInnovationStatusChange}
                 onDelete={handleInnovationDelete}
                 currentUser={currentUser}
+                settings={effectiveSettings}
              />
           )}
 
