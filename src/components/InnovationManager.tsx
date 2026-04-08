@@ -11,9 +11,10 @@ interface InnovationManagerProps {
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
   currentUser: User;
+  settings?: any;
 }
 
-export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovations, onAdd, onUpdate, onStatusChange, onDelete, currentUser }) => {
+export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovations, onAdd, onUpdate, onStatusChange, onDelete, currentUser, settings }) => {
   const { t } = useLanguage();
   const [showForm, setShowForm] = useState(false);
   const [editingInnovation, setEditingInnovation] = useState<InnovationRecord | null>(null);
@@ -39,6 +40,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [unitSavings, setUnitSavings] = useState<string>(''); // R$ value
   const [quantity, setQuantity] = useState<string>(''); // Qty
   const [investmentCost, setInvestmentCost] = useState<string>(''); // R$ Investment
+  const [productivityBefore, setProductivityBefore] = useState<string>('');
+  const [productivityAfter, setProductivityAfter] = useState<string>('');
+  const [unitProductCost, setUnitProductCost] = useState<string>('');
 
   // New Form State
   const [materials, setMaterials] = useState<InnovationMaterial[]>([]);
@@ -68,6 +72,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setInvestmentCost((editingInnovation.investmentCost || 0).toString());
         setMaterials(editingInnovation.materials || []);
         setMachine(editingInnovation.machine || null);
+        setProductivityBefore(editingInnovation.productivityBefore?.toString() || '');
+        setProductivityAfter(editingInnovation.productivityAfter?.toString() || '');
+        setUnitProductCost(editingInnovation.unitProductCost?.toString() || '');
         setShowForm(true);
     } else {
         setTitle('');
@@ -79,6 +86,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setInvestmentCost('');
         setMaterials([]);
         setMachine(null);
+        setProductivityBefore('');
+        setProductivityAfter('');
+        setUnitProductCost('');
     }
   }, [editingInnovation]);
 
@@ -178,8 +188,29 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     // Machine Impact (Depreciation is annual)
     const machineImpact = machine ? -machine.annualDepreciation : 0;
 
-    return base + materialImpact + machineImpact;
-  }, [unitSavings, quantity, calculationType, materials, machine]);
+    // Productivity Impact
+    let productivityImpact = 0;
+    const hourlyCost = settings?.hourlyCost || 0;
+    const prodBefore = parseFloat(productivityBefore);
+    const prodAfter = parseFloat(productivityAfter);
+    const prodCost = parseFloat(unitProductCost) || 0;
+
+    if (prodBefore > 0 && prodAfter > 0 && qty > 0 && hourlyCost > 0) {
+        // Labor Saving
+        const timeBefore = 1 / prodBefore;
+        const timeAfter = 1 / prodAfter;
+        const laborSaving = (timeBefore - timeAfter) * hourlyCost * qty;
+        
+        // Cost of extra units produced in the same time
+        // Extra units = qty * (1 - prodBefore / prodAfter)
+        const extraUnits = qty * (1 - prodBefore / prodAfter);
+        const extraUnitsCost = extraUnits * prodCost;
+        
+        productivityImpact = laborSaving - extraUnitsCost;
+    }
+
+    return base + materialImpact + machineImpact + productivityImpact;
+  }, [unitSavings, quantity, calculationType, materials, machine, productivityBefore, productivityAfter, unitProductCost, settings]);
 
   const addMaterial = () => {
     if (matName.trim() === '' || matCost === '') return;
@@ -218,6 +249,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     
     const total = previewAnnualSavings;
     const invest = parseFloat(investmentCost) || 0;
+    const prodBefore = parseFloat(productivityBefore) || undefined;
+    const prodAfter = parseFloat(productivityAfter) || undefined;
+    const prodCost = parseFloat(unitProductCost) || undefined;
 
     if (editingInnovation) {
         const updatedRecord: InnovationRecord = {
@@ -231,7 +265,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             totalAnnualSavings: total,
             investmentCost: invest,
             materials,
-            machine: machine || undefined
+            machine: machine || undefined,
+            productivityBefore: prodBefore,
+            productivityAfter: prodAfter,
+            unitProductCost: prodCost
         };
         onUpdate(updatedRecord);
         setEditingInnovation(null);
@@ -249,6 +286,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             investmentCost: invest,
             materials,
             machine: machine || undefined,
+            productivityBefore: prodBefore,
+            productivityAfter: prodAfter,
+            unitProductCost: prodCost,
 
             status: 'PENDING',
             authorId: currentUser.id,
@@ -690,6 +730,73 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 </div>
             </div>
 
+            {/* Productivity Yield Section */}
+            <div className="bg-white dark:bg-black p-6 rounded-lg border border-gray-200 dark:border-slate-700">
+                <h4 className="text-sm font-bold text-black dark:text-white mb-4 uppercase tracking-wider flex items-center">
+                    <TrendingUp className="w-4 h-4 mr-2 text-blue-500" />
+                    {t('productivityYield')}
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">{t('productivityBefore')}</label>
+                        <input 
+                            type="number" 
+                            value={productivityBefore}
+                            onChange={e => setProductivityBefore(e.target.value)}
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                            placeholder="Ex: 5"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">{t('productivityAfter')}</label>
+                        <input 
+                            type="number" 
+                            value={productivityAfter}
+                            onChange={e => setProductivityAfter(e.target.value)}
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                            placeholder="Ex: 7"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">{t('unitProductCost')}</label>
+                        <div className="relative">
+                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">R$</span>
+                            <input 
+                                type="number" 
+                                value={unitProductCost}
+                                onChange={e => setUnitProductCost(e.target.value)}
+                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                                placeholder="Ex: 15.50"
+                            />
+                        </div>
+                    </div>
+                    <div className="md:col-span-3">
+                        {parseFloat(productivityBefore) > 0 && parseFloat(productivityAfter) > 0 && (
+                            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg flex flex-wrap gap-6 items-center">
+                                <div>
+                                    <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase">{t('productivityGain')}</div>
+                                    <div className="text-xl font-bold text-blue-700 dark:text-blue-300">
+                                        +{((parseFloat(productivityAfter) - parseFloat(productivityBefore)) / parseFloat(productivityBefore) * 100).toFixed(1)}%
+                                    </div>
+                                </div>
+                                
+                                {parseFloat(unitProductCost) > 0 && parseFloat(quantity) > 0 && (
+                                    <div className="border-l border-blue-200 dark:border-blue-800 pl-6">
+                                        <div className="text-[10px] text-red-600 dark:text-red-400 font-bold uppercase">{t('extraUnitsCost')}</div>
+                                        <div className="text-sm font-bold text-red-700 dark:text-red-300">
+                                            -{formatCurrency(parseFloat(quantity) * (1 - parseFloat(productivityBefore) / parseFloat(productivityAfter)) * parseFloat(unitProductCost))}
+                                        </div>
+                                        <div className="text-[10px] text-gray-400">
+                                            ({(parseFloat(quantity) * (1 - parseFloat(productivityBefore) / parseFloat(productivityAfter))).toFixed(0)} {t('extraUnits')})
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
             {/* Final Preview Banner */}
             <div className={`mt-6 border rounded-lg p-6 flex items-center justify-between shadow-sm ${previewAnnualSavings < 0 ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900/30' : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900/30'}`}>
                 <div>
@@ -960,6 +1067,55 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                           </div>
                                           <div className="mt-1 font-bold text-blue-700 dark:text-blue-200 border-t border-blue-200 dark:border-blue-800 pt-1">
                                               {t('depreciationPerYear', { value: formatCurrency(viewingInnovation.machine.annualDepreciation) })}
+                                          </div>
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
+                      )}
+
+                      {/* Productivity Yield Details */}
+                      {(viewingInnovation.productivityBefore || viewingInnovation.productivityAfter) && (
+                          <div className="pt-4 border-t dark:border-slate-700">
+                              <h4 className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-3 flex items-center">
+                                  <TrendingUp className="w-3 h-3 mr-1 text-blue-500" />
+                                  {t('productivityYield')}
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  <div className="bg-gray-50 dark:bg-black p-3 rounded-lg border border-gray-100 dark:border-slate-800">
+                                      <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">{t('productivityBefore')}</div>
+                                      <div className="text-lg font-bold dark:text-slate-200">{viewingInnovation.productivityBefore || 0} {t('unitsAbbr')}</div>
+                                  </div>
+                                  <div className="bg-gray-50 dark:bg-black p-3 rounded-lg border border-gray-100 dark:border-slate-800">
+                                      <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">{t('productivityAfter')}</div>
+                                      <div className="text-lg font-bold dark:text-slate-200">{viewingInnovation.productivityAfter || 0} {t('unitsAbbr')}</div>
+                                  </div>
+                                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                                      <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase">{t('productivityGain')}</div>
+                                      <div className="text-lg font-bold text-blue-700 dark:text-blue-300">
+                                          {viewingInnovation.productivityBefore && viewingInnovation.productivityAfter ? 
+                                            `+${((viewingInnovation.productivityAfter - viewingInnovation.productivityBefore) / viewingInnovation.productivityBefore * 100).toFixed(1)}%` : 
+                                            '0%'}
+                                      </div>
+                                  </div>
+                              </div>
+
+                              {viewingInnovation.unitProductCost && viewingInnovation.unitProductCost > 0 && (
+                                  <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-lg">
+                                      <div className="flex justify-between items-center">
+                                          <div>
+                                              <div className="text-[10px] text-red-600 dark:text-red-400 font-bold uppercase">{t('extraUnitsCost')}</div>
+                                              <div className="text-xs text-gray-500 dark:text-slate-400">
+                                                  {t('unitProductCost')}: {formatCurrency(viewingInnovation.unitProductCost)}
+                                              </div>
+                                          </div>
+                                          <div className="text-right">
+                                              <div className="text-lg font-bold text-red-600 dark:text-red-400">
+                                                  -{formatCurrency(viewingInnovation.quantity * (1 - (viewingInnovation.productivityBefore || 0) / (viewingInnovation.productivityAfter || 1)) * viewingInnovation.unitProductCost)}
+                                              </div>
+                                              <div className="text-[10px] text-gray-400">
+                                                  {(viewingInnovation.quantity * (1 - (viewingInnovation.productivityBefore || 0) / (viewingInnovation.productivityAfter || 1))).toFixed(0)} {t('extraUnits')}
+                                              </div>
                                           </div>
                                       </div>
                                   </div>

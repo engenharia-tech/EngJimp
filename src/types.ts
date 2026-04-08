@@ -164,6 +164,11 @@ export interface InnovationRecord {
   // New Fields
   materials?: InnovationMaterial[];
   machine?: InnovationMachine;
+  
+  // Productivity Yield Fields
+  productivityBefore?: number;
+  productivityAfter?: number;
+  unitProductCost?: number;
 
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'IMPLEMENTED';
   authorId?: string;
