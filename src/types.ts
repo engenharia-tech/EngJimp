@@ -169,6 +169,7 @@ export interface InnovationRecord {
   productivityBefore?: number;
   productivityAfter?: number;
   unitProductCost?: number;
+  unitProductValue?: number; // Selling price or value of the product
 
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'IMPLEMENTED';
   authorId?: string;
