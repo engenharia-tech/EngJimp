@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useSaving } from '../contexts/SavingContext';
 import { Loader2 } from 'lucide-react';
 

@@ -14,28 +14,6 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// API Route for Gemini
-app.post("/api/gemini", async (req, res) => {
-  try {
-    const { prompt } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({ success: false, error: "Gemini API Key is not configured." });
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-    });
-    res.json({ success: true, text: response.text });
-  } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    res.status(500).json({ success: false, error: String(error) });
-  }
-});
-
 // API Route for sending email
 app.post("/api/send-email", async (req, res) => {
   console.log("[Email API] Received request on", process.env.VERCEL ? 'Vercel' : 'Local');
