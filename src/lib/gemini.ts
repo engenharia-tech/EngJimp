@@ -6,13 +6,11 @@ import { GoogleGenAI } from "@google/genai";
  */
 export const askGemini = async (prompt: string): Promise<string> => {
   try {
-    // In Vite, process.env is not available by default.
-    // We use the define in vite.config.ts to inject it.
-    // If it's still missing, we try to fall back to a global check.
-    const apiKey = (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
+    // process.env.GEMINI_API_KEY is injected by Vite's define in vite.config.ts
+    const apiKey = process.env.GEMINI_API_KEY;
     
     if (!apiKey) {
-      console.error("Gemini API Key is missing. Please set GEMINI_API_KEY in the environment variables.");
+      console.error("Gemini API Key is missing. Please set GEMINI_API_KEY or VITE_GEMINI_API_KEY in the environment variables.");
       throw new Error("Chave da API Gemini não encontrada. Configure a chave nas configurações do projeto.");
     }
 
