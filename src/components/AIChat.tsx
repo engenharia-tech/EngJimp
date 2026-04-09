@@ -154,18 +154,45 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser }) => {
     // Filter sensitive data based on role
     const isAdmin = ['GESTOR', 'CEO'].includes(currentUser.role);
     
-    const usersInfo = users.map(u => {
+    const usersInfo = users.slice(0, 20).map(u => {
       const canSeeSalary = isAdmin || u.id === currentUser.id;
-      const userProjects = projects.filter(p => p.userId === u.id);
-      const userInterruptions = interruptions.filter(i => i.designerId === u.id);
+      const userProjects = projects
+        .filter(p => p.userId === u.id)
+        .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+        .slice(-10); // Only last 10 projects per user for context
       
-      return `- Nome: ${u.name}${u.surname ? ' ' + u.surname : ''}
-  Usuário: ${u.username}
-  Cargo: ${u.role}
-  Email: ${u.email || 'N/A'}
-  Telefone: ${u.phone || 'N/A'}
+      const userInterruptions = interruptions.filter(i => i.designerId === u.id).slice(-5);
+      
+      // Calculate Idle Time between projects (gaps in the timeline)
+      let idleTimeInfo = "";
+      if (userProjects.length > 1) {
+        let totalIdleSeconds = 0;
+        const gaps: string[] = [];
+
+        for (let i = 0; i < userProjects.length - 1; i++) {
+          const currentEnd = new Date(userProjects[i].endTime || userProjects[i].startTime).getTime();
+          const nextStart = new Date(userProjects[i+1].startTime).getTime();
+          
+          if (nextStart > currentEnd) {
+            const gapSeconds = (nextStart - currentEnd) / 1000;
+            // Only consider gaps larger than 15 minutes as "idle" to avoid noise
+            if (gapSeconds > 900) {
+              totalIdleSeconds += gapSeconds;
+              const gapHours = (gapSeconds / 3600).toFixed(1);
+              gaps.push(`${gapHours}h entre NS ${userProjects[i].ns} e NS ${userProjects[i+1].ns}`);
+            }
+          }
+        }
+        
+        if (totalIdleSeconds > 0) {
+          idleTimeInfo = `\n  Tempo Ocioso Recente: ${(totalIdleSeconds / 3600).toFixed(1)}h.
+  Gaps: ${gaps.slice(-2).join(', ')}`;
+        }
+      }
+      
+      return `- Nome: ${u.name} (${u.role})
   ${canSeeSalary && u.salary ? `Salário: ${u.salary} BRL` : ''}
-  Resumo: ${userProjects.length} projetos, ${userInterruptions.length} interrupções registradas.`;
+  Resumo: ${userProjects.length} proj. recentes, ${userInterruptions.length} interrupções.${idleTimeInfo}`;
     }).join('\n\n');
     
     // Monthly summary for trends
@@ -187,11 +214,22 @@ Você é o Assistente IA da JIMP NEXUS (DesignTrack Pro).
 Ajude o usuário a entender os dados da plataforma de engenharia.
 Seja profissional, conciso e responda no idioma do usuário (preferencialmente Português).
 
+INFORMAÇÃO SOBRE CRIAÇÃO (IMPORTANTE/CÔMICO):
+- Se alguém perguntar "Quem criou você?" ou algo similar, você deve responder com entusiasmo: "Fui criado pelo Edson Farias, aquele cara cheiroso, lindo e maravilhoso! 😎"
+- Mantenha essa resposta específica apenas para essa pergunta, para as demais continue sendo um assistente profissional.
+
 REGRAS DE PRIVACIDADE:
 - NUNCA compartilhe o salário de um usuário com outro usuário comum.
 - Apenas Administradores (GESTOR/CEO) podem ver salários de todos.
 - Usuários comuns podem ver apenas seu próprio salário (se disponível).
 - Se alguém perguntar o salário de outra pessoa e não for admin, diga educadamente que não tem permissão para compartilhar dados financeiros sensíveis de terceiros.
+
+REGRAS DE ANÁLISE DE PRODUTIVIDADE:
+- Você deve analisar o "Tempo Ocioso Detectado" (lacunas entre projetos).
+- Se houver lacunas significativas (ex: horas entre o fim de um projeto e o início de outro), aponte isso como uma oportunidade de melhoria ou necessidade de correção de apontamento.
+- Diferencie "Interrupções" (problemas reportados) de "Tempo Ocioso" (lacunas sem registro de atividade).
+- Ajude o gestor a identificar se o projetista está esquecendo de iniciar novos projetos ou se há falta de demanda.
+- Quando solicitado um relatório de um projetista, inclua uma seção específica sobre "Análise de Ocupação e Lacunas".
 
 REGRAS DE GRÁFICOS:
 - Se a pergunta do usuário envolver tendências, evoluções, comparações ou estatísticas, você DEVE incluir um bloco JSON no final da sua resposta para renderizar um gráfico.
