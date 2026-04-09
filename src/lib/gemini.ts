@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 
 /**
  * Client-side library to interact with the Gemini API directly.
@@ -24,6 +24,11 @@ export const askGemini = async (prompt: string): Promise<string> => {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
+      config: {
+        thinkingConfig: {
+          thinkingLevel: ThinkingLevel.LOW
+        }
+      }
     });
 
     return response.text || '';
