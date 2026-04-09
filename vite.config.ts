@@ -9,11 +9,13 @@ const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const geminiKey = env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
   
   return {
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || ""),
+      'process.env.GEMINI_API_KEY': JSON.stringify(geminiKey),
+      'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(geminiKey),
     },
     resolve: {
       alias: {
