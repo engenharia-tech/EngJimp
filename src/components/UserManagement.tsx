@@ -19,7 +19,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
-  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   
   // Webhook State
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -454,29 +453,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Clear Issues */}
-                <div className="p-4 bg-gray-50 dark:bg-black rounded-lg border border-gray-200 dark:border-slate-700">
-                    <h4 className="font-semibold text-black dark:text-white mb-2">Limpeza de Dados</h4>
-                    <p className="text-sm text-gray-500 dark:text-slate-400 mb-4">
-                        A tabela de "Problemas" (Issues) foi descontinuada. Use este botão para limpar todos os registros antigos do banco de dados.
-                    </p>
-                    <button 
-                        onClick={async () => {
-                            if(!window.confirm("ATENÇÃO: Isso apagará TODOS os registros da tabela 'issues'. Tem certeza?")) return;
-                            setIsCleaning(true);
-                            const res = await deleteAllIssues();
-                            setIsCleaning(false);
-                            if(res.success) alert(res.message);
-                            else alert("Erro: " + res.message);
-                        }}
-                        disabled={isCleaning}
-                        className="bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
-                    >
-                        {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                        Limpar Tabela de Problemas
-                    </button>
-                </div>
-
                 {/* Excel Integration */}
                 <div className="p-4 bg-green-50 dark:bg-emerald-900/20 rounded-lg border border-green-200 dark:border-emerald-900/30">
                     <h4 className="font-semibold text-black dark:text-white mb-2 flex items-center">
@@ -681,24 +657,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                         Recalcular e Sincronizar Custos
                     </button>
                 </div>
-
-                {/* Total Correction Button */}
-                <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-900/30 md:col-span-2">
-                    <h4 className="font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center">
-                        <Shield className="w-5 h-5 mr-2" />
-                        Correção TOTAL de Permissões e Cargos
-                    </h4>
-                    <p className="text-sm text-red-600 dark:text-red-500/80 mb-4">
-                        Use este botão se estiver recebendo erros de "violates check constraint" ou "policy" ao salvar usuários ou excluir projetos.
-                    </p>
-                    <button 
-                        onClick={() => setShowCorrectionModal(true)}
-                        className="w-full bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl text-base font-bold transition-all shadow-lg hover:shadow-red-500/20 flex items-center justify-center"
-                    >
-                        <Shield className="w-5 h-5 mr-2" />
-                        EXECUTAR CORREÇÃO TOTAL (SQL)
-                    </button>
-                </div>
             </div>
         </div>
       )}
@@ -723,102 +681,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     >
                         Sim, Excluir
                     </button>
-                </div>
-            </div>
-        </div>
-      )}
-      {/* Correction Modal */}
-      {showCorrectionModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-2xl p-6 border border-red-100 dark:border-red-900/30">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-red-700 dark:text-red-400 flex items-center">
-                        <Shield className="w-6 h-6 mr-2" />
-                        Correção de Banco de Dados
-                    </h3>
-                    <button onClick={() => setShowCorrectionModal(false)} className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
-                        <X className="w-6 h-6" />
-                    </button>
-                </div>
-                
-                <div className="space-y-4">
-                    <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-900/30 text-sm text-red-800 dark:text-red-300">
-                        <p className="font-bold mb-2">Instruções Importantes:</p>
-                        <ol className="list-decimal pl-5 space-y-1">
-                            <li>Copie o código SQL abaixo.</li>
-                            <li>Acesse o <strong>SQL Editor</strong> do seu Supabase.</li>
-                            <li>Cole o código e clique em <strong>Run</strong>.</li>
-                            <li>Isso corrigirá as permissões de exclusão e aceitará o cargo 'PROCESSOS'.</li>
-                        </ol>
-                    </div>
-
-                    <div className="relative">
-                        <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs font-mono overflow-x-auto max-h-60 border border-gray-800">
-{`-- 1. Atualizar Cargos Permitidos (Adiciona 'PROCESSOS')
-ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE public.users ADD CONSTRAINT users_role_check 
-CHECK (role IN ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR'));
-
--- 2. Garantir Colunas Necessárias (Projetos)
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS client_name text;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS project_code text;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS flooring_type text;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS implement_type text;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS estimated_seconds integer;
-
--- 3. Corrigir Permissões de Exclusão (GESTOR/CEO)
-DROP POLICY IF EXISTS "Admins can delete projects" ON public.projects;
-CREATE POLICY "Admins can delete projects" ON public.projects 
-FOR DELETE USING (current_setting('app.user_role', true) IN ('GESTOR', 'CEO'));
-
--- 4. Recarregar Cache
-NOTIFY pgrst, 'reload config';`}
-                        </pre>
-                        <button 
-                            onClick={() => {
-                                navigator.clipboard.writeText(`-- 1. Atualizar Cargos Permitidos (Adiciona 'PROCESSOS')
-ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE public.users ADD CONSTRAINT users_role_check 
-CHECK (role IN ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR'));
-
--- 2. Garantir Colunas Necessárias (Projetos)
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS client_name text;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS project_code text;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS flooring_type text;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS implement_type text;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS estimated_seconds integer;
-
--- 3. Corrigir Permissões de Exclusão (GESTOR/CEO)
-DROP POLICY IF EXISTS "Admins can delete projects" ON public.projects;
-CREATE POLICY "Admins can delete projects" ON public.projects 
-FOR DELETE USING (current_setting('app.user_role', true) IN ('GESTOR', 'CEO'));
-
--- 4. Recarregar Cache
-NOTIFY pgrst, 'reload config';`);
-                                addToast("SQL copiado para a área de transferência!", "success");
-                            }}
-                            className="absolute top-2 right-2 bg-gray-800 hover:bg-gray-700 text-white px-2 py-1 rounded text-[10px] font-bold"
-                        >
-                            COPIAR SQL
-                        </button>
-                    </div>
-
-                    <div className="flex justify-end gap-3 mt-6">
-                        <button 
-                            onClick={() => setShowCorrectionModal(false)}
-                            className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
-                        >
-                            Fechar
-                        </button>
-                        <a 
-                            href="https://supabase.com/dashboard/project/_/sql" 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center"
-                        >
-                            Abrir Supabase SQL Editor
-                        </a>
-                    </div>
                 </div>
             </div>
         </div>
