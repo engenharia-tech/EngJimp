@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity } from '../types';
+import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 
@@ -42,6 +42,7 @@ const defaultState: AppState = {
   interruptionTypes: [],
   activityTypes: [],
   operationalActivities: [],
+  projectRequests: [],
   users: [],
   settings: { 
     hourlyCost: 150,
@@ -217,6 +218,12 @@ export const fetchAppState = async (): Promise<AppState> => {
       .select('*')
       .order('start_time', { ascending: false });
 
+    // Fetch Project Requests
+    const { data: projectRequestsData, error: projectRequestsError } = await supabase
+      .from('project_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
+
     // Fetch Settings
     const settings = await fetchSettings();
     
@@ -318,6 +325,24 @@ export const fetchAppState = async (): Promise<AppState> => {
       isFlagged: a.is_flagged
     }));
 
+    const projectRequests: ProjectRequest[] = (projectRequestsData || []).map((r: any) => ({
+      id: r.id,
+      clientName: r.client_name,
+      ns: r.ns,
+      productType: r.product_type,
+      dimension: r.dimension,
+      flooring: r.flooring,
+      setup: r.setup,
+      status: r.status as ProjectRequestStatus,
+      createdAt: r.created_at,
+      createdBy: r.created_by,
+      assignedTo: r.assigned_to,
+      needsBase: r.needs_base ?? true,
+      needsBox: r.needs_box ?? true,
+      baseProjectId: r.base_project_id,
+      boxProjectId: r.box_project_id
+    }));
+
     // If no interruption types exist, seed them (first time)
     if (interruptionTypes.length === 0) {
         // We don't seed here to avoid multiple calls, but we return defaults if empty
@@ -343,7 +368,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       salary: Number(u.salary) || 0
     })).sort((a, b) => a.name.localeCompare(b.name));
 
-    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, users, settings };
+    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, settings };
   } catch (error) {
     console.error("Failed to load data from Supabase", error);
     return { ...defaultState, users: [] };
@@ -941,6 +966,73 @@ export const deleteOperationalActivity = async (id: string): Promise<AppState> =
         console.error("Failed to delete operational activity", error);
         throw error;
     }
+};
+
+// --- PROJECT REQUEST MANAGEMENT ---
+
+export const addProjectRequest = async (request: ProjectRequest): Promise<AppState> => {
+  try {
+    const { error } = await supabase.from('project_requests').insert([{
+      id: request.id,
+      client_name: request.clientName,
+      ns: request.ns,
+      product_type: request.productType,
+      dimension: request.dimension,
+      flooring: request.flooring,
+      setup: request.setup,
+      status: request.status,
+      created_at: request.createdAt,
+      created_by: request.createdBy,
+      assigned_to: request.assignedTo,
+      needs_base: request.needsBase,
+      needs_box: request.needsBox
+    }]);
+
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("Failed to add project request", error);
+    throw error;
+  }
+};
+
+export const updateProjectRequest = async (request: ProjectRequest): Promise<AppState> => {
+  try {
+    const { error } = await supabase
+      .from('project_requests')
+      .update({
+        client_name: request.clientName,
+        ns: request.ns,
+        product_type: request.productType,
+        dimension: request.dimension,
+        flooring: request.flooring,
+        setup: request.setup,
+        status: request.status,
+        assigned_to: request.assignedTo,
+        needs_base: request.needsBase,
+        needs_box: request.needsBox,
+        base_project_id: request.baseProjectId,
+        box_project_id: request.boxProjectId
+      })
+      .eq('id', request.id);
+
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("Failed to update project request", error);
+    throw error;
+  }
+};
+
+export const deleteProjectRequest = async (id: string): Promise<AppState> => {
+  try {
+    const { error } = await supabase.from('project_requests').delete().eq('id', id);
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("Failed to delete project request", error);
+    throw error;
+  }
 };
 
 // --- USER MANAGEMENT ---
