@@ -37,6 +37,9 @@ import {
   addActivityType,
   updateActivityType,
   deleteActivityType,
+  addProjectRequest,
+  updateProjectRequest,
+  deleteProjectRequest,
   seedFebruaryData
 } from './services/storageService';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
@@ -156,7 +159,8 @@ const AppContent: React.FC = () => {
     },
     seoData: { keywords: [], metrics: [], tasks: [] },
     activityTypes: [],
-    operationalActivities: []
+    operationalActivities: [],
+    projectRequests: []
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -620,6 +624,35 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const onAddProjectRequest = async (request: any) => {
+    try {
+      const updatedData = await addProjectRequest(request);
+      setData(updatedData);
+      addToast(t('nsRegisteredSuccess'), 'success');
+    } catch (e) {
+      addToast(t('errorRegisteringNS'), 'error');
+    }
+  };
+
+  const onUpdateProjectRequest = async (request: any) => {
+    try {
+      const updatedData = await updateProjectRequest(request);
+      setData(updatedData);
+    } catch (e) {
+      addToast(t('errorUpdatingNS'), 'error');
+    }
+  };
+
+  const onDeleteProjectRequest = async (id: string) => {
+    try {
+      const updatedData = await deleteProjectRequest(id);
+      setData(updatedData);
+      addToast(t('nsDeletedSuccess'), 'success');
+    } catch (e) {
+      addToast(t('errorDeletingNS'), 'error');
+    }
+  };
+
   const handleNavClick = (id: any) => {
     setActiveTab(id);
     setIsMobileMenuOpen(false);
@@ -821,11 +854,15 @@ const AppContent: React.FC = () => {
               existingProjects={displayData.projects}
               allProjects={data.projects}
               interruptions={displayData.interruptions}
+              projectRequests={data.projectRequests}
               settings={effectiveSettings}
               onCreate={handleProjectCreate}
               onUpdate={handleProjectUpdate}
               onAddInterruption={onAddInterruption}
               onUpdateInterruption={onUpdateInterruption}
+              onAddProjectRequest={onAddProjectRequest}
+              onUpdateProjectRequest={onUpdateProjectRequest}
+              onDeleteProjectRequest={onDeleteProjectRequest}
               isVisible={activeTab === 'tracker'}
               onNavigateBack={() => setActiveTab('tracker')}
               currentUser={currentUser}

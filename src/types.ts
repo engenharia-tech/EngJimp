@@ -266,6 +266,33 @@ export interface SEOData {
   tasks: SEOTask[];
 }
 
+export enum ProjectRequestStatus {
+  PENDING = 'Pendente',
+  IN_PROGRESS = 'Em Projeto',
+  COMPLETED = 'Concluído',
+  CANCELLED = 'Cancelado'
+}
+
+export interface ProjectRequest {
+  id: string;
+  clientName: string;
+  ns: string;
+  productType: string;
+  dimension: string; // comp*larg*alt
+  flooring: string;
+  setup: string;
+  status: ProjectRequestStatus;
+  createdAt: string;
+  createdBy: string;
+  assignedTo?: string;
+  
+  // Tracking parts
+  needsBase: boolean;
+  needsBox: boolean;
+  baseProjectId?: string;
+  boxProjectId?: string;
+}
+
 export interface AppState {
   projects: ProjectSession[];
   issues: IssueRecord[];
@@ -274,6 +301,7 @@ export interface AppState {
   interruptionTypes: InterruptionType[];
   activityTypes: ActivityType[];
   operationalActivities: OperationalActivity[];
+  projectRequests: ProjectRequest[];
   users: User[];
   settings: AppSettings;
   seoData?: SEOData;

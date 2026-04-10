@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X, Loader2 } from 'lucide-react';
-import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea } from '../types';
+import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea, ProjectRequest, ProjectRequestStatus } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { calcActiveSeconds, isWorkingHour } from '../utils/workdayCalc';
 import { fetchUsers } from '../services/storageService';
@@ -20,6 +20,10 @@ interface EngJimpTrackerProps {
   onUpdate: (project: ProjectSession) => void;
   onAddInterruption: (interruption: InterruptionRecord) => void;
   onUpdateInterruption: (interruption: InterruptionRecord) => void;
+  projectRequests: ProjectRequest[];
+  onAddProjectRequest: (request: ProjectRequest) => void;
+  onUpdateProjectRequest: (request: ProjectRequest) => void;
+  onDeleteProjectRequest: (id: string) => void;
   isVisible: boolean;
   onNavigateBack: () => void;
   currentUser: User | null;
@@ -34,6 +38,10 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   onUpdate, 
   onAddInterruption,
   onUpdateInterruption,
+  projectRequests,
+  onAddProjectRequest,
+  onUpdateProjectRequest,
+  onDeleteProjectRequest,
   isVisible, 
   onNavigateBack, 
   currentUser 
@@ -44,6 +52,18 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [selectedProjectDetails, setSelectedProjectDetails] = useState<ProjectSession | null>(null);
   const { addToast } = useToast();
   const { t } = useLanguage();
+
+  // NS Queue Form Data
+  const [showNSForm, setShowNSForm] = useState(false);
+  const [nsClient, setNsClient] = useState('');
+  const [nsNumber, setNsNumber] = useState('');
+  const [nsProductType, setNsProductType] = useState('');
+  const [nsDimension, setNsDimension] = useState('');
+  const [nsFlooring, setNsFlooring] = useState('');
+  const [nsSetup, setNsSetup] = useState('');
+  const [nsNeedsBase, setNsNeedsBase] = useState(true);
+  const [nsNeedsBox, setNsNeedsBox] = useState(true);
+  const [selectedRequest, setSelectedRequest] = useState<ProjectRequest | null>(null);
 
   // Form Data (Start)
   const [ns, setNs] = useState('');
@@ -201,8 +221,30 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
     const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
 
+    const projectId = crypto.randomUUID();
+
+    // If we have a selected request or the NS matches a pending request, update it
+    const matchingRequest = selectedRequest || projectRequests.find(r => r.ns === ns.trim() && r.status === ProjectRequestStatus.PENDING);
+
+    if (matchingRequest) {
+      const isBase = implementType === ImplementType.BASE;
+      const updatedRequest = {
+        ...matchingRequest,
+        status: ProjectRequestStatus.IN_PROGRESS,
+        assignedTo: currentUser?.id || '',
+      };
+
+      if (isBase) {
+        updatedRequest.baseProjectId = projectId;
+      } else {
+        updatedRequest.boxProjectId = projectId;
+      }
+
+      onUpdateProjectRequest(updatedRequest);
+    }
+
     const newProject: ProjectSession = {
-      id: crypto.randomUUID(),
+      id: projectId,
       ns,
       clientName,
       projectCode,
@@ -232,6 +274,62 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     setEstHours('');
     setEstMinutes('');
     setIsOvertime(false);
+    setSelectedRequest(null);
+  };
+
+  const handlePickRequest = (request: ProjectRequest) => {
+    setNs(request.ns);
+    setClientName(request.clientName);
+    // Try to map product type to implement type if possible
+    const mappedImplement = IMPLEMENT_TYPES.find(type => 
+      request.productType.toLowerCase().includes(type.toLowerCase())
+    ) as ImplementType;
+    
+    if (mappedImplement) {
+      setImplementType(mappedImplement);
+    }
+    
+    setNotes(`Produto: ${request.productType}\nDimensão: ${request.dimension}\nAssoalho: ${request.flooring}\nSetup: ${request.setup}`);
+    setSelectedRequest(request);
+    
+    // Scroll to form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    addToast(t('nsSelected', { ns: request.ns }), 'info');
+  };
+
+  const handleRegisterNS = () => {
+    if (!nsNumber.trim() || !nsClient.trim()) {
+      addToast(t('fillRequiredFields'), 'error');
+      return;
+    }
+
+    const newRequest: ProjectRequest = {
+      id: crypto.randomUUID(),
+      clientName: nsClient,
+      ns: nsNumber,
+      productType: nsProductType,
+      dimension: nsDimension,
+      flooring: nsFlooring,
+      setup: nsSetup,
+      needsBase: nsNeedsBase,
+      needsBox: nsNeedsBox,
+      status: ProjectRequestStatus.PENDING,
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser?.id || ''
+    };
+
+    onAddProjectRequest(newRequest);
+    
+    // Reset form
+    setNsClient('');
+    setNsNumber('');
+    setNsProductType('');
+    setNsDimension('');
+    setNsFlooring('');
+    setNsSetup('');
+    setNsNeedsBase(true);
+    setNsNeedsBox(true);
+    setShowNSForm(false);
   };
 
   const handleResumeFromList = (project: ProjectSession) => {
@@ -439,6 +537,34 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       estimatedSeconds: estimatedSeconds > 0 ? estimatedSeconds : activeProject.estimatedSeconds,
       status: 'COMPLETED'
     };
+
+    // Update Project Request status if linked
+    const linkedRequest = projectRequests.find(r => r.baseProjectId === activeProject.id || r.boxProjectId === activeProject.id);
+    if (linkedRequest) {
+      const isBase = linkedRequest.baseProjectId === activeProject.id;
+      const isBox = linkedRequest.boxProjectId === activeProject.id;
+      
+      const updatedRequest = { ...linkedRequest };
+      
+      // If both parts are done, or if only one part was needed and it's done
+      const baseDone = (updatedRequest.needsBase && updatedRequest.baseProjectId && (isBase || projectRequests.find(r => r.id === updatedRequest.id)?.baseProjectId)) || !updatedRequest.needsBase;
+      const boxDone = (updatedRequest.needsBox && updatedRequest.boxProjectId && (isBox || projectRequests.find(r => r.id === updatedRequest.id)?.boxProjectId)) || !updatedRequest.needsBox;
+
+      // Actually, let's just check if the current one being finished makes it all done
+      const currentIsBase = activeProject.implementType === ImplementType.BASE;
+      
+      // If finishing base and no box needed, or box already done
+      // If finishing box and no base needed, or base already done
+      
+      const allDone = (currentIsBase && (!updatedRequest.needsBox || updatedRequest.boxProjectId)) ||
+                      (!currentIsBase && (!updatedRequest.needsBase || updatedRequest.baseProjectId));
+
+      if (allDone) {
+        updatedRequest.status = ProjectRequestStatus.COMPLETED;
+      }
+      
+      onUpdateProjectRequest(updatedRequest);
+    }
 
     // 1. Update DB
     try {
@@ -723,6 +849,173 @@ JIMPNEXUS
       {!activeProject && (
         <div className="space-y-8">
           
+          {/* NS Queue Section */}
+          <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
+                <Layers className="w-5 h-5 mr-2 text-orange-600 dark:text-orange-400" />
+                Fila de NS (Pedidos)
+              </h3>
+              <button 
+                onClick={() => setShowNSForm(!showNSForm)}
+                className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold"
+              >
+                {showNSForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                {showNSForm ? 'Cancelar' : 'Cadastrar NS'}
+              </button>
+            </div>
+
+            {showNSForm && (
+              <div className="mb-6 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50 dark:bg-orange-900/10 animate-in slide-in-from-top duration-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">Cliente</label>
+                    <input 
+                      type="text" 
+                      value={nsClient}
+                      onChange={e => setNsClient(e.target.value)}
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      placeholder="Nome do cliente"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">Número da NS</label>
+                    <input 
+                      type="text" 
+                      value={nsNumber}
+                      onChange={e => setNsNumber(e.target.value)}
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      placeholder="Ex: 9500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('productType')}</label>
+                    <input 
+                      type="text" 
+                      value={nsProductType}
+                      onChange={e => setNsProductType(e.target.value)}
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      placeholder="Ex: Sider"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('dimension')}</label>
+                    <input 
+                      type="text" 
+                      value={nsDimension}
+                      onChange={e => setNsDimension(e.target.value)}
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      placeholder="Ex: 15,00x2,590"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('flooring')}</label>
+                    <input 
+                      type="text" 
+                      value={nsFlooring}
+                      onChange={e => setNsFlooring(e.target.value)}
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      placeholder="Ex: XDZ 4,75"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('setup')}</label>
+                    <input 
+                      type="text" 
+                      value={nsSetup}
+                      onChange={e => setNsSetup(e.target.value)}
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      placeholder="Ex: 3ET 100% PNEU"
+                    />
+                  </div>
+                  <div className="flex items-end gap-4 pb-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={nsNeedsBase}
+                        onChange={e => setNsNeedsBase(e.target.checked)}
+                        className="w-4 h-4 text-orange-600 rounded"
+                      />
+                      <span className="text-sm font-bold text-orange-800 dark:text-orange-300">{t('needsBase')}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={nsNeedsBox}
+                        onChange={e => setNsNeedsBox(e.target.checked)}
+                        className="w-4 h-4 text-orange-600 rounded"
+                      />
+                      <span className="text-sm font-bold text-orange-800 dark:text-orange-300">{t('needsBox')}</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button 
+                    onClick={handleRegisterNS}
+                    className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md"
+                  >
+                    Salvar Pedido
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {projectRequests.filter(r => r.status === ProjectRequestStatus.PENDING).length === 0 ? (
+                <div className="col-span-full py-8 text-center text-gray-500 dark:text-slate-400 italic">
+                  Nenhuma NS pendente na fila.
+                </div>
+              ) : (
+                projectRequests.filter(r => r.status === ProjectRequestStatus.PENDING).map(request => (
+                  <div key={request.id} className="border border-orange-100 dark:border-orange-900/50 rounded-lg p-4 bg-white dark:bg-black hover:shadow-md transition-shadow relative group">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="font-bold text-orange-600 dark:text-orange-400 text-lg">NS {request.ns}</div>
+                      <div className="flex gap-1">
+                        <button 
+                          onClick={() => handlePickRequest(request)}
+                          className="p-1.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded hover:bg-orange-600 hover:text-white transition-all"
+                          title="Projetar este pedido"
+                        >
+                          <Play className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => onDeleteProjectRequest(request.id)}
+                          className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                          title="Excluir pedido"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <div className="font-semibold text-black dark:text-white">{request.clientName}</div>
+                      <div className="text-gray-600 dark:text-slate-400 flex items-center gap-1">
+                        <Truck className="w-3 h-3" /> {request.productType}
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-2 text-[10px] text-gray-500 dark:text-slate-500">
+                        <span className="truncate" title={request.dimension}>Dim: {request.dimension}</span>
+                        <span className="truncate" title={request.flooring}>Ass: {request.flooring}</span>
+                        <span className="col-span-2 truncate" title={request.setup}>Set: {request.setup}</span>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        {request.needsBase && (
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${request.baseProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                            BASE
+                          </span>
+                        )}
+                        {request.needsBox && (
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${request.boxProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                            CX
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           {/* Pending Projects */}
           {pendingProjects.length > 0 && (
             <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/30">
