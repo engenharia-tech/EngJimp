@@ -291,6 +291,10 @@ export interface ProjectRequest {
   needsBox: boolean;
   baseProjectId?: string;
   boxProjectId?: string;
+  
+  // Estimates
+  managementEstimate?: number; // in hours
+  designerEstimate?: number;   // in hours
 }
 
 export interface AppState {

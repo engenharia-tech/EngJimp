@@ -985,7 +985,9 @@ export const addProjectRequest = async (request: ProjectRequest): Promise<AppSta
       created_by: request.createdBy,
       assigned_to: request.assignedTo,
       needs_base: request.needsBase,
-      needs_box: request.needsBox
+      needs_box: request.needsBox,
+      management_estimate: request.managementEstimate,
+      designer_estimate: request.designerEstimate
     }]);
 
     if (error) throw error;
@@ -1012,7 +1014,9 @@ export const updateProjectRequest = async (request: ProjectRequest): Promise<App
         needs_base: request.needsBase,
         needs_box: request.needsBox,
         base_project_id: request.baseProjectId,
-        box_project_id: request.boxProjectId
+        box_project_id: request.boxProjectId,
+        management_estimate: request.managementEstimate,
+        designer_estimate: request.designerEstimate
       })
       .eq('id', request.id);
 
