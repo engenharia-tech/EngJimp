@@ -4,7 +4,7 @@ export const PROJECT_TYPES = [
   ProjectType.DEVELOPMENT,
   ProjectType.RELEASE,
   ProjectType.VARIATION
-];
+].sort();
 
 export const IMPLEMENT_TYPES = [
   ImplementType.BASCULANTE,
@@ -19,19 +19,19 @@ export const IMPLEMENT_TYPES = [
   ImplementType.SOBRECHASSI,
   ImplementType.SOBRE_CHASSI_FURGAO,
   ImplementType.SOBRE_CHASSI_LONADO
-];
+].sort();
 
 export const FLOORING_TYPES = [
-  'M/F 20mm',
-  'M/F 30mm',
-  'Naval 15mm',
-  'Naval 18mm',
-  'Naval 24mm',
-  'Naval 27mm',
-  'Omega 28mm',
-  'Sonata',
-  'XDZ 3mm',
-  'XDZ 4,75mm'
+  'M/F 20MM',
+  'M/F 30MM',
+  'NAVAL 15MM',
+  'NAVAL 18MM',
+  'NAVAL 24MM',
+  'NAVAL 27MM',
+  'OMEGA 28MM',
+  'SONATA',
+  'XDZ 3MM',
+  'XDZ 4,75MM'
 ].sort();
 
 export const ISSUE_TYPES = [
@@ -52,23 +52,23 @@ export const ISSUE_TYPES = [
   IssueType.PINTURA,
   IssueType.PORTAS,
   IssueType.QUALIDADE_INSPECAO_FINAL
-];
+].sort();
 
 export const INTERRUPTION_AREAS = [
-  'Cadastro',
-  'Cliente',
-  'Comercial',
-  'Engenharia',
-  'Jimpservice',
-  'Outros'
-];
+  'CADASTRO',
+  'CLIENTE',
+  'COMERCIAL',
+  'ENGENHARIA',
+  'JIMPSERVICE',
+  'OUTROS'
+].sort();
 
 export const DEFAULT_INTERRUPTION_TYPES = [
-  'falta de informações',
-  'Informações erradas',
-  'outros',
-  'Peças oficina (Jimpservice)'
-];
+  'FALTA DE INFORMAÇÕES',
+  'INFORMAÇÕES ERRADAS',
+  'OUTROS',
+  'PEÇAS OFICINA (JIMPSERVICE)'
+].sort();
 
 export const DEFAULT_ACTIVITY_TYPES = [
   'ALMOÇO',
@@ -86,7 +86,7 @@ export const DEFAULT_ACTIVITY_TYPES = [
   'RETRABALHO SOLICITADO',
   'REUNIÃO',
   'VIAGEM'
-];
+].sort();
 
 export const SUSPENSION_TYPES = [
   'MEC 2E',

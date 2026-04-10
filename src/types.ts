@@ -1,42 +1,42 @@
 export enum ProjectType {
-  VARIATION = 'Variação',
-  DEVELOPMENT = 'Desenvolvimento',
-  RELEASE = 'Liberação'
+  VARIATION = 'VARIAÇÃO',
+  DEVELOPMENT = 'DESENVOLVIMENTO',
+  RELEASE = 'LIBERAÇÃO'
 }
 
 export enum ImplementType {
-  BASE = 'Base',
-  FURGAO = 'Furgão',
-  SIDER = 'Sider',
-  CAIXA_CARGA = 'Caixa de Carga',
-  BASCULANTE = 'Basculante',
-  SOBRECHASSI = 'Sobrechassi',
-  GRANELEIRO = 'Graneleiro',
-  CARGA_SECA = 'Carga Seca',
-  COMPONENTES = 'Componentes',
-  OUTROS = 'Outros',
-  SOBRE_CHASSI_FURGAO = 'Sobre-Chassi Furgão',
-  SOBRE_CHASSI_LONADO = 'Sobre-Chassi Lonado'
+  BASE = 'BASE',
+  FURGAO = 'FURGÃO',
+  SIDER = 'SIDER',
+  CAIXA_CARGA = 'CAIXA DE CARGA',
+  BASCULANTE = 'BASCULANTE',
+  SOBRECHASSI = 'SOBRECHASSI',
+  GRANELEIRO = 'GRANELEIRO',
+  CARGA_SECA = 'CARGA SECA',
+  COMPONENTES = 'COMPONENTES',
+  OUTROS = 'OUTROS',
+  SOBRE_CHASSI_FURGAO = 'SOBRE-CHASSI FURGÃO',
+  SOBRE_CHASSI_LONADO = 'SOBRE-CHASSI LONADO'
 }
 
 export enum IssueType {
-  COMERCIAL = 'Comercial',
-  CORTE_DOBRA = 'Corte /Dobra',
-  ENGENHARIA = 'Engenharia',
-  PCP_COMPONENTES = 'PCP Componentes',
-  PCP_PECAS = 'PCP Peças',
-  MONTAGEM_CHASSI = 'Montagem de chassi',
-  MONTAGEM_CAIXA_CARGA = 'Montagem Caixa de Carga',
-  MONTAGEM_TETO = 'Montagem Teto',
-  MONTAGEM_ACESSORIOS = 'Montagem acessórios',
-  MECANICA_SOBRE_CHASSI = 'Mecânica Sobre Chassi',
-  MECANICA_SR = 'Mecânica SR',
-  CHAPEACAO = 'Chapeação',
-  PORTAS = 'Portas',
-  PINTURA = 'Pintura',
-  ELETRICA_ABS_EBS = 'Elétrica /ABS-EBS',
-  ALINHAMENTO_EIXOS = 'Alinhamento de Eixos',
-  QUALIDADE_INSPECAO_FINAL = 'Qualidade Inspeção Final'
+  COMERCIAL = 'COMERCIAL',
+  CORTE_DOBRA = 'CORTE /DOBRA',
+  ENGENHARIA = 'ENGENHARIA',
+  PCP_COMPONENTES = 'PCP COMPONENTES',
+  PCP_PECAS = 'PCP PEÇAS',
+  MONTAGEM_CHASSI = 'MONTAGEM DE CHASSI',
+  MONTAGEM_CAIXA_CARGA = 'MONTAGEM CAIXA DE CARGA',
+  MONTAGEM_TETO = 'MONTAGEM TETO',
+  MONTAGEM_ACESSORIOS = 'MONTAGEM ACESSÓRIOS',
+  MECANICA_SOBRE_CHASSI = 'MECÂNICA SOBRE CHASSI',
+  MECANICA_SR = 'MECÂNICA SR',
+  CHAPEACAO = 'CHAPEAÇÃO',
+  PORTAS = 'PORTAS',
+  PINTURA = 'PINTURA',
+  ELETRICA_ABS_EBS = 'ELÉTRICA /ABS-EBS',
+  ALINHAMENTO_EIXOS = 'ALINHAMENTO DE EIXOS',
+  QUALIDADE_INSPECAO_FINAL = 'QUALIDADE INSPEÇÃO FINAL'
 }
 
 export enum InnovationType {
@@ -278,7 +278,7 @@ export interface ProjectRequest {
   clientName: string;
   ns: string;
   productType: string;
-  dimension: string; // comp*larg*alt
+  dimension: string; // COMP X LARG X ALT
   flooring: string;
   setup: string;
   status: ProjectRequestStatus;

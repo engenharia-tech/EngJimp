@@ -941,23 +941,23 @@ JIMPNEXUS
               <div className="mb-6 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50 dark:bg-orange-900/10 animate-in slide-in-from-top duration-200">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                   <div>
-                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">Cliente</label>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">CLIENTE</label>
                     <input 
                       type="text" 
                       value={nsClient}
                       onChange={e => setNsClient(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="Nome do cliente"
+                      placeholder="NOME DO CLIENTE"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">Número da NS</label>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">NÚMERO DA NS</label>
                     <input 
                       type="text" 
                       value={nsNumber}
                       onChange={e => setNsNumber(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="Ex: 9500"
+                      placeholder="EX: 9500"
                     />
                   </div>
                   <div>
@@ -978,7 +978,7 @@ JIMPNEXUS
                       value={nsDimension}
                       onChange={e => setNsDimension(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="Ex: 15,00x2,590"
+                      placeholder="EX: 15,00 X 2,590"
                     />
                   </div>
                   <div>
@@ -1004,14 +1004,14 @@ JIMPNEXUS
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">Estimativa Gerencial (h)</label>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">ESTIMATIVA GERENCIAL (H)</label>
                     <input 
                       type="number" 
                       step="0.5"
                       value={nsManagementEstimate}
                       onChange={e => setNsManagementEstimate(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="Ex: 8.5"
+                      placeholder="EX: 8.5"
                     />
                   </div>
                   <div className="flex items-end gap-4 pb-1">
@@ -1040,7 +1040,7 @@ JIMPNEXUS
                     onClick={handleRegisterNS}
                     className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md"
                   >
-                    Salvar Pedido
+                    SALVAR PEDIDO
                   </button>
                 </div>
               </div>
@@ -1057,7 +1057,7 @@ JIMPNEXUS
                 return true;
               }).length === 0 ? (
                 <div className="col-span-full py-8 text-center text-gray-500 dark:text-slate-400 italic">
-                  Nenhuma NS pendente na fila.
+                  NENHUMA NS PENDENTE NA FILA.
                 </div>
               ) : (
                 projectRequests.filter(request => {
@@ -1095,9 +1095,9 @@ JIMPNEXUS
                         <Truck className="w-3 h-3" /> {request.productType}
                       </div>
                       <div className="grid grid-cols-2 gap-x-2 text-[10px] text-gray-500 dark:text-slate-500">
-                        <span className="truncate" title={request.dimension}>Dim: {request.dimension}</span>
-                        <span className="truncate" title={request.flooring}>Ass: {request.flooring}</span>
-                        <span className="truncate" title={request.setup}>Set: {request.setup}</span>
+                        <span className="truncate" title={request.dimension}>DIM: {request.dimension}</span>
+                        <span className="truncate" title={request.flooring}>ASS: {request.flooring}</span>
+                        <span className="truncate" title={request.setup}>SET: {request.setup}</span>
                         <span className="font-bold text-orange-600 dark:text-orange-400">Est. Ger: {request.managementEstimate}h</span>
                         <span className="font-bold text-blue-600 dark:text-blue-400">Est. Proj: {(request.designerEstimate || 0).toFixed(1)}h</span>
                         <span className="font-bold text-green-600 dark:text-green-400 col-span-2">
@@ -1704,26 +1704,26 @@ JIMPNEXUS
             
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-2">O que você vai projetar?</label>
+                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-2">O QUE VOCÊ VAI PROJETAR?</label>
                 <div className="grid grid-cols-1 gap-2">
                   {selectedRequest.needsBase && !selectedRequest.baseProjectId && (
                     <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BASE' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
                       <input type="radio" name="pickPart" value="BASE" checked={pickPart === 'BASE'} onChange={() => setPickPart('BASE')} className="hidden" />
-                      <div className="flex-1 font-bold">Somente BASE</div>
+                      <div className="flex-1 font-bold">SOMENTE BASE</div>
                       {pickPart === 'BASE' && <CheckSquare className="w-4 h-4" />}
                     </label>
                   )}
                   {selectedRequest.needsBox && !selectedRequest.boxProjectId && (
                     <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOX' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
                       <input type="radio" name="pickPart" value="BOX" checked={pickPart === 'BOX'} onChange={() => setPickPart('BOX')} className="hidden" />
-                      <div className="flex-1 font-bold">Somente CAIXA DE CARGA</div>
+                      <div className="flex-1 font-bold">SOMENTE CAIXA DE CARGA</div>
                       {pickPart === 'BOX' && <CheckSquare className="w-4 h-4" />}
                     </label>
                   )}
                   {selectedRequest.needsBase && !selectedRequest.baseProjectId && selectedRequest.needsBox && !selectedRequest.boxProjectId && (
                     <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOTH' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
                       <input type="radio" name="pickPart" value="BOTH" checked={pickPart === 'BOTH'} onChange={() => setPickPart('BOTH')} className="hidden" />
-                      <div className="flex-1 font-bold">BASE e CAIXA DE CARGA</div>
+                      <div className="flex-1 font-bold">BASE E CAIXA DE CARGA</div>
                       {pickPart === 'BOTH' && <CheckSquare className="w-4 h-4" />}
                     </label>
                   )}
@@ -1731,7 +1731,7 @@ JIMPNEXUS
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">Sua Estimativa (Projetista)</label>
+                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">SUA ESTIMATIVA (PROJETISTA)</label>
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
                     <input 
@@ -1764,14 +1764,14 @@ JIMPNEXUS
                 }}
                 className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
-                Cancelar
+                CANCELAR
               </button>
               <button 
                 onClick={handleConfirmPick}
                 disabled={!pickPart}
                 className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-bold shadow-sm transition-colors"
               >
-                Iniciar Agora
+                INICIAR AGORA
               </button>
             </div>
           </div>
