@@ -88,4 +88,15 @@ export const DEFAULT_ACTIVITY_TYPES = [
   'VIAGEM'
 ];
 
+export const SUSPENSION_TYPES = [
+  'MEC 2E',
+  'MEC 3E',
+  'MISTA 3ED',
+  'MISTA 4ED',
+  'PNEUM 2E',
+  'PNEUM 3E',
+  'PNEUM 3ED',
+  'PNEUM 4E'
+].sort();
+
 export const STORAGE_KEY = 'design_track_pro_data';

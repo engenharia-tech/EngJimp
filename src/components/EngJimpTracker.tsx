@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X, Loader2 } from 'lucide-react';
 import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea, ProjectRequest, ProjectRequestStatus } from '../types';
-import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
+import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES, SUSPENSION_TYPES } from '../constants';
 import { calcActiveSeconds, isWorkingHour } from '../utils/workdayCalc';
 import { fetchUsers } from '../services/storageService';
 import { triggerExcelUpdate } from '../services/webhookService';
@@ -890,13 +890,14 @@ JIMPNEXUS
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('productType')}</label>
-                    <input 
-                      type="text" 
+                    <select 
                       value={nsProductType}
                       onChange={e => setNsProductType(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="Ex: Sider"
-                    />
+                    >
+                      <option value="">{t('select')}</option>
+                      {IMPLEMENT_TYPES.map(type => <option key={type} value={type}>{t(type.toLowerCase())}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('dimension')}</label>
@@ -910,23 +911,25 @@ JIMPNEXUS
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('flooring')}</label>
-                    <input 
-                      type="text" 
+                    <select 
                       value={nsFlooring}
                       onChange={e => setNsFlooring(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="Ex: XDZ 4,75"
-                    />
+                    >
+                      <option value="">{t('select')}</option>
+                      {FLOORING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('setup')}</label>
-                    <input 
-                      type="text" 
+                    <select 
                       value={nsSetup}
                       onChange={e => setNsSetup(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="Ex: 3ET 100% PNEU"
-                    />
+                    >
+                      <option value="">{t('select')}</option>
+                      {SUSPENSION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
                   </div>
                   <div className="flex items-end gap-4 pb-1">
                     <label className="flex items-center gap-2 cursor-pointer">
