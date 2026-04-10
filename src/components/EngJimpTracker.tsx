@@ -64,6 +64,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [nsManagementEstimate, setNsManagementEstimate] = useState('');
   const [nsNeedsBase, setNsNeedsBase] = useState(true);
   const [nsNeedsBox, setNsNeedsBox] = useState(true);
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<ProjectRequest | null>(null);
   const [showPickModal, setShowPickModal] = useState(false);
   const [pickPart, setPickPart] = useState<'BASE' | 'BOX' | 'BOTH'>('BASE');
@@ -371,23 +372,44 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       return;
     }
 
-    const newRequest: ProjectRequest = {
-      id: crypto.randomUUID(),
-      clientName: nsClient,
-      ns: nsNumber,
-      productType: nsProductType,
-      dimension: nsDimension,
-      flooring: nsFlooring,
-      setup: nsSetup,
-      needsBase: nsNeedsBase,
-      needsBox: nsNeedsBox,
-      managementEstimate: parseFloat(nsManagementEstimate) || 0,
-      status: ProjectRequestStatus.PENDING,
-      createdAt: new Date().toISOString(),
-      createdBy: currentUser?.id || ''
-    };
+    if (editingRequestId) {
+      const existingRequest = projectRequests.find(r => r.id === editingRequestId);
+      if (existingRequest) {
+        const updatedRequest: ProjectRequest = {
+          ...existingRequest,
+          clientName: nsClient,
+          ns: nsNumber,
+          productType: nsProductType,
+          dimension: nsDimension,
+          flooring: nsFlooring,
+          setup: nsSetup,
+          needsBase: nsNeedsBase,
+          needsBox: nsNeedsBox,
+          managementEstimate: parseFloat(nsManagementEstimate) || 0,
+        };
+        onUpdateProjectRequest(updatedRequest);
+        addToast(t('nsUpdatedSuccess') || 'NS ATUALIZADA COM SUCESSO', 'success');
+      }
+      setEditingRequestId(null);
+    } else {
+      const newRequest: ProjectRequest = {
+        id: crypto.randomUUID(),
+        clientName: nsClient,
+        ns: nsNumber,
+        productType: nsProductType,
+        dimension: nsDimension,
+        flooring: nsFlooring,
+        setup: nsSetup,
+        needsBase: nsNeedsBase,
+        needsBox: nsNeedsBox,
+        managementEstimate: parseFloat(nsManagementEstimate) || 0,
+        status: ProjectRequestStatus.PENDING,
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser?.id || ''
+      };
 
-    onAddProjectRequest(newRequest);
+      onAddProjectRequest(newRequest);
+    }
     
     // Reset form
     setNsClient('');
@@ -400,6 +422,26 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     setNsNeedsBase(true);
     setNsNeedsBox(true);
     setShowNSForm(false);
+  };
+
+  const handleEditRequest = (request: ProjectRequest) => {
+    setEditingRequestId(request.id);
+    setNsClient(request.clientName);
+    setNsNumber(request.ns);
+    setNsProductType(request.productType || '');
+    setNsDimension(request.dimension || '');
+    setNsFlooring(request.flooring || '');
+    setNsSetup(request.setup || '');
+    setNsManagementEstimate(request.managementEstimate?.toString() || '');
+    setNsNeedsBase(request.needsBase);
+    setNsNeedsBox(request.needsBox);
+    setShowNSForm(true);
+    
+    // Scroll to form
+    const formElement = document.getElementById('ns-form-container');
+    if (formElement) {
+      formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   const handleResumeFromList = (project: ProjectSession) => {
@@ -926,19 +968,36 @@ JIMPNEXUS
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
                 <Layers className="w-5 h-5 mr-2 text-orange-600 dark:text-orange-400" />
-                Fila de NS (Pedidos)
+                FILA DE NS (PEDIDOS)
               </h3>
               <button 
-                onClick={() => setShowNSForm(!showNSForm)}
+                onClick={() => {
+                  if (showNSForm) {
+                    setEditingRequestId(null);
+                    setNsClient('');
+                    setNsNumber('');
+                    setNsProductType('');
+                    setNsDimension('');
+                    setNsFlooring('');
+                    setNsSetup('');
+                    setNsManagementEstimate('');
+                    setNsNeedsBase(true);
+                    setNsNeedsBox(true);
+                  }
+                  setShowNSForm(!showNSForm);
+                }}
                 className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold"
               >
                 {showNSForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                {showNSForm ? 'Cancelar' : 'Cadastrar NS'}
+                {showNSForm ? t('cancel') : 'CADASTRAR NS'}
               </button>
             </div>
 
             {showNSForm && (
-              <div className="mb-6 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50 dark:bg-orange-900/10 animate-in slide-in-from-top duration-200">
+              <div id="ns-form-container" className="mb-6 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50 dark:bg-orange-900/10 animate-in slide-in-from-top duration-200">
+                <h4 className="font-bold text-orange-800 dark:text-orange-300 mb-4 uppercase">
+                  {editingRequestId ? 'EDITAR PEDIDO NA FILA' : 'NOVO PEDIDO PARA A FILA'}
+                </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                   <div>
                     <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">CLIENTE</label>
@@ -1040,7 +1099,7 @@ JIMPNEXUS
                     onClick={handleRegisterNS}
                     className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md"
                   >
-                    SALVAR PEDIDO
+                    {editingRequestId ? 'ATUALIZAR PEDIDO' : 'SALVAR PEDIDO'}
                   </button>
                 </div>
               </div>
@@ -1081,8 +1140,15 @@ JIMPNEXUS
                           <Play className="w-4 h-4" />
                         </button>
                         <button 
+                          onClick={() => handleEditRequest(request)}
+                          className="p-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-600 hover:text-white transition-all"
+                          title="Editar pedido"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button 
                           onClick={() => onDeleteProjectRequest(request.id)}
-                          className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                          className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded hover:bg-red-600 hover:text-white transition-all"
                           title="Excluir pedido"
                         >
                           <Trash2 className="w-4 h-4" />
