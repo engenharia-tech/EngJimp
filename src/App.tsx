@@ -313,7 +313,7 @@ const AppContent: React.FC = () => {
     hourlyCost: data.settings.useAutomaticCost ? calculatedHourlyRate : data.settings.hourlyCost
   }), [data.settings, calculatedHourlyRate]);
 
-  const handleProjectCreate = async (project: ProjectSession) => {
+  const handleProjectCreate = async (project: ProjectSession): Promise<AppState | undefined> => {
     const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
       addToast(t('noPermissionCreate'), 'error');
@@ -328,6 +328,7 @@ const AppContent: React.FC = () => {
       const updatedData = await addProject(projectWithUser);
       setData(updatedData);
       addToast(t('projectCreatedSuccess'), 'success');
+      return updatedData;
     } catch (e: any) {
       console.error("Project creation failed:", e);
       if (e.message?.includes('violates not-null constraint') || e.message?.includes('project_code')) {

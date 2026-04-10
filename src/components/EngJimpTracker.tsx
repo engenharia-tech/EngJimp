@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X, Loader2 } from 'lucide-react';
-import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea, ProjectRequest, ProjectRequestStatus } from '../types';
+import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea, ProjectRequest, ProjectRequestStatus, AppState } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES, SUSPENSION_TYPES } from '../constants';
 import { calcActiveSeconds, isWorkingHour } from '../utils/workdayCalc';
 import { fetchUsers } from '../services/storageService';
@@ -16,7 +16,7 @@ interface EngJimpTrackerProps {
   allProjects: ProjectSession[];
   interruptions: InterruptionRecord[];
   settings: AppSettings;
-  onCreate: (project: ProjectSession) => void;
+  onCreate: (project: ProjectSession) => Promise<AppState | undefined>;
   onUpdate: (project: ProjectSession) => void;
   onAddInterruption: (interruption: InterruptionRecord) => void;
   onUpdateInterruption: (interruption: InterruptionRecord) => void;
@@ -61,9 +61,14 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [nsDimension, setNsDimension] = useState('');
   const [nsFlooring, setNsFlooring] = useState('');
   const [nsSetup, setNsSetup] = useState('');
+  const [nsManagementEstimate, setNsManagementEstimate] = useState('');
   const [nsNeedsBase, setNsNeedsBase] = useState(true);
   const [nsNeedsBox, setNsNeedsBox] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<ProjectRequest | null>(null);
+  const [showPickModal, setShowPickModal] = useState(false);
+  const [pickPart, setPickPart] = useState<'BASE' | 'BOX' | 'BOTH'>('BASE');
+  const [pickDesignerEstHours, setPickDesignerEstHours] = useState('');
+  const [pickDesignerEstMinutes, setPickDesignerEstMinutes] = useState('');
 
   // Form Data (Start)
   const [ns, setNs] = useState('');
@@ -278,23 +283,86 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   };
 
   const handlePickRequest = (request: ProjectRequest) => {
-    setNs(request.ns);
-    setClientName(request.clientName);
-    // Try to map product type to implement type if possible
-    const mappedImplement = IMPLEMENT_TYPES.find(type => 
-      request.productType.toLowerCase().includes(type.toLowerCase())
-    ) as ImplementType;
-    
-    if (mappedImplement) {
-      setImplementType(mappedImplement);
-    }
-    
-    setNotes(`Produto: ${request.productType}\nDimensão: ${request.dimension}\nAssoalho: ${request.flooring}\nSetup: ${request.setup}`);
     setSelectedRequest(request);
     
-    // Scroll to form
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    addToast(t('nsSelected', { ns: request.ns }), 'info');
+    // Default pick part based on what's available
+    if (request.needsBase && !request.baseProjectId) {
+      setPickPart('BASE');
+    } else if (request.needsBox && !request.boxProjectId) {
+      setPickPart('BOX');
+    }
+    
+    setPickDesignerEstHours('');
+    setPickDesignerEstMinutes('');
+    setShowPickModal(true);
+  };
+
+  const handleConfirmPick = async () => {
+    if (!selectedRequest) return;
+
+    const nsVal = selectedRequest.ns;
+    const clientVal = selectedRequest.clientName;
+    const notesVal = `Produto: ${selectedRequest.productType}\nDimensão: ${selectedRequest.dimension}\nAssoalho: ${selectedRequest.flooring}\nSetup: ${selectedRequest.setup}`;
+    
+    // Designer estimate in seconds
+    const estSec = (parseInt(pickDesignerEstHours) || 0) * 3600 + (parseInt(pickDesignerEstMinutes) || 0) * 60;
+
+    const startProject = async (partType: ImplementType) => {
+      const newProject: ProjectSession = {
+        id: crypto.randomUUID(),
+        ns: nsVal,
+        clientName: clientVal,
+        type: ProjectType.RELEASE,
+        implementType: partType,
+        startTime: new Date().toISOString(),
+        totalActiveSeconds: 0,
+        pauses: [],
+        variations: [],
+        status: 'IN_PROGRESS',
+        notes: notesVal,
+        userId: currentUser?.id,
+        estimatedSeconds: estSec
+      };
+
+      const updatedState = await onCreate(newProject);
+      if (updatedState) {
+        const createdProject = updatedState.projects.find(p => p.id === newProject.id);
+        
+        if (createdProject) {
+        // Update Project Request with the new project ID
+        const updatedRequest = { ...selectedRequest };
+        if (partType === ImplementType.BASE) {
+          updatedRequest.baseProjectId = createdProject.id;
+        } else {
+          updatedRequest.boxProjectId = createdProject.id;
+        }
+        
+        // Update designer estimate on the request as well (average or sum?)
+        // User said "one management, another from designer". Let's just store the latest one or sum them.
+        updatedRequest.designerEstimate = (updatedRequest.designerEstimate || 0) + (estSec / 3600);
+        updatedRequest.status = ProjectRequestStatus.IN_PROGRESS;
+        
+        await onUpdateProjectRequest(updatedRequest);
+      }
+    }
+  };
+
+    if (pickPart === 'BASE') {
+      await startProject(ImplementType.BASE);
+    } else if (pickPart === 'BOX') {
+      await startProject(ImplementType.CAIXA_CARGA);
+    } else if (pickPart === 'BOTH') {
+      // If both, we create two separate projects or one?
+      // Usually they are separate tasks. Let's create two if they want to track them separately.
+      // But the user said "if he is going to do base and box... it disappears total".
+      // Let's create two projects if they are separate entities in the system.
+      await startProject(ImplementType.BASE);
+      await startProject(ImplementType.CAIXA_CARGA);
+    }
+
+    setShowPickModal(false);
+    setSelectedRequest(null);
+    addToast(t('nsSelected', { ns: nsVal }), 'success');
   };
 
   const handleRegisterNS = () => {
@@ -313,6 +381,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       setup: nsSetup,
       needsBase: nsNeedsBase,
       needsBox: nsNeedsBox,
+      managementEstimate: parseFloat(nsManagementEstimate) || 0,
       status: ProjectRequestStatus.PENDING,
       createdAt: new Date().toISOString(),
       createdBy: currentUser?.id || ''
@@ -327,6 +396,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     setNsDimension('');
     setNsFlooring('');
     setNsSetup('');
+    setNsManagementEstimate('');
     setNsNeedsBase(true);
     setNsNeedsBox(true);
     setShowNSForm(false);
@@ -546,20 +616,22 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       
       const updatedRequest = { ...linkedRequest };
       
-      // If both parts are done, or if only one part was needed and it's done
-      const baseDone = (updatedRequest.needsBase && updatedRequest.baseProjectId && (isBase || projectRequests.find(r => r.id === updatedRequest.id)?.baseProjectId)) || !updatedRequest.needsBase;
-      const boxDone = (updatedRequest.needsBox && updatedRequest.boxProjectId && (isBox || projectRequests.find(r => r.id === updatedRequest.id)?.boxProjectId)) || !updatedRequest.needsBox;
-
-      // Actually, let's just check if the current one being finished makes it all done
       const currentIsBase = activeProject.implementType === ImplementType.BASE;
       
-      // If finishing base and no box needed, or box already done
-      // If finishing box and no base needed, or base already done
+      // Check if the OTHER part is already completed
+      // We need to look at the projects list to see if the other projectId is COMPLETED
+      const otherProjectId = currentIsBase ? updatedRequest.boxProjectId : updatedRequest.baseProjectId;
+      const otherNeeded = currentIsBase ? updatedRequest.needsBox : updatedRequest.needsBase;
       
-      const allDone = (currentIsBase && (!updatedRequest.needsBox || updatedRequest.boxProjectId)) ||
-                      (!currentIsBase && (!updatedRequest.needsBase || updatedRequest.baseProjectId));
+      let otherDone = !otherNeeded;
+      if (otherNeeded && otherProjectId) {
+        const otherProject = allProjects.find(p => p.id === otherProjectId);
+        if (otherProject && otherProject.status === 'COMPLETED') {
+          otherDone = true;
+        }
+      }
 
-      if (allDone) {
+      if (otherDone) {
         updatedRequest.status = ProjectRequestStatus.COMPLETED;
       }
       
@@ -931,6 +1003,17 @@ JIMPNEXUS
                       {SUSPENSION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">Estimativa Gerencial (h)</label>
+                    <input 
+                      type="number" 
+                      step="0.5"
+                      value={nsManagementEstimate}
+                      onChange={e => setNsManagementEstimate(e.target.value)}
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      placeholder="Ex: 8.5"
+                    />
+                  </div>
                   <div className="flex items-end gap-4 pb-1">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -964,12 +1047,28 @@ JIMPNEXUS
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {projectRequests.filter(r => r.status === ProjectRequestStatus.PENDING).length === 0 ? (
+              {projectRequests.filter(request => {
+                if (request.status === ProjectRequestStatus.COMPLETED || request.status === ProjectRequestStatus.CANCELLED) return false;
+                const baseInProgress = request.needsBase && request.baseProjectId;
+                const boxInProgress = request.needsBox && request.boxProjectId;
+                if (request.needsBase && request.needsBox) return !(baseInProgress && boxInProgress);
+                if (request.needsBase) return !baseInProgress;
+                if (request.needsBox) return !boxInProgress;
+                return true;
+              }).length === 0 ? (
                 <div className="col-span-full py-8 text-center text-gray-500 dark:text-slate-400 italic">
                   Nenhuma NS pendente na fila.
                 </div>
               ) : (
-                projectRequests.filter(r => r.status === ProjectRequestStatus.PENDING).map(request => (
+                projectRequests.filter(request => {
+                  if (request.status === ProjectRequestStatus.COMPLETED || request.status === ProjectRequestStatus.CANCELLED) return false;
+                  const baseInProgress = request.needsBase && request.baseProjectId;
+                  const boxInProgress = request.needsBox && request.boxProjectId;
+                  if (request.needsBase && request.needsBox) return !(baseInProgress && boxInProgress);
+                  if (request.needsBase) return !baseInProgress;
+                  if (request.needsBox) return !boxInProgress;
+                  return true;
+                }).map(request => (
                   <div key={request.id} className="border border-orange-100 dark:border-orange-900/50 rounded-lg p-4 bg-white dark:bg-black hover:shadow-md transition-shadow relative group">
                     <div className="flex justify-between items-start mb-2">
                       <div className="font-bold text-orange-600 dark:text-orange-400 text-lg">NS {request.ns}</div>
@@ -998,17 +1097,22 @@ JIMPNEXUS
                       <div className="grid grid-cols-2 gap-x-2 text-[10px] text-gray-500 dark:text-slate-500">
                         <span className="truncate" title={request.dimension}>Dim: {request.dimension}</span>
                         <span className="truncate" title={request.flooring}>Ass: {request.flooring}</span>
-                        <span className="col-span-2 truncate" title={request.setup}>Set: {request.setup}</span>
+                        <span className="truncate" title={request.setup}>Set: {request.setup}</span>
+                        <span className="font-bold text-orange-600 dark:text-orange-400">Est. Ger: {request.managementEstimate}h</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400">Est. Proj: {(request.designerEstimate || 0).toFixed(1)}h</span>
+                        <span className="font-bold text-green-600 dark:text-green-400 col-span-2">
+                          Tempo Efetivo: {(allProjects.filter(p => p.ns === request.ns).reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600).toFixed(1)}h
+                        </span>
                       </div>
                       <div className="flex gap-2 mt-2">
                         {request.needsBase && (
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${request.baseProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                            BASE
+                            BASE {request.baseProjectId ? '(OK)' : ''}
                           </span>
                         )}
                         {request.needsBox && (
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${request.boxProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                            CX
+                            CX {request.boxProjectId ? '(OK)' : ''}
                           </span>
                         )}
                       </div>
@@ -1503,6 +1607,28 @@ JIMPNEXUS
                         </div>
                     </div>
 
+                    {/* Estimates */}
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-orange-50 dark:bg-orange-900/10 p-3 rounded-lg border border-orange-100 dark:border-orange-900/30">
+                            <span className="text-[10px] text-orange-800 dark:text-orange-300 uppercase font-bold block">Est. Gerencial</span>
+                            <span className="text-lg font-bold text-orange-900 dark:text-orange-200">
+                                {projectRequests.find(r => r.ns === selectedProjectDetails.ns)?.managementEstimate || 0}h
+                            </span>
+                        </div>
+                        <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                            <span className="text-[10px] text-blue-800 dark:text-blue-300 uppercase font-bold block">Est. Projetista</span>
+                            <span className="text-lg font-bold text-blue-900 dark:text-blue-200">
+                                {selectedProjectDetails.estimatedSeconds ? (selectedProjectDetails.estimatedSeconds / 3600).toFixed(1) : '0.0'}h
+                            </span>
+                        </div>
+                        <div className="bg-green-50 dark:bg-green-900/10 p-3 rounded-lg border border-green-100 dark:border-green-900/30">
+                            <span className="text-[10px] text-green-800 dark:text-green-300 uppercase font-bold block">Tempo Efetivo</span>
+                            <span className="text-lg font-bold text-green-900 dark:text-green-200">
+                                {(selectedProjectDetails.totalActiveSeconds / 3600).toFixed(1)}h
+                            </span>
+                        </div>
+                    </div>
+
                     {/* Context (Para que) */}
                     <div>
                         <h4 className="text-sm font-bold text-gray-700 dark:text-slate-300 mb-2 flex items-center">
@@ -1564,6 +1690,91 @@ JIMPNEXUS
                     </button>
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* Pick NS Modal */}
+      {showPickModal && selectedRequest && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-orange-100 dark:border-orange-900/50">
+            <h3 className="text-lg font-bold mb-4 flex items-center text-orange-600 dark:text-orange-400">
+              <Play className="w-5 h-5 mr-2" />
+              Iniciar Projeto NS {selectedRequest.ns}
+            </h3>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-2">O que você vai projetar?</label>
+                <div className="grid grid-cols-1 gap-2">
+                  {selectedRequest.needsBase && !selectedRequest.baseProjectId && (
+                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BASE' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
+                      <input type="radio" name="pickPart" value="BASE" checked={pickPart === 'BASE'} onChange={() => setPickPart('BASE')} className="hidden" />
+                      <div className="flex-1 font-bold">Somente BASE</div>
+                      {pickPart === 'BASE' && <CheckSquare className="w-4 h-4" />}
+                    </label>
+                  )}
+                  {selectedRequest.needsBox && !selectedRequest.boxProjectId && (
+                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOX' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
+                      <input type="radio" name="pickPart" value="BOX" checked={pickPart === 'BOX'} onChange={() => setPickPart('BOX')} className="hidden" />
+                      <div className="flex-1 font-bold">Somente CAIXA DE CARGA</div>
+                      {pickPart === 'BOX' && <CheckSquare className="w-4 h-4" />}
+                    </label>
+                  )}
+                  {selectedRequest.needsBase && !selectedRequest.baseProjectId && selectedRequest.needsBox && !selectedRequest.boxProjectId && (
+                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOTH' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
+                      <input type="radio" name="pickPart" value="BOTH" checked={pickPart === 'BOTH'} onChange={() => setPickPart('BOTH')} className="hidden" />
+                      <div className="flex-1 font-bold">BASE e CAIXA DE CARGA</div>
+                      {pickPart === 'BOTH' && <CheckSquare className="w-4 h-4" />}
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">Sua Estimativa (Projetista)</label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <input 
+                      type="number" 
+                      placeholder="Horas"
+                      value={pickDesignerEstHours}
+                      onChange={e => setPickDesignerEstHours(e.target.value)}
+                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
+                    />
+                  </div>
+                  <span className="font-bold">:</span>
+                  <div className="flex-1">
+                    <input 
+                      type="number" 
+                      placeholder="Minutos"
+                      value={pickDesignerEstMinutes}
+                      onChange={e => setPickDesignerEstMinutes(e.target.value)}
+                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button 
+                onClick={() => {
+                  setShowPickModal(false);
+                  setSelectedRequest(null);
+                }}
+                className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleConfirmPick}
+                disabled={!pickPart}
+                className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-bold shadow-sm transition-colors"
+              >
+                Iniciar Agora
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
