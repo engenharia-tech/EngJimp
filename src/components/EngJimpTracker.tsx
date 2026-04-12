@@ -102,7 +102,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [varOldCode, setVarOldCode] = useState('');
   const [varNewCode, setVarNewCode] = useState('');
   const [varDesc, setVarDesc] = useState('');
-  const [varType, setVarType] = useState<'Montagem' | 'Peça'>('Peça');
+  const [varType, setVarType] = useState<'MONTAGEM' | 'PEÇA'>('PEÇA');
   const [varFiles, setVarFiles] = useState(false);
 
   // Pause Logic
@@ -1543,8 +1543,8 @@ JIMPNEXUS
                             onChange={e => setVarType(e.target.value as any)}
                             className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-black dark:text-white"
                         >
-                            <option value="Peça">{t('peca')}</option>
-                            <option value="Montagem">{t('montagem')}</option>
+                            <option value="PEÇA">{t('part')}</option>
+                            <option value="MONTAGEM">{t('assembly')}</option>
                         </select>
                      </div>
                      <div className="md:col-span-1 flex items-center justify-center pb-2">
@@ -1555,7 +1555,7 @@ JIMPNEXUS
                                 onChange={e => setVarFiles(e.target.checked)}
                                 className="w-4 h-4 text-purple-600 dark:text-purple-400 rounded mr-1 dark:bg-black dark:border-slate-600"
                              />
-                             <span className="text-xs font-bold text-gray-600 dark:text-slate-400">Ok</span>
+                             <span className="text-xs font-bold text-gray-600 dark:text-slate-400">OK</span>
                          </label>
                      </div>
                      <div className="md:col-span-1">

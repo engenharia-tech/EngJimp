@@ -40,34 +40,34 @@ export enum IssueType {
 }
 
 export enum InnovationType {
-  NEW_PROJECT = 'Novo Projeto',
-  PRODUCT_IMPROVEMENT = 'Melhoria de Produto',
-  PROCESS_OPTIMIZATION = 'Otimização de Processos'
+  NEW_PROJECT = 'NOVO PROJETO',
+  PRODUCT_IMPROVEMENT = 'MELHORIA DE PRODUTO',
+  PROCESS_OPTIMIZATION = 'OTIMIZAÇÃO DE PROCESSOS'
 }
 
 export enum InterruptionStatus {
-  OPEN = 'Aberto',
-  WAITING = 'Aguardando resposta',
-  RESOLVED = 'Resolvido',
-  CANCELLED = 'Cancelado'
+  OPEN = 'ABERTO',
+  WAITING = 'AGUARDANDO RESPOSTA',
+  RESOLVED = 'RESOLVIDO',
+  CANCELLED = 'CANCELADO'
 }
 
 export enum InterruptionArea {
-  COMERCIAL = 'Comercial',
-  ENGENHARIA = 'Engenharia',
+  COMERCIAL = 'COMERCIAL',
+  ENGENHARIA = 'ENGENHARIA',
   PCP = 'PCP',
-  PRODUCAO = 'Produção',
-  CLIENTE = 'Cliente',
-  VENDAS = 'Vendas',
-  JIMPSERVICE = 'Jimpservice',
-  OUTROS = 'Outros'
+  PRODUCAO = 'PRODUÇÃO',
+  CLIENTE = 'CLIENTE',
+  VENDAS = 'VENDAS',
+  JIMPSERVICE = 'JIMPSERVICE',
+  OUTROS = 'OUTROS'
 }
 
 export enum CalculationType {
-  PER_UNIT = 'Por Unidade Produzida',
-  RECURRING_MONTHLY = 'Recorrente (Mensal)',
-  ONE_TIME = 'Valor Único / Fixo',
-  ADD_EXPENSE = 'Adicionar Gasto'
+  PER_UNIT = 'POR UNIDADE PRODUZIDA',
+  RECURRING_MONTHLY = 'RECORRENTE (MENSUAL)',
+  ONE_TIME = 'VALOR ÚNICO / FIXO',
+  ADD_EXPENSE = 'ADICIONAR GASTO'
 }
 
 export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'COORDENADOR' | 'PROCESSOS';
@@ -95,7 +95,7 @@ export interface VariationRecord {
   oldCode: string;
   description: string;
   newCode: string;
-  type: 'Montagem' | 'Peça';
+  type: 'MONTAGEM' | 'PEÇA';
   filesGenerated: boolean; // DXF/PDF check
 }
 
@@ -267,10 +267,10 @@ export interface SEOData {
 }
 
 export enum ProjectRequestStatus {
-  PENDING = 'Pendente',
-  IN_PROGRESS = 'Em Projeto',
-  COMPLETED = 'Concluído',
-  CANCELLED = 'Cancelado'
+  PENDING = 'PENDENTE',
+  IN_PROGRESS = 'EM PROJETO',
+  COMPLETED = 'CONCLUÍDO',
+  CANCELLED = 'CANCELADO'
 }
 
 export interface ProjectRequest {

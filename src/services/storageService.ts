@@ -340,7 +340,9 @@ export const fetchAppState = async (): Promise<AppState> => {
       needsBase: r.needs_base ?? true,
       needsBox: r.needs_box ?? true,
       baseProjectId: r.base_project_id,
-      boxProjectId: r.box_project_id
+      boxProjectId: r.box_project_id,
+      managementEstimate: r.management_estimate,
+      designerEstimate: r.designer_estimate
     }));
 
     // If no interruption types exist, seed them (first time)
@@ -1612,12 +1614,30 @@ export const recalculateAllProjectTimes = async (): Promise<{ success: boolean; 
     let updatedCount = 0;
     for (const p of projects || []) {
       if (p.start_time && p.end_time) {
-        const newDuration = calcActiveSeconds(new Date(p.start_time), new Date(p.end_time), settings);
+        const start = new Date(p.start_time);
+        const end = new Date(p.end_time);
+        const isOvertime = !!p.is_overtime;
         
-        if (newDuration !== p.total_active_seconds) {
+        const totalWorkingSeconds = calcActiveSeconds(start, end, settings, isOvertime);
+        
+        // Subtract pauses
+        let totalPauseWorkingSeconds = 0;
+        const pauses = typeof p.pauses === 'string' ? JSON.parse(p.pauses) : (p.pauses || []);
+        pauses.forEach((pause: any) => {
+          const dur = Number(pause.durationSeconds);
+          if (dur > 0 && pause.timestamp) {
+            const pStart = new Date(pause.timestamp);
+            const pEnd = new Date(pStart.getTime() + dur * 1000);
+            totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, isOvertime);
+          }
+        });
+
+        const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
+        
+        if (Math.abs(p.total_active_seconds - netSeconds) > 1) {
           const { error: updateError } = await supabase
             .from('projects')
-            .update({ total_active_seconds: newDuration })
+            .update({ total_active_seconds: netSeconds })
             .eq('id', p.id);
           
           if (!updateError) updatedCount++;

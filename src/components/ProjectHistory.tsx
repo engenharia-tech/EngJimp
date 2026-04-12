@@ -123,11 +123,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       
       let matchDate = true;
       if (startDate || endDate) {
-        const pDate = new Date(p.startTime).getTime();
-        const start = startDate ? new Date(startDate).getTime() : 0;
-        // End of the selected day
+        const pStart = new Date(p.startTime).getTime();
+        const pEnd = p.endTime ? new Date(p.endTime).getTime() : Date.now();
+        const start = startDate ? new Date(startDate).setHours(0, 0, 0, 0) : 0;
         const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
-        matchDate = pDate >= start && pDate <= end;
+        matchDate = pStart <= end && pEnd >= start;
       }
 
       let matchSuspicious = true;
@@ -499,8 +499,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   const getVariationCounts = (variations: VariationRecord[]) => {
       if (!variations) return { parts: 0, assemblies: 0 };
-      const parts = variations.filter(v => v.type === 'Peça').length;
-      const assemblies = variations.filter(v => v.type === 'Montagem').length;
+      const parts = variations.filter(v => v.type === 'PEÇA').length;
+      const assemblies = variations.filter(v => v.type === 'MONTAGEM').length;
       return { parts, assemblies };
   };
 
@@ -1593,7 +1593,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                                         }}
                                                         className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
                                                     />
-                                                    <span className="text-[10px] text-gray-500">min</span>
+                                                    <span className="text-[10px] text-gray-500">MIN</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1765,7 +1765,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                                         }}
                                                         className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
                                                     />
-                                                    <span className="text-[10px] text-gray-500">min</span>
+                                                    <span className="text-[10px] text-gray-500">MIN</span>
                                                 </div>
                                             </div>
                                             <textarea 

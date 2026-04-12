@@ -142,13 +142,16 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const filteredActivities = useMemo(() => {
     return activities.filter(a => {
       const activityStart = parseISO(a.startTime);
+      const activityEnd = a.endTime ? parseISO(a.endTime) : new Date();
       const isUser = a.userId === selectedUserId;
       if (!isUser) return false;
 
       if (viewMode === 'day') {
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
-        return isWithinInterval(activityStart, { start, end });
+        // Activity overlaps with the day if:
+        // activityStart <= dayEnd AND activityEnd >= dayStart
+        return activityStart <= end && activityEnd >= start;
       } else if (viewMode === 'month') {
         return activityStart.getMonth() === selectedDate.getMonth() && 
                activityStart.getFullYear() === selectedDate.getFullYear();
@@ -161,13 +164,16 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
       const projectStart = parseISO(p.startTime);
+      const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
       const isUser = p.userId === selectedUserId;
       if (!isUser) return false;
 
       if (viewMode === 'day') {
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
-        return isWithinInterval(projectStart, { start, end });
+        // Project overlaps with the day if:
+        // projectStart <= dayEnd AND projectEnd >= dayStart
+        return projectStart <= end && projectEnd >= start;
       } else if (viewMode === 'month') {
         return projectStart.getMonth() === selectedDate.getMonth() && 
                projectStart.getFullYear() === selectedDate.getFullYear();
@@ -190,6 +196,17 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       if (isWeekend && filteredActivities.length === 0 && filteredProjects.length === 0 && currentUser.id === selectedUserId) {
         const folgaType = activityTypes.find(t => t.name.toUpperCase() === 'FOLGA');
         if (folgaType) {
+          // Double check against full activities list to prevent duplicates
+          const dayStart = startOfDay(selectedDate);
+          const dayEnd = endOfDay(selectedDate);
+          const alreadyExists = activities.some(a => 
+            a.userId === currentUser.id && 
+            a.activityName.toUpperCase() === 'FOLGA' &&
+            parseISO(a.startTime) >= dayStart && parseISO(a.startTime) <= dayEnd
+          );
+
+          if (alreadyExists) return;
+
           const startTime = new Date(selectedDate);
           startTime.setHours(8, 0, 0, 0);
           const endTime = new Date(selectedDate);
@@ -214,31 +231,90 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     };
 
     checkWeekend();
-  }, [selectedDate, filteredActivities.length, filteredProjects.length, activityTypes, currentUser.id, selectedUserId, onAddActivity]);
+  }, [selectedDate, filteredActivities.length, filteredProjects.length, activityTypes, currentUser.id, selectedUserId, onAddActivity, activities]);
 
   // Combine projects and activities for a full timeline
   const timelineItems = useMemo(() => {
-    const items = [
-      ...filteredActivities.map(a => ({
-        id: a.id,
-        type: 'activity',
-        name: a.activityName,
-        start: parseISO(a.startTime),
-        end: a.endTime ? parseISO(a.endTime) : new Date(),
-        color: '#3b82f6' // blue
-      })),
-      ...filteredProjects.map(p => ({
-        id: p.id,
-        type: 'project',
-        name: `Projeto: ${p.ns || p.projectCode || 'S/N'}`,
-        start: parseISO(p.startTime),
-        end: p.endTime ? parseISO(p.endTime) : new Date(),
-        color: '#10b981' // emerald
-      }))
-    ];
+    const workdayStartStr = settings.workdayStart || "08:00";
+    const workdayEndStr = settings.workdayEnd || "18:00";
+    const lunchStartStr = settings.lunchStart || "12:00";
+    const lunchEndStr = settings.lunchEnd || "13:00";
+
+    const [wsH, wsM] = workdayStartStr.split(':').map(Number);
+    const [weH, weM] = workdayEndStr.split(':').map(Number);
+    const [lsH, lsM] = lunchStartStr.split(':').map(Number);
+    const [leH, leM] = lunchEndStr.split(':').map(Number);
+
+    const items: any[] = [];
+
+    const processItem = (id: string, type: 'activity' | 'project', name: string, startTime: string, endTime: string | undefined, color: string) => {
+      const start = parseISO(startTime);
+      const end = endTime ? parseISO(endTime) : new Date();
+
+      if (viewMode !== 'day') {
+        items.push({ id, type, name, start, end, color });
+        return;
+      }
+
+      // Day view: Split into segments for the selected day
+      const dayStart = startOfDay(selectedDate);
+      const dayEnd = endOfDay(selectedDate);
+
+      // Intersection of item and selected day
+      const overlapStart = start < dayStart ? dayStart : start;
+      const overlapEnd = end > dayEnd ? dayEnd : end;
+
+      if (overlapStart >= overlapEnd) return;
+
+      // Further clip to work hours
+      const workStart = new Date(selectedDate);
+      workStart.setHours(wsH, wsM, 0, 0);
+      const workEnd = new Date(selectedDate);
+      workEnd.setHours(weH, weM, 0, 0);
+
+      const clippedStart = overlapStart < workStart ? workStart : overlapStart;
+      const clippedEnd = overlapEnd > workEnd ? workEnd : overlapEnd;
+
+      if (clippedStart >= clippedEnd) return;
+
+      // Split by lunch break
+      const lunchStart = new Date(selectedDate);
+      lunchStart.setHours(lsH, lsM, 0, 0);
+      const lunchEnd = new Date(selectedDate);
+      lunchEnd.setHours(leH, leM, 0, 0);
+
+      // Segment before lunch
+      const beforeLunchEnd = clippedEnd < lunchStart ? clippedEnd : lunchStart;
+      if (clippedStart < beforeLunchEnd) {
+        items.push({
+          id: `${id}-before`,
+          type,
+          name,
+          start: clippedStart,
+          end: beforeLunchEnd,
+          color
+        });
+      }
+
+      // Segment after lunch
+      const afterLunchStart = clippedStart > lunchEnd ? clippedStart : lunchEnd;
+      if (afterLunchStart < clippedEnd) {
+        items.push({
+          id: `${id}-after`,
+          type,
+          name,
+          start: afterLunchStart,
+          end: clippedEnd,
+          color
+        });
+      }
+    };
+
+    filteredActivities.forEach(a => processItem(a.id, 'activity', a.activityName, a.startTime, a.endTime, '#3b82f6'));
+    filteredProjects.forEach(p => processItem(p.id, 'project', `Projeto: ${p.ns || p.projectCode || 'S/N'}`, p.startTime, p.endTime, '#10b981'));
 
     return items.sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [filteredActivities, filteredProjects]);
+  }, [filteredActivities, filteredProjects, selectedDate, viewMode, settings]);
 
   // Find gaps in the timeline (assuming work day 08:00 - 18:00)
   const gaps = useMemo(() => {
