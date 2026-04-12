@@ -935,7 +935,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                    ) : (
                        <div className="flex flex-col text-xs">
                            <span className="font-medium text-gray-700 dark:text-slate-300">{formatCurrency(inv.unitSavings)}</span>
-                           <span className="text-gray-400 dark:text-slate-500">x {inv.quantity} {t('unitsAbbr')}</span>
+                           <span className="text-gray-400 dark:text-slate-500">X {inv.quantity} {t('unitsAbbr')}</span>
                        </div>
                    )}
                 </td>

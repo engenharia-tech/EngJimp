@@ -1190,7 +1190,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
         >
           <div className="flex items-center gap-3">
             <Clock className="w-5 h-5 text-emerald-600" />
-            <h3 className="font-bold text-black dark:text-white">Previsão Automática de Prazos</h3>
+            <h3 className="font-bold text-black dark:text-white">PREVISÃO AUTOMÁTICA DE PRAZOS</h3>
           </div>
           {expandedSection === 'deadlines' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
         </button>
@@ -1200,7 +1200,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
             <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-100 dark:border-emerald-900/30 flex items-start gap-3">
               <Info className="w-5 h-5 text-emerald-600 mt-0.5" />
               <p className="text-sm text-emerald-800 dark:text-emerald-200">
-                As previsões abaixo são calculadas com base na <strong>média histórica de tempo</strong> para cada tipo de projeto. Projetos sem histórico usam uma média padrão de 8 horas.
+                AS PREVISÕES ABAIXO SÃO CALCULADAS COM BASE NA <strong>MÉDIA HISTÓRICA DE TEMPO</strong> PARA CADA TIPO DE PROJETO. PROJETOS SEM HISTÓRICO USAM UMA MÉDIA PADRÃO DE 8 HORAS.
               </p>
             </div>
             

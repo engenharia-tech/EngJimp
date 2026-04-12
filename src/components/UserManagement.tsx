@@ -506,7 +506,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                                         </pre>
                                     </li>
                                     <li>Adicione uma ação: <strong>"Excel Online (Business) - Adicionar uma linha em uma tabela"</strong>.</li>
-                                    <li><strong>Dica Importante:</strong> Para escrever em abas diferentes (ex: "abril"), você precisará usar uma condição no Power Automate baseada no campo <code>mes_referencia</code> para escolher a Tabela correta.</li>
+                                    <li><strong>DICA IMPORTANTE:</strong> PARA ESCREVER EM ABAS DIFERENTES (EX: "ABRIL"), VOCÊ PRECISARÁ USAR UMA CONDIÇÃO NO POWER AUTOMATE BASEADA NO CAMPO <code>MES_REFERENCIA</code> PARA ESCOLHER A TABELA CORRETA.</li>
                                     <li>Selecione seu arquivo Excel e mapeie os campos do JSON para as colunas.</li>
                                     <li>Salve o fluxo e copie a <strong>URL HTTP POST</strong> gerada.</li>
                                     <li>Cole a URL acima e clique em Salvar.</li>
