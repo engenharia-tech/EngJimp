@@ -87,7 +87,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
   };
 
   const handleRecalculateTimes = async () => {
-    if (!window.confirm('Isso irá recalcular o tempo total de todas as paradas e projetos finalizados com base no expediente atual. Deseja continuar?')) return;
+    if (!window.confirm('ISSO IRÁ RECALCULAR O TEMPO TOTAL DE TODAS AS PARADAS E PROJETOS FINALIZADOS COM BASE NO EXPEDIENTE ATUAL. DESEJA CONTINUAR?')) return;
     
     setIsRecalculating(true);
     try {

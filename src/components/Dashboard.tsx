@@ -14,11 +14,12 @@ interface DashboardProps {
   currentUser: User;
   theme: 'light' | 'dark';
   settings: any;
+  onRefresh?: () => Promise<void>;
 }
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#ec4899'];
 
-export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, settings }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, settings, onRefresh }) => {
   const { t } = useLanguage();
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
@@ -26,8 +27,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [availableDesigners, setAvailableDesigners] = useState<User[]>([]);
 
   // Filter States
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
   
   // Grouping States
   const [releaseGrouping, setReleaseGrouping] = useState<'MONTHLY' | 'YEARLY' | 'GLOBAL'>('MONTHLY');
@@ -42,72 +49,133 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [selectedDesignerForReleases, setSelectedDesignerForReleases] = useState<string>('ALL');
   const [selectedInterruptionDesigner, setSelectedInterruptionDesigner] = useState<string>('ALL');
 
+  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi']);
+
+  // Helper to normalize strings for comparison (remove accents and uppercase)
+  const normalize = (str: string) => 
+    str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+
+  const isTypeMatch = (type: string, target: ProjectType) => 
+    normalize(type) === normalize(target);
+
+  const isInnovationTypeMatch = (type: string, target: InnovationType) => 
+    normalize(type) === normalize(target);
+
   useEffect(() => {
-    // Load users for the manager chart
-    const load = async () => {
-      const users = await fetchUsers();
-      const sortedUsers = [...users].sort((a, b) => a.name.localeCompare(b.name));
-      const map = sortedUsers.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
-      setUsersMap(map);
-      setAvailableDesigners(sortedUsers.filter(u => u.role !== 'CEO'));
-    };
-    load();
-  }, []);
+    // Load users for the manager chart from the data prop to avoid extra API calls and ensure consistency
+    const sortedUsers = [...data.users].sort((a, b) => a.name.localeCompare(b.name));
+    const map = sortedUsers.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
+    setUsersMap(map);
+    setAvailableDesigners(sortedUsers.filter(u => u.role !== 'CEO'));
+  }, [data.users]);
 
   // Filter Data Logic
   const filteredProjects = useMemo(() => {
     return data.projects.filter(p => {
-      if (p.status !== 'COMPLETED') return false;
-      
-      let matchDate = true;
-      if (startDate || endDate) {
-        const pDate = new Date(p.endTime || p.startTime).getTime();
-        const start = startDate ? new Date(startDate).getTime() : 0;
-        const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
-        matchDate = pDate >= start && pDate <= end;
+      // Role-based filtering: Designers only see their own data in the dashboard
+      if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
+        return false;
       }
-      return matchDate;
+
+      if (!startDate && !endDate) return true;
+
+      const pStart = new Date(p.startTime).getTime();
+      const pEnd = p.endTime ? new Date(p.endTime).getTime() : Infinity;
+      
+      let start = 0;
+      if (startDate) {
+        const d = new Date(startDate);
+        if (!isNaN(d.getTime())) start = d.getTime();
+      }
+
+      let end = Infinity;
+      if (endDate) {
+        const d = new Date(endDate);
+        if (!isNaN(d.getTime())) {
+          d.setHours(23, 59, 59, 999);
+          end = d.getTime();
+        }
+      }
+      
+      // A project is relevant if it overlaps with the selected range
+      return pStart <= end && pEnd >= start;
     });
   }, [data.projects, startDate, endDate, currentUser.role, currentUser.id]);
 
   const filteredIssues = useMemo(() => {
      return data.issues.filter(i => {
-      let matchDate = true;
-      if (startDate || endDate) {
-        const iDate = new Date(i.date).getTime();
-        const start = startDate ? new Date(startDate).getTime() : 0;
-        const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
-        matchDate = iDate >= start && iDate <= end;
+      if (!startDate && !endDate) return true;
+
+      const iDate = new Date(i.date).getTime();
+      
+      let start = 0;
+      if (startDate) {
+        const d = new Date(startDate);
+        if (!isNaN(d.getTime())) start = d.getTime();
       }
-      return matchDate;
+
+      let end = Infinity;
+      if (endDate) {
+        const d = new Date(endDate);
+        if (!isNaN(d.getTime())) {
+          d.setHours(23, 59, 59, 999);
+          end = d.getTime();
+        }
+      }
+
+      return iDate >= start && iDate <= end;
      });
   }, [data.issues, startDate, endDate]);
 
    const filteredInnovations = useMemo(() => {
     return data.innovations.filter(inv => {
-      let matchDate = true;
-      if (startDate || endDate) {
-        const iDate = new Date(inv.createdAt).getTime();
-        const start = startDate ? new Date(startDate).getTime() : 0;
-        const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
-        matchDate = iDate >= start && iDate <= end;
+      if (!startDate && !endDate) return true;
+
+      const iDate = new Date(inv.createdAt).getTime();
+      
+      let start = 0;
+      if (startDate) {
+        const d = new Date(startDate);
+        if (!isNaN(d.getTime())) start = d.getTime();
       }
-      return matchDate;
+
+      let end = Infinity;
+      if (endDate) {
+        const d = new Date(endDate);
+        if (!isNaN(d.getTime())) {
+          d.setHours(23, 59, 59, 999);
+          end = d.getTime();
+        }
+      }
+
+      return iDate >= start && iDate <= end;
     });
   }, [data.innovations, startDate, endDate]);
 
   const filteredInterruptions = useMemo(() => {
     return data.interruptions.filter(i => {
-      let matchDate = true;
-      if (startDate || endDate) {
-        const iDate = new Date(i.startTime).getTime();
-        const start = startDate ? new Date(startDate).getTime() : 0;
-        const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
-        matchDate = iDate >= start && iDate <= end;
+      if (!startDate && !endDate) return true;
+
+      const iDate = new Date(i.startTime).getTime();
+      
+      let start = 0;
+      if (startDate) {
+        const d = new Date(startDate);
+        if (!isNaN(d.getTime())) start = d.getTime();
       }
-      return matchDate;
+
+      let end = Infinity;
+      if (endDate) {
+        const d = new Date(endDate);
+        if (!isNaN(d.getTime())) {
+          d.setHours(23, 59, 59, 999);
+          end = d.getTime();
+        }
+      }
+
+      return iDate >= start && iDate <= end;
     });
-  }, [data.interruptions, startDate, endDate, currentUser.role, currentUser.id]);
+  }, [data.interruptions, startDate, endDate]);
 
 
   // 1. Calculate Average Time per Project Type
@@ -157,17 +225,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    return Object.keys(usersMap).map(userId => {
-        const userName = usersMap[userId];
-        let projectsToConsider = data.projects;
+    const allUserIds = new Set([
+        ...Object.keys(usersMap),
+        ...filteredProjects.map(p => p.userId).filter(Boolean) as string[]
+    ]);
 
-        if (rankingPeriod === 'CUSTOM') {
-            projectsToConsider = filteredProjects;
-        }
-
-        const userProjects = projectsToConsider.filter(p => {
+    return Array.from(allUserIds).map(userId => {
+        const userName = usersMap[userId] || (userId.length < 30 ? userId : 'Desconhecido');
+        
+        // Always start with filteredProjects to respect role-based access
+        const userProjects = filteredProjects.filter(p => {
             if (p.userId !== userId) return false;
-            if (p.status !== 'COMPLETED') return false;
 
             const pDate = new Date(p.endTime || p.startTime);
             
@@ -176,16 +244,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             } else if (rankingPeriod === 'YEAR') {
                 return pDate.getFullYear() === currentYear;
             }
+            // For 'CUSTOM', filteredProjects already handles the date range
             return true; 
         });
 
-        const releases = userProjects.filter(p => p.type === ProjectType.RELEASE).length;
-        const variations = userProjects.filter(p => p.type === ProjectType.VARIATION).length;
-        const developments = userProjects.filter(p => p.type === ProjectType.DEVELOPMENT).length;
+        const releases = userProjects.filter(p => isTypeMatch(p.type, ProjectType.RELEASE)).length;
+        const variations = userProjects.filter(p => isTypeMatch(p.type, ProjectType.VARIATION)).length;
+        const developments = userProjects.filter(p => isTypeMatch(p.type, ProjectType.DEVELOPMENT)).length;
 
         return { id: userId, name: userName, releases, variations, developments, total: releases + variations + developments };
     }).filter(stat => stat.total > 0).sort((a, b) => b.total - a.total);
-  }, [usersMap, data.projects, rankingPeriod, filteredProjects]);
+  }, [usersMap, rankingPeriod, filteredProjects]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val);
@@ -344,23 +413,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const innovationChartData = useMemo(() => {
     const statuses = ['PENDING', 'APPROVED', 'IMPLEMENTED', 'REJECTED'];
     const labelMap: Record<string, string> = {
-        'PENDING': 'Pendente',
-        'APPROVED': 'Aprovado',
-        'IMPLEMENTED': 'Implementado',
-        'REJECTED': 'Rejeitado'
+        'PENDING': 'PENDENTE',
+        'APPROVED': 'APROVADO',
+        'IMPLEMENTED': 'IMPLEMENTADO',
+        'REJECTED': 'REJEITADO'
     };
 
     return statuses.map(status => {
         const items = filteredInnovations.filter(i => i.status === status);
-        const newProjects = items.filter(i => i.type === InnovationType.NEW_PROJECT).length;
-        const improvements = items.filter(i => i.type === InnovationType.PRODUCT_IMPROVEMENT).length;
-        const optimizations = items.filter(i => i.type === InnovationType.PROCESS_OPTIMIZATION).length;
+        const newProjects = items.filter(i => isInnovationTypeMatch(i.type, InnovationType.NEW_PROJECT)).length;
+        const improvements = items.filter(i => isInnovationTypeMatch(i.type, InnovationType.PRODUCT_IMPROVEMENT)).length;
+        const optimizations = items.filter(i => isInnovationTypeMatch(i.type, InnovationType.PROCESS_OPTIMIZATION)).length;
         
         return {
             name: labelMap[status],
-            "Novo Projeto": newProjects,
-            "Melhoria": improvements,
-            "Otimização": optimizations
+            [InnovationType.NEW_PROJECT]: newProjects,
+            [InnovationType.PRODUCT_IMPROVEMENT]: improvements,
+            [InnovationType.PROCESS_OPTIMIZATION]: optimizations
         };
     });
   }, [filteredInnovations]);
@@ -381,10 +450,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             };
         }
         
-        // Count occurrences
-        if (p.type === ProjectType.RELEASE) data[userName][ProjectType.RELEASE]++;
-        else if (p.type === ProjectType.VARIATION) data[userName][ProjectType.VARIATION]++;
-        else if (p.type === ProjectType.DEVELOPMENT) data[userName][ProjectType.DEVELOPMENT]++;
+        // Count occurrences with normalization
+        if (isTypeMatch(p.type, ProjectType.RELEASE)) data[userName][ProjectType.RELEASE]++;
+        else if (isTypeMatch(p.type, ProjectType.VARIATION)) data[userName][ProjectType.VARIATION]++;
+        else if (isTypeMatch(p.type, ProjectType.DEVELOPMENT)) data[userName][ProjectType.DEVELOPMENT]++;
     });
 
     return Object.values(data);
@@ -525,13 +594,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       
       {/* Date Filter Section */}
       <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center text-black dark:text-white font-bold">
+        <div className="flex items-center text-black dark:text-white font-bold uppercase">
           <Filter className="w-5 h-5 mr-2 text-blue-600" />
           {t('analysisFilters')}
         </div>
         <div className="flex items-center gap-4 w-full md:w-auto">
+          {onRefresh && (
+            <button 
+              onClick={onRefresh}
+              className="p-2 text-gray-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
+              title={t('refreshData')}
+            >
+              <Activity className="w-5 h-5" />
+            </button>
+          )}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 dark:text-slate-400">{t('from')}</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase">{t('from')}</span>
             <input
               type="date"
               value={startDate}
@@ -540,7 +618,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-black dark:text-white">{t('to')}</span>
+            <span className="text-xs text-black dark:text-white uppercase">{t('to')}</span>
             <input
               type="date"
               value={endDate}
@@ -550,7 +628,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           </div>
           {currentUser.role === 'GESTOR' && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-black dark:text-white">{t('designer')}</span>
+              <span className="text-xs text-black dark:text-white uppercase">{t('designer')}</span>
               <select
                 value={selectedDesignerForReleases}
                 onChange={(e) => {
@@ -569,14 +647,80 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         </div>
           <button 
             onClick={handleExportCSV}
-            className="flex items-center text-sm font-medium text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors ml-auto md:ml-0"
+            className="flex items-center text-sm font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors ml-auto md:ml-0 uppercase"
           >
             <Download className="w-4 h-4 mr-2" />
             {t('exportCsv')}
           </button>
       </div>
 
+      {/* Dashboard Visibility Controls */}
+      <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
+        <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-3">{t('selectDashboards')}</p>
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('kpi')} 
+              onChange={() => setVisibleSections(prev => prev.includes('kpi') ? prev.filter(s => s !== 'kpi') : [...prev, 'kpi'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('totalHours')}</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('ranking')} 
+              onChange={() => setVisibleSections(prev => prev.includes('ranking') ? prev.filter(s => s !== 'ranking') : [...prev, 'ranking'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('productivityRankingTitle')}</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('innovation')} 
+              onChange={() => setVisibleSections(prev => prev.includes('innovation') ? prev.filter(s => s !== 'innovation') : [...prev, 'innovation'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('innovationStatus')}</span>
+          </label>
+          {currentUser.role === 'GESTOR' && (
+            <>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  checked={visibleSections.includes('activities')} 
+                  onChange={() => setVisibleSections(prev => prev.includes('activities') ? prev.filter(s => s !== 'activities') : [...prev, 'activities'])}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('activitiesByDesigner')}</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  checked={visibleSections.includes('stops')} 
+                  onChange={() => setVisibleSections(prev => prev.includes('stops') ? prev.filter(s => s !== 'stops') : [...prev, 'stops'])}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('stopAnalysis')}</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  checked={visibleSections.includes('releases')} 
+                  onChange={() => setVisibleSections(prev => prev.includes('releases') ? prev.filter(s => s !== 'releases') : [...prev, 'releases'])}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('teamReleases')}</span>
+              </label>
+            </>
+          )}
+        </div>
+      </div>
+
       {/* KPI Section */}
+      {visibleSections.includes('kpi') && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {currentUser.role !== 'PROCESSOS' && averageTimes.length > 0 && averageTimes.map((stat) => (
             <div key={stat.type} className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center justify-between">
@@ -643,6 +787,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
           </div>
         </div>
+      )}
 
       {/* AI Insights Section */}
         {currentUser.role !== 'PROCESSOS' && (
@@ -650,40 +795,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-300 flex items-center">
                 <Sparkles className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
-                Análise Inteligente (IA)
+                ANÁLISE INTELIGENTE (IA)
               </h3>
               <button 
                 onClick={handleAiAnalysis}
                 disabled={isLoadingAi}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm"
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm uppercase"
               >
-                {isLoadingAi ? 'Analisando...' : 'Gerar Relatório'}
+                {isLoadingAi ? 'ANALISANDO...' : 'GERAR RELATÓRIO'}
               </button>
             </div>
             
             {aiAnalysis ? (
               <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-4 rounded-lg">
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{aiAnalysis}</pre>
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed uppercase">{aiAnalysis}</pre>
               </div>
             ) : (
-              <p className="text-black dark:text-white text-sm">
-                Clique em "Gerar Relatório" para que a IA analise o desempenho do período selecionado.
+              <p className="text-black dark:text-white text-sm uppercase">
+                CLIQUE EM "GERAR RELATÓRIO" PARA QUE A IA ANALISE O DESEMPENHO DO PERÍODO SELECIONADO.
               </p>
             )}
           </div>
         )}
 
       {/* NOVO: Gráfico Horas Realizadas vs Meta Mensal */}
-        {currentUser.role !== 'PROCESSOS' && (
-          <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[400px]">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-              <div className="flex flex-col">
-                  <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
-                      <Target className="w-5 h-5 mr-2 text-indigo-500" />
-                      {t('hoursVsGoalTitle')}
-                  </h3>
-                  <p className="text-xs text-black dark:text-white ml-7 opacity-70">{t('hoursVsGoalSub')}</p>
-              </div>
+      {currentUser.role !== 'PROCESSOS' && visibleSections.includes('kpi') && (
+        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[400px]">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+            <div className="flex flex-col">
+                <h3 className="text-lg font-bold text-black dark:text-white flex items-center uppercase">
+                    <Target className="w-5 h-5 mr-2 text-indigo-500" />
+                    {t('hoursVsGoalTitle')}
+                </h3>
+                <p className="text-xs text-black dark:text-white ml-7 opacity-70 uppercase">{t('hoursVsGoalSub')}</p>
+            </div>
               
               <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
@@ -745,13 +890,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         )}
 
       {/* NOVO: Ranking do Mês (CEO/GESTOR/COORDENADOR) */}
-      {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR') && currentUser.role !== 'PROCESSOS' && (
+      {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR') && currentUser.role !== 'PROCESSOS' && visibleSections.includes('ranking') && (
         <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
             <div className="flex flex-col md:flex-row items-center justify-between mb-4 gap-4">
-                <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
-                    <Target className="w-5 h-5 mr-2 text-purple-600" />
-                    {t('productivityRankingTitle')}
-                </h3>
+                    <h3 className="text-lg font-bold text-black dark:text-white flex items-center uppercase">
+                        <Target className="w-5 h-5 mr-2 text-purple-600" />
+                        {t('productivityRankingTitle')}
+                    </h3>
                 
                 <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
                     <button 
@@ -846,7 +991,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                 contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
                                 cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }}
                             />
-                            <Bar dataKey="total" name={t('totalDeliveries')} fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={30}>
+                            <Bar dataKey="total" name={t('totalDeliveries').toUpperCase()} fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={30}>
                                 {rankingStats.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={index === 0 ? '#8b5cf6' : index === 1 ? '#a78bfa' : index === 2 ? '#c4b5fd' : '#ddd6fe'} />
                                 ))}
@@ -863,16 +1008,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         {/* Removed: Issue Distribution (Pie Chart) */}
 
         {/* Releases per Month (Bar Chart) */}
-            {currentUser.role !== 'PROCESSOS' && (
+            {currentUser.role !== 'PROCESSOS' && visibleSections.includes('releases') && (
               <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
               <div className="flex justify-between items-center mb-4">
                   <div className="flex flex-col">
-                      <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
+                      <h3 className="text-lg font-bold text-black dark:text-white flex items-center uppercase">
                           <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
                           {currentUser.role === 'GESTOR' || currentUser.role === 'CEO' ? t('teamReleases') : t('yourPerformance')}
                       </h3>
                       {selectedDesignerForReleases !== 'ALL' && (
-                          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7">{t('filteredBy')}: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7 uppercase">{t('filteredBy')}: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
                       )}
                   </div>
                   <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
@@ -920,6 +1065,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             )}
 
         {/* Innovations Chart */}
+        {visibleSections.includes('innovation') && (
             <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
             <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
                 <Lightbulb className="w-5 h-5 mr-2 text-yellow-500" />
@@ -936,13 +1082,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                             cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                         />
                         <Legend />
-                        <Bar dataKey="Novo Projeto" stackId="a" fill="#8b5cf6" />
-                        <Bar dataKey="Melhoria" stackId="a" fill="#3b82f6" />
-                        <Bar dataKey="Otimização" stackId="a" fill="#f97316" />
+                        <Bar dataKey={InnovationType.NEW_PROJECT} name={t('newProject').toUpperCase()} stackId="a" fill="#8b5cf6" />
+                        <Bar dataKey={InnovationType.PRODUCT_IMPROVEMENT} name={t('improvement').toUpperCase()} stackId="a" fill="#3b82f6" />
+                        <Bar dataKey={InnovationType.PROCESS_OPTIMIZATION} name={t('optimization').toUpperCase()} stackId="a" fill="#f97316" />
                     </BarChart>
                 </ResponsiveContainer>
             </div>
             </div>
+        )}
 
         {/* Implement Type (Pie Chart) - REMOVED AS REQUESTED */}
 
@@ -951,11 +1098,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         {currentUser.role === 'GESTOR' && (
           <>
             {/* 1. Activities by Designer (Stacked Bar) */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
-                <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
-                    <Activity className="w-5 h-5 mr-2 text-indigo-600" />
-                    {t('activitiesByDesigner')}
-                </h3>
+            {visibleSections.includes('activities') && (
+              <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
+                  <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center uppercase">
+                      <Activity className="w-5 h-5 mr-2 text-indigo-600" />
+                      {t('activitiesByDesigner')}
+                  </h3>
                 <div className="h-[300px] w-full">
                     {activitiesByDesigner.length > 0 ? (
                         <ResponsiveContainer width="100%" height="100%">
@@ -968,9 +1116,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                     cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                                 />
                                 <Legend />
-                                <Bar dataKey={ProjectType.RELEASE} name={t('releases')} stackId="a" fill="#3b82f6" />
-                                <Bar dataKey={ProjectType.VARIATION} name={t('variations')} stackId="a" fill="#f97316" />
-                                <Bar dataKey={ProjectType.DEVELOPMENT} name={t('developments')} stackId="a" fill="#10b981" />
+                                <Bar dataKey={ProjectType.RELEASE} name={t('releases').toUpperCase()} stackId="a" fill="#3b82f6" />
+                                <Bar dataKey={ProjectType.VARIATION} name={t('variations').toUpperCase()} stackId="a" fill="#f97316" />
+                                <Bar dataKey={ProjectType.DEVELOPMENT} name={t('developments').toUpperCase()} stackId="a" fill="#10b981" />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
@@ -980,14 +1128,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     )}
                 </div>
             </div>
+          )}
 
             {/* 2. Paradas by Designer (Stacked Bar) */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold text-gray-700 dark:text-slate-200 flex items-center">
-                        <PauseCircle className="w-5 h-5 mr-2 text-red-500" />
-                        {t('stopAnalysis')}
-                    </h3>
+            {visibleSections.includes('stops') && (
+              <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-bold text-gray-700 dark:text-slate-200 flex items-center uppercase">
+                          <PauseCircle className="w-5 h-5 mr-2 text-red-500" />
+                          {t('stopAnalysis')}
+                      </h3>
                     <select 
                         value={selectedInterruptionDesigner}
                         onChange={(e) => setSelectedInterruptionDesigner(e.target.value)}
@@ -1051,6 +1201,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     )}
                 </div>
             </div>
+          )}
           </>
         )}
       </div>

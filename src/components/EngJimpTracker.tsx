@@ -1604,7 +1604,7 @@ JIMPNEXUS
                                             }`}
                                          >
                                             {v.filesGenerated ? <FileCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                                            <span className="ml-1 text-xs font-bold">{v.filesGenerated ? 'OK' : 'Pendente'}</span>
+                                            <span className="ml-1 text-xs font-bold">{v.filesGenerated ? 'OK' : 'PENDENTE'}</span>
                                          </button>
                                      </td>
                                      <td className="p-3 text-right">
@@ -1620,7 +1620,7 @@ JIMPNEXUS
                              {activeProject.variations.length === 0 && (
                                  <tr>
                                      <td colSpan={6} className="p-6 text-center text-gray-400 dark:text-slate-500 italic">
-                                         Nenhuma variação registrada para este projeto ainda.
+                                         NENHUMA VARIAÇÃO REGISTRADA PARA ESTE PROJETO AINDA.
                                      </td>
                                  </tr>
                              )}
@@ -1638,7 +1638,7 @@ JIMPNEXUS
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center sticky top-0 bg-white dark:bg-black z-10">
                     <h3 className="text-xl font-bold text-gray-800 dark:text-slate-100 flex items-center">
                         <Info className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
-                        Detalhes do Projeto
+                        DETALHES DO PROJETO
                     </h3>
                     <button 
                         onClick={() => setSelectedProjectDetails(null)}
@@ -1656,17 +1656,17 @@ JIMPNEXUS
                             <span className="text-lg font-mono font-bold text-gray-800 dark:text-slate-100">{selectedProjectDetails.ns}</span>
                         </div>
                         <div>
-                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">Cliente</span>
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">CLIENTE</span>
                             <span className="text-lg font-medium text-gray-800 dark:text-slate-100">{selectedProjectDetails.clientName}</span>
                         </div>
                         <div>
-                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">Responsável</span>
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">RESPONSÁVEL</span>
                             <span className="text-sm font-medium text-gray-800 dark:text-slate-200">
-                                {users.find(u => u.id === selectedProjectDetails.userId)?.name || 'Não atribuído'}
+                                {users.find(u => u.id === selectedProjectDetails.userId)?.name || 'NÃO ATRIBUÍDO'}
                             </span>
                         </div>
                         <div>
-                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">Status</span>
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">STATUS</span>
                             <span className={`text-sm font-bold ${selectedProjectDetails.status === 'IN_PROGRESS' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}`}>
                                 {selectedProjectDetails.status === 'IN_PROGRESS' ? 'EM ANDAMENTO' : 'FINALIZADO'}
                             </span>
@@ -1676,21 +1676,21 @@ JIMPNEXUS
                     {/* Estimates */}
                     <div className="grid grid-cols-3 gap-4">
                         <div className="bg-orange-50 dark:bg-orange-900/10 p-3 rounded-lg border border-orange-100 dark:border-orange-900/30">
-                            <span className="text-[10px] text-orange-800 dark:text-orange-300 uppercase font-bold block">Est. Gerencial</span>
+                            <span className="text-[10px] text-orange-800 dark:text-orange-300 uppercase font-bold block">EST. GERENCIAL</span>
                             <span className="text-lg font-bold text-orange-900 dark:text-orange-200">
-                                {projectRequests.find(r => r.ns === selectedProjectDetails.ns)?.managementEstimate || 0}h
+                                {projectRequests.find(r => r.ns === selectedProjectDetails.ns)?.managementEstimate || 0}H
                             </span>
                         </div>
                         <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                            <span className="text-[10px] text-blue-800 dark:text-blue-300 uppercase font-bold block">Est. Projetista</span>
+                            <span className="text-[10px] text-blue-800 dark:text-blue-300 uppercase font-bold block">EST. PROJETISTA</span>
                             <span className="text-lg font-bold text-blue-900 dark:text-blue-200">
-                                {selectedProjectDetails.estimatedSeconds ? (selectedProjectDetails.estimatedSeconds / 3600).toFixed(1) : '0.0'}h
+                                {selectedProjectDetails.estimatedSeconds ? (selectedProjectDetails.estimatedSeconds / 3600).toFixed(1) : '0.0'}H
                             </span>
                         </div>
                         <div className="bg-green-50 dark:bg-green-900/10 p-3 rounded-lg border border-green-100 dark:border-green-900/30">
-                            <span className="text-[10px] text-green-800 dark:text-green-300 uppercase font-bold block">Tempo Efetivo</span>
+                            <span className="text-[10px] text-green-800 dark:text-green-300 uppercase font-bold block">TEMPO EFETIVO</span>
                             <span className="text-lg font-bold text-green-900 dark:text-green-200">
-                                {(selectedProjectDetails.totalActiveSeconds / 3600).toFixed(1)}h
+                                {(selectedProjectDetails.totalActiveSeconds / 3600).toFixed(1)}H
                             </span>
                         </div>
                     </div>
@@ -1699,10 +1699,10 @@ JIMPNEXUS
                     <div>
                         <h4 className="text-sm font-bold text-gray-700 dark:text-slate-300 mb-2 flex items-center">
                             <Briefcase className="w-4 h-4 mr-2 text-gray-500 dark:text-slate-400" />
-                            Contexto / Observações (Para que)
+                            CONTEXTO / OBSERVAÇÕES (PARA QUE)
                         </h4>
                         <div className="bg-yellow-50 dark:bg-amber-900/20 p-4 rounded-lg border border-yellow-100 dark:border-amber-900/30 text-gray-700 dark:text-slate-300 text-sm whitespace-pre-wrap">
-                            {selectedProjectDetails.notes || "Nenhuma observação registrada."}
+                            {selectedProjectDetails.notes || "NENHUMA OBSERVAÇÃO REGISTRADA."}
                         </div>
                     </div>
 
@@ -1710,17 +1710,17 @@ JIMPNEXUS
                     <div>
                         <h4 className="text-sm font-bold text-gray-700 dark:text-slate-300 mb-2 flex items-center">
                             <Layers className="w-4 h-4 mr-2 text-gray-500 dark:text-slate-400" />
-                            Histórico de Variações (O que)
+                            HISTÓRICO DE VARIAÇÕES (O QUE)
                         </h4>
                         {selectedProjectDetails.variations.length > 0 ? (
                             <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
                                 <table className="w-full text-sm text-left">
                                     <thead className="bg-gray-100 dark:bg-black text-gray-600 dark:text-slate-400 font-semibold">
                                         <tr>
-                                            <th className="p-3">De (Antigo)</th>
-                                            <th className="p-3">Para (Novo)</th>
-                                            <th className="p-3">{t('description')}</th>
-                                            <th className="p-3">{t('type')}</th>
+                                            <th className="p-3">DE (ANTIGO)</th>
+                                            <th className="p-3">PARA (NOVO)</th>
+                                            <th className="p-3">{t('description').toUpperCase()}</th>
+                                            <th className="p-3">{t('type').toUpperCase()}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1741,7 +1741,7 @@ JIMPNEXUS
                             </div>
                         ) : (
                             <div className="text-center p-6 bg-gray-50 dark:bg-black rounded-lg border border-gray-200 dark:border-slate-700 text-gray-400 dark:text-slate-500 italic">
-                                Nenhuma variação registrada.
+                                NENHUMA VARIAÇÃO REGISTRADA.
                             </div>
                         )}
                     </div>
@@ -1752,7 +1752,7 @@ JIMPNEXUS
                         onClick={() => setSelectedProjectDetails(null)}
                         className="px-6 py-2 bg-gray-200 dark:bg-black hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-800 dark:text-slate-200 font-bold rounded-lg transition-colors"
                     >
-                        Fechar
+                        FECHAR
                     </button>
                 </div>
             </div>
@@ -1802,7 +1802,7 @@ JIMPNEXUS
                   <div className="flex-1">
                     <input 
                       type="number" 
-                      placeholder="Horas"
+                      placeholder="HORAS"
                       value={pickDesignerEstHours}
                       onChange={e => setPickDesignerEstHours(e.target.value)}
                       className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
@@ -1812,7 +1812,7 @@ JIMPNEXUS
                   <div className="flex-1">
                     <input 
                       type="number" 
-                      placeholder="Minutos"
+                      placeholder="MINUTOS"
                       value={pickDesignerEstMinutes}
                       onChange={e => setPickDesignerEstMinutes(e.target.value)}
                       className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
@@ -1850,59 +1850,59 @@ JIMPNEXUS
           <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
             <h3 className="text-lg font-bold mb-4 flex items-center text-yellow-600 dark:text-amber-400">
               <Pause className="w-5 h-5 mr-2" />
-              Pausar Projeto
+              PAUSAR PROJETO
             </h3>
             <p className="text-gray-600 dark:text-slate-400 text-sm mb-4">
-              Isso irá parar o cronômetro. O projeto ficará salvo na lista para retorno posterior.
+              ISSO IRÁ PARAR O CRONÔMETRO. O PROJETO FICARÁ SALVO NA LISTA PARA RETORNO POSTERIOR.
             </p>
             
             <div className="space-y-4 mb-6">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Motivo da Pausa</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">MOTIVO DA PAUSA</label>
                     <select 
                         value={pauseReason}
                         onChange={e => setPauseReason(e.target.value)}
                         className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none dark:bg-black dark:text-white"
                     >
-                        <option value="">Selecione o motivo...</option>
-                        <option value="Almoço / Intervalo">Almoço / Intervalo</option>
-                        <option value="Fim do Expediente">Fim do Expediente</option>
-                        <option value="Reunião">Reunião</option>
-                        <option value="Troca de Projeto">Troca de Projeto</option>
-                        <option value="Falta de Informações">Falta de Informações</option>
-                        <option value="Incompatibilidade de Informações">Incompatibilidade de Informações</option>
-                        <option value="Outros">Outros</option>
+                        <option value="">SELECIONE O MOTIVO...</option>
+                        <option value="Almoço / Intervalo">ALMOÇO / INTERVALO</option>
+                        <option value="Fim do Expediente">FIM DO EXPEDIENTE</option>
+                        <option value="Reunião">REUNIÃO</option>
+                        <option value="Troca de Projeto">TROCA DE PROJETO</option>
+                        <option value="Falta de Informações">FALTA DE INFORMAÇÕES</option>
+                        <option value="Incompatibilidade de Informações">INCOMPATIBILIDADE DE INFORMAÇÕES</option>
+                        <option value="Outros">OUTROS</option>
                     </select>
                 </div>
 
                 {(pauseReason === 'Falta de Informações' || pauseReason === 'Incompatibilidade de Informações') && (
                     <div className="animate-in slide-in-from-top-2 duration-200">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Setor Causador</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">SETOR CAUSADOR</label>
                         <select 
                             value={pauseSector}
                             onChange={e => setPauseSector(e.target.value)}
                             className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none dark:bg-black dark:text-white"
                         >
-                            <option value="">Selecione o setor...</option>
-                            <option value="Comercial">Comercial</option>
-                            <option value="Engenharia">Engenharia</option>
+                            <option value="">SELECIONE O SETOR...</option>
+                            <option value="Comercial">COMERCIAL</option>
+                            <option value="Engenharia">ENGENHARIA</option>
                             <option value="PCP">PCP</option>
-                            <option value="Produção">Produção</option>
-                            <option value="Cliente">Cliente</option>
-                            <option value="Vendas">Vendas</option>
-                            <option value="Outros">Outros</option>
+                            <option value="Produção">PRODUÇÃO</option>
+                            <option value="Cliente">CLIENTE</option>
+                            <option value="Vendas">VENDAS</option>
+                            <option value="Outros">OUTROS</option>
                         </select>
                     </div>
                 )}
 
                 {pauseReason === 'Outros' && (
                     <div className="animate-in slide-in-from-top-2 duration-200">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Especifique o Motivo</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">ESPECIFIQUE O MOTIVO</label>
                         <input 
                             type="text" 
                             value={pauseSector} // Reuse pauseSector for other reason text
                             onChange={e => setPauseSector(e.target.value)}
-                            placeholder="Descreva o motivo..."
+                            placeholder="DESCREVA O MOTIVO..."
                             className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none dark:bg-black dark:text-white"
                         />
                     </div>
@@ -1918,14 +1918,14 @@ JIMPNEXUS
                 }}
                 className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
-                Cancelar
+                CANCELAR
               </button>
               <button 
                 onClick={confirmPauseAndExit}
                 disabled={!pauseReason || ((pauseReason === 'Falta de Informações' || pauseReason === 'Incompatibilidade de Informações' || pauseReason === 'Outros') && !pauseSector)}
                 className="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors"
               >
-                Confirmar Pausa
+                CONFIRMAR PAUSA
               </button>
             </div>
           </div>
@@ -1938,20 +1938,20 @@ JIMPNEXUS
           <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
             <h3 className="text-lg font-bold mb-2 flex items-center text-red-600 dark:text-red-400">
               <CheckSquare className="w-5 h-5 mr-2" />
-              Finalizar Liberação
+              FINALIZAR LIBERAÇÃO
             </h3>
             <p className="text-gray-600 dark:text-slate-400 text-sm mb-6">
-              Revise o tempo estimado para este projeto antes de concluir.
+              REVISE O TEMPO ESTIMADO PARA ESTE PROJETO ANTES DE CONCLUIR.
             </p>
             
             <div className="space-y-4 mb-6">
                 <div className="p-4 bg-gray-50 dark:bg-black rounded-lg border border-gray-100 dark:border-slate-700">
-                    <div className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold mb-1">Tempo Realizado (Cronômetro)</div>
+                    <div className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold mb-1">TEMPO REALIZADO (CRONÔMETRO)</div>
                     <div className="text-2xl font-mono font-bold text-gray-800 dark:text-slate-100">{formatTime(elapsedSeconds)}</div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Tempo Estimado (Planejado)</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">TEMPO ESTIMADO (PLANEJADO)</label>
                   <div className="flex gap-2">
                     <div className="flex-1 relative">
                       <input 
@@ -1959,7 +1959,7 @@ JIMPNEXUS
                         value={estHours}
                         onChange={e => setEstHours(e.target.value)}
                         className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
-                        placeholder="Horas"
+                        placeholder="HORAS"
                         min="0"
                       />
                       <span className="absolute right-3 top-3.5 text-xs text-gray-400 dark:text-slate-500 font-bold">H</span>
@@ -1970,7 +1970,7 @@ JIMPNEXUS
                         value={estMinutes}
                         onChange={e => setEstMinutes(e.target.value)}
                         className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
-                        placeholder="Min"
+                        placeholder="MIN"
                         min="0"
                         max="59"
                       />
@@ -1985,7 +1985,7 @@ JIMPNEXUS
                 onClick={() => setShowFinishModal(false)}
                 className="flex-1 text-gray-500 dark:text-slate-400 px-4 py-3 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 transition-colors"
               >
-                Voltar
+                VOLTAR
               </button>
               <button 
                 onClick={confirmFinish}
@@ -1999,10 +1999,10 @@ JIMPNEXUS
                 {isFinalizing ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Processando...
+                    PROCESSANDO...
                   </>
                 ) : (
-                  'Concluir e Salvar'
+                  'CONCLUIR E SALVAR'
                 )}
               </button>
             </div>
@@ -2019,7 +2019,7 @@ JIMPNEXUS
           <div className="flex items-center justify-between mb-2 gap-4">
             <div className="flex items-center text-green-400 text-xs font-bold uppercase tracking-wider animate-pulse">
               <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
-              Em Andamento
+              EM ANDAMENTO
             </div>
             <Maximize2 className="w-4 h-4 text-gray-400 group-hover:text-white" />
           </div>
@@ -2030,7 +2030,7 @@ JIMPNEXUS
             NS: {activeProject.ns}
           </div>
           <div className="text-xs text-blue-400 font-medium mt-2 border-t border-slate-700 pt-2">
-            Clique para retornar
+            CLIQUE PARA RETORNAR
           </div>
         </div>
       )}

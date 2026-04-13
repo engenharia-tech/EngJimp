@@ -25,9 +25,21 @@ import {
   AlertCircle,
   Sparkles,
   Target,
-  LayoutDashboard
+  LayoutDashboard,
+  BarChart2
 } from 'lucide-react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  Cell
+} from 'recharts';
 import { analyzePerformance } from '../services/geminiService';
+import { ProjectType } from '../types';
 
 interface ReportsProps {
   data: AppState;
@@ -47,10 +59,31 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   const [expandedNs, setExpandedNs] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
+  const [visibleSections, setVisibleSections] = useState<string[]>(['summary']);
+
+  const sections = [
+    { id: 'summary', label: 'HORAS REALIZADAS VS. MENSAIS', icon: <TrendingDown className="w-4 h-4" /> },
+    { id: 'ranking', label: 'RANKING DE PRODUTIVIDADE', icon: <Target className="w-4 h-4" /> },
+    { id: 'innovation', label: 'STATUS DE INOVAÇÃO', icon: <Sparkles className="w-4 h-4" /> },
+    { id: 'status', label: 'STATUS DE PROJETOS', icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: 'productivity', label: 'PRODUTIVIDADE DETALHADA', icon: <Activity className="w-4 h-4" /> },
+    { id: 'designers', label: 'ATIVIDADE POR PROJETISTA', icon: <Users className="w-4 h-4" /> },
+    { id: 'clients', label: 'CUSTOS POR CLIENTE', icon: <UserIcon className="w-4 h-4" /> },
+    { id: 'deadlines', label: 'PREVISÃO DE PRAZOS', icon: <Clock className="w-4 h-4" /> },
+    { id: 'bottlenecks', label: 'ANÁLISE DE GARGALOS', icon: <AlertTriangle className="w-4 h-4" /> },
+    { id: 'detailedInterruptions', label: 'DETALHADO DE PARADAS', icon: <AlertCircle className="w-4 h-4" /> },
+    { id: 'nsAggregation', label: 'AGREGAÇÃO POR NS', icon: <BarChart2 className="w-4 h-4" /> },
+  ];
+
+  const toggleSection = (id: string) => {
+    setVisibleSections(prev => 
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
 
   const months = [
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
+    'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
   ];
 
   const years = useMemo(() => {
@@ -64,41 +97,63 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
   const isDateInPeriod = (date: Date) => {
     const year = date.getFullYear();
-    if (year !== selectedYear) return false;
-
     const month = date.getMonth();
+    
     if (filterType === 'MONTH') {
-      return month === selectedMonth;
+      return year === selectedYear && month === selectedMonth;
     } else if (filterType === 'QUARTER') {
       const quarter = Math.floor(month / 3) + 1;
-      return quarter === selectedQuarter;
+      return year === selectedYear && quarter === selectedQuarter;
     } else if (filterType === 'SEMESTER') {
       const semester = month < 6 ? 1 : 2;
-      return semester === selectedSemester;
+      return year === selectedYear && semester === selectedSemester;
     } else if (filterType === 'YEAR') {
-      return true;
+      return year === selectedYear;
     }
     return false;
   };
 
-  const productivityData = useMemo(() => {
-    const filtered = data.projects.filter(p => {
-      if (p.status !== 'COMPLETED') return false;
-      
-      // Role-based filtering: Designers only see their own
-      if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
-        return false;
-      }
+  const isProjectInPeriod = (p: ProjectSession) => {
+    const pStart = new Date(p.startTime);
+    const pEnd = p.endTime ? new Date(p.endTime) : new Date(); // Use now if in progress
+    
+    // Define period boundaries
+    let periodStart: Date;
+    let periodEnd: Date;
+    
+    if (filterType === 'MONTH') {
+      periodStart = new Date(selectedYear, selectedMonth, 1);
+      periodEnd = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999);
+    } else if (filterType === 'QUARTER') {
+      periodStart = new Date(selectedYear, (selectedQuarter - 1) * 3, 1);
+      periodEnd = new Date(selectedYear, selectedQuarter * 3, 0, 23, 59, 59, 999);
+    } else if (filterType === 'SEMESTER') {
+      periodStart = new Date(selectedYear, (selectedSemester - 1) * 6, 1);
+      periodEnd = new Date(selectedYear, selectedSemester * 6, 0, 23, 59, 59, 999);
+    } else { // YEAR
+      periodStart = new Date(selectedYear, 0, 1);
+      periodEnd = new Date(selectedYear, 11, 31, 23, 59, 59, 999);
+    }
+    
+    // Project overlaps with period if:
+    // Start is before period end AND (End is null OR End is after period start)
+    return pStart <= periodEnd && pEnd >= periodStart;
+  };
 
-      const date = new Date(p.endTime || p.startTime);
-      return isDateInPeriod(date);
-    });
+  const productivityData = useMemo(() => {
+    const filtered = data.projects.filter(p => isProjectInPeriod(p));
 
     const totalProductiveSeconds = filtered.reduce((acc, curr) => acc + (curr.totalActiveSeconds || 0), 0);
     const totalInterruptionSeconds = filtered.reduce((acc, curr) => acc + (curr.interruptionSeconds || 0), 0);
     const totalSeconds = totalProductiveSeconds + totalInterruptionSeconds;
     
     const lossPercentage = totalSeconds > 0 ? (totalInterruptionSeconds / totalSeconds) * 100 : 0;
+
+    // Calculate Monthly Capacity
+    // Assuming 22 workdays, 8.8 hours per day per designer
+    const designersCount = data.users.filter(u => u.role === 'PROJETISTA' || u.role === 'COORDENADOR').length || 1;
+    const monthlyCapacitySeconds = 22 * 8.8 * 3600 * designersCount;
+    const capacityPercentage = (totalProductiveSeconds / monthlyCapacitySeconds) * 100;
 
     return {
       projects: filtered,
@@ -107,21 +162,24 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       totalInterruptionSeconds,
       totalSeconds,
       lossPercentage,
-      avgProductiveSeconds: filtered.length > 0 ? totalProductiveSeconds / filtered.length : 0
+      avgProductiveSeconds: filtered.length > 0 ? totalProductiveSeconds / filtered.length : 0,
+      monthlyCapacitySeconds,
+      capacityPercentage
     };
-  }, [data.projects, selectedMonth, selectedYear, currentUser]);
+  }, [data.projects, data.users, selectedMonth, selectedYear, currentUser]);
 
   const clientData = useMemo(() => {
     const filtered = data.projects.filter(p => {
-      if (p.status !== 'COMPLETED') return false;
+      // Include all projects that had activity in the period
+      const date = new Date(p.endTime || p.lastActiveAt || p.startTime);
+      if (!isDateInPeriod(date)) return false;
 
       // Role-based filtering: Designers only see their own
       if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
         return false;
       }
 
-      const date = new Date(p.endTime || p.startTime);
-      return isDateInPeriod(date);
+      return true;
     });
 
     const stats: Record<string, { 
@@ -216,15 +274,15 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
   const designerData = useMemo(() => {
     const filtered = data.projects.filter(p => {
-      if (p.status !== 'COMPLETED') return false;
+      // Include all projects with activity in the period
+      if (!isProjectInPeriod(p)) return false;
 
       // Role-based filtering: Designers only see their own
       if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
         return false;
       }
 
-      const date = new Date(p.endTime || p.startTime);
-      return isDateInPeriod(date);
+      return true;
     });
 
     const stats: Record<string, { 
@@ -233,14 +291,23 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       productiveSeconds: number, 
       interruptionSeconds: number,
       totalCost: number,
-      projects: { ns: string, client: string, cost: number }[]
+      projects: { ns: string, client: string, cost: number }[],
+      types: Record<string, number> // Breakdown by type
     }> = {};
 
     // Initialize with all proposers if GESTOR/CEO
     if (currentUser.role !== 'PROJETISTA') {
       data.users.forEach(u => {
         if (u.role === 'PROJETISTA' || u.role === 'COORDENADOR') {
-          stats[u.name] = { name: u.name, count: 0, productiveSeconds: 0, interruptionSeconds: 0, totalCost: 0, projects: [] };
+          stats[u.name] = { 
+            name: u.name, 
+            count: 0, 
+            productiveSeconds: 0, 
+            interruptionSeconds: 0, 
+            totalCost: 0, 
+            projects: [],
+            types: { [ProjectType.VARIATION]: 0, [ProjectType.DEVELOPMENT]: 0, [ProjectType.RELEASE]: 0 }
+          };
         }
       });
     }
@@ -251,11 +318,24 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       const name = user ? user.name : (p.userId && p.userId.length < 30 ? p.userId : 'N/A');
       
       if (!stats[name]) {
-        stats[name] = { name, count: 0, productiveSeconds: 0, interruptionSeconds: 0, totalCost: 0, projects: [] };
+        stats[name] = { 
+          name, 
+          count: 0, 
+          productiveSeconds: 0, 
+          interruptionSeconds: 0, 
+          totalCost: 0, 
+          projects: [],
+          types: { [ProjectType.VARIATION]: 0, [ProjectType.DEVELOPMENT]: 0, [ProjectType.RELEASE]: 0 }
+        };
       }
       stats[name].count += 1;
       stats[name].productiveSeconds += p.totalActiveSeconds;
       stats[name].interruptionSeconds += p.interruptionSeconds || 0;
+      
+      // Breakdown by type
+      const type = p.type || ProjectType.RELEASE;
+      stats[name].types[type] = (stats[name].types[type] || 0) + 1;
+
       // Calculate cost based on productive time only as per user request
       const projectCost = p.totalActiveSeconds * costPerSecond;
       stats[name].totalCost += projectCost;
@@ -270,10 +350,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   }, [data.projects, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser]);
 
   const projectStatusData = useMemo(() => {
-    const filtered = data.projects.filter(p => {
-      const date = new Date(p.endTime || p.startTime);
-      return isDateInPeriod(date);
-    });
+    const filtered = data.projects.filter(p => isProjectInPeriod(p));
 
     const stats = {
       IN_PROGRESS: 0,
@@ -344,11 +421,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   }, [data.projects, currentUser]);
 
   const nsAggregationData = useMemo(() => {
-    const allCompletedInPeriod = data.projects.filter(p => {
-      if (p.status !== 'COMPLETED') return false;
-      const date = new Date(p.endTime || p.startTime);
-      return isDateInPeriod(date);
-    });
+    const allInPeriod = data.projects.filter(p => isProjectInPeriod(p));
 
     const stats: Record<string, { 
       ns: string, 
@@ -359,7 +432,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       contributors: Record<string, { userId: string, name: string, sessions: number, seconds: number, cost: number }>
     }> = {};
 
-    allCompletedInPeriod.forEach(p => {
+    allInPeriod.forEach(p => {
       const ns = p.ns || 'Sem NS';
       if (!stats[ns]) {
         stats[ns] = { 
@@ -402,6 +475,47 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
     return result;
   }, [data.projects, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, costPerSecond, isDateInPeriod]);
+
+  const innovationData = useMemo(() => {
+    const filtered = data.innovations.filter(i => {
+      const date = new Date(i.createdAt);
+      // If date is invalid, try to use current date as fallback if it was recently created
+      const validDate = isNaN(date.getTime()) ? new Date() : date;
+      return isDateInPeriod(validDate);
+    });
+
+    const stats = {
+      PENDING: 0,
+      APPROVED: 0,
+      REJECTED: 0,
+      IMPLEMENTED: 0,
+      TOTAL: filtered.length,
+      TOTAL_SAVINGS: 0
+    };
+
+    filtered.forEach(i => {
+      stats[i.status]++;
+      if (i.status === 'APPROVED' || i.status === 'IMPLEMENTED') {
+        stats.TOTAL_SAVINGS += (i.totalAnnualSavings || 0);
+      }
+    });
+
+    return stats;
+  }, [data.innovations, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear]);
+
+  const rankingData = useMemo(() => {
+    return [...designerData].sort((a, b) => b.productiveSeconds - a.productiveSeconds);
+  }, [designerData]);
+
+  const capacityChartData = useMemo(() => {
+    return [
+      {
+        name: 'Horas',
+        Realizado: Math.round(productivityData.totalProductiveSeconds / 3600),
+        Meta: Math.round(productivityData.monthlyCapacitySeconds / 3600)
+      }
+    ];
+  }, [productivityData]);
 
   const handleAiAnalysis = async () => {
     setIsLoadingAi(true);
@@ -700,127 +814,167 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   return (
     <div className="space-y-6">
       {/* Header & Filters */}
-      <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center text-black dark:text-white font-bold">
-          <FileText className="w-5 h-5 mr-2 text-blue-600" />
-          Relatórios Gerenciais
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <select 
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as any)}
-            className="p-2 border dark:border-slate-600 rounded-lg outline-none text-sm dark:bg-black dark:text-white"
-          >
-            <option value="MONTH">Mensal</option>
-            <option value="QUARTER">Trimestral</option>
-            <option value="SEMESTER">Semestral</option>
-            <option value="YEAR">Anual</option>
-          </select>
-
-          {filterType === 'MONTH' && (
+      <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center text-black dark:text-white font-bold uppercase">
+            <FileText className="w-5 h-5 mr-2 text-blue-600" />
+            Relatórios Gerenciais
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
             <select 
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value as any)}
+              className="p-2 border dark:border-slate-600 rounded-lg outline-none text-sm dark:bg-black dark:text-white uppercase"
+            >
+              <option value="MONTH">MENSAL</option>
+              <option value="QUARTER">TRIMESTRAL</option>
+              <option value="SEMESTER">SEMESTRAL</option>
+              <option value="YEAR">ANUAL</option>
+            </select>
+
+            {filterType === 'MONTH' && (
+              <select 
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="p-2 border dark:border-slate-600 rounded-lg outline-none text-sm dark:bg-black dark:text-white"
+              >
+                {months.map((m, i) => (
+                  <option key={i} value={i}>{m}</option>
+                ))}
+              </select>
+            )}
+
+            {filterType === 'QUARTER' && (
+              <select 
+                value={selectedQuarter}
+                onChange={(e) => setSelectedQuarter(Number(e.target.value))}
+                className="p-2 border dark:border-slate-600 rounded-lg outline-none text-sm dark:bg-black dark:text-white uppercase"
+              >
+                <option value={1}>1º TRIMESTRE</option>
+                <option value={2}>2º TRIMESTRE</option>
+                <option value={3}>3º TRIMESTRE</option>
+                <option value={4}>4º TRIMESTRE</option>
+              </select>
+            )}
+
+            {filterType === 'SEMESTER' && (
+              <select 
+                value={selectedSemester}
+                onChange={(e) => setSelectedSemester(Number(e.target.value))}
+                className="p-2 border dark:border-slate-600 rounded-lg outline-none text-sm dark:bg-black dark:text-white uppercase"
+              >
+                <option value={1}>1º SEMESTRE</option>
+                <option value={2}>2º SEMESTRE</option>
+              </select>
+            )}
+
+            <select 
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
               className="p-2 border dark:border-slate-600 rounded-lg outline-none text-sm dark:bg-black dark:text-white"
             >
-              {months.map((m, i) => (
-                <option key={i} value={i}>{m}</option>
+              {years.map(y => (
+                <option key={y} value={y}>{y}</option>
               ))}
             </select>
-          )}
+          </div>
+        </div>
 
-          {filterType === 'QUARTER' && (
-            <select 
-              value={selectedQuarter}
-              onChange={(e) => setSelectedQuarter(Number(e.target.value))}
-              className="p-2 border dark:border-slate-600 rounded-lg outline-none text-sm dark:bg-black dark:text-white"
-            >
-              <option value={1}>1º Trimestre</option>
-              <option value={2}>2º Trimestre</option>
-              <option value={3}>3º Trimestre</option>
-              <option value={4}>4º Trimestre</option>
-            </select>
-          )}
-
-          {filterType === 'SEMESTER' && (
-            <select 
-              value={selectedSemester}
-              onChange={(e) => setSelectedSemester(Number(e.target.value))}
-              className="p-2 border dark:border-slate-600 rounded-lg outline-none text-sm dark:bg-black dark:text-white"
-            >
-              <option value={1}>1º Semestre</option>
-              <option value={2}>2º Semestre</option>
-            </select>
-          )}
-
-          <select 
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="p-2 border dark:border-slate-600 rounded-lg outline-none text-sm dark:bg-black dark:text-white"
-          >
-            {years.map(y => (
-              <option key={y} value={y}>{y}</option>
+        {/* Dashboard Visibility Toggles */}
+        <div className="pt-4 border-t border-gray-100 dark:border-slate-800">
+          <p className="text-[10px] font-bold text-gray-400 uppercase mb-3">Visualização dos Dashboards</p>
+          <div className="flex flex-wrap gap-2">
+            {sections.map(section => (
+              <button
+                key={section.id}
+                onClick={() => toggleSection(section.id)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  visibleSections.includes(section.id)
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {section.icon}
+                {section.label}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
       </div>
 
       {/* Monthly Summary Card (Module 9) */}
-      <div className={`bg-gradient-to-br ${theme === 'dark' ? 'from-black to-black border border-slate-700' : 'from-blue-600 to-indigo-700'} rounded-2xl p-6 text-white shadow-lg`}>
-        <h3 className="text-lg font-bold mb-4 flex items-center">
-          <TrendingDown className="w-5 h-5 mr-2" />
-          Resumo de Engenharia - {getPeriodLabel()}
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-          <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
-            <p className="text-[10px] uppercase font-bold opacity-70">Lançamentos</p>
-            <p className="text-xl font-black">{productivityData.totalCount}</p>
-          </div>
-          <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
-            <p className="text-[10px] uppercase font-bold opacity-70">Projetos (NS)</p>
-            <p className="text-xl font-black">{nsAggregationData.length}</p>
-          </div>
-          <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
-            <p className="text-[10px] uppercase font-bold opacity-70">Média/Projeto</p>
-            <p className="text-xl font-black">{formatDuration(productivityData.avgProductiveSeconds)}</p>
-          </div>
-          <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
-            <p className="text-[10px] uppercase font-bold opacity-70">Horas Produtivas</p>
-            <p className="text-xl font-black">{formatDuration(productivityData.totalProductiveSeconds)}</p>
-          </div>
-          <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
-            <p className="text-[10px] uppercase font-bold opacity-70">Horas Perdidas</p>
-            <p className="text-xl font-black text-red-200">{formatDuration(productivityData.totalInterruptionSeconds)}</p>
-          </div>
-          <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
-            <p className="text-[10px] uppercase font-bold opacity-70">% Perda</p>
-            <p className="text-xl font-black text-amber-200">{productivityData.lossPercentage.toFixed(1)}%</p>
+      {visibleSections.includes('summary') && (
+        <div className="space-y-6">
+          <div className={`bg-gradient-to-br ${theme === 'dark' ? 'from-black to-black border border-slate-700' : 'from-blue-600 to-indigo-700'} rounded-2xl p-6 text-white shadow-lg`}>
+            <div className="flex flex-col md:flex-row gap-6">
+              <div className="flex-1">
+                <h3 className="text-lg font-bold mb-4 flex items-center">
+                  <TrendingDown className="w-5 h-5 mr-2" />
+                  Resumo de Engenharia - {getPeriodLabel()}
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
+                    <p className="text-[10px] uppercase font-bold opacity-70">Lançamentos</p>
+                    <p className="text-xl font-black">{productivityData.totalCount}</p>
+                  </div>
+                  <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
+                    <p className="text-[10px] uppercase font-bold opacity-70">Capacidade</p>
+                    <p className="text-xl font-black">{productivityData.capacityPercentage.toFixed(1)}%</p>
+                  </div>
+                  <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
+                    <p className="text-[10px] uppercase font-bold opacity-70">Horas Produtivas</p>
+                    <p className="text-xl font-black">{formatDuration(productivityData.totalProductiveSeconds)}</p>
+                  </div>
+                  <div className="bg-white/10 dark:bg-black/20 backdrop-blur-md p-3 rounded-xl border border-white/20 dark:border-slate-700/50">
+                    <p className="text-[10px] uppercase font-bold opacity-70">% Perda</p>
+                    <p className="text-xl font-black text-amber-200">{productivityData.lossPercentage.toFixed(1)}%</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="w-full md:w-64 bg-white/5 dark:bg-black/40 rounded-xl p-4 border border-white/10">
+                <p className="text-[10px] uppercase font-bold opacity-70 mb-2 text-center">Horas Realizadas vs. Meta</p>
+                <div className="h-40 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={capacityChartData} layout="vertical">
+                      <XAxis type="number" hide />
+                      <YAxis type="category" dataKey="name" hide />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#f8fafc', fontSize: '10px' }}
+                      />
+                      <Bar dataKey="Meta" fill="rgba(255,255,255,0.2)" radius={[0, 4, 4, 0]} barSize={20} />
+                      <Bar dataKey="Realizado" fill="#fbbf24" radius={[0, 4, 4, 0]} barSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* AI Insights Section */}
       <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-black p-6 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-300 flex items-center">
             <Sparkles className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
-            Análise Inteligente (IA) - {getPeriodLabel()}
+            ANÁLISE INTELIGENTE (IA) - {getPeriodLabel()}
           </h3>
           <div className="flex gap-2">
             <button 
               onClick={handleAiAnalysis}
               disabled={isLoadingAi}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm"
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm uppercase"
             >
-              {isLoadingAi ? 'Analisando...' : 'Gerar Análise'}
+              {isLoadingAi ? 'ANALISANDO...' : 'GERAR ANÁLISE'}
             </button>
             {aiAnalysis && (
               <button 
                 onClick={handleExportAiReport}
-                className="bg-white dark:bg-black text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900/30 px-4 py-2 rounded-lg text-sm hover:bg-indigo-50 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center"
+                className="bg-white dark:bg-black text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900/30 px-4 py-2 rounded-lg text-sm hover:bg-indigo-50 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center uppercase"
               >
                 <Download className="w-4 h-4 mr-2" />
-                Exportar PDF
+                EXPORTAR PDF
               </button>
             )}
           </div>
@@ -828,24 +982,141 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
         
         {aiAnalysis ? (
           <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-4 rounded-lg border border-indigo-100/50 dark:border-indigo-900/20">
-            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{aiAnalysis}</pre>
+            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed uppercase">{aiAnalysis}</pre>
           </div>
         ) : (
-          <p className="text-indigo-800/70 dark:text-indigo-300/70 text-sm">
-            Clique em "Gerar Análise" para que a IA processe os dados do período selecionado e forneça insights estratégicos.
+          <p className="text-indigo-800/70 dark:text-indigo-300/70 text-sm uppercase">
+            CLIQUE EM "GERAR ANÁLISE" PARA QUE A IA PROCESSE OS DADOS DO PERÍODO SELECIONADO E FORNEÇA INSIGHTS ESTRATÉGICOS.
           </p>
         )}
       </div>
 
+      {/* Ranking Section */}
+      {visibleSections.includes('ranking') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div className="p-4 bg-gray-50 dark:bg-black border-b border-gray-100 dark:border-slate-700 flex items-center gap-3">
+            <Target className="w-5 h-5 text-purple-600" />
+            <h3 className="font-bold text-black dark:text-white uppercase tracking-wider">Ranking de Produtividade</h3>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {rankingData.slice(0, 3).map((item, index) => (
+                <div key={item.name} className={`relative p-6 rounded-2xl border-2 transition-all ${
+                  index === 0 ? 'bg-amber-50 border-amber-200 scale-105 z-10' : 
+                  index === 1 ? 'bg-slate-50 border-slate-200' : 'bg-orange-50 border-orange-200'
+                }`}>
+                  <div className={`absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full flex items-center justify-center font-black text-white shadow-lg ${
+                    index === 0 ? 'bg-amber-500' : index === 1 ? 'bg-slate-400' : 'bg-orange-400'
+                  }`}>
+                    {index + 1}
+                  </div>
+                  <div className="text-center space-y-2">
+                    <p className="font-black text-lg text-slate-900 dark:text-white uppercase">{item.name}</p>
+                    <div className="flex justify-center gap-4">
+                      <div className="text-center">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Projetos</p>
+                        <p className="text-xl font-black text-blue-600">{item.count}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Horas</p>
+                        <p className="text-xl font-black text-emerald-600">{formatDuration(item.productiveSeconds)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-8 overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-gray-50 dark:bg-black text-gray-500 font-bold uppercase text-[10px]">
+                  <tr>
+                    <th className="p-3 uppercase">Posição</th>
+                    <th className="p-3 uppercase">Projetista</th>
+                    <th className="p-3 text-center uppercase">Projetos</th>
+                    <th className="p-3 text-center uppercase">Tempo Produtivo</th>
+                    <th className="p-3 text-center uppercase">Eficiência</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
+                  {rankingData.map((item, index) => (
+                    <tr key={item.name} className="hover:bg-gray-50 dark:hover:bg-slate-900/50">
+                      <td className="p-3 font-bold text-gray-400">#{index + 1}</td>
+                      <td className="p-3 font-bold text-black dark:text-white">{item.name}</td>
+                      <td className="p-3 text-center font-bold text-blue-600">{item.count}</td>
+                      <td className="p-3 text-center font-bold text-emerald-600">{formatDuration(item.productiveSeconds)}</td>
+                      <td className="p-3 text-center">
+                        <div className="w-24 h-2 bg-gray-100 dark:bg-slate-800 rounded-full mx-auto overflow-hidden">
+                          <div 
+                            className="h-full bg-blue-500" 
+                            style={{ width: `${Math.min(100, (item.productiveSeconds / (rankingData[0]?.productiveSeconds || 1)) * 100)}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Innovation Status Section */}
+      {visibleSections.includes('innovation') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+        <button 
+          onClick={() => setExpandedSection(expandedSection === 'innovation' ? null : 'innovation')}
+          className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-5 h-5 text-yellow-500" />
+            <h3 className="font-bold text-black dark:text-white uppercase">Status de Inovação e Melhorias</h3>
+          </div>
+          {expandedSection === 'innovation' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+        </button>
+
+        {expandedSection === 'innovation' && (
+          <div className="p-6 border-t border-gray-100 dark:border-slate-700 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-100 dark:border-yellow-900/30">
+                <p className="text-xs font-bold text-yellow-600 dark:text-yellow-400 uppercase">Pendentes</p>
+                <p className="text-2xl font-black text-yellow-800 dark:text-yellow-300">{innovationData.PENDING}</p>
+              </div>
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">Aprovados</p>
+                <p className="text-2xl font-black text-blue-800 dark:text-blue-300">{innovationData.APPROVED}</p>
+              </div>
+              <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase">Implementados</p>
+                <p className="text-2xl font-black text-emerald-800 dark:text-emerald-300">{innovationData.IMPLEMENTED}</p>
+              </div>
+              <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase">Economia Anual Est.</p>
+                <p className="text-2xl font-black text-indigo-800 dark:text-indigo-300">
+                  {innovationData.TOTAL_SAVINGS.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
+                <p className="text-xs font-bold text-gray-600 dark:text-slate-400 uppercase">Total de Ideias</p>
+                <p className="text-2xl font-black text-gray-800 dark:text-slate-200">{innovationData.TOTAL}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+
       {/* Project Status Report Section */}
-      <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      {visibleSections.includes('status') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <button 
           onClick={() => setExpandedSection(expandedSection === 'status' ? null : 'status')}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
         >
           <div className="flex items-center gap-3">
             <LayoutDashboard className="w-5 h-5 text-purple-600" />
-            <h3 className="font-bold text-black dark:text-white">Relatório de Status de Projetos</h3>
+            <h3 className="font-bold text-black dark:text-white uppercase">Relatório de Status de Projetos</h3>
           </div>
           {expandedSection === 'status' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
         </button>
@@ -900,16 +1171,18 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           </div>
         )}
       </div>
+    )}
 
       {/* Productivity Report Section */}
-      <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      {visibleSections.includes('productivity') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <button 
           onClick={() => setExpandedSection(expandedSection === 'productivity' ? null : 'productivity')}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
         >
           <div className="flex items-center gap-3">
             <Activity className="w-5 h-5 text-blue-600" />
-            <h3 className="font-bold text-black dark:text-white">Relatório de Produtividade Detalhado</h3>
+            <h3 className="font-bold text-black dark:text-white uppercase">Relatório de Produtividade Detalhado</h3>
           </div>
           {expandedSection === 'productivity' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
         </button>
@@ -919,15 +1192,16 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
             {/* Detailed Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-bold border-b border-gray-100 dark:border-slate-700 uppercase text-[10px]">
                   <tr>
-                    <th className="p-3">NS / Projeto</th>
-                    <th className="p-3">Cliente</th>
-                    <th className="p-3">Projetista</th>
-                    <th className="p-3 text-center">Produtivo</th>
-                    <th className="p-3 text-center">Parada</th>
-                    <th className="p-3 text-center">Total</th>
-                    <th className="p-3 text-right">Custo</th>
+                    <th className="p-3 uppercase">NS / Projeto</th>
+                    <th className="p-3 uppercase">Cliente</th>
+                    <th className="p-3 uppercase">Projetista</th>
+                    <th className="p-3 text-center uppercase">Estimativa Gerencial</th>
+                    <th className="p-3 text-center uppercase">Produtivo</th>
+                    <th className="p-3 text-center uppercase">Parada</th>
+                    <th className="p-3 text-center uppercase">Total</th>
+                    <th className="p-3 text-right uppercase">Custo</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -939,6 +1213,9 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                         <td className="p-3 font-medium text-black dark:text-white">{p.ns}</td>
                         <td className="p-3 text-black dark:text-white">{p.clientName}</td>
                         <td className="p-3 text-black dark:text-white">{designerName}</td>
+                        <td className="p-3 text-center text-gray-500 font-medium">
+                          {p.estimatedSeconds ? formatDuration(p.estimatedSeconds) : 'N/A'}
+                        </td>
                         <td className="p-3 text-center text-emerald-600 dark:text-emerald-400 font-medium">{formatDuration(p.totalActiveSeconds)}</td>
                         <td className="p-3 text-center text-red-600 dark:text-red-400 font-medium">{formatDuration(p.interruptionSeconds || 0)}</td>
                         <td className="p-3 text-center text-black dark:text-white font-bold">{formatDuration(p.totalSeconds || 0)}</td>
@@ -950,7 +1227,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                   })}
                   {productivityData.projects.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-gray-500 italic">Nenhum projeto concluído neste período.</td>
+                      <td colSpan={7} className="p-8 text-center text-gray-500 italic uppercase">Nenhum projeto com atividade neste período.</td>
                     </tr>
                   )}
                   {productivityData.projects.length > 0 && (
@@ -991,9 +1268,11 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           </div>
         )}
       </div>
+    )}
 
       {/* Designer Productivity Report Section */}
-      <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      {visibleSections.includes('designers') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <button 
           onClick={() => setExpandedSection(expandedSection === 'designers' ? null : 'designers')}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
@@ -1006,16 +1285,43 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
         </button>
 
         {expandedSection === 'designers' && (
-          <div className="p-6 border-t border-gray-100 dark:border-slate-700 space-y-4">
+          <div className="p-6 border-t border-gray-100 dark:border-slate-700 space-y-6">
+            {/* Parallel Projects Visualization */}
+            <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
+              <h4 className="text-sm font-bold text-gray-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-indigo-500" />
+                Projetos Liberados no Mês por Projetista
+              </h4>
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={designerData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} opacity={0.1} />
+                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '8px', color: '#f8fafc', fontSize: '12px' }}
+                      itemStyle={{ color: '#f8fafc' }}
+                    />
+                    <Bar dataKey={`types.${ProjectType.RELEASE}`} name="Liberações" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey={`types.${ProjectType.VARIATION}`} name="Variações" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey={`types.${ProjectType.DEVELOPMENT}`} name="Desenvolvimentos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-bold border-b border-gray-100 dark:border-slate-700 uppercase text-[10px]">
                   <tr>
-                    <th className="p-3">Projetista</th>
-                    <th className="p-3 text-center">Projetos Liberados</th>
-                    <th className="p-3 text-center">Tempo Produtivo</th>
-                    <th className="p-3 text-center">Tempo Parada</th>
-                    <th className="p-3 text-right">Custo Total</th>
+                    <th className="p-3 uppercase">Projetista</th>
+                    <th className="p-3 text-center uppercase">Liberações</th>
+                    <th className="p-3 text-center uppercase">Variações</th>
+                    <th className="p-3 text-center uppercase">Desenvolvimentos</th>
+                    <th className="p-3 text-center uppercase">Total Liberados</th>
+                    <th className="p-3 text-center uppercase">Tempo Produtivo</th>
+                    <th className="p-3 text-center uppercase">Tempo Parada</th>
+                    <th className="p-3 text-right uppercase">Custo Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1031,7 +1337,10 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                           )}
                           {item.name}
                         </td>
-                        <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">{item.count}</td>
+                        <td className="p-3 text-center font-medium text-blue-600 dark:text-blue-400">{item.types[ProjectType.RELEASE] || 0}</td>
+                        <td className="p-3 text-center font-medium text-amber-600 dark:text-amber-400">{item.types[ProjectType.VARIATION] || 0}</td>
+                        <td className="p-3 text-center font-medium text-purple-600 dark:text-purple-400">{item.types[ProjectType.DEVELOPMENT] || 0}</td>
+                        <td className="p-3 text-center font-bold text-slate-900 dark:text-white">{item.count}</td>
                         <td className="p-3 text-center text-emerald-600 dark:text-emerald-400">{formatDuration(item.productiveSeconds)}</td>
                         <td className="p-3 text-center text-red-600 dark:text-red-400">{formatDuration(item.interruptionSeconds)}</td>
                         <td className="p-3 text-right text-black dark:text-white font-bold">
@@ -1072,6 +1381,15 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                     <tr className="bg-gray-50 dark:bg-black font-bold border-t-2 border-gray-200 dark:border-slate-600">
                       <td className="p-3 text-black dark:text-white">TOTAL GERAL:</td>
                       <td className="p-3 text-center text-blue-600 dark:text-blue-400">
+                        {designerData.reduce((acc, curr) => acc + (curr.types[ProjectType.RELEASE] || 0), 0)}
+                      </td>
+                      <td className="p-3 text-center text-amber-600 dark:text-amber-400">
+                        {designerData.reduce((acc, curr) => acc + (curr.types[ProjectType.VARIATION] || 0), 0)}
+                      </td>
+                      <td className="p-3 text-center text-purple-600 dark:text-purple-400">
+                        {designerData.reduce((acc, curr) => acc + (curr.types[ProjectType.DEVELOPMENT] || 0), 0)}
+                      </td>
+                      <td className="p-3 text-center font-bold text-slate-900 dark:text-white">
                         {designerData.reduce((acc, curr) => acc + curr.count, 0)}
                       </td>
                       <td className="p-3 text-center text-emerald-600 dark:text-emerald-400">
@@ -1111,9 +1429,11 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           </div>
         )}
       </div>
+    )}
 
       {/* Client Cost Report (Module 6) */}
-      <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      {visibleSections.includes('clients') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <button 
           onClick={() => setExpandedSection(expandedSection === 'clients' ? null : 'clients')}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
@@ -1129,13 +1449,13 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           <div className="p-6 border-t border-gray-100 dark:border-slate-700 space-y-4">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-bold border-b border-gray-100 dark:border-slate-700 uppercase text-[10px]">
                   <tr>
-                    <th className="p-3">Cliente</th>
-                    <th className="p-3 text-center">Projetos</th>
-                    <th className="p-3 text-center">Tempo Produtivo</th>
-                    <th className="p-3 text-center">Tempo Parada</th>
-                    <th className="p-3 text-right">Custo Total</th>
+                    <th className="p-3 uppercase">Cliente</th>
+                    <th className="p-3 text-center uppercase">Projetos</th>
+                    <th className="p-3 text-center uppercase">Tempo Produtivo</th>
+                    <th className="p-3 text-center uppercase">Tempo Parada</th>
+                    <th className="p-3 text-right uppercase">Custo Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1181,9 +1501,11 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           </div>
         )}
       </div>
+    )}
 
       {/* Deadline Prediction (Module 5) */}
-      <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      {visibleSections.includes('deadlines') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <button 
           onClick={() => setExpandedSection(expandedSection === 'deadlines' ? null : 'deadlines')}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
@@ -1206,40 +1528,59 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
             
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-bold border-b border-gray-100 dark:border-slate-700 uppercase text-[10px]">
                   <tr>
-                    <th className="p-3">Projeto</th>
-                    <th className="p-3">Tipo</th>
-                    <th className="p-3 text-center">Tempo Realizado</th>
-                    <th className="p-3 text-center">Média Histórica</th>
-                    <th className="p-3 text-center">Previsão de Término</th>
-                    <th className="p-3 text-center">Status</th>
+                    <th className="p-3 uppercase">Projeto</th>
+                    <th className="p-3 uppercase">Tipo</th>
+                    <th className="p-3 text-center uppercase">Tempo Realizado</th>
+                    <th className="p-3 text-center uppercase">Média Histórica</th>
+                    <th className="p-3 text-center uppercase">Progresso</th>
+                    <th className="p-3 text-center uppercase">Previsão de Término</th>
+                    <th className="p-3 text-center uppercase">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                  {deadlinePredictions.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                      <td className="p-3 font-medium text-black dark:text-white">
-                        <div className="flex flex-col">
-                          <span>{p.ns}</span>
-                          <span className="text-[10px] text-gray-500">{p.clientName}</span>
-                        </div>
-                      </td>
-                      <td className="p-3 text-black dark:text-white">{p.type || 'Padrão'}</td>
-                      <td className="p-3 text-center text-black dark:text-white">{formatDuration(p.totalActiveSeconds)}</td>
-                      <td className="p-3 text-center text-gray-500">{formatDuration(p.avgForType)}</td>
-                      <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">
-                        {p.predictedEndDate.toLocaleDateString('pt-BR')} {p.predictedEndDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td className="p-3 text-center">
-                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${
-                          p.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {p.status === 'IN_PROGRESS' ? 'EM CURSO' : 'PAUSADO'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {deadlinePredictions.map((p) => {
+                    const progress = p.avgForType > 0 ? (p.totalActiveSeconds / p.avgForType) * 100 : 0;
+                    const cappedProgress = Math.min(progress, 99);
+                    
+                    return (
+                      <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                        <td className="p-3 font-medium text-black dark:text-white">
+                          <div className="flex flex-col">
+                            <span>{p.ns}</span>
+                            <span className="text-[10px] text-gray-500">{p.clientName}</span>
+                          </div>
+                        </td>
+                        <td className="p-3 text-black dark:text-white">{p.type || 'Padrão'}</td>
+                        <td className="p-3 text-center text-black dark:text-white">{formatDuration(p.totalActiveSeconds)}</td>
+                        <td className="p-3 text-center text-gray-500">{formatDuration(p.avgForType)}</td>
+                        <td className="p-3 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="w-24 h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all duration-500 ${
+                                  cappedProgress > 90 ? 'bg-amber-500' : 'bg-blue-500'
+                                }`}
+                                style={{ width: `${cappedProgress}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-bold text-gray-500">{cappedProgress.toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">
+                          {p.predictedEndDate.toLocaleDateString('pt-BR')} {p.predictedEndDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${
+                            p.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {p.status === 'IN_PROGRESS' ? 'EM CURSO' : 'PAUSADO'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {deadlinePredictions.length === 0 && (
                     <tr>
                       <td colSpan={6} className="p-8 text-center text-gray-500 italic">Nenhum projeto em andamento para prever prazos.</td>
@@ -1251,9 +1592,11 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           </div>
         )}
       </div>
+    )}
 
       {/* Bottleneck Report Section */}
-      <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      {visibleSections.includes('bottlenecks') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <button 
           onClick={() => setExpandedSection(expandedSection === 'bottlenecks' ? null : 'bottlenecks')}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
@@ -1269,13 +1612,13 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           <div className="p-6 border-t border-gray-100 dark:border-slate-700 space-y-4">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-bold border-b border-gray-100 dark:border-slate-700 uppercase text-[10px]">
                   <tr>
-                    <th className="p-3">Área Responsável</th>
-                    <th className="p-3 text-center">Qtd. Paradas</th>
-                    <th className="p-3 text-center">Tempo Total Perdido</th>
-                    <th className="p-3 text-center">Tempo Médio</th>
-                    <th className="p-3 text-right">Custo Estimado</th>
+                    <th className="p-3 uppercase">Área Responsável</th>
+                    <th className="p-3 text-center uppercase">Qtd. Paradas</th>
+                    <th className="p-3 text-center uppercase">Tempo Total Perdido</th>
+                    <th className="p-3 text-center uppercase">Tempo Médio</th>
+                    <th className="p-3 text-right uppercase">Custo Estimado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1330,9 +1673,11 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           </div>
         )}
       </div>
+    )}
 
       {/* Detailed Interruption Report (New) */}
-      <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      {visibleSections.includes('detailedInterruptions') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <button 
           onClick={() => setExpandedSection(expandedSection === 'detailedInterruptions' ? null : 'detailedInterruptions')}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
@@ -1348,15 +1693,15 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           <div className="p-6 border-t border-gray-100 dark:border-slate-700 space-y-4">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-bold border-b border-gray-100 dark:border-slate-700 uppercase text-[10px]">
                   <tr>
-                    <th className="p-3">Data</th>
-                    <th className="p-3">NS</th>
-                    <th className="p-3">Cliente</th>
-                    <th className="p-3">Quem Registrou</th>
-                    <th className="p-3">Área</th>
-                    <th className="p-3 text-center">Tempo</th>
-                    <th className="p-3 text-right">Custo</th>
+                    <th className="p-3 uppercase">Data</th>
+                    <th className="p-3 uppercase">NS</th>
+                    <th className="p-3 uppercase">Cliente</th>
+                    <th className="p-3 uppercase">Quem Registrou</th>
+                    <th className="p-3 uppercase">Área</th>
+                    <th className="p-3 text-center uppercase">Tempo</th>
+                    <th className="p-3 text-right uppercase">Custo</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1404,9 +1749,11 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           </div>
         )}
       </div>
+    )}
 
       {/* NS Aggregation Report Section */}
-      <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      {visibleSections.includes('nsAggregation') && (
+        <div className="bg-white dark:bg-black rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <button 
           onClick={() => setExpandedSection(expandedSection === 'nsAggregation' ? null : 'nsAggregation')}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
@@ -1429,13 +1776,13 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-bold border-b border-gray-100 dark:border-slate-700 uppercase text-[10px]">
                   <tr>
-                    <th className="p-3">NS / Código</th>
-                    <th className="p-3">Cliente</th>
-                    <th className="p-3 text-center">Total de Lançamentos</th>
-                    <th className="p-3 text-center">Tempo Total</th>
-                    <th className="p-3 text-right">Custo Total</th>
+                    <th className="p-3 uppercase">NS / Código</th>
+                    <th className="p-3 uppercase">Cliente</th>
+                    <th className="p-3 text-center uppercase">Total de Lançamentos</th>
+                    <th className="p-3 text-center uppercase">Tempo Total</th>
+                    <th className="p-3 text-right uppercase">Custo Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1516,6 +1863,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
           </div>
         )}
       </div>
+    )}
 
       {/* Designer Productivity Section (REMOVED REDUNDANT) */}
     </div>

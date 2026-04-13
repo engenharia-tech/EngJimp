@@ -643,7 +643,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     </p>
                     <button 
                         onClick={async () => {
-                            if(!window.confirm("Isso atualizará o custo de TODOS os projetos no banco de dados. Deseja continuar?")) return;
+                            if(!window.confirm("ISSO ATUALIZARÁ O CUSTO DE TODOS OS PROJETOS NO BANCO DE DADOS. DESEJA CONTINUAR?")) return;
                             setIsRecalculating(true);
                             const res = await recalculateAllProjectCosts();
                             setIsRecalculating(false);
@@ -732,16 +732,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                                 </div>
                                 <button 
                                     onClick={async () => {
-                                        if(!window.confirm("Confirmar exclusão deste item?")) return;
+                                        if(!window.confirm("CONFIRMAR EXCLUSÃO DESTE ITEM?")) return;
                                         const res = await deleteProjectById(group.discard.id, group.discard.ns);
                                         if (res.success) {
                                             // Pop-up requested by user
-                                            window.alert("Projeto excluído com sucesso!");
+                                            window.alert("PROJETO EXCLUÍDO COM SUCESSO!");
                                             // Update UI instantly without reload
                                             setDuplicateGroups(prev => prev.filter(g => g.discard.id !== group.discard.id));
                                         } else {
                                             addToast("Erro ao excluir: " + res.message, "error");
-                                            window.alert("Erro ao excluir: " + res.message);
+                                            window.alert("ERRO AO EXCLUIR: " + res.message.toUpperCase());
                                         }
                                     }}
                                     className="mt-3 w-full bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/30 py-1 rounded text-xs font-bold flex items-center justify-center"
