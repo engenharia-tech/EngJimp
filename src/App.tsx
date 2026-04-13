@@ -77,7 +77,7 @@ const NavItem: React.FC<NavItemProps> = ({ id, labelKey, icon: Icon, activeTab, 
     }`}
   >
     <Icon className={`w-5 h-5 mr-3 ${activeTab === id ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
-    {t(labelKey)}
+    {t(labelKey).toUpperCase()}
   </button>
 );
 
@@ -190,19 +190,19 @@ const AppContent: React.FC = () => {
       setIsLoading(true);
 
       try {
-        // Add a timeout to prevent hanging forever (15 seconds)
+        // Add a timeout to prevent hanging forever (30 seconds)
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Timeout loading app state")), 15000)
+          setTimeout(() => reject(new Error("Timeout loading app state")), 30000)
         );
 
         const initializationPromise = (async () => {
-          // One-time seed for February data - only if we have a user or it's the first run
-          const hasSeeded = localStorage.getItem('eng_jimp_seeded_feb_v7');
+          // One-time seed for current month data
+          const hasSeeded = localStorage.getItem('eng_jimp_seeded_current_v1');
           if (!hasSeeded) {
-            console.log("Seeding initial February data...");
+            console.log("Seeding initial current month data...");
             try {
               await seedFebruaryData();
-              localStorage.setItem('eng_jimp_seeded_feb_v7', 'true');
+              localStorage.setItem('eng_jimp_seeded_current_v1', 'true');
             } catch (e) {
               console.error("Seed error", e);
             }
@@ -847,8 +847,8 @@ const AppContent: React.FC = () => {
           <div className={activeTab === 'tracker' && canUseTracker ? 'block space-y-6' : 'hidden'}>
             <div className="mb-6 flex justify-between items-end">
               <div>
-                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('projectArea')}</h2>
-                <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('welcome')}, <span className="font-semibold text-blue-600">{currentUser.name}</span></p>
+                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('projectArea').toUpperCase()}</h2>
+                <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('welcome').toUpperCase()}, <span className="font-semibold text-blue-600">{currentUser.name.toUpperCase()}</span></p>
               </div>
             </div>
             <EngJimpTracker 
@@ -873,7 +873,7 @@ const AppContent: React.FC = () => {
           {activeTab === 'history' && canUseTracker && (
             <div className="space-y-6">
               <div className="mb-6">
-                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('projectHistory')}</h2>
+                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('projectHistory').toUpperCase()}</h2>
                 <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
                   {canSeeAllHistory
                     ? t('globalHistoryDesc')
@@ -900,18 +900,18 @@ const AppContent: React.FC = () => {
                     />
                  </div>
                  <div>
-                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('performancePanel')}</h2>
+                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('performancePanel').toUpperCase()}</h2>
                     <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
-                      {canSeeAllHistory ? t('globalIndicators') : t('yourProductivityIndicators')}
+                      {canSeeAllHistory ? t('globalIndicators').toUpperCase() : t('yourProductivityIndicators').toUpperCase()}
                     </p>
                  </div>
               </div>
-              <Dashboard data={displayData} currentUser={currentUser} theme={theme} settings={effectiveSettings} />
+              <Dashboard data={displayData} currentUser={currentUser} theme={theme} settings={effectiveSettings} onRefresh={handleRefresh} />
               {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) && (
                 <div className="mt-12">
                   <div className="mb-6">
-                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('interruptionReports')}</h2>
-                    <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('bottleneckAnalysis')}</p>
+                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('interruptionReports').toUpperCase()}</h2>
+                    <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('bottleneckAnalysis').toUpperCase()}</p>
                   </div>
                   <InterruptionDashboard data={displayData} theme={theme} />
                 </div>
@@ -992,8 +992,8 @@ const AppContent: React.FC = () => {
           {activeTab === 'team' && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
              <div className="space-y-6">
                 <div className="mb-6">
-                  <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('team')}</h2>
-                  <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('teamManagementDesc')}</p>
+                  <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('team').toUpperCase()}</h2>
+                  <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('teamManagementDesc').toUpperCase()}</p>
                 </div>
                 <UserManagement currentUser={currentUser} />
              </div>
@@ -1003,22 +1003,22 @@ const AppContent: React.FC = () => {
           {deleteConfirmationId && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
                 <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t('confirmDeletion')}</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t('confirmDeletion').toUpperCase()}</h3>
                     <p className="text-gray-600 dark:text-slate-400 mb-6">
-                        {t('confirmDeletionDesc')}
+                        {t('confirmDeletionDesc').toUpperCase()}
                     </p>
                     <div className="flex justify-end gap-3">
                         <button 
                             onClick={() => setDeleteConfirmationId(null)}
                             className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors"
                         >
-                            {t('cancel')}
+                            {t('cancel').toUpperCase()}
                         </button>
                         <button 
                             onClick={confirmDelete}
                             className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors shadow-sm"
                         >
-                            {t('yesDelete')}
+                            {t('yesDelete').toUpperCase()}
                         </button>
                     </div>
                 </div>
@@ -1037,7 +1037,7 @@ const AppContent: React.FC = () => {
           {/* Footer */}
           <footer className={`mt-12 pt-8 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-200'} text-center`}>
             <p className={`text-sm font-medium ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`}>
-              {t('developedBy')} <span className="font-bold tracking-tight"><span className="text-orange-500">JIMP</span><span className="text-blue-600">NEXUS</span></span>
+              {t('developedBy').toUpperCase()} <span className="font-bold tracking-tight"><span className="text-orange-500">JIMP</span><span className="text-blue-600">NEXUS</span></span>
             </p>
           </footer>
         </div>

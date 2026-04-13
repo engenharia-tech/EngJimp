@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Play, 
   Square, 
@@ -187,51 +187,59 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     return activities.find(a => !a.endTime && a.userId === selectedUserId);
   }, [activities, selectedUserId]);
 
+  const isSeedingRef = useRef(false);
+
   // Automated Weekend Marking
   useEffect(() => {
     const checkWeekend = async () => {
       const dayOfWeek = selectedDate.getDay(); // 0 = Sunday, 6 = Saturday
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       
-      if (isWeekend && filteredActivities.length === 0 && filteredProjects.length === 0 && currentUser.id === selectedUserId) {
+      if (isWeekend && filteredActivities.length === 0 && filteredProjects.length === 0 && currentUser.id === selectedUserId && !isSeedingRef.current) {
         const folgaType = activityTypes.find(t => t.name.toUpperCase() === 'FOLGA');
         if (folgaType) {
           // Double check against full activities list to prevent duplicates
           const dayStart = startOfDay(selectedDate);
           const dayEnd = endOfDay(selectedDate);
+          
           const alreadyExists = activities.some(a => 
             a.userId === currentUser.id && 
             a.activityName.toUpperCase() === 'FOLGA' &&
             parseISO(a.startTime) >= dayStart && parseISO(a.startTime) <= dayEnd
-          );
+          ) || filteredActivities.some(a => a.activityName.toUpperCase() === 'FOLGA');
 
           if (alreadyExists) return;
 
-          const startTime = new Date(selectedDate);
-          startTime.setHours(8, 0, 0, 0);
-          const endTime = new Date(selectedDate);
-          endTime.setHours(18, 0, 0, 0);
+          isSeedingRef.current = true;
+          try {
+            const startTime = new Date(selectedDate);
+            startTime.setHours(8, 0, 0, 0);
+            const endTime = new Date(selectedDate);
+            endTime.setHours(18, 0, 0, 0);
 
-          const newActivity: OperationalActivity = {
-            id: crypto.randomUUID(),
-            userId: currentUser.id,
-            activityTypeId: folgaType.id,
-            activityName: folgaType.name,
-            startTime: startTime.toISOString(),
-            endTime: endTime.toISOString(),
-            durationSeconds: differenceInSeconds(endTime, startTime),
-            isFlagged: false,
-            notes: 'Automático: Fim de semana',
-            projectId: undefined
-          };
-          
-          await onAddActivity(newActivity);
+            const newActivity: OperationalActivity = {
+              id: crypto.randomUUID(),
+              userId: currentUser.id,
+              activityTypeId: folgaType.id,
+              activityName: folgaType.name,
+              startTime: startTime.toISOString(),
+              endTime: endTime.toISOString(),
+              durationSeconds: differenceInSeconds(endTime, startTime),
+              isFlagged: false,
+              notes: 'Automático: Fim de semana',
+              projectId: undefined
+            };
+            
+            await onAddActivity(newActivity);
+          } finally {
+            isSeedingRef.current = false;
+          }
         }
       }
     };
 
     checkWeekend();
-  }, [selectedDate, filteredActivities.length, filteredProjects.length, activityTypes, currentUser.id, selectedUserId, onAddActivity, activities]);
+  }, [selectedDate, filteredActivities, filteredProjects.length, activityTypes, currentUser.id, selectedUserId, onAddActivity, activities]);
 
   // Combine projects and activities for a full timeline
   const timelineItems = useMemo(() => {
@@ -627,10 +635,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       {/* Header & Navigation */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+          <h2 className={`text-2xl font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
             {t('operationalPerformance')}
           </h2>
-          <p className={theme === 'dark' ? 'text-slate-200 font-medium' : 'text-gray-500'}>
+          <p className={`uppercase ${theme === 'dark' ? 'text-slate-200 font-medium' : 'text-gray-500'}`}>
             {t('operationalPerformanceDesc')}
           </p>
         </div>
@@ -674,7 +682,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
             }`}
           >
             <Clock size={18} />
-            <span className="hidden sm:inline">{t('tracker')}</span>
+            <span className="hidden sm:inline">{t('tracker').toUpperCase()}</span>
           </button>
           <button
             onClick={() => setActiveTab('dashboard')}
@@ -685,7 +693,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
             }`}
           >
             <BarChart3 size={18} />
-            <span className="hidden sm:inline">{t('dashboard')}</span>
+            <span className="hidden sm:inline">{t('dashboard').toUpperCase()}</span>
           </button>
           {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
             <button
@@ -697,7 +705,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
               }`}
             >
               <SettingsIcon size={18} />
-              <span className="hidden sm:inline">{t('management')}</span>
+              <span className="hidden sm:inline">{t('management').toUpperCase()}</span>
             </button>
           )}
         </div>
@@ -839,7 +847,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           {/* Tracker Controls */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-              <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+              <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                 <Activity className="text-blue-500" size={20} />
                 {t('currentActivity')}
               </h3>
@@ -859,7 +867,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           {/* Timeline & Gaps */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-              <h3 className={`text-lg font-semibold mb-6 flex items-center gap-2 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+              <h3 className={`text-lg font-bold mb-6 flex items-center gap-2 uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                 <List className="text-blue-500" size={20} />
                 {viewMode === 'day' ? t('dailyTimeline') : viewMode === 'month' ? t('monthlySummary') : t('yearlySummary')}
               </h3>
@@ -930,7 +938,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm(t('confirmDeletion') || 'Tem certeza que deseja excluir?')) {
+                            if (window.confirm(t('confirmDeletion') || 'TEM CERTEZA QUE DESEJA EXCLUIR?')) {
                               handleDeleteActivity(item.id);
                             }
                           }}
@@ -989,13 +997,13 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
               </p>
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-              <p className="text-sm text-gray-500 dark:text-slate-300 mb-1">{t('activitiesCount') || 'Atividades'}</p>
+              <p className="text-sm text-gray-500 dark:text-slate-300 mb-1 uppercase">{t('activitiesCount') || 'ATIVIDADES'}</p>
               <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                 {filteredActivities.length}
               </p>
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-              <p className="text-sm text-gray-500 dark:text-slate-300 mb-1">{t('projectsCount') || 'Projetos'}</p>
+              <p className="text-sm text-gray-500 dark:text-slate-300 mb-1 uppercase">{t('projectsCount') || 'PROJETOS'}</p>
               <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                 {filteredProjects.length}
               </p>
@@ -1004,7 +1012,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
           {viewMode !== 'day' && (
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-              <h3 className={`text-lg font-semibold mb-6 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+              <h3 className={`text-lg font-bold mb-6 uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                 {t('productivityByPeriod') || 'Produtividade por Período'}
               </h3>
               <div className="h-[300px]">
@@ -1042,7 +1050,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-            <h3 className={`text-lg font-semibold mb-6 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            <h3 className={`text-lg font-bold mb-6 uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
               {t('timeDistribution')}
             </h3>
             <div className="h-[300px]">
@@ -1075,7 +1083,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           </div>
 
           <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-            <h3 className={`text-lg font-semibold mb-6 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            <h3 className={`text-lg font-bold mb-6 uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
               {t('summaryByActivity')}
             </h3>
             <div className="space-y-4">
@@ -1100,7 +1108,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       {activeTab === 'management' && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
           <div className="flex items-center justify-between mb-6">
-            <h3 className={`text-lg font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            <h3 className={`text-lg font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
               {t('activityManagement')}
             </h3>
             <button
@@ -1344,7 +1352,7 @@ const CurrentActivityTracker: React.FC<{
         <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-xl">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-              {t('ongoing') || 'Em andamento'}
+              {t('ongoing') || 'EM ANDAMENTO'}
             </span>
             <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-mono font-bold">
               <Clock size={14} className="animate-pulse" />
@@ -1355,7 +1363,7 @@ const CurrentActivityTracker: React.FC<{
             {currentActivity.activityName}
           </h4>
           {currentActivity.notes && (
-            <p className="text-sm text-gray-500 dark:text-slate-400 mt-1 italic">
+            <p className="text-sm text-gray-500 dark:text-slate-400 mt-1 italic uppercase">
               "{currentActivity.notes}"
             </p>
           )}
@@ -1364,10 +1372,10 @@ const CurrentActivityTracker: React.FC<{
         {canEditCurrent && (
           <button
             onClick={() => onStopActivity(currentActivity)}
-            className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 group"
+            className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 group uppercase"
           >
             <Square size={20} className="group-hover:scale-110 transition-transform" />
-            {t('stopActivity') || 'Parar Atividade'}
+            {t('stopActivity') || 'PARAR ATIVIDADE'}
           </button>
         )}
       </div>
@@ -1395,10 +1403,10 @@ const CurrentActivityTracker: React.FC<{
         <button
           onClick={() => onStartActivity(selectedType)}
           disabled={!selectedType}
-          className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 group"
+          className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 group uppercase"
         >
           <Play size={20} className="group-hover:scale-110 transition-transform" />
-          {t('startActivity') || 'Iniciar Atividade'}
+          {t('startActivity') || 'INICIAR ATIVIDADE'}
         </button>
       )}
       
@@ -1406,7 +1414,7 @@ const CurrentActivityTracker: React.FC<{
         <div className="py-8 text-center border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
           <Clock size={32} className="mx-auto text-gray-200 mb-2" />
           <p className="text-xs text-gray-400 uppercase font-bold tracking-widest">
-            {t('viewingOnly') || 'Apenas Visualização'}
+            {t('viewingOnly') || 'APENAS VISUALIZAÇÃO'}
           </p>
         </div>
       )}

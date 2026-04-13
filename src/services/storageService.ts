@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus } from '../types';
+import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus, InnovationType } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 
@@ -84,7 +84,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     if (settingsError) throw settingsError;
 
     if (settingsData && settingsData.length > 0) {
-      console.log("Fetched settings from Supabase:", settingsData);
+      console.log("FETCHED SETTINGS FROM SUPABASE:", settingsData);
       const hourlyCostRow = settingsData.find(s => s.key === 'hourly_cost');
       const logoUrlRow = settingsData.find(s => s.key === 'logo_url');
       const companyNameRow = settingsData.find(s => s.key === 'company_name');
@@ -131,51 +131,48 @@ export const fetchSettings = async (): Promise<AppSettings> => {
   } catch (e) {
     console.warn("Error fetching settings from Supabase, using localStorage/defaults:", e);
   }
-  console.log("Final settings object:", settings);
+  console.log("FINAL SETTINGS OBJECT:", settings);
   return settings;
 };
 
 export const fetchAppState = async (): Promise<AppState> => {
   try {
-    // Fetch Projects
-    const { data: projectsData, error: projectsError } = await supabase
-      .from('projects')
-      .select('*')
-      .order('start_time', { ascending: false });
+    // Fetch all data in parallel for speed
+    const [
+      { data: projectsData, error: projectsError },
+      { data: issuesData, error: issuesError },
+      { data: innovationsData, error: innovationsError },
+      { data: interruptionsData, error: interruptionsError },
+      { data: interruptionTypesData, error: interruptionTypesError },
+      { data: activityTypesData, error: activityTypesError },
+      { data: operationalActivitiesData, error: operationalActivitiesError },
+      { data: projectRequestsData, error: projectRequestsError },
+      { data: usersData, error: usersError },
+      settings
+    ] = await Promise.all([
+      supabase.from('projects').select('*').order('start_time', { ascending: false }),
+      supabase.from('issues').select('*').order('date', { ascending: false }),
+      supabase.from('innovations').select('*').order('created_at', { ascending: false }),
+      supabase.from('interruptions').select('*').order('start_time', { ascending: false }),
+      supabase.from('interruption_types').select('*').order('name', { ascending: true }),
+      supabase.from('activity_types').select('*').order('name', { ascending: true }),
+      supabase.from('operational_activities').select('*').order('start_time', { ascending: false }),
+      supabase.from('project_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('users').select('*'),
+      fetchSettings()
+    ]);
 
     if (projectsError) throw projectsError;
-
-    // Fetch Issues
-    const { data: issuesData, error: issuesError } = await supabase
-      .from('issues')
-      .select('*')
-      .order('date', { ascending: false });
-
     if (issuesError) throw issuesError;
+    if (innovationsError) throw innovationsError;
+    if (interruptionsError) throw interruptionsError;
+    if (interruptionTypesError) throw interruptionTypesError;
+    if (activityTypesError) throw activityTypesError;
+    if (operationalActivitiesError) throw operationalActivitiesError;
+    if (projectRequestsError) throw projectRequestsError;
+    if (usersError) throw usersError;
 
-    // Fetch Innovations
-    const { data: innovationsData, error: innovationsError } = await supabase
-      .from('innovations')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    // Fetch Interruptions
-    const { data: interruptionsData, error: interruptionsError } = await supabase
-      .from('interruptions')
-      .select('*')
-      .order('start_time', { ascending: false });
-
-    // Fetch Interruption Types
-    const { data: interruptionTypesData, error: interruptionTypesError } = await supabase
-      .from('interruption_types')
-      .select('*')
-      .order('name', { ascending: true });
-
-    // Fetch Activity Types
-    const { data: activityTypesData, error: activityTypesError } = await supabase
-      .from('activity_types')
-      .select('*')
-      .order('name', { ascending: true });
+    console.log(`FETCH APP STATE: Found ${projectsData?.length || 0} projects, ${usersData?.length || 0} users, ${innovationsData?.length || 0} innovations`);
 
     let activityTypes: ActivityType[] = (activityTypesData || []).map((t: any) => ({
       id: t.id,
@@ -185,7 +182,7 @@ export const fetchAppState = async (): Promise<AppState> => {
 
     // Seed default activity types if empty
     if (activityTypes.length === 0) {
-      console.log("Seeding default activity types...");
+      console.log("SEEDING DEFAULT ACTIVITY TYPES...");
       const defaultTypes = DEFAULT_ACTIVITY_TYPES.map(name => ({
         name,
         is_active: true
@@ -212,21 +209,6 @@ export const fetchAppState = async (): Promise<AppState> => {
       }
     }
 
-    // Fetch Operational Activities
-    const { data: operationalActivitiesData, error: operationalActivitiesError } = await supabase
-      .from('operational_activities')
-      .select('*')
-      .order('start_time', { ascending: false });
-
-    // Fetch Project Requests
-    const { data: projectRequestsData, error: projectRequestsError } = await supabase
-      .from('project_requests')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    // Fetch Settings
-    const settings = await fetchSettings();
-    
     // Map DB columns (snake_case) to Types (camelCase)
     const projects: ProjectSession[] = (projectsData || []).map((p: any) => ({
       id: p.id,
@@ -345,19 +327,6 @@ export const fetchAppState = async (): Promise<AppState> => {
       designerEstimate: r.designer_estimate
     }));
 
-    // If no interruption types exist, seed them (first time)
-    if (interruptionTypes.length === 0) {
-        // We don't seed here to avoid multiple calls, but we return defaults if empty
-        // Actually, let's just return what's in DB. The UI will handle seeding if Gestor.
-    }
-
-    // Fetch Users
-    const { data: usersData, error: usersError } = await supabase
-      .from('users')
-      .select('*');
-
-    if (usersError) throw usersError;
-
     const users: User[] = (usersData || []).map((u: any) => ({
       id: u.id,
       username: u.username,
@@ -372,14 +341,14 @@ export const fetchAppState = async (): Promise<AppState> => {
 
     return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, settings };
   } catch (error) {
-    console.error("Failed to load data from Supabase", error);
+    console.error("FAILED TO LOAD DATA FROM SUPABASE", error);
     return { ...defaultState, users: [] };
   }
 };
 
 export const updateSettings = async (settings: AppSettings): Promise<AppState> => {
   try {
-    console.log("Updating settings with:", settings);
+    console.log("UPDATING SETTINGS WITH:", settings);
     // Update LocalStorage first for immediate feedback
     localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
     if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
@@ -409,19 +378,19 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.lunchEnd !== undefined) updates.push({ key: 'lunch_end', value: settings.lunchEnd });
     if (settings.language !== undefined) updates.push({ key: 'language', value: settings.language });
 
-    console.log("Supabase updates payload:", updates);
+    console.log("SUPABASE UPDATES PAYLOAD:", updates);
 
     const { error } = await supabase
       .from('settings')
       .upsert(updates, { onConflict: 'key' });
     
     if (error) {
-      console.error("Supabase settings update error:", error);
+      console.error("SUPABASE SETTINGS UPDATE ERROR:", error);
       throw error;
     }
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to update settings in Supabase", error);
+    console.error("FAILED TO UPDATE SETTINGS IN SUPABASE", error);
     return fetchAppState();
   }
 };
@@ -451,7 +420,7 @@ export const addProject = async (project: ProjectSession): Promise<AppState> => 
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to add project", error);
+    console.error("FAILED TO ADD PROJECT", error);
     throw error;
   }
 };
@@ -483,14 +452,14 @@ export const updateProject = async (project: ProjectSession): Promise<AppState> 
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to update project", error);
+    console.error("FAILED TO UPDATE PROJECT", error);
     throw error;
   }
 };
 
 export const deleteProject = async (id: string, ns?: string): Promise<AppState> => {
   try {
-    console.log(`Attempting to delete project ${id} (NS: ${ns})`);
+    console.log(`ATTEMPTING TO DELETE PROJECT ${id} (NS: ${ns})`);
 
     // 1. Try to delete related issues by NS if provided
     if (ns) {
@@ -531,7 +500,7 @@ export const deleteProject = async (id: string, ns?: string): Promise<AppState> 
 
     return fetchAppState();
   } catch (error: any) {
-    console.error("Failed to delete project", error);
+    console.error("FAILED TO DELETE PROJECT", error);
     throw error;
   }
 };
@@ -550,7 +519,7 @@ export const addIssue = async (issue: IssueRecord): Promise<AppState> => {
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to add issue", error);
+    console.error("FAILED TO ADD ISSUE", error);
     throw error;
   }
 };
@@ -561,7 +530,7 @@ export const deleteIssue = async (id: string): Promise<AppState> => {
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to delete issue", error);
+    console.error("FAILED TO DELETE ISSUE", error);
     throw error;
   }
 };
@@ -578,7 +547,7 @@ export const deleteAllIssues = async (): Promise<{ success: boolean; message?: s
     
     return { success: true, message: `Tabela limpa. ${count} registros removidos.` };
   } catch (error: any) {
-    console.error("Exception clearing issues:", error);
+    console.error("EXCEPTION CLEARING ISSUES:", error);
     return { success: false, message: error.message };
   }
 };
@@ -610,12 +579,12 @@ export const addInnovation = async (innovation: InnovationRecord): Promise<AppSt
     }]);
 
     if (error) {
-        console.error("Supabase Error:", error.message);
+        console.error("SUPABASE ERROR:", error.message);
         throw error;
     }
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to add innovation", error);
+    console.error("FAILED TO ADD INNOVATION", error);
     throw error; // Propagate error to UI
   }
 };
@@ -630,7 +599,7 @@ export const updateInnovationStatus = async (id: string, status: string): Promis
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to update innovation status", error);
+    console.error("FAILED TO UPDATE INNOVATION STATUS", error);
     throw error;
   }
 };
@@ -661,7 +630,7 @@ export const updateInnovation = async (innovation: InnovationRecord): Promise<Ap
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to update innovation", error);
+    console.error("FAILED TO UPDATE INNOVATION", error);
     throw error;
   }
 };
@@ -690,7 +659,7 @@ export const deleteInnovation = async (id: string): Promise<AppState> => {
 
     return fetchAppState();
   } catch (error: any) {
-    console.error("Failed to delete innovation", error);
+    console.error("FAILED TO DELETE INNOVATION", error);
     throw error;
   }
 };
@@ -722,12 +691,12 @@ export const addInterruption = async (interruption: InterruptionRecord): Promise
     const { error } = await supabase.from('interruptions').insert([payload]);
 
     if (error) {
-      console.error("Supabase error adding interruption:", error);
+      console.error("SUPABASE ERROR ADDING INTERRUPTION:", error);
       throw error;
     }
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to add interruption", error);
+    console.error("FAILED TO ADD INTERRUPTION", error);
     throw error;
   }
 };
@@ -758,12 +727,12 @@ export const updateInterruption = async (interruption: InterruptionRecord): Prom
       .eq('id', interruption.id);
 
     if (error) {
-      console.error("Supabase error updating interruption:", error);
+      console.error("SUPABASE ERROR UPDATING INTERRUPTION:", error);
       throw error;
     }
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to update interruption", error);
+    console.error("FAILED TO UPDATE INTERRUPTION", error);
     throw error;
   }
 };
@@ -774,7 +743,7 @@ export const deleteInterruption = async (id: string): Promise<AppState> => {
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to delete interruption", error);
+    console.error("FAILED TO DELETE INTERRUPTION", error);
     throw error;
   }
 };
@@ -789,7 +758,7 @@ export const fetchInterruptionTypes = async (): Promise<InterruptionType[]> => {
             isActive: t.is_active
         }));
     } catch (error) {
-        console.error("Failed to fetch interruption types", error);
+        console.error("FAILED TO FETCH INTERRUPTION TYPES", error);
         return [];
     }
 };
@@ -804,7 +773,7 @@ export const addInterruptionType = async (type: InterruptionType): Promise<AppSt
         if (error) throw error;
         return fetchAppState();
     } catch (error) {
-        console.error("Failed to add interruption type", error);
+        console.error("FAILED TO ADD INTERRUPTION TYPE", error);
         throw error;
     }
 };
@@ -818,7 +787,7 @@ export const updateInterruptionType = async (type: InterruptionType): Promise<Ap
         if (error) throw error;
         return fetchAppState();
     } catch (error) {
-        console.error("Failed to update interruption type", error);
+        console.error("FAILED TO UPDATE INTERRUPTION TYPE", error);
         throw error;
     }
 };
@@ -829,7 +798,7 @@ export const deleteInterruptionType = async (id: string): Promise<AppState> => {
         if (error) throw error;
         return fetchAppState();
     } catch (error) {
-        console.error("Failed to delete interruption type", error);
+        console.error("FAILED TO DELETE INTERRUPTION TYPE", error);
         throw error;
     }
 };
@@ -846,7 +815,7 @@ export const fetchActivityTypes = async (): Promise<ActivityType[]> => {
             isActive: t.is_active
         }));
     } catch (error) {
-        console.error("Failed to fetch activity types", error);
+        console.error("FAILED TO FETCH ACTIVITY TYPES", error);
         return [];
     }
 };
@@ -861,7 +830,7 @@ export const addActivityType = async (type: ActivityType): Promise<AppState> => 
         if (error) throw error;
         return fetchAppState();
     } catch (error) {
-        console.error("Failed to add activity type", error);
+        console.error("FAILED TO ADD ACTIVITY TYPE", error);
         throw error;
     }
 };
@@ -875,7 +844,7 @@ export const updateActivityType = async (type: ActivityType): Promise<AppState> 
         if (error) throw error;
         return fetchAppState();
     } catch (error) {
-        console.error("Failed to update activity type", error);
+        console.error("FAILED TO UPDATE ACTIVITY TYPE", error);
         throw error;
     }
 };
@@ -886,7 +855,7 @@ export const deleteActivityType = async (id: string): Promise<AppState> => {
         if (error) throw error;
         return fetchAppState();
     } catch (error) {
-        console.error("Failed to delete activity type", error);
+        console.error("FAILED TO DELETE ACTIVITY TYPE", error);
         throw error;
     }
 };
@@ -907,7 +876,7 @@ export const fetchOperationalActivities = async (): Promise<OperationalActivity[
             projectId: a.project_id
         }));
     } catch (error) {
-        console.error("Failed to fetch operational activities", error);
+        console.error("FAILED TO FETCH OPERATIONAL ACTIVITIES", error);
         return [];
     }
 };
@@ -926,12 +895,12 @@ export const addOperationalActivity = async (activity: OperationalActivity): Pro
             is_flagged: activity.isFlagged || false
         }]);
         if (error) {
-            console.error("Supabase error adding activity:", error);
+            console.error("SUPABASE ERROR ADDING ACTIVITY:", error);
             throw error;
         }
         return fetchAppState();
     } catch (error) {
-        console.error("Failed to add operational activity", error);
+        console.error("FAILED TO ADD OPERATIONAL ACTIVITY", error);
         throw error;
     }
 };
@@ -954,7 +923,7 @@ export const updateOperationalActivity = async (activity: OperationalActivity): 
         if (error) throw error;
         return fetchAppState();
     } catch (error) {
-        console.error("Failed to update operational activity", error);
+        console.error("FAILED TO UPDATE OPERATIONAL ACTIVITY", error);
         throw error;
     }
 };
@@ -965,7 +934,7 @@ export const deleteOperationalActivity = async (id: string): Promise<AppState> =
         if (error) throw error;
         return fetchAppState();
     } catch (error) {
-        console.error("Failed to delete operational activity", error);
+        console.error("FAILED TO DELETE OPERATIONAL ACTIVITY", error);
         throw error;
     }
 };
@@ -995,7 +964,7 @@ export const addProjectRequest = async (request: ProjectRequest): Promise<AppSta
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to add project request", error);
+    console.error("FAILED TO ADD PROJECT REQUEST", error);
     throw error;
   }
 };
@@ -1025,7 +994,7 @@ export const updateProjectRequest = async (request: ProjectRequest): Promise<App
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to update project request", error);
+    console.error("FAILED TO UPDATE PROJECT REQUEST", error);
     throw error;
   }
 };
@@ -1036,7 +1005,7 @@ export const deleteProjectRequest = async (id: string): Promise<AppState> => {
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("Failed to delete project request", error);
+    console.error("FAILED TO DELETE PROJECT REQUEST", error);
     throw error;
   }
 };
@@ -1059,7 +1028,7 @@ export const fetchUsers = async (): Promise<User[]> => {
       salary: Number(u.salary) || 0
     })).sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
-    console.error("Failed to fetch users", error);
+    console.error("FAILED TO FETCH USERS", error);
     return [];
   }
 };
@@ -1096,7 +1065,7 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
     
     return { success: true };
   } catch (error: any) {
-    console.error("Failed to register user", error);
+    console.error("FAILED TO REGISTER USER", error);
     return { success: false, message: error.message || 'Erro desconhecido.' };
   }
 };
@@ -1123,7 +1092,7 @@ export const updateUser = async (user: User): Promise<{ success: boolean; messag
     
     return { success: true };
   } catch (error: any) {
-    console.error("Failed to update user", error);
+    console.error("FAILED TO UPDATE USER", error);
     return { success: false, message: error.message || 'Erro desconhecido.' };
   }
 };
@@ -1139,7 +1108,7 @@ export const deleteUser = async (id: string): Promise<{ success: boolean; messag
       .eq('user_id', id);
     
     if (projError) {
-        console.error("Error unlinking projects:", projError);
+        console.error("ERROR UNLINKING PROJECTS:", projError);
         // We continue, hoping it's not a blocking FK constraint
     }
 
@@ -1150,7 +1119,7 @@ export const deleteUser = async (id: string): Promise<{ success: boolean; messag
       .eq('author_id', id);
 
     if (innError) {
-         console.error("Error unlinking innovations:", innError);
+         console.error("ERROR UNLINKING INNOVATIONS:", innError);
     }
 
     // 3. Unlink from Issues
@@ -1160,7 +1129,7 @@ export const deleteUser = async (id: string): Promise<{ success: boolean; messag
       .eq('reported_by', id);
 
     if (issueError) {
-         console.error("Error unlinking issues:", issueError);
+         console.error("ERROR UNLINKING ISSUES:", issueError);
     }
 
     // 4. Delete User
@@ -1168,7 +1137,7 @@ export const deleteUser = async (id: string): Promise<{ success: boolean; messag
     const { error, data } = await supabase.from('users').delete().eq('id', id).select();
     
     if (error) {
-      console.error("Error deleting user:", error);
+      console.error("ERROR DELETING USER:", error);
       return { success: false, message: `Erro ao excluir usuário: ${error.message}` };
     }
     
@@ -1182,7 +1151,7 @@ export const deleteUser = async (id: string): Promise<{ success: boolean; messag
     
     return { success: true };
   } catch (error: any) {
-    console.error("Failed to delete user", error);
+    console.error("FAILED TO DELETE USER", error);
     return { success: false, message: error.message || 'Erro desconhecido.' };
   }
 };
@@ -1199,7 +1168,7 @@ export const authenticateUser = async (username: string, password: string): Prom
     if (error || !data) return null;
     return data as User;
   } catch (error) {
-    console.error("Auth error", error);
+    console.error("AUTH ERROR", error);
     return null;
   }
 };
@@ -1339,24 +1308,9 @@ export const seedFebruaryData = async (): Promise<{ success: boolean; count: num
     };
 
     const parseDate = (d: string) => {
-      const [day, monthStr] = d.split('/');
-      const m = monthStr.toLowerCase();
-      let month = 1; // Default to Feb
-      if (m.includes('jan')) month = 0;
-      else if (m.includes('fev')) month = 1;
-      else if (m.includes('mar')) month = 2;
-      else if (m.includes('abr')) month = 3;
-      else if (m.includes('mai')) month = 4;
-      else if (m.includes('jun')) month = 5;
-      else if (m.includes('jul')) month = 6;
-      else if (m.includes('ago')) month = 7;
-      else if (m.includes('set')) month = 8;
-      else if (m.includes('out')) month = 9;
-      else if (m.includes('nov')) month = 10;
-      else if (m.includes('dez')) month = 11;
-      
-      const year = month === 11 ? 2025 : 2026;
-      return new Date(year, month, parseInt(day), 17, 0, 0);
+      const [day] = d.split('/');
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), parseInt(day), 17, 0, 0);
     };
 
     const mapImplement = (pr: string): ImplementType => {
@@ -1371,13 +1325,77 @@ export const seedFebruaryData = async (): Promise<{ success: boolean; count: num
       return ImplementType.OUTROS;
     };
 
+    // 1. Fetch existing projects to avoid duplicates
+    const { data: existingProjects, error: fetchError } = await supabase
+      .from('projects')
+      .select('ns, client_name, user_id');
+    
+    if (fetchError) throw fetchError;
+
+    // 2. Fetch existing innovations to avoid duplicates
+    const { data: existingInnovations } = await supabase.from('innovations').select('title');
+    const existingInnoSet = new Set((existingInnovations || []).map(i => i.title));
+
+    const existingSet = new Set(
+      (existingProjects || []).map(p => `${p.ns}|${p.client_name}|${p.user_id || ''}`)
+    );
+
+    const innovationSeeds = [
+        {
+            title: 'Otimização de Corte Laser',
+            description: 'Redução de retalhos através de novo algoritmo de nesting.',
+            type: InnovationType.PROCESS_OPTIMIZATION,
+            status: 'IMPLEMENTED',
+            savings: 12000,
+            author: 'Edson'
+        },
+        {
+            title: 'Novo Perfil de Alumínio',
+            description: 'Desenvolvimento de perfil mais leve e resistente para furgões.',
+            type: InnovationType.PRODUCT_IMPROVEMENT,
+            status: 'APPROVED',
+            savings: 25000,
+            author: 'Luiz'
+        },
+        {
+            title: 'Furgão Elétrico 2026',
+            description: 'Projeto completo de furgão para chassis elétricos.',
+            type: InnovationType.NEW_PROJECT,
+            status: 'PENDING',
+            savings: 150000,
+            author: 'Cobo'
+        }
+    ];
+
+    // Seed Innovations
+    const innoToInsert = innovationSeeds
+        .filter(s => !existingInnoSet.has(s.title))
+        .map(s => ({
+            title: s.title,
+            description: s.description,
+            type: s.type,
+            status: s.status,
+            total_annual_savings: s.savings,
+            author_id: findUser(s.author) || s.author,
+            created_at: new Date().toISOString(),
+            calculation_type: CalculationType.RECURRING_MONTHLY,
+            unit_savings: 0,
+            quantity: 0,
+            investment_cost: 0
+        }));
+
+    if (innoToInsert.length > 0) {
+        console.log(`SEEDING ${innoToInsert.length} INNOVATIONS...`);
+        await supabase.from('innovations').insert(innoToInsert);
+    }
+
     const projectsToInsert = rawData.map(item => {
       const duration = parseDuration(item.h);
       const end = parseDate(item.d);
       const start = new Date(end.getTime() - (duration * 1000));
+      const userId = findUser(item.p) || null;
       
       return {
-        id: crypto.randomUUID(),
         ns: item.ns,
         client_name: item.c,
         type: ProjectType.RELEASE,
@@ -1389,49 +1407,25 @@ export const seedFebruaryData = async (): Promise<{ success: boolean; count: num
         pauses: [],
         variations: [],
         status: 'COMPLETED',
-        user_id: findUser(item.p) || null
+        user_id: userId,
+        project_code: ''
       };
-    });
+    }).filter(p => !existingSet.has(`${p.ns}|${p.client_name}|${p.user_id || ''}`));
 
-    let insertedCount = 0;
-    let matchCount = 0;
-    for (const p of projectsToInsert) {
-      if (p.user_id) matchCount++;
-      
-      try {
-        // Check if project already exists to avoid duplicates
-        let query = supabase
-          .from('projects')
-          .select('id')
-          .eq('ns', p.ns)
-          .eq('client_name', p.client_name);
-        
-        if (p.user_id) {
-          query = query.eq('user_id', p.user_id);
-        } else {
-          query = query.is('user_id', null);
-        }
-
-        const { data: existing, error: checkError } = await query.limit(1);
-        if (checkError) throw checkError;
-
-        if (!existing || existing.length === 0) {
-          const { error: insertError } = await supabase.from('projects').insert([{
-            ...p,
-            project_code: '' // Ensure project_code is present
-          }]);
-          if (insertError) throw insertError;
-          insertedCount++;
-        }
-      } catch (err: any) {
-        console.error(`Error with NS ${p.ns}:`, err.message);
+    if (projectsToInsert.length > 0) {
+      // Bulk insert in chunks of 50 to be safe
+      const chunkSize = 50;
+      for (let i = 0; i < projectsToInsert.length; i += chunkSize) {
+        const chunk = projectsToInsert.slice(i, i + chunkSize);
+        const { error: insertError } = await supabase.from('projects').insert(chunk);
+        if (insertError) throw insertError;
       }
     }
 
-    console.log(`Seeded February data. Matched ${matchCount}/${projectsToInsert.length} users. Inserted ${insertedCount} new projects.`);
-    return { success: true, count: insertedCount, errors: [] };
+    console.log(`SEEDED DATA. INSERTED ${projectsToInsert.length} NEW PROJECTS.`);
+    return { success: true, count: projectsToInsert.length, errors: [] };
   } catch (error: any) {
-    console.error("Failed to seed February data", error);
+    console.error("FAILED TO SEED FEBRUARY DATA", error);
     return { success: false, count: 0, errors: [error.message] };
   }
 };
@@ -1472,7 +1466,7 @@ export const findDuplicateProjects = async (): Promise<{ success: boolean; dupli
       estimatedSeconds: p.estimated_seconds
     }));
 
-    console.log(`Scanning ${projects.length} projects for duplicates...`);
+    console.log(`SCANNED ${projects.length} PROJECTS FOR DUPLICATES...`);
 
     const seen = new Map<string, ProjectSession>();
 
@@ -1524,7 +1518,7 @@ export const findDuplicateProjects = async (): Promise<{ success: boolean; dupli
     return { success: true, duplicates: duplicateGroups };
 
   } catch (error: any) {
-    console.error("Failed to find duplicates", error);
+    console.error("FAILED TO FIND DUPLICATES", error);
     return { success: false, duplicates: [], message: error.message };
   }
 };
@@ -1565,7 +1559,7 @@ export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; 
 
     return { success: true, message: `${updatedCount} projetos atualizados com novos custos.` };
   } catch (error: any) {
-    console.error("Failed to recalculate costs", error);
+    console.error("FAILED TO RECALCULATE COSTS", error);
     return { success: false, message: error.message };
   }
 };
@@ -1596,7 +1590,7 @@ export const recalculateAllInterruptionTimes = async (): Promise<{ success: bool
 
     return { success: true, message: `${updatedCount} paradas recalculadas com base no novo expediente.` };
   } catch (error: any) {
-    console.error("Failed to recalculate interruption times", error);
+    console.error("FAILED TO RECALCULATE INTERRUPTION TIMES", error);
     return { success: false, message: error.message };
   }
 };
@@ -1647,14 +1641,14 @@ export const recalculateAllProjectTimes = async (): Promise<{ success: boolean; 
 
     return { success: true, message: `${updatedCount} projetos recalculados com base no novo expediente.` };
   } catch (error: any) {
-    console.error("Failed to recalculate project times", error);
+    console.error("FAILED TO RECALCULATE PROJECT TIMES", error);
     return { success: false, message: error.message };
   }
 };
 
 export const deleteProjectById = async (projectId: string, ns?: string): Promise<{ success: boolean; message?: string }> => {
     try {
-        console.log(`Deleting project ${projectId} (NS: ${ns})`);
+        console.log(`DELETING PROJECT ${projectId} (NS: ${ns})`);
         
         // 1. Issues (by NS if available, to catch orphans or non-FK linked issues)
         if (ns) {
@@ -1677,7 +1671,7 @@ export const deleteProjectById = async (projectId: string, ns?: string): Promise
             .eq('id', projectId);
         
         if (error) {
-            console.error("Supabase delete error:", error);
+            console.error("SUPABASE DELETE ERROR:", error);
             throw error;
         }
 
@@ -1685,7 +1679,7 @@ export const deleteProjectById = async (projectId: string, ns?: string): Promise
         // We removed the select() check because some RLS policies allow DELETE but not SELECT on the deleted row.
         return { success: true };
     } catch (error: any) {
-        console.error("Failed to delete project by ID", error);
+        console.error("FAILED TO DELETE PROJECT BY ID", error);
         return { success: false, message: error.message || "Erro desconhecido ao excluir." };
     }
 };

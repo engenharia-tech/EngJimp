@@ -221,7 +221,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     let updatedCount = 0;
 
     try {
-        console.log("Starting recalculation...");
+        console.log("STARTING RECALCULATION...");
         const updates: { id: string; total_active_seconds: number }[] = [];
         
         // Identify projects to update
@@ -232,7 +232,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             const end = new Date(project.endTime);
 
             if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-                console.warn(`Invalid dates for project ${project.id}: Start=${project.startTime}, End=${project.endTime}`);
+                console.warn(`INVALID DATES FOR PROJECT ${project.id}: START=${project.startTime}, END=${project.endTime}`);
                 continue;
             }
 
@@ -255,7 +255,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             // If different, queue update
             // We use a threshold of 60 seconds to avoid minor drifts if any, or just exact match
             if (Math.abs(project.totalActiveSeconds - netSeconds) > 1) {
-                console.log(`Project ${project.id} needs update: Current=${project.totalActiveSeconds}, New=${netSeconds}`);
+                console.log(`PROJECT ${project.id} NEEDS UPDATE: CURRENT=${project.totalActiveSeconds}, NEW=${netSeconds}`);
                 updates.push({
                     id: project.id,
                     total_active_seconds: netSeconds
@@ -264,12 +264,12 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         }
 
         if (updates.length === 0) {
-            addToast("Todos os projetos já estão com as horas corretas.", "success");
+            addToast("TODOS OS PROJETOS JÁ ESTÃO COM AS HORAS CORRETAS.", "success");
             setIsRecalculating(false);
             return;
         }
 
-        console.log(`Found ${updates.length} projects to update.`);
+        console.log(`FOUND ${updates.length} PROJECTS TO UPDATE.`);
         setRecalculateProgress({ current: 0, total: updates.length });
 
         // Execute updates in batches
@@ -285,7 +285,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             setRecalculateProgress(prev => ({ ...prev, current: updatedCount }));
         }
 
-        addToast(`Sucesso! ${updatedCount} projetos foram recalculados e atualizados.`, "success");
+        addToast(`SUCESSO! ${updatedCount} PROJETOS FORAM RECALCULADOS E ATUALIZADOS.`, "success");
         
         // Force refresh by reloading page as it's the cleanest way to sync everything
         setTimeout(() => {
@@ -293,8 +293,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         }, 1500);
 
     } catch (error) {
-        console.error("Recalculation failed", error);
-        addToast("Ocorreu um erro ao recalcular os projetos.", "error");
+        console.error("RECALCULATION FAILED", error);
+        addToast("OCORREU UM ERRO AO RECALCULAR OS PROJETOS.", "error");
     } finally {
         setIsRecalculating(false);
     }
@@ -793,7 +793,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
               <button 
                 onClick={async () => {
-                    addToast("Buscando duplicatas...", "info");
+                    addToast("BUSCANDO DUPLICATAS...", "info");
                     setIsCheckingDuplicates(true);
                     try {
                         const res = await findDuplicateProjects();
@@ -801,15 +801,15 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             if (res.duplicates.length > 0) {
                                 setDuplicateGroups(res.duplicates);
                                 setShowDuplicateModal(true);
-                                addToast(`${res.duplicates.length} duplicatas encontradas.`, "success");
+                                addToast(`${res.duplicates.length} DUPLICATAS ENCONTRADAS.`, "success");
                             } else {
-                                addToast("Nenhuma duplicata encontrada.", "success");
+                                addToast("NENHUMA DUPLICATA ENCONTRADA.", "success");
                             }
                         } else {
-                            addToast("Erro: " + res.message, "error");
+                            addToast("ERRO: " + res.message, "error");
                         }
                     } catch (e) {
-                        addToast("Erro inesperado ao processar.", "error");
+                        addToast("ERRO INESPERADO AO PROCESSAR.", "error");
                     } finally {
                         setIsCheckingDuplicates(false);
                     }
@@ -831,26 +831,26 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
                 <div className="flex items-center gap-3 mb-4 text-amber-600 dark:text-amber-400">
                     <AlertTriangle className="w-6 h-6" />
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">Confirmar Recálculo</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">CONFIRMAR RECÁLCULO</h3>
                 </div>
                 <p className="text-gray-600 dark:text-slate-400 mb-6">
-                    Isso irá recalcular a duração de <strong>TODOS</strong> os projetos concluídos com base nas das de início/fim e pausas registradas.
+                    ISSO IRÁ RECALCULAR A DURAÇÃO DE <strong>TODOS</strong> OS PROJETOS CONCLUÍDOS COM BASE NAS DAS DE INÍCIO/FIM E PAUSAS REGISTRADAS.
                     <br/><br/>
-                    Esta ação pode corrigir registros antigos onde a duração estava zerada ou incorreta.
+                    ESTA AÇÃO PODE CORRIGIR REGISTROS ANTIGOS ONDE A DURAÇÃO ESTAVA ZERADA OU INCORRETA.
                 </p>
                 <div className="flex justify-end gap-3">
                     <button 
                         onClick={() => setShowRecalculateConfirm(false)}
                         className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
                     >
-                        Cancelar
+                        CANCELAR
                     </button>
                     <button 
                         onClick={executeRecalculation}
                         className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors shadow-sm flex items-center"
                     >
                         <RefreshCw className="w-4 h-4 mr-2" />
-                        Confirmar e Recalcular
+                        CONFIRMAR E RECALCULAR
                     </button>
                 </div>
             </div>
@@ -1526,7 +1526,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             <button 
                                 onClick={() => {
                                     const newPause: PauseRecord = {
-                                        reason: t('manualPause'),
+                                        reason: t('manualPause').toUpperCase(),
                                         timestamp: new Date().toISOString(),
                                         durationSeconds: 3600 // Default 1h
                                     };
@@ -1799,7 +1799,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         <div className="flex items-start mb-2">
                             <Clock className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
                             <div className="flex-1">
-                                <p className="text-gray-500 dark:text-slate-400 font-bold">{t('autoCalculateTime')}:</p>
+                                <p className="text-gray-500 dark:text-slate-400 font-bold">{t('autoCalculateTime').toUpperCase()}:</p>
                                 <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5">
                                     {editForm.isOvertime 
                                         ? t('overtimeModeEnabled')
@@ -1835,7 +1835,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     <div className="p-3 bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-700 rounded-lg text-[10px] text-gray-500 dark:text-slate-400">
                         <p className="font-bold mb-1 flex items-center text-blue-600 dark:text-blue-400">
                             <AlertCircle className="w-3 h-3 mr-1" />
-                            {t('ruleAnalysis')}
+                            {t('ruleAnalysis').toUpperCase()}
                         </p>
                         <div className="space-y-1.5">
                             <div className="flex justify-between border-b border-gray-100 dark:border-slate-800 pb-1">
@@ -1941,23 +1941,23 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 </div>
                                 <button 
                                     onClick={async () => {
-                                        if(!window.confirm(t('deleteConfirm'))) return;
-                                        console.log("Deleting duplicate:", group.discard.id);
+                                        if(!window.confirm(t('deleteConfirm').toUpperCase())) return;
+                                        console.log("DELETING DUPLICATE:", group.discard.id);
                                         const res = await deleteProjectById(group.discard.id, group.discard.ns);
                                         if (res.success) {
-                                            console.log("Deletion successful for:", group.discard.id);
+                                            console.log("DELETION SUCCESSFUL FOR:", group.discard.id);
                                             // Pop-up requested by user
-                                            window.alert(t('deleteSuccess'));
+                                            window.alert(t('deleteSuccess').toUpperCase());
                                             // Update UI instantly without reload
                                             setDuplicateGroups(prev => {
                                                 const newGroups = prev.filter(g => g.discard.id !== group.discard.id);
-                                                console.log("Remaining duplicates:", newGroups.length);
+                                                console.log("REMAINING DUPLICATES:", newGroups.length);
                                                 return newGroups;
                                             });
                                         } else {
-                                            console.error("Deletion failed:", res.message);
-                                            addToast(t('errorDeleting') + res.message, "error");
-                                            window.alert(t('errorDeleting') + res.message);
+                                            console.error("DELETION FAILED:", res.message);
+                                            addToast(t('errorDeleting').toUpperCase() + res.message, "error");
+                                            window.alert(t('errorDeleting').toUpperCase() + res.message);
                                         }
                                     }}
                                     className="mt-3 w-full bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 py-1 rounded text-xs font-bold flex items-center justify-center"

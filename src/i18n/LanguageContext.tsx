@@ -28,7 +28,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         text = text.replace(`{${k}}`, String(v));
       });
     }
-    return text;
+    return text.toUpperCase();
   };
 
   return (
