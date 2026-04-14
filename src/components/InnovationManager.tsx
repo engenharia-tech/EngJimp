@@ -98,7 +98,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   useEffect(() => {
     const load = async () => {
       const users = await fetchUsers();
-      const map = users.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
+      const nonProcessUsers = users.filter(u => u.role !== 'PROCESSOS');
+      const map = nonProcessUsers.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
       setUsersMap(map);
     };
     load();
@@ -107,6 +108,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   // Sort innovations
   const sortedInnovations = useMemo(() => {
     const filtered = innovations.filter(inv => {
+      // Exclude data from 'PROCESSOS' users
+      const isProcessAuthor = inv.authorId && usersMap[inv.authorId] === undefined && Object.keys(usersMap).length > 0;
+      if (isProcessAuthor) return false;
+
       const matchText = inv.title.toLowerCase().includes(filterText.toLowerCase()) || 
                         inv.description.toLowerCase().includes(filterText.toLowerCase());
       const matchType = filterType ? inv.type === filterType : true;
@@ -156,7 +161,16 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
   // Calculate totals - ONLY APPROVED or IMPLEMENTED
   const totalStats = useMemo(() => {
+    const processUserIds = new Set(Object.keys(usersMap).length === 0 ? [] : []); // This is tricky since usersMap is async
+    // Better to just filter by role if we had it, but we only have IDs here.
+    // However, innovations already has authorId.
+    
     return innovations.reduce((acc, curr) => {
+      // If we don't know the author or they are in the map (which only has non-process users), we count them.
+      // If authorId is missing, we assume it's okay for now or legacy.
+      const isProcessAuthor = curr.authorId && usersMap[curr.authorId] === undefined && Object.keys(usersMap).length > 0;
+      if (isProcessAuthor) return acc;
+
       if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED' || curr.status === 'PENDING') {
          return {
             savings: acc.savings + (curr.totalAnnualSavings || 0),

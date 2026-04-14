@@ -135,8 +135,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const canEditCurrent = selectedUserId === currentUser.id || canEditOthers;
 
   const filteredUsers = useMemo(() => {
-    if (canEditOthers) return users;
-    return users.filter(u => u.id === currentUser.id);
+    const nonProcessUsers = users.filter(u => u.role !== 'PROCESSOS');
+    if (canEditOthers) return nonProcessUsers;
+    return nonProcessUsers.filter(u => u.id === currentUser.id);
   }, [users, currentUser.id, canEditOthers]);
 
   const filteredActivities = useMemo(() => {
