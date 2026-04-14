@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X, Loader2 } from 'lucide-react';
+import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X, Loader2, Search } from 'lucide-react';
 import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea, ProjectRequest, ProjectRequestStatus, AppState } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES, SUSPENSION_TYPES } from '../constants';
 import { calcActiveSeconds, isWorkingHour } from '../utils/workdayCalc';
@@ -66,6 +66,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [nsNeedsBox, setNsNeedsBox] = useState(true);
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<ProjectRequest | null>(null);
+  const [nsSearch, setNsSearch] = useState('');
   const [showPickModal, setShowPickModal] = useState(false);
   const [pickPart, setPickPart] = useState<'BASE' | 'BOX' | 'BOTH'>('BASE');
   const [pickDesignerEstHours, setPickDesignerEstHours] = useState('');
@@ -116,6 +117,34 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  const filteredRequests = useMemo(() => {
+    return projectRequests.filter(request => {
+      // Basic status filter
+      if (request.status === ProjectRequestStatus.COMPLETED || request.status === ProjectRequestStatus.CANCELLED) return false;
+      
+      // Availability filter (only show if not both parts are in progress/done)
+      const baseInProgress = request.needsBase && request.baseProjectId;
+      const boxInProgress = request.needsBox && request.boxProjectId;
+      
+      let isAvailable = true;
+      if (request.needsBase && request.needsBox) isAvailable = !(baseInProgress && boxInProgress);
+      else if (request.needsBase) isAvailable = !baseInProgress;
+      else if (request.needsBox) isAvailable = !boxInProgress;
+      
+      if (!isAvailable) return false;
+
+      // Search filter
+      if (!nsSearch.trim()) return true;
+      const search = nsSearch.toLowerCase();
+      return (
+        request.ns.toLowerCase().includes(search) ||
+        (request.clientName || '').toLowerCase().includes(search) ||
+        (request.productType || '').toLowerCase().includes(search)
+      );
+    });
+  }, [projectRequests, nsSearch]);
+
   const pendingProjects = useMemo(() => {
     return existingProjects
       .filter(p => p.status === 'IN_PROGRESS')
@@ -1033,32 +1062,45 @@ JIMPNEXUS
           
           {/* NS Queue Section */}
           <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
                 <Layers className="w-5 h-5 mr-2 text-orange-600 dark:text-orange-400" />
                 FILA DE NS (PEDIDOS)
               </h3>
-              <button 
-                onClick={() => {
-                  if (showNSForm) {
-                    setEditingRequestId(null);
-                    setNsClient('');
-                    setNsNumber('');
-                    setNsProductType('');
-                    setNsDimension('');
-                    setNsFlooring('');
-                    setNsSetup('');
-                    setNsManagementEstimate('');
-                    setNsNeedsBase(true);
-                    setNsNeedsBox(true);
-                  }
-                  setShowNSForm(!showNSForm);
-                }}
-                className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold"
-              >
-                {showNSForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                {showNSForm ? t('cancel') : 'CADASTRAR NS'}
-              </button>
+              
+              <div className="flex flex-1 w-full md:w-auto max-w-md gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input 
+                    type="text"
+                    value={nsSearch}
+                    onChange={e => setNsSearch(e.target.value)}
+                    placeholder="Buscar por NS, Cliente ou Produto..."
+                    className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-slate-900 border border-orange-100 dark:border-orange-900/30 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 outline-none dark:text-white"
+                  />
+                </div>
+                <button 
+                  onClick={() => {
+                    if (showNSForm) {
+                      setEditingRequestId(null);
+                      setNsClient('');
+                      setNsNumber('');
+                      setNsProductType('');
+                      setNsDimension('');
+                      setNsFlooring('');
+                      setNsSetup('');
+                      setNsManagementEstimate('');
+                      setNsNeedsBase(true);
+                      setNsNeedsBox(true);
+                    }
+                    setShowNSForm(!showNSForm);
+                  }}
+                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold whitespace-nowrap"
+                >
+                  {showNSForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                  {showNSForm ? t('cancel') : 'CADASTRAR NS'}
+                </button>
+              </div>
             </div>
 
             {showNSForm && (
@@ -1176,28 +1218,12 @@ JIMPNEXUS
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {projectRequests.filter(request => {
-                if (request.status === ProjectRequestStatus.COMPLETED || request.status === ProjectRequestStatus.CANCELLED) return false;
-                const baseInProgress = request.needsBase && request.baseProjectId;
-                const boxInProgress = request.needsBox && request.boxProjectId;
-                if (request.needsBase && request.needsBox) return !(baseInProgress && boxInProgress);
-                if (request.needsBase) return !baseInProgress;
-                if (request.needsBox) return !boxInProgress;
-                return true;
-              }).length === 0 ? (
+              {filteredRequests.length === 0 ? (
                 <div className="col-span-full py-8 text-center text-gray-500 dark:text-slate-400 italic">
-                  NENHUMA NS PENDENTE NA FILA.
+                  {nsSearch ? 'NENHUM RESULTADO ENCONTRADO PARA A BUSCA.' : 'NENHUMA NS PENDENTE NA FILA.'}
                 </div>
               ) : (
-                projectRequests.filter(request => {
-                  if (request.status === ProjectRequestStatus.COMPLETED || request.status === ProjectRequestStatus.CANCELLED) return false;
-                  const baseInProgress = request.needsBase && request.baseProjectId;
-                  const boxInProgress = request.needsBox && request.boxProjectId;
-                  if (request.needsBase && request.needsBox) return !(baseInProgress && boxInProgress);
-                  if (request.needsBase) return !baseInProgress;
-                  if (request.needsBox) return !boxInProgress;
-                  return true;
-                }).map(request => (
+                filteredRequests.map(request => (
                   <div key={request.id} className="border border-orange-100 dark:border-orange-900/50 rounded-lg p-4 bg-white dark:bg-black hover:shadow-md transition-shadow relative group">
                     <div className="flex justify-between items-start mb-2">
                       <div className="font-bold text-orange-600 dark:text-orange-400 text-lg">NS {request.ns}</div>
