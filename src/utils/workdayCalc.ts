@@ -60,7 +60,7 @@ export function calcActiveSeconds(from: Date, to: Date, settings: AppSettings, i
         const lunchOverlapStart = Math.max(overlapStart, lunchStart.getTime());
         const lunchOverlapEnd = Math.min(overlapEnd, lunchEnd.getTime());
 
-        if (lunchOverlapStart < lunchOverlapEnd) {
+        if (!isOvertime && lunchOverlapStart < lunchOverlapEnd) {
           activeMs -= (lunchOverlapEnd - lunchOverlapStart);
         }
 
@@ -103,7 +103,7 @@ export function isWorkingHour(date: Date, settings: AppSettings, isOvertime: boo
 
   const isLunch = currentMinutes >= lunchStartMinutes && currentMinutes < lunchEndMinutes;
 
-  if (isOvertime) return !isLunch;
+  if (isOvertime) return true;
 
   return currentMinutes >= startMinutes && currentMinutes < endMinutes && !isLunch;
 }

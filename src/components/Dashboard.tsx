@@ -49,7 +49,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [selectedDesignerForReleases, setSelectedDesignerForReleases] = useState<string>('ALL');
   const [selectedInterruptionDesigner, setSelectedInterruptionDesigner] = useState<string>('ALL');
 
-  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi']);
+  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases']);
 
   // Helper to normalize strings for comparison (remove accents and uppercase)
   const normalize = (str: string) => 
@@ -131,7 +131,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     return data.innovations.filter(inv => {
       if (!startDate && !endDate) return true;
 
-      const iDate = new Date(inv.createdAt).getTime();
+      const iDate = inv.createdAt ? new Date(inv.createdAt).getTime() : 0;
+      if (!iDate) return true; // Include if no date (legacy or error)
       
       let start = 0;
       if (startDate) {
@@ -194,15 +195,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     })).sort((a, b) => a.type.localeCompare(b.type));
   }, [filteredProjects]);
 
-  // 1.5 Calculate Total Savings (ONLY APPROVED/IMPLEMENTED)
+  // 1.5 Calculate Total Savings (ALL APPROVED/IMPLEMENTED - regardless of period)
   const totalSavings = useMemo(() => {
-    return filteredInnovations.reduce((acc, curr) => {
-        if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED') {
+    return data.innovations.reduce((acc, curr) => {
+        // Include PENDING as well since the label says "Predicted/Expected"
+        if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED' || curr.status === 'PENDING') {
             return acc + (curr.totalAnnualSavings || 0);
         }
         return acc;
     }, 0);
-  }, [filteredInnovations]);
+  }, [data.innovations]);
 
   const totalHours = useMemo(() => {
     const seconds = filteredProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);

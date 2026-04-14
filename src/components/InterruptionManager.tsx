@@ -117,7 +117,9 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   useEffect(() => {
     if (!isFormOpen || editingInterruption) return; // Only for new interruptions or if we want to reset
     
-    const template = data.settings.interruptionEmailTemplate || t('emailTemplate');
+    let template = data.settings.interruptionEmailTemplate || t('emailTemplate');
+    if (template === 'null') template = t('emailTemplate');
+    
     const footer = `\n\n ${t('emailFooter')}`;
     
     const dateTime = (formStartDate && formStartTime) 
@@ -245,15 +247,19 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         // Trigger email notification if configured
         if (data.settings.interruptionEmailTo) {
           try {
-            fetch('/api/send-email', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                subject: t('newInterruptionAlert').replace('{ns}', ns),
-                body: emailBody.replace(/\n/g, '<br>'),
-                to: data.settings.interruptionEmailTo
-              })
-            });
+            if (!emailBody || emailBody.trim().length < 10) {
+              console.warn("Interruption email body is empty or too short. Skipping email.");
+            } else {
+              fetch('/api/send-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  subject: t('newInterruptionAlert').replace('{ns}', ns),
+                  body: emailBody.replace(/\n/g, '<br>'),
+                  to: data.settings.interruptionEmailTo
+                })
+              });
+            }
           } catch (emailErr) {
             console.error('Erro ao disparar e-mail de interrupção:', emailErr);
           }

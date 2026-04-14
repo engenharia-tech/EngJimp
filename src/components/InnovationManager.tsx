@@ -157,7 +157,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   // Calculate totals - ONLY APPROVED or IMPLEMENTED
   const totalStats = useMemo(() => {
     return innovations.reduce((acc, curr) => {
-      if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED') {
+      if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED' || curr.status === 'PENDING') {
          return {
             savings: acc.savings + (curr.totalAnnualSavings || 0),
             count: acc.count + 1

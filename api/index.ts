@@ -19,6 +19,7 @@ app.post("/api/send-email", async (req, res) => {
   console.log("[Email API] Received request on", process.env.VERCEL ? 'Vercel' : 'Local');
   try {
     const { subject, body, to: bodyTo } = req.body;
+    console.log(`[Email API] Request Body: Subject="${subject}", BodyLength=${body?.length}, To=${bodyTo}`);
     
     if (!subject || !body) {
       return res.status(400).json({ success: false, error: "Assunto ou corpo do e-mail ausente." });
