@@ -9,6 +9,7 @@ export const PROJECT_TYPES = [
 export const IMPLEMENT_TYPES = [
   ImplementType.BASCULANTE,
   ImplementType.BASE,
+  ImplementType.BASE_AND_BOX,
   ImplementType.CAIXA_CARGA,
   ImplementType.CARGA_SECA,
   ImplementType.COMPONENTES,

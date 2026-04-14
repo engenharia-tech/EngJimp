@@ -59,9 +59,19 @@ const defaultState: AppState = {
 
 // --- DATA MANAGEMENT ---
 
+// Helper to parse numbers safely from DB strings
+const parseSafeNumber = (val: any): number => {
+  if (val === null || val === undefined || val === '') return 0;
+  if (typeof val === 'number') return val;
+  // Handle strings with commas (Brazilian format)
+  const cleaned = String(val).replace(/\./g, '').replace(',', '.');
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+};
+
 export const fetchSettings = async (): Promise<AppSettings> => {
   let settings: AppSettings = { 
-    hourlyCost: Number(localStorage.getItem('hourly_cost')) || 150,
+    hourlyCost: parseSafeNumber(localStorage.getItem('hourly_cost')) || 150,
     useAutomaticCost: localStorage.getItem('use_automatic_cost') === 'true',
     logoUrl: localStorage.getItem('logo_url') || undefined,
     companyName: localStorage.getItem('company_name') || 'JIMP NEXUS',
@@ -98,14 +108,14 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       const lunchStartRow = settingsData.find(s => s.key === 'lunch_start');
       const lunchEndRow = settingsData.find(s => s.key === 'lunch_end');
       const languageRow = settingsData.find(s => s.key === 'language');
- 
-      if (hourlyCostRow) settings.hourlyCost = Number(hourlyCostRow.value);
-      if (logoUrlRow) settings.logoUrl = logoUrlRow.value || '';
-      if (companyNameRow) settings.companyName = companyNameRow.value || 'JIMP NEXUS';
-      if (emailToRow) settings.emailTo = emailToRow.value || '';
+
+      if (hourlyCostRow) settings.hourlyCost = parseSafeNumber(hourlyCostRow.value);
+      if (logoUrlRow) settings.logoUrl = logoUrlRow.value === 'null' ? '' : (logoUrlRow.value || '');
+      if (companyNameRow) settings.companyName = companyNameRow.value === 'null' ? 'JIMP NEXUS' : (companyNameRow.value || 'JIMP NEXUS');
+      if (emailToRow) settings.emailTo = emailToRow.value === 'null' ? '' : (emailToRow.value || '');
       if (useAutomaticCostRow) settings.useAutomaticCost = useAutomaticCostRow.value === 'true';
-      if (interruptionEmailToRow) settings.interruptionEmailTo = interruptionEmailToRow.value || '';
-      if (interruptionEmailTemplateRow) settings.interruptionEmailTemplate = interruptionEmailTemplateRow.value || '';
+      if (interruptionEmailToRow) settings.interruptionEmailTo = interruptionEmailToRow.value === 'null' ? '' : (interruptionEmailToRow.value || '');
+      if (interruptionEmailTemplateRow) settings.interruptionEmailTemplate = interruptionEmailTemplateRow.value === 'null' ? '' : (interruptionEmailTemplateRow.value || '');
       if (workdayStartRow) settings.workdayStart = workdayStartRow.value || "07:30";
       if (workdayEndRow) settings.workdayEnd = workdayEndRow.value || "17:30";
       if (workdaysRow) settings.workdays = JSON.parse(workdaysRow.value || "[1,2,3,4,5]");
@@ -253,10 +263,10 @@ export const fetchAppState = async (): Promise<AppState> => {
       
       // Handle potential nulls from DB using defaults
       calculationType: inv.calculation_type as CalculationType || CalculationType.RECURRING_MONTHLY,
-      unitSavings: Number(inv.unit_savings) || 0,
-      quantity: Number(inv.quantity) || 0,
-      totalAnnualSavings: Number(inv.total_annual_savings) || 0,
-      investmentCost: Number(inv.investment_cost) || 0,
+      unitSavings: parseSafeNumber(inv.unit_savings),
+      quantity: parseSafeNumber(inv.quantity),
+      totalAnnualSavings: parseSafeNumber(inv.total_annual_savings),
+      investmentCost: parseSafeNumber(inv.investment_cost),
 
       status: inv.status,
       authorId: inv.author_id,

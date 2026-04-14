@@ -237,15 +237,21 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
       if (matchingRequest) {
         const isBase = implementType === ImplementType.BASE;
+        const isBox = implementType === ImplementType.CAIXA_CARGA;
+        const isBoth = implementType === ImplementType.BASE_AND_BOX;
+
         const updatedRequest = {
           ...matchingRequest,
           status: ProjectRequestStatus.IN_PROGRESS,
           assignedTo: currentUser?.id || '',
         };
 
-        if (isBase) {
+        if (isBoth) {
           updatedRequest.baseProjectId = projectId;
-        } else {
+          updatedRequest.boxProjectId = projectId;
+        } else if (isBase) {
+          updatedRequest.baseProjectId = projectId;
+        } else if (isBox) {
           updatedRequest.boxProjectId = projectId;
         }
 
@@ -966,6 +972,11 @@ JIMPNEXUS
         return;
       }
 
+      if (!body || body.trim().length < 10) {
+        console.error("Email body is too short or empty. Aborting send.");
+        return;
+      }
+
       console.log("Email Payload Debug:", {
         to: settings.emailTo,
         subject: subject,
@@ -983,7 +994,9 @@ JIMPNEXUS
         })
       });
 
+      console.log("Email API HTTP Status:", response.status);
       const responseText = await response.text();
+      console.log("Email API raw response:", responseText);
       let result;
       try {
         result = JSON.parse(responseText);
