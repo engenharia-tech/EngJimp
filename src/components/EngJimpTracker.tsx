@@ -113,6 +113,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [sentEmailProjectIds, setSentEmailProjectIds] = useState<string[]>([]);
   const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
+  const [isSaving, setIsSaving] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingProjects = useMemo(() => {
@@ -206,7 +207,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   }, [activeProject, showPauseModal]);
 
 
-  const handleStartNew = () => {
+  const handleStartNew = async () => {
     if (!ns.trim()) {
       alert(t('nsRequired'));
       return;
@@ -225,62 +226,70 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       return;
     }
 
-    const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
+    setIsSaving(true);
+    try {
+      const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
 
-    const projectId = crypto.randomUUID();
+      const projectId = crypto.randomUUID();
 
-    // If we have a selected request or the NS matches a pending request, update it
-    const matchingRequest = selectedRequest || projectRequests.find(r => r.ns === ns.trim() && r.status === ProjectRequestStatus.PENDING);
+      // If we have a selected request or the NS matches a pending request, update it
+      const matchingRequest = selectedRequest || projectRequests.find(r => r.ns === ns.trim() && r.status === ProjectRequestStatus.PENDING);
 
-    if (matchingRequest) {
-      const isBase = implementType === ImplementType.BASE;
-      const updatedRequest = {
-        ...matchingRequest,
-        status: ProjectRequestStatus.IN_PROGRESS,
-        assignedTo: currentUser?.id || '',
-      };
+      if (matchingRequest) {
+        const isBase = implementType === ImplementType.BASE;
+        const updatedRequest = {
+          ...matchingRequest,
+          status: ProjectRequestStatus.IN_PROGRESS,
+          assignedTo: currentUser?.id || '',
+        };
 
-      if (isBase) {
-        updatedRequest.baseProjectId = projectId;
-      } else {
-        updatedRequest.boxProjectId = projectId;
+        if (isBase) {
+          updatedRequest.baseProjectId = projectId;
+        } else {
+          updatedRequest.boxProjectId = projectId;
+        }
+
+        onUpdateProjectRequest(updatedRequest);
       }
 
-      onUpdateProjectRequest(updatedRequest);
+      const newProject: ProjectSession = {
+        id: projectId,
+        ns,
+        clientName,
+        projectCode,
+        type,
+        implementType,
+        flooringType: shouldShowFlooring ? flooringType : undefined,
+        startTime: new Date().toISOString(),
+        estimatedSeconds: estimatedSeconds > 0 ? estimatedSeconds : undefined,
+        totalActiveSeconds: 0,
+        pauses: [],
+        variations: [], // Start empty
+        status: 'IN_PROGRESS',
+        notes,
+        userId: currentUser?.id,
+        isOvertime
+      };
+
+      await onCreate(newProject);
+      setActiveProject(newProject);
+      
+      // Reset form fields
+      setNs('');
+      setClientName('');
+      setProjectCode('');
+      setNotes('');
+      setFlooringType('');
+      setEstHours('');
+      setEstMinutes('');
+      setIsOvertime(false);
+      setSelectedRequest(null);
+    } catch (error) {
+      console.error("Error starting project:", error);
+      addToast(t('errorStartingProject') || 'Erro ao iniciar projeto', 'error');
+    } finally {
+      setIsSaving(false);
     }
-
-    const newProject: ProjectSession = {
-      id: projectId,
-      ns,
-      clientName,
-      projectCode,
-      type,
-      implementType,
-      flooringType: shouldShowFlooring ? flooringType : undefined,
-      startTime: new Date().toISOString(),
-      estimatedSeconds: estimatedSeconds > 0 ? estimatedSeconds : undefined,
-      totalActiveSeconds: 0,
-      pauses: [],
-      variations: [], // Start empty
-      status: 'IN_PROGRESS',
-      notes,
-      userId: currentUser?.id,
-      isOvertime
-    };
-
-    onCreate(newProject);
-    setActiveProject(newProject);
-    
-    // Reset form fields
-    setNs('');
-    setClientName('');
-    setProjectCode('');
-    setNotes('');
-    setFlooringType('');
-    setEstHours('');
-    setEstMinutes('');
-    setIsOvertime(false);
-    setSelectedRequest(null);
   };
 
   const handlePickRequest = (request: ProjectRequest) => {
@@ -299,84 +308,123 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   };
 
   const handleConfirmPick = async () => {
-    if (!selectedRequest) return;
+    if (!selectedRequest || isSaving) return;
 
-    const nsVal = selectedRequest.ns;
-    const clientVal = selectedRequest.clientName;
-    const notesVal = `Produto: ${selectedRequest.productType}\nDimensão: ${selectedRequest.dimension}\nAssoalho: ${selectedRequest.flooring}\nSetup: ${selectedRequest.setup}`;
-    
-    // Designer estimate in seconds
-    const estSec = (parseInt(pickDesignerEstHours) || 0) * 3600 + (parseInt(pickDesignerEstMinutes) || 0) * 60;
+    setIsSaving(true);
+    try {
+      const nsVal = selectedRequest.ns;
+      const clientVal = selectedRequest.clientName;
+      const notesVal = `Produto: ${selectedRequest.productType}\nDimensão: ${selectedRequest.dimension}\nAssoalho: ${selectedRequest.flooring}\nSetup: ${selectedRequest.setup}`;
+      
+      // Designer estimate in seconds
+      const estSec = (parseInt(pickDesignerEstHours) || 0) * 3600 + (parseInt(pickDesignerEstMinutes) || 0) * 60;
 
-    const startProject = async (partType: ImplementType) => {
-      const newProject: ProjectSession = {
-        id: crypto.randomUUID(),
-        ns: nsVal,
-        clientName: clientVal,
-        type: ProjectType.RELEASE,
-        implementType: partType,
-        startTime: new Date().toISOString(),
-        totalActiveSeconds: 0,
-        pauses: [],
-        variations: [],
-        status: 'IN_PROGRESS',
-        notes: notesVal,
-        userId: currentUser?.id,
-        estimatedSeconds: estSec
+      let currentRequest = { ...selectedRequest };
+      let projectToActivate: ProjectSession | null = null;
+
+      const startProject = async (partType: ImplementType) => {
+        const newProject: ProjectSession = {
+          id: crypto.randomUUID(),
+          ns: nsVal,
+          clientName: clientVal,
+          type: ProjectType.RELEASE,
+          implementType: partType,
+          startTime: new Date().toISOString(),
+          totalActiveSeconds: 0,
+          pauses: [],
+          variations: [],
+          status: 'IN_PROGRESS',
+          notes: notesVal,
+          userId: currentUser?.id,
+          // Se for ambos, dividimos a estimativa entre os dois projetos
+          estimatedSeconds: pickPart === 'BOTH' ? estSec / 2 : estSec
+        };
+
+        const updatedState = await onCreate(newProject);
+        if (updatedState) {
+          return updatedState.projects.find(p => p.id === newProject.id);
+        }
+        return null;
       };
 
-      const updatedState = await onCreate(newProject);
-      if (updatedState) {
-        const createdProject = updatedState.projects.find(p => p.id === newProject.id);
-        
-        if (createdProject) {
-        // Update Project Request with the new project ID
-        const updatedRequest = { ...selectedRequest };
-        if (partType === ImplementType.BASE) {
-          updatedRequest.baseProjectId = createdProject.id;
-        } else {
-          updatedRequest.boxProjectId = createdProject.id;
+      if (pickPart === 'BASE') {
+        const p = await startProject(ImplementType.BASE);
+        if (p) {
+          currentRequest.baseProjectId = p.id;
+          projectToActivate = p;
+        }
+      } else if (pickPart === 'BOX') {
+        const p = await startProject(ImplementType.CAIXA_CARGA);
+        if (p) {
+          currentRequest.boxProjectId = p.id;
+          projectToActivate = p;
+        }
+      } else if (pickPart === 'BOTH') {
+        const p1 = await startProject(ImplementType.BASE);
+        if (p1) {
+          currentRequest.baseProjectId = p1.id;
+          projectToActivate = p1; // Ativamos a base primeiro
         }
         
-        // Update designer estimate on the request as well (average or sum?)
-        // User said "one management, another from designer". Let's just store the latest one or sum them.
-        updatedRequest.designerEstimate = (updatedRequest.designerEstimate || 0) + (estSec / 3600);
-        updatedRequest.status = ProjectRequestStatus.IN_PROGRESS;
-        
-        await onUpdateProjectRequest(updatedRequest);
+        const p2 = await startProject(ImplementType.CAIXA_CARGA);
+        if (p2) {
+          currentRequest.boxProjectId = p2.id;
+          // O segundo projeto fica na lista de pendentes para ser retomado depois
+        }
       }
+
+      // Atualiza a estimativa do projetista no pedido (uma única vez)
+      currentRequest.designerEstimate = (currentRequest.designerEstimate || 0) + (estSec / 3600);
+      currentRequest.status = ProjectRequestStatus.IN_PROGRESS;
+      
+      await onUpdateProjectRequest(currentRequest);
+
+      if (projectToActivate) {
+        setActiveProject(projectToActivate);
+        setLastHeartbeat(Date.now());
+      }
+
+      setShowPickModal(false);
+      setSelectedRequest(null);
+      addToast(t('nsSelected', { ns: nsVal }), 'success');
+    } catch (error) {
+      console.error("Error picking project:", error);
+      addToast(t('errorStartingProject') || 'Erro ao iniciar projeto', 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-    if (pickPart === 'BASE') {
-      await startProject(ImplementType.BASE);
-    } else if (pickPart === 'BOX') {
-      await startProject(ImplementType.CAIXA_CARGA);
-    } else if (pickPart === 'BOTH') {
-      // If both, we create two separate projects or one?
-      // Usually they are separate tasks. Let's create two if they want to track them separately.
-      // But the user said "if he is going to do base and box... it disappears total".
-      // Let's create two projects if they are separate entities in the system.
-      await startProject(ImplementType.BASE);
-      await startProject(ImplementType.CAIXA_CARGA);
-    }
-
-    setShowPickModal(false);
-    setSelectedRequest(null);
-    addToast(t('nsSelected', { ns: nsVal }), 'success');
-  };
-
-  const handleRegisterNS = () => {
+  const handleRegisterNS = async () => {
     if (!nsNumber.trim() || !nsClient.trim()) {
       addToast(t('fillRequiredFields'), 'error');
       return;
     }
 
-    if (editingRequestId) {
-      const existingRequest = projectRequests.find(r => r.id === editingRequestId);
-      if (existingRequest) {
-        const updatedRequest: ProjectRequest = {
-          ...existingRequest,
+    setIsSaving(true);
+    try {
+      if (editingRequestId) {
+        const existingRequest = projectRequests.find(r => r.id === editingRequestId);
+        if (existingRequest) {
+          const updatedRequest: ProjectRequest = {
+            ...existingRequest,
+            clientName: nsClient,
+            ns: nsNumber,
+            productType: nsProductType,
+            dimension: nsDimension,
+            flooring: nsFlooring,
+            setup: nsSetup,
+            needsBase: nsNeedsBase,
+            needsBox: nsNeedsBox,
+            managementEstimate: parseFloat(nsManagementEstimate) || 0,
+          };
+          await onUpdateProjectRequest(updatedRequest);
+          addToast(t('nsUpdatedSuccess') || 'NS ATUALIZADA COM SUCESSO', 'success');
+        }
+        setEditingRequestId(null);
+      } else {
+        const newRequest: ProjectRequest = {
+          id: crypto.randomUUID(),
           clientName: nsClient,
           ns: nsNumber,
           productType: nsProductType,
@@ -386,42 +434,31 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           needsBase: nsNeedsBase,
           needsBox: nsNeedsBox,
           managementEstimate: parseFloat(nsManagementEstimate) || 0,
+          status: ProjectRequestStatus.PENDING,
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser?.id || ''
         };
-        onUpdateProjectRequest(updatedRequest);
-        addToast(t('nsUpdatedSuccess') || 'NS ATUALIZADA COM SUCESSO', 'success');
-      }
-      setEditingRequestId(null);
-    } else {
-      const newRequest: ProjectRequest = {
-        id: crypto.randomUUID(),
-        clientName: nsClient,
-        ns: nsNumber,
-        productType: nsProductType,
-        dimension: nsDimension,
-        flooring: nsFlooring,
-        setup: nsSetup,
-        needsBase: nsNeedsBase,
-        needsBox: nsNeedsBox,
-        managementEstimate: parseFloat(nsManagementEstimate) || 0,
-        status: ProjectRequestStatus.PENDING,
-        createdAt: new Date().toISOString(),
-        createdBy: currentUser?.id || ''
-      };
 
-      onAddProjectRequest(newRequest);
+        await onAddProjectRequest(newRequest);
+      }
+      
+      // Reset form
+      setNsClient('');
+      setNsNumber('');
+      setNsProductType('');
+      setNsDimension('');
+      setNsFlooring('');
+      setNsSetup('');
+      setNsManagementEstimate('');
+      setNsNeedsBase(true);
+      setNsNeedsBox(true);
+      setShowNSForm(false);
+    } catch (error) {
+      console.error("Error registering NS:", error);
+      addToast(t('errorRegisteringNS') || 'Erro ao registrar NS', 'error');
+    } finally {
+      setIsSaving(false);
     }
-    
-    // Reset form
-    setNsClient('');
-    setNsNumber('');
-    setNsProductType('');
-    setNsDimension('');
-    setNsFlooring('');
-    setNsSetup('');
-    setNsManagementEstimate('');
-    setNsNeedsBase(true);
-    setNsNeedsBox(true);
-    setShowNSForm(false);
   };
 
   const handleEditRequest = (request: ProjectRequest) => {
@@ -444,79 +481,89 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     }
   };
 
-  const handleResumeFromList = (project: ProjectSession) => {
+  const handleResumeFromList = async (project: ProjectSession) => {
+    if (isSaving) return;
+
     // Check Working Hours - Warn but don't block, so they can toggle overtime if needed
     if (!isWorkingHour(new Date(), settings, project.isOvertime)) {
       addToast(t('outsideWorkingHoursNoOvertime'), 'warning');
     }
 
-    // MELHORIA 1: Pausar tempo fora do expediente
-    // Se o projeto estava IN_PROGRESS e o app foi fechado, calculamos o tempo produtivo desde o último save
-    let updatedProject = { ...project };
-    const now = new Date();
-    
-    if (project.lastActiveAt) {
-      const lastActive = new Date(project.lastActiveAt);
-      const productiveSecondsSinceLastSave = calcActiveSeconds(lastActive, now, settings, project.isOvertime);
+    setIsSaving(true);
+    try {
+      // MELHORIA 1: Pausar tempo fora do expediente
+      // Se o projeto estava IN_PROGRESS e o app foi fechado, calculamos o tempo produtivo desde o último save
+      let updatedProject = { ...project };
+      const now = new Date();
       
-      // Se passou tempo produtivo desde o último save, adicionamos ao total
-      if (productiveSecondsSinceLastSave > 0) {
-        updatedProject.totalActiveSeconds += productiveSecondsSinceLastSave;
-        console.log(`Resuming project ${project.ns}: adding ${productiveSecondsSinceLastSave}s of productive time since last save.`);
+      if (project.lastActiveAt) {
+        const lastActive = new Date(project.lastActiveAt);
+        const productiveSecondsSinceLastSave = calcActiveSeconds(lastActive, now, settings, project.isOvertime);
+        
+        // Se passou tempo produtivo desde o último save, adicionamos ao total
+        if (productiveSecondsSinceLastSave > 0) {
+          updatedProject.totalActiveSeconds += productiveSecondsSinceLastSave;
+          console.log(`Resuming project ${project.ns}: adding ${productiveSecondsSinceLastSave}s of productive time since last save.`);
+        }
       }
+
+      // Logic to close open pause if needed
+      const lastPauseIndex = updatedProject.pauses.length - 1;
+      if (lastPauseIndex >= 0 && updatedProject.pauses[lastPauseIndex].durationSeconds === -1) {
+        const pauseStart = new Date(updatedProject.pauses[lastPauseIndex].timestamp);
+        
+        // Calculate productive duration for the pause record
+        const pauseDuration = calcActiveSeconds(pauseStart, now, settings, updatedProject.isOvertime);
+
+        const updatedPauses = [...updatedProject.pauses];
+        updatedPauses[lastPauseIndex] = {
+          ...updatedPauses[lastPauseIndex],
+          durationSeconds: pauseDuration
+        };
+
+        updatedProject = { ...updatedProject, pauses: updatedPauses };
+        
+        // Check if there's an open interruption for this project and close it
+        const openInterruption = interruptions.find(i => 
+            i.projectNs === updatedProject.ns && 
+            i.status === InterruptionStatus.OPEN && 
+            i.designerId === currentUser?.id
+        );
+
+        if (openInterruption) {
+            const interruptionStart = new Date(openInterruption.startTime);
+            const interruptionDuration = calcActiveSeconds(interruptionStart, now, settings, updatedProject.isOvertime);
+            
+            const updatedInterruption: InterruptionRecord = {
+                ...openInterruption,
+                endTime: now.toISOString(),
+                totalTimeSeconds: (openInterruption.totalTimeSeconds || 0) + interruptionDuration,
+                status: InterruptionStatus.RESOLVED
+            };
+            onUpdateInterruption(updatedInterruption);
+        }
+
+        onUpdate(updatedProject);
+        setActiveProject(updatedProject);
+      } else {
+        // Se não estava pausado, mas estava IN_PROGRESS, o tempo continuou contando
+        // Já atualizamos o totalActiveSeconds acima se havia lastActiveAt
+        onUpdate(updatedProject);
+        setActiveProject(updatedProject);
+      }
+      setLastHeartbeat(Date.now());
+    } catch (error) {
+      console.error("Error resuming project:", error);
+      addToast(t('errorResumingProject') || 'Erro ao retomar projeto', 'error');
+    } finally {
+      setIsSaving(false);
     }
-
-    // Logic to close open pause if needed
-    const lastPauseIndex = updatedProject.pauses.length - 1;
-    if (lastPauseIndex >= 0 && updatedProject.pauses[lastPauseIndex].durationSeconds === -1) {
-       const pauseStart = new Date(updatedProject.pauses[lastPauseIndex].timestamp);
-       
-       // Calculate productive duration for the pause record
-       const pauseDuration = calcActiveSeconds(pauseStart, now, settings, updatedProject.isOvertime);
-
-       const updatedPauses = [...updatedProject.pauses];
-       updatedPauses[lastPauseIndex] = {
-         ...updatedPauses[lastPauseIndex],
-         durationSeconds: pauseDuration
-       };
-
-       updatedProject = { ...updatedProject, pauses: updatedPauses };
-       
-       // Check if there's an open interruption for this project and close it
-       const openInterruption = interruptions.find(i => 
-           i.projectNs === updatedProject.ns && 
-           i.status === InterruptionStatus.OPEN && 
-           i.designerId === currentUser?.id
-       );
-
-       if (openInterruption) {
-           const interruptionStart = new Date(openInterruption.startTime);
-           const interruptionDuration = calcActiveSeconds(interruptionStart, now, settings, updatedProject.isOvertime);
-           
-           const updatedInterruption: InterruptionRecord = {
-               ...openInterruption,
-               endTime: now.toISOString(),
-               totalTimeSeconds: (openInterruption.totalTimeSeconds || 0) + interruptionDuration,
-               status: InterruptionStatus.RESOLVED
-           };
-           onUpdateInterruption(updatedInterruption);
-       }
-
-       onUpdate(updatedProject);
-       setActiveProject(updatedProject);
-    } else {
-       // Se não estava pausado, mas estava IN_PROGRESS, o tempo continuou contando
-       // Já atualizamos o totalActiveSeconds acima se havia lastActiveAt
-       onUpdate(updatedProject);
-       setActiveProject(updatedProject);
-    }
-    setLastHeartbeat(Date.now());
   };
 
   const handlePauseProject = () => setShowPauseModal(true);
 
-  const confirmPauseAndExit = () => {
-    if (!activeProject) return;
+  const confirmPauseAndExit = async () => {
+    if (!activeProject || isSaving) return;
 
     const isInterruption = pauseReason.toLowerCase().includes('informação') || 
                           pauseReason.toLowerCase().includes('informacao') ||
@@ -527,51 +574,59 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         return;
     }
 
-    const newPause: PauseRecord = {
-      reason: pauseReason || 'Pausa',
-      timestamp: new Date().toISOString(),
-      durationSeconds: -1 // Flag for "Open/Ongoing" pause
-    };
+    setIsSaving(true);
+    try {
+      const newPause: PauseRecord = {
+        reason: pauseReason || 'Pausa',
+        timestamp: new Date().toISOString(),
+        durationSeconds: -1 // Flag for "Open/Ongoing" pause
+      };
 
-    // If it's a specific interruption, we could potentially flag it here
-    // But for now we just store the reason as requested.
-    // We'll append the sector to the reason if applicable
-    if (isInterruption && pauseSector) {
-        newPause.reason = `${pauseReason} (${pauseSector})`;
+      // If it's a specific interruption, we could potentially flag it here
+      // But for now we just store the reason as requested.
+      // We'll append the sector to the reason if applicable
+      if (isInterruption && pauseSector) {
+          newPause.reason = `${pauseReason} (${pauseSector})`;
+      }
+
+      // Calculate current active seconds to update the snapshot
+      const currentActive = elapsedSeconds; 
+
+      const updatedProject = {
+        ...activeProject,
+        totalActiveSeconds: currentActive, // Snapshot
+        pauses: [...activeProject.pauses, newPause]
+      };
+
+      if (isInterruption) {
+          const newInterruption: InterruptionRecord = {
+              id: crypto.randomUUID(),
+              projectId: activeProject.id,
+              projectNs: activeProject.ns,
+              clientName: activeProject.clientName || '',
+              designerId: currentUser?.id || '',
+              startTime: new Date().toISOString(),
+              problemType: pauseReason,
+              responsibleArea: pauseSector as InterruptionArea,
+              responsiblePerson: '',
+              description: '',
+              status: InterruptionStatus.OPEN,
+              totalTimeSeconds: 0
+          };
+          await onAddInterruption(newInterruption);
+      }
+
+      await onUpdate(updatedProject);
+      setActiveProject(null);
+      setShowPauseModal(false);
+      setPauseReason('');
+      setPauseSector('');
+    } catch (error) {
+      console.error("Error pausing project:", error);
+      addToast(t('errorPausingProject') || 'Erro ao pausar projeto', 'error');
+    } finally {
+      setIsSaving(false);
     }
-
-    // Calculate current active seconds to update the snapshot
-    const currentActive = elapsedSeconds; 
-
-    const updatedProject = {
-      ...activeProject,
-      totalActiveSeconds: currentActive, // Snapshot
-      pauses: [...activeProject.pauses, newPause]
-    };
-
-    if (isInterruption) {
-        const newInterruption: InterruptionRecord = {
-            id: crypto.randomUUID(),
-            projectId: activeProject.id,
-            projectNs: activeProject.ns,
-            clientName: activeProject.clientName || '',
-            designerId: currentUser?.id || '',
-            startTime: new Date().toISOString(),
-            problemType: pauseReason,
-            responsibleArea: pauseSector as InterruptionArea,
-            responsiblePerson: '',
-            description: '',
-            status: InterruptionStatus.OPEN,
-            totalTimeSeconds: 0
-        };
-        onAddInterruption(newInterruption);
-    }
-
-    onUpdate(updatedProject);
-    setActiveProject(null);
-    setShowPauseModal(false);
-    setPauseReason('');
-    setPauseSector('');
   };
 
   const handleFinish = () => {
@@ -1097,8 +1152,10 @@ JIMPNEXUS
                 <div className="flex justify-end">
                   <button 
                     onClick={handleRegisterNS}
-                    className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md"
+                    disabled={isSaving}
+                    className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                   >
+                    {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                     {editingRequestId ? 'ATUALIZAR PEDIDO' : 'SALVAR PEDIDO'}
                   </button>
                 </div>
@@ -1134,10 +1191,11 @@ JIMPNEXUS
                       <div className="flex gap-1">
                         <button 
                           onClick={() => handlePickRequest(request)}
-                          className="p-1.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded hover:bg-orange-600 hover:text-white transition-all"
+                          disabled={isSaving}
+                          className="p-1.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded hover:bg-orange-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Projetar este pedido"
                         >
-                          <Play className="w-4 h-4" />
+                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                         </button>
                         <button 
                           onClick={() => handleEditRequest(request)}
@@ -1147,11 +1205,20 @@ JIMPNEXUS
                           <Edit className="w-4 h-4" />
                         </button>
                         <button 
-                          onClick={() => onDeleteProjectRequest(request.id)}
-                          className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded hover:bg-red-600 hover:text-white transition-all"
+                          onClick={async () => {
+                            if (isSaving) return;
+                            setIsSaving(true);
+                            try {
+                              await onDeleteProjectRequest(request.id);
+                            } finally {
+                              setIsSaving(false);
+                            }
+                          }}
+                          disabled={isSaving}
+                          className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded hover:bg-red-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Excluir pedido"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                         </button>
                       </div>
                     </div>
@@ -1221,9 +1288,14 @@ JIMPNEXUS
                             {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') && (
                                 <button 
                                   onClick={() => handleResumeFromList(p)}
-                                  className="flex-1 bg-white dark:bg-black border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center group-hover:bg-blue-600 dark:group-hover:bg-blue-500 group-hover:text-white shadow-sm"
+                                  disabled={isSaving}
+                                  className="flex-1 bg-white dark:bg-black border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center group-hover:bg-blue-600 dark:group-hover:bg-blue-500 group-hover:text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                  <Play className="w-4 h-4 mr-2" />
+                                  {isSaving ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Play className="w-4 h-4 mr-2" />
+                                  )}
                                   {isPaused ? t('resume') : t('continue')}
                                 </button>
                             )}
@@ -1387,10 +1459,20 @@ JIMPNEXUS
                   </div>
                   <button 
                     onClick={handleStartNew}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
+                    disabled={isSaving}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    <Play className="w-5 h-5 mr-2" />
-                    {t('startTimer')}
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        {t('saving') || 'SALVANDO...'}
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-5 h-5 mr-2" />
+                        {t('startTimer')}
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -1834,10 +1916,17 @@ JIMPNEXUS
               </button>
               <button 
                 onClick={handleConfirmPick}
-                disabled={!pickPart}
-                className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-bold shadow-sm transition-colors"
+                disabled={!pickPart || isSaving}
+                className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-bold shadow-sm transition-colors flex items-center"
               >
-                INICIAR AGORA
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {t('starting') || 'INICIANDO...'}
+                  </>
+                ) : (
+                  t('startNow') || 'INICIAR AGORA'
+                )}
               </button>
             </div>
           </div>
@@ -1916,15 +2005,17 @@ JIMPNEXUS
                     setPauseReason('');
                     setPauseSector('');
                 }}
-                className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                disabled={isSaving}
+                className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
               >
                 CANCELAR
               </button>
               <button 
                 onClick={confirmPauseAndExit}
-                disabled={!pauseReason || ((pauseReason === 'Falta de Informações' || pauseReason === 'Incompatibilidade de Informações' || pauseReason === 'Outros') && !pauseSector)}
-                className="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors"
+                disabled={!pauseReason || ((pauseReason === 'Falta de Informações' || pauseReason === 'Incompatibilidade de Informações' || pauseReason === 'Outros') && !pauseSector) || isSaving}
+                className="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors flex items-center"
               >
+                {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 CONFIRMAR PAUSA
               </button>
             </div>
