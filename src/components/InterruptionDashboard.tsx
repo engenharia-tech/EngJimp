@@ -14,7 +14,14 @@ interface InterruptionDashboardProps {
 
 export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ data, theme }) => {
   const { t, language } = useLanguage();
-  const interruptions = data.interruptions;
+  const processUserIds = useMemo(() => {
+    return new Set(data.users.filter(u => u.role === 'PROCESSOS').map(u => u.id));
+  }, [data.users]);
+
+  const interruptions = useMemo(() => {
+    return data.interruptions.filter(i => !processUserIds.has(i.designerId));
+  }, [data.interruptions, processUserIds]);
+
   const [selectedDesigner, setSelectedDesigner] = useState<string | null>(null);
 
   const designerStats = useMemo(() => {

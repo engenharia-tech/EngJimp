@@ -63,15 +63,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   useEffect(() => {
     // Load users for the manager chart from the data prop to avoid extra API calls and ensure consistency
-    const sortedUsers = [...data.users].sort((a, b) => a.name.localeCompare(b.name));
+    // Exclude 'PROCESSOS' role as they don't belong to product engineering
+    const filteredUsers = data.users.filter(u => u.role !== 'PROCESSOS');
+    const sortedUsers = [...filteredUsers].sort((a, b) => a.name.localeCompare(b.name));
     const map = sortedUsers.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
     setUsersMap(map);
     setAvailableDesigners(sortedUsers.filter(u => u.role !== 'CEO'));
   }, [data.users]);
 
+  const processUserIds = useMemo(() => {
+    return new Set(data.users.filter(u => u.role === 'PROCESSOS').map(u => u.id));
+  }, [data.users]);
+
   // Filter Data Logic
   const filteredProjects = useMemo(() => {
     return data.projects.filter(p => {
+      // Exclude data from 'PROCESSOS' users
+      if (p.userId && processUserIds.has(p.userId)) {
+        return false;
+      }
+
       // Role-based filtering: Designers only see their own data in the dashboard
       if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
         return false;
@@ -129,6 +140,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
    const filteredInnovations = useMemo(() => {
     return data.innovations.filter(inv => {
+      // Exclude data from 'PROCESSOS' users
+      if (inv.authorId && processUserIds.has(inv.authorId)) {
+        return false;
+      }
+
       if (!startDate && !endDate) return true;
 
       const iDate = inv.createdAt ? new Date(inv.createdAt).getTime() : 0;
@@ -155,6 +171,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   const filteredInterruptions = useMemo(() => {
     return data.interruptions.filter(i => {
+      // Exclude data from 'PROCESSOS' users
+      if (i.designerId && processUserIds.has(i.designerId)) {
+        return false;
+      }
+
       if (!startDate && !endDate) return true;
 
       const iDate = new Date(i.startTime).getTime();
@@ -198,13 +219,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   // 1.5 Calculate Total Savings (ALL APPROVED/IMPLEMENTED - regardless of period)
   const totalSavings = useMemo(() => {
     return data.innovations.reduce((acc, curr) => {
+        // Exclude data from 'PROCESSOS' users
+        if (curr.authorId && processUserIds.has(curr.authorId)) {
+            return acc;
+        }
         // Include PENDING as well since the label says "Predicted/Expected"
         if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED' || curr.status === 'PENDING') {
             return acc + (curr.totalAnnualSavings || 0);
         }
         return acc;
     }, 0);
-  }, [data.innovations]);
+  }, [data.innovations, processUserIds]);
 
   const totalHours = useMemo(() => {
     const seconds = filteredProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
