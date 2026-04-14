@@ -485,6 +485,21 @@ export const deleteProject = async (id: string, ns?: string): Promise<AppState> 
     const { error: innError } = await supabase.from('innovations').delete().eq('project_id', id);
     if (innError) console.warn("Warning deleting innovations:", innError);
 
+    // 3.5 Handle project_requests references (Nullify FKs to allow deletion)
+    const { error: reqBaseError } = await supabase.from('project_requests').update({ base_project_id: null }).eq('base_project_id', id);
+    if (reqBaseError) console.warn("Warning nullifying base_project_id in project_requests:", reqBaseError);
+    
+    const { error: reqBoxError } = await supabase.from('project_requests').update({ box_project_id: null }).eq('box_project_id', id);
+    if (reqBoxError) console.warn("Warning nullifying box_project_id in project_requests:", reqBoxError);
+
+    // 3.6 Delete related interruptions
+    const { error: intError } = await supabase.from('interruptions').delete().eq('project_id', id);
+    if (intError) console.warn("Warning deleting interruptions:", intError);
+
+    // 3.7 Delete related operational_activities
+    const { error: opError } = await supabase.from('operational_activities').delete().eq('project_id', id);
+    if (opError) console.warn("Warning deleting operational_activities:", opError);
+
     // 4. Delete the project
     const { data, error } = await supabase
       .from('projects')
@@ -1674,6 +1689,16 @@ export const deleteProjectById = async (projectId: string, ns?: string): Promise
         const { error: innError } = await supabase.from('innovations').delete().eq('project_id', projectId);
         if (innError) console.warn("Error deleting innovations:", innError);
         
+        // 3.5 Project Requests (Nullify FKs)
+        await supabase.from('project_requests').update({ base_project_id: null }).eq('base_project_id', projectId);
+        await supabase.from('project_requests').update({ box_project_id: null }).eq('box_project_id', projectId);
+
+        // 3.6 Interruptions
+        await supabase.from('interruptions').delete().eq('project_id', projectId);
+
+        // 3.7 Operational Activities
+        await supabase.from('operational_activities').delete().eq('project_id', projectId);
+
         // 4. Project
         const { error } = await supabase
             .from('projects')
