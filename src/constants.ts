@@ -100,4 +100,20 @@ export const SUSPENSION_TYPES = [
   'PNEUM 4E'
 ].sort();
 
+export const PRODUCT_CATEGORIES = [
+  'Furgão três eixos',
+  'Furgão dois eixos',
+  'Saider',
+  'Subchassi',
+  'Graneleiro',
+  'Basculante',
+  'Carga Seca',
+  'Componentes',
+  'Sobre chassi furgão',
+  'SR Furgão MEC 3E',
+  'SR Furgão MEC 2E',
+  'SR Sider MEC 3E',
+  'Outros'
+].sort();
+
 export const STORAGE_KEY = 'design_track_pro_data';

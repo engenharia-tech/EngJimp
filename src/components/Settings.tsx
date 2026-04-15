@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Settings as SettingsIcon, Save, Mail, Server, Shield, User as UserIcon, DollarSign, Globe, Send, CheckCircle2, AlertCircle, Eye, EyeOff, Clock } from 'lucide-react';
 import { AppSettings, User } from '../types';
 import { useToast } from './Toast';
+import { useLanguage } from '../i18n/LanguageContext';
 import { recalculateAllInterruptionTimes, recalculateAllProjectTimes } from '../services/storageService';
 
 interface SettingsProps {
@@ -18,6 +19,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
   const [showPassword, setShowPassword] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const { addToast } = useToast();
+  const { t } = useLanguage();
 
   const calculatedRate = useMemo(() => {
     const relevantUsers = users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
@@ -87,7 +89,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
   };
 
   const handleRecalculateTimes = async () => {
-    if (!window.confirm('ISSO IRÁ RECALCULAR O TEMPO TOTAL DE TODAS AS PARADAS E PROJETOS FINALIZADOS COM BASE NO EXPEDIENTE ATUAL. DESEJA CONTINUAR?')) return;
+    if (!window.confirm(t('confirmRecalculateDesc'))) return;
     
     setIsRecalculating(true);
     try {

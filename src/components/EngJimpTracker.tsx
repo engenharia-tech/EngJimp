@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X, Loader2, Search } from 'lucide-react';
 import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea, ProjectRequest, ProjectRequestStatus, AppState } from '../types';
-import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES, SUSPENSION_TYPES } from '../constants';
+import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES, SUSPENSION_TYPES, PRODUCT_CATEGORIES } from '../constants';
 import { calcActiveSeconds, isWorkingHour } from '../utils/workdayCalc';
 import { fetchUsers } from '../services/storageService';
 import { triggerExcelUpdate } from '../services/webhookService';
@@ -64,6 +64,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [nsManagementEstimate, setNsManagementEstimate] = useState('');
   const [nsNeedsBase, setNsNeedsBase] = useState(true);
   const [nsNeedsBox, setNsNeedsBox] = useState(true);
+  const [nsChassis, setNsChassis] = useState('');
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<ProjectRequest | null>(null);
   const [nsSearch, setNsSearch] = useState('');
@@ -76,6 +77,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [ns, setNs] = useState('');
   const [clientName, setClientName] = useState('');
   const [projectCode, setProjectCode] = useState('');
+  const [chassis, setChassis] = useState('');
   const [type, setType] = useState<ProjectType>(ProjectType.RELEASE);
   const [implementType, setImplementType] = useState<ImplementType>(ImplementType.BASE);
   const [flooringType, setFlooringType] = useState('');
@@ -140,7 +142,10 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       return (
         request.ns.toLowerCase().includes(search) ||
         (request.clientName || '').toLowerCase().includes(search) ||
-        (request.productType || '').toLowerCase().includes(search)
+        (request.productType || '').toLowerCase().includes(search) ||
+        (request.flooring || '').toLowerCase().includes(search) ||
+        (request.setup || '').toLowerCase().includes(search) ||
+        (request.chassisNumber || '').toLowerCase().includes(search)
       );
     });
   }, [projectRequests, nsSearch]);
@@ -292,6 +297,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         ns,
         clientName,
         projectCode,
+        chassisNumber: chassis,
         type,
         implementType,
         flooringType: shouldShowFlooring ? flooringType : undefined,
@@ -313,6 +319,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       setNs('');
       setClientName('');
       setProjectCode('');
+      setChassis('');
       setNotes('');
       setFlooringType('');
       setEstHours('');
@@ -321,7 +328,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       setSelectedRequest(null);
     } catch (error) {
       console.error("Error starting project:", error);
-      addToast(t('errorStartingProject') || 'Erro ao iniciar projeto', 'error');
+      addToast(t('errorStartingProject'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -349,7 +356,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     try {
       const nsVal = selectedRequest.ns;
       const clientVal = selectedRequest.clientName;
-      const notesVal = `Produto: ${selectedRequest.productType}\nDimensão: ${selectedRequest.dimension}\nAssoalho: ${selectedRequest.flooring}\nSetup: ${selectedRequest.setup}`;
+      const notesVal = `${t('productLabel')}: ${selectedRequest.productType}\n${t('dimensionLabel')}: ${selectedRequest.dimension}\n${t('flooringLabel')}: ${selectedRequest.flooring}\n${t('setupLabel')}: ${selectedRequest.setup}`;
       
       // Designer estimate in seconds
       const estSec = (parseInt(pickDesignerEstHours) || 0) * 3600 + (parseInt(pickDesignerEstMinutes) || 0) * 60;
@@ -362,6 +369,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           id: crypto.randomUUID(),
           ns: nsVal,
           clientName: clientVal,
+          chassisNumber: selectedRequest.chassisNumber,
           type: ProjectType.RELEASE,
           implementType: partType,
           startTime: new Date().toISOString(),
@@ -449,12 +457,13 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
             dimension: nsDimension,
             flooring: nsFlooring,
             setup: nsSetup,
+            chassisNumber: nsChassis,
             needsBase: nsNeedsBase,
             needsBox: nsNeedsBox,
             managementEstimate: parseFloat(nsManagementEstimate) || 0,
           };
           await onUpdateProjectRequest(updatedRequest);
-          addToast(t('nsUpdatedSuccess') || 'NS ATUALIZADA COM SUCESSO', 'success');
+          addToast(t('nsUpdatedSuccess'), 'success');
         }
         setEditingRequestId(null);
       } else {
@@ -466,6 +475,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           dimension: nsDimension,
           flooring: nsFlooring,
           setup: nsSetup,
+          chassisNumber: nsChassis,
           needsBase: nsNeedsBase,
           needsBox: nsNeedsBox,
           managementEstimate: parseFloat(nsManagementEstimate) || 0,
@@ -484,13 +494,14 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       setNsDimension('');
       setNsFlooring('');
       setNsSetup('');
+      setNsChassis('');
       setNsManagementEstimate('');
       setNsNeedsBase(true);
       setNsNeedsBox(true);
       setShowNSForm(false);
     } catch (error) {
       console.error("Error registering NS:", error);
-      addToast(t('errorRegisteringNS') || 'Erro ao registrar NS', 'error');
+      addToast(t('errorRegisteringNS'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -504,6 +515,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     setNsDimension(request.dimension || '');
     setNsFlooring(request.flooring || '');
     setNsSetup(request.setup || '');
+    setNsChassis(request.chassisNumber || '');
     setNsManagementEstimate(request.managementEstimate?.toString() || '');
     setNsNeedsBase(request.needsBase);
     setNsNeedsBox(request.needsBox);
@@ -589,7 +601,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       setLastHeartbeat(Date.now());
     } catch (error) {
       console.error("Error resuming project:", error);
-      addToast(t('errorResumingProject') || 'Erro ao retomar projeto', 'error');
+      addToast(t('errorResumingProject'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -658,7 +670,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       setPauseSector('');
     } catch (error) {
       console.error("Error pausing project:", error);
-      addToast(t('errorPausingProject') || 'Erro ao pausar projeto', 'error');
+      addToast(t('errorPausingProject'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -685,129 +697,126 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     // Start finalizing process
     setIsFinalizing(true);
     
-    // Set a 45-second timeout to re-enable the button if needed
-    setTimeout(() => {
-      setIsFinalizing(false);
-    }, 45000);
-
-    // Final Calculation using Working Hours
-    const start = new Date(activeProject.startTime);
-    const now = new Date();
-    
-    // 1. Total Working Time
-    const totalWorkingSeconds = calcActiveSeconds(start, now, settings, activeProject.isOvertime);
-
-    // 2. Subtract Working Time spent in Pauses
-    let totalPauseWorkingSeconds = 0;
-    activeProject.pauses.forEach(p => {
-        if (p.durationSeconds > 0) {
-            const pStart = new Date(p.timestamp);
-            const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
-            totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, activeProject.isOvertime);
-        }
-    });
-
-    const finalSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
-    const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
-
-    // --- NEW CALCULATIONS ---
-    // Calculate interruption seconds for this project ID (with NS fallback for legacy data)
-    const projectInterruptions = interruptions.filter(i => {
-      if (i.projectId) return i.projectId === activeProject.id && i.status === 'Resolvido';
-      return i.projectNs === activeProject.ns && i.status === 'Resolvido';
-    });
-
-    const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
-    const totalSeconds = finalSeconds + interruptionSeconds;
-    
-    // Use the hourly rate passed from settings (which is already the effective rate)
-    const hourlyRate = settings.hourlyCost;
-
-    const productiveCost = (finalSeconds / 3600) * hourlyRate;
-    const interruptionCost = (interruptionSeconds / 3600) * hourlyRate;
-    const totalCost = productiveCost + interruptionCost;
-
-    const finishedProject: ProjectSession = {
-      ...activeProject,
-      endTime: new Date().toISOString(),
-      totalActiveSeconds: finalSeconds,
-      interruptionSeconds,
-      totalSeconds,
-      productiveCost,
-      interruptionCost,
-      totalCost,
-      estimatedSeconds: estimatedSeconds > 0 ? estimatedSeconds : activeProject.estimatedSeconds,
-      status: 'COMPLETED'
-    };
-
-    // Update Project Request status if linked
-    const linkedRequest = projectRequests.find(r => r.baseProjectId === activeProject.id || r.boxProjectId === activeProject.id);
-    if (linkedRequest) {
-      const isBase = linkedRequest.baseProjectId === activeProject.id;
-      const isBox = linkedRequest.boxProjectId === activeProject.id;
-      
-      const updatedRequest = { ...linkedRequest };
-      
-      const currentIsBase = activeProject.implementType === ImplementType.BASE;
-      
-      // Check if the OTHER part is already completed
-      // We need to look at the projects list to see if the other projectId is COMPLETED
-      const otherProjectId = currentIsBase ? updatedRequest.boxProjectId : updatedRequest.baseProjectId;
-      const otherNeeded = currentIsBase ? updatedRequest.needsBox : updatedRequest.needsBase;
-      
-      let otherDone = !otherNeeded;
-      if (otherNeeded && otherProjectId) {
-        const otherProject = allProjects.find(p => p.id === otherProjectId);
-        if (otherProject && otherProject.status === 'COMPLETED') {
-          otherDone = true;
-        }
-      }
-
-      if (otherDone) {
-        updatedRequest.status = ProjectRequestStatus.COMPLETED;
-      }
-      
-      onUpdateProjectRequest(updatedRequest);
-    }
-
-    // 1. Update DB
     try {
-        console.log("Finalizing project in DB:", finishedProject.ns);
-        await onUpdate(finishedProject);
-        console.log("Project updated successfully in DB.");
+      // Final Calculation using Working Hours
+      const start = new Date(activeProject.startTime);
+      const now = new Date();
+      
+      // 1. Total Working Time
+      const totalWorkingSeconds = calcActiveSeconds(start, now, settings, activeProject.isOvertime);
+
+      // 2. Subtract Working Time spent in Pauses
+      let totalPauseWorkingSeconds = 0;
+      activeProject.pauses.forEach(p => {
+          if (p.durationSeconds > 0) {
+              const pStart = new Date(p.timestamp);
+              const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
+              totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, activeProject.isOvertime);
+          }
+      });
+
+      const finalSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
+      const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
+
+      // --- NEW CALCULATIONS ---
+      // Calculate interruption seconds for this project ID (with NS fallback for legacy data)
+      const projectInterruptions = interruptions.filter(i => {
+        if (i.projectId) return i.projectId === activeProject.id && i.status === InterruptionStatus.RESOLVED;
+        return i.projectNs === activeProject.ns && i.status === InterruptionStatus.RESOLVED;
+      });
+
+      const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
+      const totalSeconds = finalSeconds + interruptionSeconds;
+      
+      // Use the hourly rate passed from settings (which is already the effective rate)
+      const hourlyRate = settings.hourlyCost;
+
+      const productiveCost = (finalSeconds / 3600) * hourlyRate;
+      const interruptionCost = (interruptionSeconds / 3600) * hourlyRate;
+      const totalCost = productiveCost + interruptionCost;
+
+      const finishedProject: ProjectSession = {
+        ...activeProject,
+        endTime: new Date().toISOString(),
+        totalActiveSeconds: finalSeconds,
+        interruptionSeconds,
+        totalSeconds,
+        productiveCost,
+        interruptionCost,
+        totalCost,
+        estimatedSeconds: estimatedSeconds > 0 ? estimatedSeconds : activeProject.estimatedSeconds,
+        status: 'COMPLETED'
+      };
+
+      // Update Project Request status if linked
+      const linkedRequest = projectRequests.find(r => r.baseProjectId === activeProject.id || r.boxProjectId === activeProject.id);
+      if (linkedRequest) {
+        const isBase = linkedRequest.baseProjectId === activeProject.id;
+        const isBox = linkedRequest.boxProjectId === activeProject.id;
         
-        // Close modal and clear active project immediately after DB success
-        setActiveProject(null);
-        setShowFinishModal(false);
+        const updatedRequest = { ...linkedRequest };
         
-        // 2. Send Notifications (in background, don't block UI)
-        console.log("Triggering notifications...");
-        sendTeamsNotification(finishedProject);
+        const currentIsBase = activeProject.implementType === ImplementType.BASE;
         
-        // Only send email if it hasn't been sent for this project in this session
-        if (!sentEmailProjectIds.includes(finishedProject.id)) {
-            console.log("Sending email notification for project:", finishedProject.ns);
-            sendEmailNotification(finishedProject).then(() => {
-                console.log("Email notification process finished.");
-                setSentEmailProjectIds(prev => [...prev, finishedProject.id]);
-            }).catch(err => {
-                console.error("Delayed email error:", err);
-            });
-        } else {
-            console.log("Email already sent for this project ID in this session.");
+        // Check if the OTHER part is already completed
+        // We need to look at the projects list to see if the other projectId is COMPLETED
+        const otherProjectId = currentIsBase ? updatedRequest.boxProjectId : updatedRequest.baseProjectId;
+        const otherNeeded = currentIsBase ? updatedRequest.needsBox : updatedRequest.needsBase;
+        
+        let otherDone = !otherNeeded;
+        if (otherNeeded && otherProjectId) {
+          const otherProject = allProjects.find(p => p.id === otherProjectId);
+          if (otherProject && otherProject.status === 'COMPLETED') {
+            otherDone = true;
+          }
+        }
+
+        if (otherDone) {
+          updatedRequest.status = ProjectRequestStatus.COMPLETED;
         }
         
-        // 3. Trigger Excel Integration
-        triggerExcelUpdate(finishedProject, currentUser).catch(err => {
-            console.error("Excel update error:", err);
-        });
+        onUpdateProjectRequest(updatedRequest);
+      }
 
-        // Reset form
-        setEstHours('');
-        setEstMinutes('');
+      // 1. Update DB
+      console.log("Finalizing project in DB:", finishedProject.ns);
+      await onUpdate(finishedProject);
+      console.log("Project updated successfully in DB.");
+      
+      // Close modal and clear active project immediately after DB success
+      setActiveProject(null);
+      setShowFinishModal(false);
+      
+      // 2. Send Notifications (in background, don't block UI)
+      console.log("Triggering notifications...");
+      sendTeamsNotification(finishedProject);
+      
+      // Only send email if it hasn't been sent for this project in this session
+      if (!sentEmailProjectIds.includes(finishedProject.id)) {
+          console.log("Sending email notification for project:", finishedProject.ns);
+          sendEmailNotification(finishedProject).then(() => {
+              console.log("Email notification process finished.");
+              setSentEmailProjectIds(prev => [...prev, finishedProject.id]);
+          }).catch(err => {
+              console.error("Delayed email error:", err);
+          });
+      } else {
+          console.log("Email already sent for this project ID in this session.");
+      }
+      
+      // 3. Trigger Excel Integration
+      triggerExcelUpdate(finishedProject, currentUser).catch(err => {
+          console.error("Excel update error:", err);
+      });
+
+      // Reset form
+      setEstHours('');
+      setEstMinutes('');
     } catch (error) {
-        console.error("Error during project finalization:", error);
-        addToast("Erro ao finalizar projeto. Tente novamente.", "error");
+      console.error("Error during project finalization:", error);
+      addToast(t('errorFinishingProject'), "error");
+    } finally {
+      setIsFinalizing(false);
     }
   };
 
@@ -1065,7 +1074,7 @@ JIMPNEXUS
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
                 <Layers className="w-5 h-5 mr-2 text-orange-600 dark:text-orange-400" />
-                FILA DE NS (PEDIDOS)
+                {t('nsQueueTitle')}
               </h3>
               
               <div className="flex flex-1 w-full md:w-auto max-w-md gap-2">
@@ -1075,7 +1084,7 @@ JIMPNEXUS
                     type="text"
                     value={nsSearch}
                     onChange={e => setNsSearch(e.target.value)}
-                    placeholder="Buscar por NS, Cliente ou Produto..."
+                    placeholder={t('searchPlaceholder')}
                     className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-slate-900 border border-orange-100 dark:border-orange-900/30 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 outline-none dark:text-white"
                   />
                 </div>
@@ -1089,6 +1098,7 @@ JIMPNEXUS
                       setNsDimension('');
                       setNsFlooring('');
                       setNsSetup('');
+                      setNsChassis('');
                       setNsManagementEstimate('');
                       setNsNeedsBase(true);
                       setNsNeedsBox(true);
@@ -1098,7 +1108,7 @@ JIMPNEXUS
                   className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold whitespace-nowrap"
                 >
                   {showNSForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  {showNSForm ? t('cancel') : 'CADASTRAR NS'}
+                  {showNSForm ? t('cancel') : t('registerNs')}
                 </button>
               </div>
             </div>
@@ -1106,27 +1116,27 @@ JIMPNEXUS
             {showNSForm && (
               <div id="ns-form-container" className="mb-6 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50 dark:bg-orange-900/10 animate-in slide-in-from-top duration-200">
                 <h4 className="font-bold text-orange-800 dark:text-orange-300 mb-4 uppercase">
-                  {editingRequestId ? 'EDITAR PEDIDO NA FILA' : 'NOVO PEDIDO PARA A FILA'}
+                  {editingRequestId ? t('editOrderInQueue') : t('newOrderForQueue')}
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                   <div>
-                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">CLIENTE</label>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('client')}</label>
                     <input 
                       type="text" 
                       value={nsClient}
                       onChange={e => setNsClient(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="NOME DO CLIENTE"
+                      placeholder={t('clientNamePlaceholder')}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">NÚMERO DA NS</label>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('nsNumber')}</label>
                     <input 
                       type="text" 
                       value={nsNumber}
                       onChange={e => setNsNumber(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="EX: 9500"
+                      placeholder={t('nsNumberPlaceholder')}
                     />
                   </div>
                   <div>
@@ -1137,7 +1147,7 @@ JIMPNEXUS
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
                     >
                       <option value="">{t('select')}</option>
-                      {IMPLEMENT_TYPES.map(type => <option key={type} value={type}>{t(type.toLowerCase())}</option>)}
+                      {PRODUCT_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                     </select>
                   </div>
                   <div>
@@ -1147,7 +1157,7 @@ JIMPNEXUS
                       value={nsDimension}
                       onChange={e => setNsDimension(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="EX: 15,00 X 2,590"
+                      placeholder={t('dimensionPlaceholder')}
                     />
                   </div>
                   <div>
@@ -1173,14 +1183,24 @@ JIMPNEXUS
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">ESTIMATIVA GERENCIAL (H)</label>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('bastidor')}</label>
+                    <input 
+                      type="text" 
+                      value={nsChassis}
+                      onChange={e => setNsChassis(e.target.value)}
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      placeholder={t('chassisNumberPlaceholder')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-orange-800 dark:text-orange-300 mb-1">{t('managementEstimate')}</label>
                     <input 
                       type="number" 
                       step="0.5"
                       value={nsManagementEstimate}
                       onChange={e => setNsManagementEstimate(e.target.value)}
                       className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
-                      placeholder="EX: 8.5"
+                      placeholder={t('managementEstimatePlaceholder')}
                     />
                   </div>
                   <div className="flex items-end gap-4 pb-1">
@@ -1211,7 +1231,7 @@ JIMPNEXUS
                     className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                   >
                     {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    {editingRequestId ? 'ATUALIZAR PEDIDO' : 'SALVAR PEDIDO'}
+                    {editingRequestId ? t('updateOrder') : t('saveOrder')}
                   </button>
                 </div>
               </div>
@@ -1220,7 +1240,7 @@ JIMPNEXUS
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredRequests.length === 0 ? (
                 <div className="col-span-full py-8 text-center text-gray-500 dark:text-slate-400 italic">
-                  {nsSearch ? 'NENHUM RESULTADO ENCONTRADO PARA A BUSCA.' : 'NENHUMA NS PENDENTE NA FILA.'}
+                  {nsSearch ? t('noResultsFound') : t('noPendingNs')}
                 </div>
               ) : (
                 filteredRequests.map(request => (
@@ -1232,14 +1252,14 @@ JIMPNEXUS
                           onClick={() => handlePickRequest(request)}
                           disabled={isSaving}
                           className="p-1.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded hover:bg-orange-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Projetar este pedido"
+                          title={t('designThisOrder')}
                         >
                           {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                         </button>
                         <button 
                           onClick={() => handleEditRequest(request)}
                           className="p-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-600 hover:text-white transition-all"
-                          title="Editar pedido"
+                          title={t('editOrder')}
                         >
                           <Edit className="w-4 h-4" />
                         </button>
@@ -1255,7 +1275,7 @@ JIMPNEXUS
                           }}
                           disabled={isSaving}
                           className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded hover:bg-red-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Excluir pedido"
+                          title={t('deleteOrder')}
                         >
                           {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                         </button>
@@ -1267,24 +1287,25 @@ JIMPNEXUS
                         <Truck className="w-3 h-3" /> {request.productType}
                       </div>
                       <div className="grid grid-cols-2 gap-x-2 text-[10px] text-gray-500 dark:text-slate-500">
-                        <span className="truncate" title={request.dimension}>DIM: {request.dimension}</span>
-                        <span className="truncate" title={request.flooring}>ASS: {request.flooring}</span>
-                        <span className="truncate" title={request.setup}>SET: {request.setup}</span>
-                        <span className="font-bold text-orange-600 dark:text-orange-400">Est. Ger: {request.managementEstimate}h</span>
-                        <span className="font-bold text-blue-600 dark:text-blue-400">Est. Proj: {(request.designerEstimate || 0).toFixed(1)}h</span>
+                        <span className="truncate" title={request.dimension}>{t('dimAbbr')}: {request.dimension}</span>
+                        <span className="truncate" title={request.flooring}>{t('assAbbr')}: {request.flooring}</span>
+                        <span className="truncate" title={request.setup}>{t('setAbbr')}: {request.setup}</span>
+                        <span className="truncate col-span-2" title={request.chassisNumber}>{t('basAbbr')}: {request.chassisNumber || '-'}</span>
+                        <span className="font-bold text-orange-600 dark:text-orange-400">{t('estGerAbbr')}: {request.managementEstimate}h</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400">{t('estProjAbbr')}: {(request.designerEstimate || 0).toFixed(1)}h</span>
                         <span className="font-bold text-green-600 dark:text-green-400 col-span-2">
-                          Tempo Efetivo: {(allProjects.filter(p => p.ns === request.ns).reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600).toFixed(1)}h
+                          {t('effectiveTime')}: {(allProjects.filter(p => p.ns === request.ns).reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600).toFixed(1)}h
                         </span>
                       </div>
                       <div className="flex gap-2 mt-2">
                         {request.needsBase && (
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${request.baseProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                            BASE {request.baseProjectId ? '(OK)' : ''}
+                            {t('base')} {request.baseProjectId ? `(${t('ok')})` : ''}
                           </span>
                         )}
                         {request.needsBox && (
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${request.boxProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                            CX {request.boxProjectId ? '(OK)' : ''}
+                            {t('box')} {request.boxProjectId ? `(${t('ok')})` : ''}
                           </span>
                         )}
                       </div>
@@ -1412,6 +1433,19 @@ JIMPNEXUS
                       </div>
                     </div>
                     <div>
+                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('bastidor')}</label>
+                      <div className="relative">
+                        <Hash className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
+                        <input 
+                          type="text" 
+                          value={chassis}
+                          onChange={e => setChassis(e.target.value)}
+                          className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                          placeholder={t('chassisNumberPlaceholder')}
+                        />
+                      </div>
+                    </div>
+                    <div>
                       <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('projectType')}</label>
                       <select 
                         value={type}
@@ -1467,7 +1501,7 @@ JIMPNEXUS
                             placeholder={t('hours')}
                             min="0"
                           />
-                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">H</span>
+                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">{t('hoursAbbr')}</span>
                         </div>
                         <div className="flex-1 relative">
                           <input 
@@ -1479,7 +1513,7 @@ JIMPNEXUS
                             min="0"
                             max="59"
                           />
-                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">M</span>
+                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">{t('minutesAbbr')}</span>
                         </div>
                       </div>
                     </div>
@@ -1676,7 +1710,7 @@ JIMPNEXUS
                                 onChange={e => setVarFiles(e.target.checked)}
                                 className="w-4 h-4 text-purple-600 dark:text-purple-400 rounded mr-1 dark:bg-black dark:border-slate-600"
                              />
-                             <span className="text-xs font-bold text-gray-600 dark:text-slate-400">OK</span>
+                             <span className="text-xs font-bold text-gray-600 dark:text-slate-400">{t('ok')}</span>
                          </label>
                      </div>
                      <div className="md:col-span-1">
@@ -1717,7 +1751,7 @@ JIMPNEXUS
                                      <td className="p-3 text-center">
                                          <button 
                                             onClick={() => handleToggleVariationFiles(v.id)}
-                                            title={v.filesGenerated ? "Arquivos Gerados (Clique para desfazer)" : "Marcar arquivos como gerados"}
+                                            title={v.filesGenerated ? t('filesGenerated') : t('markAsGenerated')}
                                             className={`flex items-center justify-center p-2 rounded mx-auto transition-colors ${
                                                 v.filesGenerated 
                                                 ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 shadow-sm' 
@@ -1725,7 +1759,7 @@ JIMPNEXUS
                                             }`}
                                          >
                                             {v.filesGenerated ? <FileCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                                            <span className="ml-1 text-xs font-bold">{v.filesGenerated ? 'OK' : 'PENDENTE'}</span>
+                                            <span className="ml-1 text-xs font-bold">{v.filesGenerated ? t('ok') : t('pendingAbbr')}</span>
                                          </button>
                                      </td>
                                      <td className="p-3 text-right">
@@ -1741,7 +1775,7 @@ JIMPNEXUS
                              {activeProject.variations.length === 0 && (
                                  <tr>
                                      <td colSpan={6} className="p-6 text-center text-gray-400 dark:text-slate-500 italic">
-                                         NENHUMA VARIAÇÃO REGISTRADA PARA ESTE PROJETO AINDA.
+                                         {t('noVariationsYet')}
                                      </td>
                                  </tr>
                              )}
@@ -1759,7 +1793,7 @@ JIMPNEXUS
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center sticky top-0 bg-white dark:bg-black z-10">
                     <h3 className="text-xl font-bold text-gray-800 dark:text-slate-100 flex items-center">
                         <Info className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
-                        DETALHES DO PROJETO
+                        {t('projectDetails')}
                     </h3>
                     <button 
                         onClick={() => setSelectedProjectDetails(null)}
@@ -1777,19 +1811,19 @@ JIMPNEXUS
                             <span className="text-lg font-mono font-bold text-gray-800 dark:text-slate-100">{selectedProjectDetails.ns}</span>
                         </div>
                         <div>
-                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">CLIENTE</span>
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">{t('client')}</span>
                             <span className="text-lg font-medium text-gray-800 dark:text-slate-100">{selectedProjectDetails.clientName}</span>
                         </div>
                         <div>
-                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">RESPONSÁVEL</span>
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">{t('responsible')}</span>
                             <span className="text-sm font-medium text-gray-800 dark:text-slate-200">
-                                {users.find(u => u.id === selectedProjectDetails.userId)?.name || 'NÃO ATRIBUÍDO'}
+                                {users.find(u => u.id === selectedProjectDetails.userId)?.name || t('notAssigned')}
                             </span>
                         </div>
                         <div>
-                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">STATUS</span>
+                            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">{t('status')}</span>
                             <span className={`text-sm font-bold ${selectedProjectDetails.status === 'IN_PROGRESS' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}`}>
-                                {selectedProjectDetails.status === 'IN_PROGRESS' ? 'EM ANDAMENTO' : 'FINALIZADO'}
+                                {selectedProjectDetails.status === 'IN_PROGRESS' ? t('inProgress') : t('finished')}
                             </span>
                         </div>
                     </div>
@@ -1797,19 +1831,19 @@ JIMPNEXUS
                     {/* Estimates */}
                     <div className="grid grid-cols-3 gap-4">
                         <div className="bg-orange-50 dark:bg-orange-900/10 p-3 rounded-lg border border-orange-100 dark:border-orange-900/30">
-                            <span className="text-[10px] text-orange-800 dark:text-orange-300 uppercase font-bold block">EST. GERENCIAL</span>
+                            <span className="text-[10px] text-orange-800 dark:text-orange-300 uppercase font-bold block">{t('managementEstimateAbbr')}</span>
                             <span className="text-lg font-bold text-orange-900 dark:text-orange-200">
                                 {projectRequests.find(r => r.ns === selectedProjectDetails.ns)?.managementEstimate || 0}H
                             </span>
                         </div>
                         <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                            <span className="text-[10px] text-blue-800 dark:text-blue-300 uppercase font-bold block">EST. PROJETISTA</span>
+                            <span className="text-[10px] text-blue-800 dark:text-blue-300 uppercase font-bold block">{t('designerEstimateAbbr')}</span>
                             <span className="text-lg font-bold text-blue-900 dark:text-blue-200">
                                 {selectedProjectDetails.estimatedSeconds ? (selectedProjectDetails.estimatedSeconds / 3600).toFixed(1) : '0.0'}H
                             </span>
                         </div>
                         <div className="bg-green-50 dark:bg-green-900/10 p-3 rounded-lg border border-green-100 dark:border-green-900/30">
-                            <span className="text-[10px] text-green-800 dark:text-green-300 uppercase font-bold block">TEMPO EFETIVO</span>
+                            <span className="text-[10px] text-green-800 dark:text-green-300 uppercase font-bold block">{t('effectiveTime')}</span>
                             <span className="text-lg font-bold text-green-900 dark:text-green-200">
                                 {(selectedProjectDetails.totalActiveSeconds / 3600).toFixed(1)}H
                             </span>
@@ -1820,10 +1854,10 @@ JIMPNEXUS
                     <div>
                         <h4 className="text-sm font-bold text-gray-700 dark:text-slate-300 mb-2 flex items-center">
                             <Briefcase className="w-4 h-4 mr-2 text-gray-500 dark:text-slate-400" />
-                            CONTEXTO / OBSERVAÇÕES (PARA QUE)
+                            {t('contextObservations')}
                         </h4>
                         <div className="bg-yellow-50 dark:bg-amber-900/20 p-4 rounded-lg border border-yellow-100 dark:border-amber-900/30 text-gray-700 dark:text-slate-300 text-sm whitespace-pre-wrap">
-                            {selectedProjectDetails.notes || "NENHUMA OBSERVAÇÃO REGISTRADA."}
+                            {selectedProjectDetails.notes || t('noObservations')}
                         </div>
                     </div>
 
@@ -1831,15 +1865,15 @@ JIMPNEXUS
                     <div>
                         <h4 className="text-sm font-bold text-gray-700 dark:text-slate-300 mb-2 flex items-center">
                             <Layers className="w-4 h-4 mr-2 text-gray-500 dark:text-slate-400" />
-                            HISTÓRICO DE VARIAÇÕES (O QUE)
+                            {t('variationHistory')}
                         </h4>
                         {selectedProjectDetails.variations.length > 0 ? (
                             <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
                                 <table className="w-full text-sm text-left">
                                     <thead className="bg-gray-100 dark:bg-black text-gray-600 dark:text-slate-400 font-semibold">
                                         <tr>
-                                            <th className="p-3">DE (ANTIGO)</th>
-                                            <th className="p-3">PARA (NOVO)</th>
+                                            <th className="p-3">{t('fromOld')}</th>
+                                            <th className="p-3">{t('toNew')}</th>
                                             <th className="p-3">{t('description').toUpperCase()}</th>
                                             <th className="p-3">{t('type').toUpperCase()}</th>
                                         </tr>
@@ -1862,7 +1896,7 @@ JIMPNEXUS
                             </div>
                         ) : (
                             <div className="text-center p-6 bg-gray-50 dark:bg-black rounded-lg border border-gray-200 dark:border-slate-700 text-gray-400 dark:text-slate-500 italic">
-                                NENHUMA VARIAÇÃO REGISTRADA.
+                                {t('noVariations')}
                             </div>
                         )}
                     </div>
@@ -1873,7 +1907,7 @@ JIMPNEXUS
                         onClick={() => setSelectedProjectDetails(null)}
                         className="px-6 py-2 bg-gray-200 dark:bg-black hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-800 dark:text-slate-200 font-bold rounded-lg transition-colors"
                     >
-                        FECHAR
+                        {t('close')}
                     </button>
                 </div>
             </div>
@@ -1886,31 +1920,31 @@ JIMPNEXUS
           <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-orange-100 dark:border-orange-900/50">
             <h3 className="text-lg font-bold mb-4 flex items-center text-orange-600 dark:text-orange-400">
               <Play className="w-5 h-5 mr-2" />
-              Iniciar Projeto NS {selectedRequest.ns}
+              {t('startProjectNs', { ns: selectedRequest.ns })}
             </h3>
             
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-2">O QUE VOCÊ VAI PROJETAR?</label>
+                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-2">{t('whatWillYouDesign')}</label>
                 <div className="grid grid-cols-1 gap-2">
                   {selectedRequest.needsBase && !selectedRequest.baseProjectId && (
                     <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BASE' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
                       <input type="radio" name="pickPart" value="BASE" checked={pickPart === 'BASE'} onChange={() => setPickPart('BASE')} className="hidden" />
-                      <div className="flex-1 font-bold">SOMENTE BASE</div>
+                      <div className="flex-1 font-bold">{t('onlyBase')}</div>
                       {pickPart === 'BASE' && <CheckSquare className="w-4 h-4" />}
                     </label>
                   )}
                   {selectedRequest.needsBox && !selectedRequest.boxProjectId && (
                     <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOX' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
                       <input type="radio" name="pickPart" value="BOX" checked={pickPart === 'BOX'} onChange={() => setPickPart('BOX')} className="hidden" />
-                      <div className="flex-1 font-bold">SOMENTE CAIXA DE CARGA</div>
+                      <div className="flex-1 font-bold">{t('onlyBox')}</div>
                       {pickPart === 'BOX' && <CheckSquare className="w-4 h-4" />}
                     </label>
                   )}
                   {selectedRequest.needsBase && !selectedRequest.baseProjectId && selectedRequest.needsBox && !selectedRequest.boxProjectId && (
                     <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOTH' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
                       <input type="radio" name="pickPart" value="BOTH" checked={pickPart === 'BOTH'} onChange={() => setPickPart('BOTH')} className="hidden" />
-                      <div className="flex-1 font-bold">BASE E CAIXA DE CARGA</div>
+                      <div className="flex-1 font-bold">{t('baseAndBox')}</div>
                       {pickPart === 'BOTH' && <CheckSquare className="w-4 h-4" />}
                     </label>
                   )}
@@ -1918,12 +1952,12 @@ JIMPNEXUS
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">SUA ESTIMATIVA (PROJETISTA)</label>
+                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('yourEstimateDesigner')}</label>
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
                     <input 
                       type="number" 
-                      placeholder="HORAS"
+                      placeholder={t('hours')}
                       value={pickDesignerEstHours}
                       onChange={e => setPickDesignerEstHours(e.target.value)}
                       className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
@@ -1933,7 +1967,7 @@ JIMPNEXUS
                   <div className="flex-1">
                     <input 
                       type="number" 
-                      placeholder="MINUTOS"
+                      placeholder={t('minutes')}
                       value={pickDesignerEstMinutes}
                       onChange={e => setPickDesignerEstMinutes(e.target.value)}
                       className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
@@ -1951,7 +1985,7 @@ JIMPNEXUS
                 }}
                 className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
-                CANCELAR
+                {t('cancel')}
               </button>
               <button 
                 onClick={handleConfirmPick}
@@ -1961,10 +1995,10 @@ JIMPNEXUS
                 {isSaving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {t('starting') || 'INICIANDO...'}
+                    {t('starting')}
                   </>
                 ) : (
-                  t('startNow') || 'INICIAR AGORA'
+                  t('startNow')
                 )}
               </button>
             </div>
@@ -1978,59 +2012,59 @@ JIMPNEXUS
           <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
             <h3 className="text-lg font-bold mb-4 flex items-center text-yellow-600 dark:text-amber-400">
               <Pause className="w-5 h-5 mr-2" />
-              PAUSAR PROJETO
+              {t('pauseProject')}
             </h3>
             <p className="text-gray-600 dark:text-slate-400 text-sm mb-4">
-              ISSO IRÁ PARAR O CRONÔMETRO. O PROJETO FICARÁ SALVO NA LISTA PARA RETORNO POSTERIOR.
+              {t('pauseProjectDesc')}
             </p>
             
             <div className="space-y-4 mb-6">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">MOTIVO DA PAUSA</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{t('pauseReasonLabel')}</label>
                     <select 
                         value={pauseReason}
                         onChange={e => setPauseReason(e.target.value)}
                         className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none dark:bg-black dark:text-white"
                     >
-                        <option value="">SELECIONE O MOTIVO...</option>
-                        <option value="Almoço / Intervalo">ALMOÇO / INTERVALO</option>
-                        <option value="Fim do Expediente">FIM DO EXPEDIENTE</option>
-                        <option value="Reunião">REUNIÃO</option>
-                        <option value="Troca de Projeto">TROCA DE PROJETO</option>
-                        <option value="Falta de Informações">FALTA DE INFORMAÇÕES</option>
-                        <option value="Incompatibilidade de Informações">INCOMPATIBILIDADE DE INFORMAÇÕES</option>
-                        <option value="Outros">OUTROS</option>
+                        <option value="">{t('selectReason')}</option>
+                        <option value="Almoço / Intervalo">{t('lunchBreak')}</option>
+                        <option value="Fim do Expediente">{t('endOfShift')}</option>
+                        <option value="Reunião">{t('meeting')}</option>
+                        <option value="Troca de Projeto">{t('switchProject')}</option>
+                        <option value="Falta de Informações">{t('lackOfInfo')}</option>
+                        <option value="Incompatibilidade de Informações">{t('infoIncompatibility')}</option>
+                        <option value="Outros">{t('others')}</option>
                     </select>
                 </div>
 
                 {(pauseReason === 'Falta de Informações' || pauseReason === 'Incompatibilidade de Informações') && (
                     <div className="animate-in slide-in-from-top-2 duration-200">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">SETOR CAUSADOR</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{t('causingSector')}</label>
                         <select 
                             value={pauseSector}
                             onChange={e => setPauseSector(e.target.value)}
                             className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none dark:bg-black dark:text-white"
                         >
-                            <option value="">SELECIONE O SETOR...</option>
-                            <option value="Comercial">COMERCIAL</option>
-                            <option value="Engenharia">ENGENHARIA</option>
-                            <option value="PCP">PCP</option>
-                            <option value="Produção">PRODUÇÃO</option>
-                            <option value="Cliente">CLIENTE</option>
-                            <option value="Vendas">VENDAS</option>
-                            <option value="Outros">OUTROS</option>
+                            <option value="">{t('selectSector')}</option>
+                            <option value="Comercial">{t('comercial')}</option>
+                            <option value="Engenharia">{t('engineering')}</option>
+                            <option value="PCP">{t('pcp')}</option>
+                            <option value="Produção">{t('production')}</option>
+                            <option value="Cliente">{t('client')}</option>
+                            <option value="Vendas">{t('sales')}</option>
+                            <option value="Outros">{t('others')}</option>
                         </select>
                     </div>
                 )}
 
                 {pauseReason === 'Outros' && (
                     <div className="animate-in slide-in-from-top-2 duration-200">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">ESPECIFIQUE O MOTIVO</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{t('specifyReason')}</label>
                         <input 
                             type="text" 
                             value={pauseSector} // Reuse pauseSector for other reason text
                             onChange={e => setPauseSector(e.target.value)}
-                            placeholder="DESCREVA O MOTIVO..."
+                            placeholder={t('reasonPlaceholder')}
                             className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none dark:bg-black dark:text-white"
                         />
                     </div>
@@ -2047,7 +2081,7 @@ JIMPNEXUS
                 disabled={isSaving}
                 className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
               >
-                CANCELAR
+                {t('cancel')}
               </button>
               <button 
                 onClick={confirmPauseAndExit}
@@ -2055,7 +2089,7 @@ JIMPNEXUS
                 className="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors flex items-center"
               >
                 {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                CONFIRMAR PAUSA
+                {t('confirmPause')}
               </button>
             </div>
           </div>
@@ -2068,20 +2102,20 @@ JIMPNEXUS
           <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
             <h3 className="text-lg font-bold mb-2 flex items-center text-red-600 dark:text-red-400">
               <CheckSquare className="w-5 h-5 mr-2" />
-              FINALIZAR LIBERAÇÃO
+              {t('finishRelease')}
             </h3>
             <p className="text-gray-600 dark:text-slate-400 text-sm mb-6">
-              REVISE O TEMPO ESTIMADO PARA ESTE PROJETO ANTES DE CONCLUIR.
+              {t('reviewEstimatedTime')}
             </p>
             
             <div className="space-y-4 mb-6">
                 <div className="p-4 bg-gray-50 dark:bg-black rounded-lg border border-gray-100 dark:border-slate-700">
-                    <div className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold mb-1">TEMPO REALIZADO (CRONÔMETRO)</div>
+                    <div className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold mb-1">{t('realizedTimeStopwatch')}</div>
                     <div className="text-2xl font-mono font-bold text-gray-800 dark:text-slate-100">{formatTime(elapsedSeconds)}</div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">TEMPO ESTIMADO (PLANEJADO)</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{t('estimatedTimePlanned')}</label>
                   <div className="flex gap-2">
                     <div className="flex-1 relative">
                       <input 
@@ -2089,10 +2123,10 @@ JIMPNEXUS
                         value={estHours}
                         onChange={e => setEstHours(e.target.value)}
                         className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
-                        placeholder="HORAS"
+                        placeholder={t('hours')}
                         min="0"
                       />
-                      <span className="absolute right-3 top-3.5 text-xs text-gray-400 dark:text-slate-500 font-bold">H</span>
+                      <span className="absolute right-3 top-3.5 text-xs text-gray-400 dark:text-slate-500 font-bold">{t('hoursAbbr')}</span>
                     </div>
                     <div className="flex-1 relative">
                       <input 
@@ -2100,11 +2134,11 @@ JIMPNEXUS
                         value={estMinutes}
                         onChange={e => setEstMinutes(e.target.value)}
                         className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
-                        placeholder="MIN"
+                        placeholder={t('minAbbr')}
                         min="0"
                         max="59"
                       />
-                      <span className="absolute right-3 top-3.5 text-xs text-gray-400 dark:text-slate-500 font-bold">M</span>
+                      <span className="absolute right-3 top-3.5 text-xs text-gray-400 dark:text-slate-500 font-bold">{t('minutesAbbr')}</span>
                     </div>
                   </div>
                 </div>
@@ -2115,7 +2149,7 @@ JIMPNEXUS
                 onClick={() => setShowFinishModal(false)}
                 className="flex-1 text-gray-500 dark:text-slate-400 px-4 py-3 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 transition-colors"
               >
-                VOLTAR
+                {t('back')}
               </button>
               <button 
                 onClick={confirmFinish}
@@ -2129,10 +2163,10 @@ JIMPNEXUS
                 {isFinalizing ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    PROCESSANDO...
+                    {t('processing')}
                   </>
                 ) : (
-                  'CONCLUIR E SALVAR'
+                  t('finishAndSave')
                 )}
               </button>
             </div>
@@ -2149,7 +2183,7 @@ JIMPNEXUS
           <div className="flex items-center justify-between mb-2 gap-4">
             <div className="flex items-center text-green-400 text-xs font-bold uppercase tracking-wider animate-pulse">
               <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
-              EM ANDAMENTO
+              {t('inProgress')}
             </div>
             <Maximize2 className="w-4 h-4 text-gray-400 group-hover:text-white" />
           </div>
@@ -2160,7 +2194,7 @@ JIMPNEXUS
             NS: {activeProject.ns}
           </div>
           <div className="text-xs text-blue-400 font-medium mt-2 border-t border-slate-700 pt-2">
-            CLIQUE PARA RETORNAR
+            {t('clickToReturn')}
           </div>
         </div>
       )}

@@ -939,7 +939,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm(t('confirmDeletion') || 'TEM CERTEZA QUE DESEJA EXCLUIR?')) {
+                            if (window.confirm(t('confirmDeletion'))) {
                               handleDeleteActivity(item.id);
                             }
                           }}

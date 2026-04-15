@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { askGemini } from '../lib/gemini';
 import { useLanguage } from '../i18n/LanguageContext';
-import { AppState, User } from '../types';
+import { AppState, User, InterruptionStatus } from '../types';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -149,7 +149,7 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser }) => {
     
     const completedProjects = projects.filter(p => p.status === 'COMPLETED');
     const inProgressProjects = projects.filter(p => p.status === 'IN_PROGRESS');
-    const openInterruptions = interruptions.filter(i => i.status === 'Aberto');
+    const openInterruptions = interruptions.filter(i => i.status === InterruptionStatus.OPEN);
 
     // Filter sensitive data based on role
     const isAdmin = ['GESTOR', 'CEO'].includes(currentUser.role);

@@ -643,7 +643,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     </p>
                     <button 
                         onClick={async () => {
-                            if(!window.confirm("ISSO ATUALIZARÁ O CUSTO DE TODOS OS PROJETOS NO BANCO DE DADOS. DESEJA CONTINUAR?")) return;
+                            if(!window.confirm(t('confirmRecalculateAllCosts'))) return;
                             setIsRecalculating(true);
                             const res = await recalculateAllProjectCosts();
                             setIsRecalculating(false);
@@ -732,7 +732,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                                 </div>
                                 <button 
                                     onClick={async () => {
-                                        if(!window.confirm("CONFIRMAR EXCLUSÃO DESTE ITEM?")) return;
+                                        if(!window.confirm(t('confirmDeletion'))) return;
                                         const res = await deleteProjectById(group.discard.id, group.discard.ns);
                                         if (res.success) {
                                             // Pop-up requested by user
