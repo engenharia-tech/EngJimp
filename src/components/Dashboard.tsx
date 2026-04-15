@@ -3,11 +3,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, ComposedChart, Line
 } from 'recharts';
-import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign } from 'lucide-react';
-import { AppState, User, InnovationType, ProjectType } from '../types';
+import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2 } from 'lucide-react';
+import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus } from '../types';
 import { analyzePerformance } from '../services/geminiService';
 import { fetchUsers } from '../services/storageService';
 import { useLanguage } from '../i18n/LanguageContext';
+import { PRODUCT_CATEGORIES, SUSPENSION_TYPES } from '../constants';
 
 interface DashboardProps {
   data: AppState;
@@ -48,8 +49,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [selectedDesignerForChart, setSelectedDesignerForChart] = useState<string>('ALL');
   const [selectedDesignerForReleases, setSelectedDesignerForReleases] = useState<string>('ALL');
   const [selectedInterruptionDesigner, setSelectedInterruptionDesigner] = useState<string>('ALL');
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedSuspension, setSelectedSuspension] = useState<string>('ALL');
 
-  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases']);
+  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report']);
 
   // Helper to normalize strings for comparison (remove accents and uppercase)
   const normalize = (str: string) => 
@@ -75,7 +78,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     return new Set(data.users.filter(u => u.role === 'PROCESSOS').map(u => u.id));
   }, [data.users]);
 
+  const months = useMemo(() => [
+    t('jan'), t('feb'), t('mar'), t('apr'), t('may'), t('jun'), 
+    t('jul'), t('aug'), t('sep'), t('oct'), t('nov'), t('dec')
+  ], [t]);
+
   // Filter Data Logic
+  const filteredRequests = useMemo(() => {
+    return data.projectRequests.filter(r => {
+      if (selectedCategory !== 'ALL' && r.productType !== selectedCategory) {
+        return false;
+      }
+
+      if (selectedSuspension !== 'ALL' && r.setup !== selectedSuspension) {
+        return false;
+      }
+
+      if (!startDate && !endDate) return true;
+
+      const rDate = new Date(r.createdAt).getTime();
+      
+      let start = 0;
+      if (startDate) {
+        const d = new Date(startDate);
+        if (!isNaN(d.getTime())) start = d.getTime();
+      }
+
+      let end = Infinity;
+      if (endDate) {
+        const d = new Date(endDate);
+        if (!isNaN(d.getTime())) {
+          d.setHours(23, 59, 59, 999);
+          end = d.getTime();
+        }
+      }
+
+      return rDate >= start && rDate <= end;
+    });
+  }, [data.projectRequests, selectedCategory, startDate, endDate]);
+
   const filteredProjects = useMemo(() => {
     return data.projects.filter(p => {
       // Exclude data from 'PROCESSOS' users
@@ -86,6 +127,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       // Role-based filtering: Designers only see their own data in the dashboard
       if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
         return false;
+      }
+
+      // Category Filter
+      if (selectedCategory !== 'ALL') {
+        const req = data.projectRequests.find(r => r.ns === p.ns);
+        if (req) {
+          if (req.productType !== selectedCategory) return false;
+        } else {
+          // Fallback to implementType if no request found
+          if (p.implementType !== (selectedCategory as any)) return false;
+        }
+      }
+
+      // Suspension Filter
+      if (selectedSuspension !== 'ALL') {
+        const req = data.projectRequests.find(r => r.ns === p.ns);
+        if (req) {
+          if (req.setup !== selectedSuspension) return false;
+        }
       }
 
       if (!startDate && !endDate) return true;
@@ -140,11 +200,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
    const filteredInnovations = useMemo(() => {
     return data.innovations.filter(inv => {
-      // Exclude data from 'PROCESSOS' users
-      if (inv.authorId && processUserIds.has(inv.authorId)) {
-        return false;
-      }
-
       if (!startDate && !endDate) return true;
 
       const iDate = inv.createdAt ? new Date(inv.createdAt).getTime() : 0;
@@ -219,17 +274,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   // 1.5 Calculate Total Savings (ALL APPROVED/IMPLEMENTED - regardless of period)
   const totalSavings = useMemo(() => {
     return data.innovations.reduce((acc, curr) => {
-        // Exclude data from 'PROCESSOS' users
-        if (curr.authorId && processUserIds.has(curr.authorId)) {
-            return acc;
-        }
         // Include PENDING as well since the label says "Predicted/Expected"
         if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED' || curr.status === 'PENDING') {
             return acc + (curr.totalAnnualSavings || 0);
         }
         return acc;
     }, 0);
-  }, [data.innovations, processUserIds]);
+  }, [data.innovations]);
 
   const totalHours = useMemo(() => {
     const seconds = filteredProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
@@ -258,7 +309,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     ]);
 
     return Array.from(allUserIds).map(userId => {
-        const userName = usersMap[userId] || (userId.length < 30 ? userId : 'Desconhecido');
+        const userName = usersMap[userId] || (userId.length < 30 ? userId : t('unknown'));
         
         // Always start with filteredProjects to respect role-based access
         const userProjects = filteredProjects.filter(p => {
@@ -319,7 +370,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   // --- NOVO GRÁFICO: Horas Realizadas vs Meta Mensal ---
   const hoursVsGoalData = useMemo(() => {
     const sums: Record<string, number> = {};
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     
     filteredProjects.forEach(p => {
       const date = new Date(p.endTime || p.startTime);
@@ -346,12 +396,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         
         return months.indexOf(monthA) - months.indexOf(monthB);
     });
-  }, [filteredProjects, selectedDesignerForChart, monthlyGoal]);
+  }, [filteredProjects, selectedDesignerForChart, monthlyGoal, months]);
 
   // 2. Bar Chart Data: Releases (Monthly, Yearly or Global)
   const barData = useMemo(() => {
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    
     if (releaseGrouping === 'GLOBAL') {
         return [{
             name: 'Total Global',
@@ -389,14 +437,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         }
         return a.name.localeCompare(b.name);
     });
-  }, [filteredProjects, releaseGrouping, selectedDesignerForReleases]);
+  }, [filteredProjects, releaseGrouping, selectedDesignerForReleases, months]);
 
   // 3. Removed: Issue Type Distribution (Pie Chart)
 
   // 4. Pie Chart: Implement Type Distribution
   const implementData = useMemo(() => {
     const counts = filteredProjects.reduce((acc, curr) => {
-      const type = curr.implementType || 'Não Informado';
+      const type = curr.implementType || t('notInformed');
       acc[type] = (acc[type] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
@@ -405,19 +453,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       name: key,
       value: counts[key]
     }));
-  }, [filteredProjects]);
+  }, [filteredProjects, t]);
 
   // 5. Bar Chart: Releases by Designer (Manager Only)
   const designerData = useMemo(() => {
     if (currentUser.role !== 'GESTOR') return [];
 
     const counts = filteredProjects.reduce((acc, curr) => {
-      const name = usersMap[curr.userId || ''] || (curr.userId && curr.userId.length < 30 ? curr.userId : 'Desconhecido');
+      const name = usersMap[curr.userId || ''] || (curr.userId && curr.userId.length < 30 ? curr.userId : t('unknown'));
       const date = new Date(curr.endTime || curr.startTime);
       
       let key = name;
       if (designerGrouping === 'MONTHLY') {
-          const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
           const month = months[date.getMonth()];
           const year = date.getFullYear().toString().slice(-2);
           key = `${name} (${month}/${year})`;
@@ -434,16 +481,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       name: key,
       liberacoes: counts[key]
     }));
-  }, [filteredProjects, currentUser.role, usersMap, designerGrouping]);
+  }, [filteredProjects, currentUser.role, usersMap, designerGrouping, months, t]);
 
   // 6. Stacked Bar Chart: Innovations by Status and Type
   const innovationChartData = useMemo(() => {
     const statuses = ['PENDING', 'APPROVED', 'IMPLEMENTED', 'REJECTED'];
     const labelMap: Record<string, string> = {
-        'PENDING': 'PENDENTE',
-        'APPROVED': 'APROVADO',
-        'IMPLEMENTED': 'IMPLEMENTADO',
-        'REJECTED': 'REJEITADO'
+        'PENDING': t('pending'),
+        'APPROVED': t('approved'),
+        'IMPLEMENTED': t('implemented'),
+        'REJECTED': t('rejected')
     };
 
     return statuses.map(status => {
@@ -467,7 +514,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const data: Record<string, { name: string, [key: string]: any }> = {};
 
     filteredProjects.forEach(p => {
-        const userName = usersMap[p.userId || ''] || (p.userId && p.userId.length < 30 ? p.userId : 'Desconhecido');
+        const userName = usersMap[p.userId || ''] || (p.userId && p.userId.length < 30 ? p.userId : t('unknown'));
         if (!data[userName]) {
             data[userName] = { 
                 name: userName, 
@@ -492,14 +539,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const allReasons = new Set<string>();
 
     filteredProjects.forEach(p => {
-        const userName = usersMap[p.userId || ''] || (p.userId && p.userId.length < 30 ? p.userId : 'Desconhecido');
+        const userName = usersMap[p.userId || ''] || (p.userId && p.userId.length < 30 ? p.userId : t('unknown'));
         if (!data[userName]) {
             data[userName] = { name: userName };
         }
         
         if (p.pauses && p.pauses.length > 0) {
             p.pauses.forEach(pause => {
-                const reason = pause.reason || 'Outros';
+                const reason = pause.reason || t('others');
                 allReasons.add(reason);
                 data[userName][reason] = (data[userName][reason] || 0) + 1;
             });
@@ -532,7 +579,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         
         if (p.pauses && p.pauses.length > 0) {
             p.pauses.forEach(pause => {
-                const reason = pause.reason || 'Outros';
+                const reason = pause.reason || t('others');
                 allReasons.add(reason);
                 data[monthYear][reason] = (data[monthYear][reason] || 0) + 1;
                 data[monthYear].total++;
@@ -568,7 +615,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         
         if (p.pauses && p.pauses.length > 0) {
             p.pauses.forEach(pause => {
-                const reason = pause.reason || 'Outros';
+                const reason = pause.reason || t('others');
                 allReasons.add(reason);
                 data[monthYear][reason] = (data[monthYear][reason] || 0) + 1;
             });
@@ -584,6 +631,93 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     return { data: result, reasons: Array.from(allReasons) };
   }, [filteredProjects, selectedInterruptionDesigner]);
 
+  // 10. NS Queue Analysis
+  const nsQueueAnalysis = useMemo(() => {
+    const statusCounts: Record<string, number> = {
+      [ProjectRequestStatus.PENDING]: 0,
+      [ProjectRequestStatus.IN_PROGRESS]: 0,
+      [ProjectRequestStatus.COMPLETED]: 0,
+      [ProjectRequestStatus.CANCELLED]: 0,
+    };
+
+    const categoryCounts: Record<string, number> = {};
+
+    filteredRequests.forEach(r => {
+      statusCounts[r.status]++;
+      const cat = r.productType || 'Outros';
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    });
+
+    const statusData = Object.entries(statusCounts).map(([name, value]) => ({ name: t(name.toLowerCase() as any), value }));
+    const categoryData = Object.entries(categoryCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    return { statusData, categoryData };
+  }, [filteredRequests]);
+
+  const keyProductsReport = useMemo(() => {
+    return PRODUCT_CATEGORIES.filter(cat => cat !== 'Outros').map(category => {
+      const queueItems = data.projectRequests.filter(r => 
+        (r.productType === category || r.setup === category) && 
+        r.status !== ProjectRequestStatus.COMPLETED && 
+        r.status !== ProjectRequestStatus.CANCELLED
+      );
+
+      const inQueue = queueItems.length;
+      const totalEstimatedHours = queueItems.reduce((acc, r) => acc + (r.managementEstimate || 0), 0);
+
+      const completedItems = data.projects.filter(p => {
+        const req = data.projectRequests.find(r => r.ns === p.ns);
+        const matchesRequest = req && (req.productType === category || req.setup === category);
+        const matchesProject = p.implementType === (category as any);
+        return (matchesRequest || matchesProject) && p.status === 'COMPLETED';
+      });
+
+      const completed = completedItems.length;
+
+      return {
+        label: category,
+        inQueue,
+        completed,
+        totalEstimatedHours,
+        nsList: queueItems.map(r => r.ns).slice(0, 5) // Show first 5 NSs
+      };
+    }).filter(item => item.inQueue > 0 || item.completed > 0);
+  }, [data.projectRequests, data.projects]);
+
+  const detailedProductReport = useMemo(() => {
+    const allNs = Array.from(new Set([
+      ...data.projectRequests.map(r => r.ns),
+      ...data.projects.map(p => p.ns)
+    ])).sort((a, b) => b.localeCompare(a));
+
+    return allNs.map(ns => {
+      const request = data.projectRequests.find(r => r.ns === ns);
+      const projects = data.projects.filter(p => p.ns === ns);
+      const completedProject = projects.find(p => p.status === 'COMPLETED');
+
+      return {
+        ns,
+        clientName: request?.clientName || projects[0]?.clientName || '-',
+        productType: request?.productType || projects[0]?.implementType || '-',
+        dimension: request?.dimension || '-',
+        setup: request?.setup || '-',
+        chassis: request?.chassisNumber || projects[0]?.chassisNumber || '-',
+        status: request?.status || (completedProject ? ProjectRequestStatus.COMPLETED : ProjectRequestStatus.IN_PROGRESS),
+        isReleasedThisMonth: completedProject ? (
+          new Date(completedProject.endTime!).getMonth() === new Date().getMonth() && 
+          new Date(completedProject.endTime!).getFullYear() === new Date().getFullYear()
+        ) : false
+      };
+    }).filter(item => {
+      // Apply filters to the detailed report as well
+      if (selectedCategory !== 'ALL' && item.productType !== selectedCategory) return false;
+      if (selectedSuspension !== 'ALL' && item.setup !== selectedSuspension) return false;
+      return true;
+    });
+  }, [data.projectRequests, data.projects, selectedCategory, selectedSuspension]);
+
   const handleAiAnalysis = async () => {
     setIsLoadingAi(true);
     const result = await analyzePerformance(filteredProjects, filteredIssues, filteredInterruptions, data.settings, data.users);
@@ -592,11 +726,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   };
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'NS', 'Codigo', 'Tipo', 'Implemento', 'Inicio', 'Fim', 'Tempo Total(s)', 'Status', 'Notas'];
+    const headers = ['ID', 'NS', 'Codigo', 'Bastidor', 'Tipo', 'Implemento', 'Inicio', 'Fim', 'Tempo Total(s)', 'Status', 'Notas'];
     const rows = filteredProjects.map(p => [
       p.id,
       p.ns,
       p.projectCode || '',
+      p.chassisNumber || '',
       p.type,
       p.implementType || '',
       p.startTime,
@@ -611,6 +746,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", `design_track_export_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportNSCSV = () => {
+    const headers = [
+      t('idHeader'), 
+      t('nsHeader'), 
+      t('clientHeader'), 
+      t('chassisHeader'), 
+      t('createdAtHeader'), 
+      t('statusHeader'), 
+      t('categoryHeader'), 
+      t('dimensionHeader'), 
+      t('flooringHeader'), 
+      t('setupHeader')
+    ];
+    const rows = filteredRequests.map(r => [
+      r.id,
+      r.ns,
+      r.clientName || '',
+      r.chassisNumber || '',
+      r.createdAt,
+      r.status,
+      r.productType || '',
+      `"${(r.dimension || '').replace(/"/g, '""')}"`,
+      r.flooring || '',
+      r.setup || ''
+    ].join(','));
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `ns_queue_export_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -671,6 +842,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               </select>
             </div>
           )}
+          
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-black dark:text-white uppercase">{t('category')}</span>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
+            >
+              <option value="ALL">{t('all')}</option>
+              {PRODUCT_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-black dark:text-white uppercase">{t('suspension')}</span>
+            <select
+              value={selectedSuspension}
+              onChange={(e) => setSelectedSuspension(e.target.value)}
+              className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
+            >
+              <option value="ALL">{t('all')}</option>
+              {SUSPENSION_TYPES.map((susp) => (
+                <option key={susp} value={susp}>{susp}</option>
+              ))}
+            </select>
+          </div>
         </div>
           <button 
             onClick={handleExportCSV}
@@ -711,6 +910,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('innovationStatus')}</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('ns_analysis')} 
+              onChange={() => setVisibleSections(prev => prev.includes('ns_analysis') ? prev.filter(s => s !== 'ns_analysis') : [...prev, 'ns_analysis'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('nsAnalysis')}</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('detailed_report')} 
+              onChange={() => setVisibleSections(prev => prev.includes('detailed_report') ? prev.filter(s => s !== 'detailed_report') : [...prev, 'detailed_report'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('detailedReport')}</span>
           </label>
           {currentUser.role === 'GESTOR' && (
             <>
@@ -822,14 +1039,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-300 flex items-center">
                 <Sparkles className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
-                ANÁLISE INTELIGENTE (IA)
+                {t('aiAnalysis')}
               </h3>
               <button 
                 onClick={handleAiAnalysis}
                 disabled={isLoadingAi}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm uppercase"
               >
-                {isLoadingAi ? 'ANALISANDO...' : 'GERAR RELATÓRIO'}
+                {isLoadingAi ? t('analyzing') : t('generateReport')}
               </button>
             </div>
             
@@ -839,7 +1056,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               </div>
             ) : (
               <p className="text-black dark:text-white text-sm uppercase">
-                CLIQUE EM "GERAR RELATÓRIO" PARA QUE A IA ANALISE O DESEMPENHO DO PERÍODO SELECIONADO.
+                {t('aiAnalysisPrompt')}
               </p>
             )}
           </div>
@@ -1027,6 +1244,182 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     </ResponsiveContainer>
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* NS Queue Analysis Section */}
+      {visibleSections.includes('ns_analysis') && (
+        <div className="space-y-6 mb-6">
+          <div className="flex items-center justify-between bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm">
+            <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
+              <Layers className="w-5 h-5 mr-2 text-orange-500" />
+              {t('nsReports')}
+            </h3>
+            <button 
+              onClick={handleExportNSCSV}
+              className="flex items-center text-sm font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              {t('exportNSReport')}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
+                <Layers className="w-5 h-5 mr-2 text-orange-500" />
+                {t('nsStatus')}
+              </h3>
+            </div>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={nsQueueAnalysis.statusData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {nsQueueAnalysis.statusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: theme === 'dark' ? '#000' : '#fff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#fff' : '#000' }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
+                <Truck className="w-5 h-5 mr-2 text-blue-500" />
+                {t('nsByCategory')}
+              </h3>
+            </div>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={nsQueueAnalysis.categoryData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} horizontal={false} />
+                  <XAxis type="number" stroke={theme === 'dark' ? '#94a3b8' : '#64748b'} fontSize={12} />
+                  <YAxis dataKey="name" type="category" stroke={theme === 'dark' ? '#94a3b8' : '#64748b'} fontSize={10} width={100} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: theme === 'dark' ? '#000' : '#fff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#fff' : '#000' }}
+                  />
+                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} name={t('ordersCount')} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+      {/* Detailed Product Report Section */}
+      {visibleSections.includes('detailed_report') && (
+        <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-500 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
+              <FileText className="w-5 h-5 mr-2 text-blue-500" />
+              {t('detailedProductReport')}
+            </h3>
+            <button 
+              onClick={() => {
+                const headers = [
+                  t('nsHeader'), 
+                  t('clientHeader'), 
+                  t('productHeader'), 
+                  t('chassisHeader'), 
+                  t('setupHeader'), 
+                  t('dimensionHeader'), 
+                  t('statusHeader'), 
+                  t('releasedThisMonthHeader')
+                ];
+                const rows = detailedProductReport.map(item => [
+                  item.ns,
+                  item.clientName,
+                  item.productType,
+                  item.chassis,
+                  item.setup,
+                  item.dimension,
+                  item.status,
+                  item.isReleasedThisMonth ? t('yes') : t('no')
+                ]);
+                const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", `relatorio_detalhado_produtos_${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+              className="flex items-center text-xs font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
+            >
+              <Download className="w-4 h-4 mr-1" />
+              {t('exportReport')}
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-slate-800">
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('productNs')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('client')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('productType')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('bastidor')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('setup')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('dimension')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('status')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('releasedMonth')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detailedProductReport.slice(0, 20).map((item, idx) => (
+                  <tr key={idx} className="border-b border-gray-50 dark:border-slate-900 hover:bg-gray-50/50 dark:hover:bg-slate-900/50 transition-colors">
+                    <td className="py-3 px-4 text-xs font-bold text-blue-600 dark:text-blue-400">{item.ns}</td>
+                    <td className="py-3 px-4 text-xs font-medium text-gray-800 dark:text-white">{item.clientName}</td>
+                    <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{item.productType}</td>
+                    <td className="py-3 px-4 text-xs font-mono text-gray-500 dark:text-slate-400">{item.chassis}</td>
+                    <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{item.setup}</td>
+                    <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{item.dimension}</td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                        item.status === ProjectRequestStatus.COMPLETED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                        item.status === ProjectRequestStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                        'bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      {item.isReleasedThisMonth && (
+                        <span className="flex items-center text-emerald-600 dark:text-emerald-400 font-black text-[10px]">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          {t('yes')}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {detailedProductReport.length > 20 && (
+              <p className="mt-4 text-[10px] text-gray-500 dark:text-slate-500 italic text-center">
+                {t('showingRecentNs', { count: 20 })}
+              </p>
+            )}
+          </div>
         </div>
       )}
 

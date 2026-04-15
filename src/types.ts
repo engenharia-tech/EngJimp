@@ -106,6 +106,7 @@ export interface ProjectSession {
   clientName?: string;
   flooringType?: string;
   projectCode?: string;
+  chassisNumber?: string;
   type: ProjectType;
   implementType?: ImplementType;
   startTime: string; // ISO
@@ -282,6 +283,7 @@ export interface ProjectRequest {
   dimension: string; // COMP X LARG X ALT
   flooring: string;
   setup: string;
+  chassisNumber?: string;
   status: ProjectRequestStatus;
   createdAt: string;
   createdBy: string;

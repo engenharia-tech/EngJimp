@@ -221,7 +221,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     let updatedCount = 0;
 
     try {
-        console.log("STARTING RECALCULATION...");
+        console.log(t('startingRecalculation'));
         const updates: { id: string; total_active_seconds: number }[] = [];
         
         // Identify projects to update
@@ -232,7 +232,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             const end = new Date(project.endTime);
 
             if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-                console.warn(`INVALID DATES FOR PROJECT ${project.id}: START=${project.startTime}, END=${project.endTime}`);
+                console.warn(t('invalidDatesForProject', { id: project.id, start: project.startTime, end: project.endTime }));
                 continue;
             }
 
@@ -255,7 +255,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             // If different, queue update
             // We use a threshold of 60 seconds to avoid minor drifts if any, or just exact match
             if (Math.abs(project.totalActiveSeconds - netSeconds) > 1) {
-                console.log(`PROJECT ${project.id} NEEDS UPDATE: CURRENT=${project.totalActiveSeconds}, NEW=${netSeconds}`);
+                console.log(t('projectNeedsUpdate', { id: project.id, current: project.totalActiveSeconds, new: netSeconds }));
                 updates.push({
                     id: project.id,
                     total_active_seconds: netSeconds
@@ -264,12 +264,12 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         }
 
         if (updates.length === 0) {
-            addToast("TODOS OS PROJETOS JÁ ESTÃO COM AS HORAS CORRETAS.", "success");
+            addToast(t('allProjectsCorrectHours'), "success");
             setIsRecalculating(false);
             return;
         }
 
-        console.log(`FOUND ${updates.length} PROJECTS TO UPDATE.`);
+        console.log(t('foundProjectsToUpdate', { count: updates.length }));
         setRecalculateProgress({ current: 0, total: updates.length });
 
         // Execute updates in batches
@@ -285,7 +285,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             setRecalculateProgress(prev => ({ ...prev, current: updatedCount }));
         }
 
-        addToast(`SUCESSO! ${updatedCount} PROJETOS FORAM RECALCULADOS E ATUALIZADOS.`, "success");
+        addToast(t('recalculateSuccess', { count: updatedCount }), "success");
         
         // Force refresh by reloading page as it's the cleanest way to sync everything
         setTimeout(() => {
@@ -294,7 +294,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
     } catch (error) {
         console.error("RECALCULATION FAILED", error);
-        addToast("OCORREU UM ERRO AO RECALCULAR OS PROJETOS.", "error");
+        addToast(t('recalculateError'), "error");
     } finally {
         setIsRecalculating(false);
     }
@@ -333,7 +333,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         addToast(t('allDuplicatesResolved'), 'info');
       }
     } catch (error) {
-      console.error("Single recalculation failed", error);
+      console.error(t('singleRecalculationFailed'), error);
       addToast(t('errorUpdatingProject'), 'error');
     }
   };
@@ -404,7 +404,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
         // Calculate interruption seconds from the edited interruptions
         interruptionSeconds = editForm.interruptions
-            .filter(i => i.status === 'Resolvido')
+            .filter(i => i.status === InterruptionStatus.RESOLVED)
             .reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
 
         const totalSeconds = totalActiveSeconds + interruptionSeconds;
@@ -473,7 +473,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         addToast(t('saveSuccess'), 'success');
         setEditingProject(null);
       } catch (error) {
-        console.error("Failed to save project", error);
+        console.error(t('failedToSaveProject'), error);
         addToast(t('saveError'), 'error');
       } finally {
         setIsSaving(false);
@@ -488,7 +488,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   const formatDate = (isoString: string) => {
     if (!isoString) return '-';
-    return new Date(isoString).toLocaleString('pt-BR', {
+    return new Date(isoString).toLocaleString(language, {
       day: '2-digit',
       month: '2-digit',
       year: '2-digit',
@@ -499,8 +499,14 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   const getVariationCounts = (variations: VariationRecord[]) => {
       if (!variations) return { parts: 0, assemblies: 0 };
-      const parts = variations.filter(v => v.type === 'PEÇA').length;
-      const assemblies = variations.filter(v => v.type === 'MONTAGEM').length;
+      const parts = variations.filter(v => {
+          const type = (v.type as string || '').toUpperCase();
+          return type === 'PEÇA' || type === 'PART';
+      }).length;
+      const assemblies = variations.filter(v => {
+          const type = (v.type as string || '').toUpperCase();
+          return type === 'MONTAGEM' || type === 'ASSEMBLY';
+      }).length;
       return { parts, assemblies };
   };
 
@@ -545,6 +551,30 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       case 'COORDENADOR': return t('coordenador');
       case 'PROCESSOS': return t('processos');
       default: return role;
+    }
+  };
+
+  const getTranslatedInterruptionStatus = (status: string) => {
+    switch (status) {
+      case InterruptionStatus.OPEN: return t('open');
+      case InterruptionStatus.WAITING: return t('waitingResponse');
+      case InterruptionStatus.RESOLVED: return t('resolved');
+      case InterruptionStatus.CANCELLED: return t('cancelledStatus');
+      default: return status;
+    }
+  };
+
+  const getTranslatedInterruptionArea = (area: string) => {
+    switch (area) {
+      case InterruptionArea.COMERCIAL: return t('comercial');
+      case InterruptionArea.ENGENHARIA: return t('engenharia');
+      case InterruptionArea.PCP: return t('pcp');
+      case InterruptionArea.PRODUCAO: return t('producao');
+      case InterruptionArea.CLIENTE: return t('cliente');
+      case InterruptionArea.VENDAS: return t('vendas');
+      case InterruptionArea.JIMPSERVICE: return t('jimpservice');
+      case InterruptionArea.OUTROS: return t('outros');
+      default: return area;
     }
   };
 
@@ -735,7 +765,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
           >
             <option value="">{t('allTypes')}</option>
-            {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            {PROJECT_TYPES.map(t_val => <option key={t_val} value={t_val}>{getTranslatedType(t_val)}</option>)}
           </select>
 
           <select
@@ -743,7 +773,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             onChange={(e) => setFilterStatus(e.target.value)}
             className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
           >
-            <option value="">{t('allStatus') || 'Todos os Status'}</option>
+            <option value="">{t('allStatus')}</option>
             <option value="COMPLETED">{t('completed')}</option>
             <option value="IN_PROGRESS">{t('inProgress')}</option>
           </select>
@@ -793,7 +823,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
               <button 
                 onClick={async () => {
-                    addToast("BUSCANDO DUPLICATAS...", "info");
+                    addToast(t('searchingDuplicates'), "info");
                     setIsCheckingDuplicates(true);
                     try {
                         const res = await findDuplicateProjects();
@@ -801,15 +831,15 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             if (res.duplicates.length > 0) {
                                 setDuplicateGroups(res.duplicates);
                                 setShowDuplicateModal(true);
-                                addToast(`${res.duplicates.length} DUPLICATAS ENCONTRADAS.`, "success");
+                                addToast(t('duplicatesFound', { count: res.duplicates.length }), "success");
                             } else {
-                                addToast("NENHUMA DUPLICATA ENCONTRADA.", "success");
+                                addToast(t('noDuplicatesFound'), "success");
                             }
                         } else {
-                            addToast("ERRO: " + res.message, "error");
+                            addToast(t('error') + ": " + res.message, "error");
                         }
                     } catch (e) {
-                        addToast("ERRO INESPERADO AO PROCESSAR.", "error");
+                        addToast(t('unexpectedErrorProcessing'), "error");
                     } finally {
                         setIsCheckingDuplicates(false);
                     }
@@ -831,26 +861,24 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
                 <div className="flex items-center gap-3 mb-4 text-amber-600 dark:text-amber-400">
                     <AlertTriangle className="w-6 h-6" />
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">CONFIRMAR RECÁLCULO</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 uppercase">{t('confirmRecalculateTitle')}</h3>
                 </div>
-                <p className="text-gray-600 dark:text-slate-400 mb-6">
-                    ISSO IRÁ RECALCULAR A DURAÇÃO DE <strong>TODOS</strong> OS PROJETOS CONCLUÍDOS COM BASE NAS DAS DE INÍCIO/FIM E PAUSAS REGISTRADAS.
-                    <br/><br/>
-                    ESTA AÇÃO PODE CORRIGIR REGISTROS ANTIGOS ONDE A DURAÇÃO ESTAVA ZERADA OU INCORRETA.
+                <p className="text-gray-600 dark:text-slate-400 mb-6 whitespace-pre-wrap">
+                    {t('confirmRecalculateDesc')}
                 </p>
                 <div className="flex justify-end gap-3">
                     <button 
                         onClick={() => setShowRecalculateConfirm(false)}
                         className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
                     >
-                        CANCELAR
+                        {t('cancel')}
                     </button>
                     <button 
                         onClick={executeRecalculation}
                         className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors shadow-sm flex items-center"
                     >
                         <RefreshCw className="w-4 h-4 mr-2" />
-                        CONFIRMAR E RECALCULAR
+                        {t('confirmAndRecalculate')}
                     </button>
                 </div>
             </div>
@@ -1024,12 +1052,12 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         {project.flooringType && <span className="mx-1">|</span>}
                         {project.flooringType}
                       </div>
-                      {totalVariations > 0 && (
-                        <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                          <Layers className="w-3 h-3" />
-                          {totalVariations} Cód. ({parts}{t('part').charAt(0)} / {assemblies}{t('assembly').charAt(0)})
-                        </div>
-                      )}
+                        {totalVariations > 0 && (
+                          <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                            <Layers className="w-3 h-3" />
+                            {totalVariations} {t('codesAbbr')} ({parts}{t('part').charAt(0)} / {assemblies}{t('assembly').charAt(0)})
+                          </div>
+                        )}
                     </div>
                   </td>
 
@@ -1261,8 +1289,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                             <td className="p-3 text-gray-800 dark:text-slate-200 font-medium">{v.description}</td>
                                             <td className="p-3 font-mono text-blue-600 dark:text-blue-400 font-bold text-xs">{v.newCode || '-'}</td>
                                             <td className="p-3">
-                                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-black dark:text-slate-300'}`}>
-                                                    {v.type === 'Montagem' ? t('assembly') : t('part')}
+                                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${v.type === 'Montagem' || v.type === 'ASSEMBLY' || v.type === 'MONTAGEM' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-black dark:text-slate-300'}`}>
+                                                    {v.type === 'Montagem' || v.type === 'ASSEMBLY' || v.type === 'MONTAGEM' ? t('assembly') : t('part')}
                                                 </span>
                                             </td>
                                             <td className="p-3 text-center">
@@ -1593,7 +1621,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                                         }}
                                                         className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
                                                     />
-                                                    <span className="text-[10px] text-gray-500">MIN</span>
+                                                    <span className="text-[10px] text-gray-500">{t('minAbbr')}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1675,10 +1703,10 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                                     }}
                                                     className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
                                                 >
-                                                    <option value={InterruptionStatus.OPEN}>{InterruptionStatus.OPEN}</option>
-                                                    <option value={InterruptionStatus.WAITING}>{InterruptionStatus.WAITING}</option>
-                                                    <option value={InterruptionStatus.RESOLVED}>{InterruptionStatus.RESOLVED}</option>
-                                                    <option value={InterruptionStatus.CANCELLED}>{InterruptionStatus.CANCELLED}</option>
+                                                    <option value={InterruptionStatus.OPEN}>{getTranslatedInterruptionStatus(InterruptionStatus.OPEN)}</option>
+                                                    <option value={InterruptionStatus.WAITING}>{getTranslatedInterruptionStatus(InterruptionStatus.WAITING)}</option>
+                                                    <option value={InterruptionStatus.RESOLVED}>{getTranslatedInterruptionStatus(InterruptionStatus.RESOLVED)}</option>
+                                                    <option value={InterruptionStatus.CANCELLED}>{getTranslatedInterruptionStatus(InterruptionStatus.CANCELLED)}</option>
                                                 </select>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
@@ -1765,7 +1793,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                                         }}
                                                         className="text-[10px] p-1 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded w-full dark:text-white"
                                                     />
-                                                    <span className="text-[10px] text-gray-500">MIN</span>
+                                                    <span className="text-[10px] text-gray-500">{t('minAbbr')}</span>
                                                 </div>
                                             </div>
                                             <textarea 
@@ -1920,7 +1948,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 <p className="font-bold text-gray-800 dark:text-slate-200">{group.keep.ns}</p>
                                 <p className="text-sm text-gray-600 dark:text-slate-400">{group.keep.clientName || t('noClient')}</p>
                                 <div className="mt-2 text-xs text-gray-500 dark:text-slate-500 space-y-1">
-                                    <p>{t('start')}: {new Date(group.keep.startTime).toLocaleString()}</p>
+                                    <p>{t('start')}: {new Date(group.keep.startTime).toLocaleString(language)}</p>
                                     <p>{t('totalTime')}: {(group.keep.totalActiveSeconds / 3600).toFixed(2)}h</p>
                                     <p>{t('status')}: {getTranslatedStatus(group.keep.status)}</p>
                                 </div>
@@ -1935,29 +1963,24 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 <p className="font-bold text-gray-800 dark:text-slate-200">{group.discard.ns}</p>
                                 <p className="text-sm text-gray-600 dark:text-slate-400">{group.discard.clientName || t('noClient')}</p>
                                 <div className="mt-2 text-xs text-gray-500 dark:text-slate-500 space-y-1">
-                                    <p>{t('start')}: {new Date(group.discard.startTime).toLocaleString()}</p>
+                                    <p>{t('start')}: {new Date(group.discard.startTime).toLocaleString(language)}</p>
                                     <p>{t('totalTime')}: {(group.discard.totalActiveSeconds / 3600).toFixed(2)}h</p>
                                     <p>{t('status')}: {getTranslatedStatus(group.discard.status)}</p>
                                 </div>
                                 <button 
                                     onClick={async () => {
-                                        if(!window.confirm(t('deleteConfirm').toUpperCase())) return;
-                                        console.log("DELETING DUPLICATE:", group.discard.id);
+                                        if(!window.confirm(t('deleteConfirm'))) return;
                                         const res = await deleteProjectById(group.discard.id, group.discard.ns);
                                         if (res.success) {
-                                            console.log("DELETION SUCCESSFUL FOR:", group.discard.id);
-                                            // Pop-up requested by user
-                                            window.alert(t('deleteSuccess').toUpperCase());
+                                            window.alert(t('deleteSuccess'));
                                             // Update UI instantly without reload
                                             setDuplicateGroups(prev => {
                                                 const newGroups = prev.filter(g => g.discard.id !== group.discard.id);
-                                                console.log("REMAINING DUPLICATES:", newGroups.length);
                                                 return newGroups;
                                             });
                                         } else {
-                                            console.error("DELETION FAILED:", res.message);
-                                            addToast(t('errorDeleting').toUpperCase() + res.message, "error");
-                                            window.alert(t('errorDeleting').toUpperCase() + res.message);
+                                            addToast(t('errorDeleting') + res.message, "error");
+                                            window.alert(t('errorDeleting') + res.message);
                                         }
                                     }}
                                     className="mt-3 w-full bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 py-1 rounded text-xs font-bold flex items-center justify-center"
@@ -1968,7 +1991,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             </div>
                             
                             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-black rounded-full p-1 border border-gray-200 dark:border-slate-700 shadow-sm z-10 hidden md:block">
-                                <div className="text-gray-400 dark:text-slate-500 text-xs font-bold">VS</div>
+                                <div className="text-gray-400 dark:text-slate-500 text-xs font-bold">{t('vs')}</div>
                             </div>
                         </div>
                     ))}

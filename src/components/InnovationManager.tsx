@@ -522,7 +522,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
               <div>
                  <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('investmentCost')}</label>
                  <div className="relative">
-                   <span className="absolute left-3 top-3 text-gray-400 dark:text-slate-500">R$</span>
+                   <span className="absolute left-3 top-3 text-gray-400 dark:text-slate-500">{t('currencySymbol')}</span>
                    <input 
                     type="number" 
                     step="0.01"
@@ -561,7 +561,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                               t('savingsValue')}
                         </label>
                         <div className="relative">
-                            <span className="absolute left-3 top-3 text-gray-500 dark:text-slate-400 font-bold">R$</span>
+                            <span className="absolute left-3 top-3 text-gray-500 dark:text-slate-400 font-bold">{t('currencySymbol')}</span>
                             <input 
                                 type="number" 
                                 step="0.01"
@@ -622,7 +622,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     </div>
                     <div className="md:col-span-1">
                         <div className="relative">
-                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">R$</span>
+                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">{t('currencySymbol')}</span>
                             <input 
                                 type="number" 
                                 placeholder={t('investmentCost')}
@@ -721,7 +721,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     </div>
                     <div className="md:col-span-1">
                         <div className="relative">
-                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">R$</span>
+                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">{t('currencySymbol')}</span>
                             <input 
                                 type="number" 
                                 placeholder={t('machineCost')}
@@ -766,7 +766,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             value={productivityBefore}
                             onChange={e => setProductivityBefore(e.target.value)}
                             className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
-                            placeholder="Ex: 5"
+                            placeholder={t('exampleValue5')}
                         />
                     </div>
                     <div>
@@ -776,32 +776,32 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             value={productivityAfter}
                             onChange={e => setProductivityAfter(e.target.value)}
                             className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
-                            placeholder="Ex: 7"
+                            placeholder={t('exampleValue7')}
                         />
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">{t('unitProductCost')}</label>
                         <div className="relative">
-                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">R$</span>
+                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">{t('currencySymbol')}</span>
                             <input 
                                 type="number" 
                                 value={unitProductCost}
                                 onChange={e => setUnitProductCost(e.target.value)}
                                 className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
-                                placeholder="Ex: 15.50"
+                                placeholder={t('exampleValue15')}
                             />
                         </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">{t('unitProductValue')}</label>
                         <div className="relative">
-                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">R$</span>
+                            <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">{t('currencySymbol')}</span>
                             <input 
                                 type="number" 
                                 value={unitProductValue}
                                 onChange={e => setUnitProductValue(e.target.value)}
                                 className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
-                                placeholder="Ex: 50.00"
+                                placeholder={t('exampleValue')}
                             />
                         </div>
                     </div>
