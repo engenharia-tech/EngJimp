@@ -915,9 +915,95 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         </div>
       )}
 
-      {/* Results Table */}
+      {/* Results Table / Cards */}
       <div className="bg-white dark:bg-black rounded-xl shadow-md border border-gray-100 dark:border-slate-700 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Card Layout */}
+        <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-800">
+            {filteredProjects.length === 0 ? (
+                <div className="p-8 text-center text-gray-500 italic block">{t('noProjects')}</div>
+            ) : (
+                filteredProjects.map((project) => {
+                    const user = usersMap[project.userId || ''];
+                    const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
+                    const pTotalSeconds = project.totalSeconds || (project.totalActiveSeconds + (project.interruptionSeconds || 0));
+
+                    return (
+                        <div key={project.id} className="p-4 bg-white dark:bg-black">
+                            <div className="flex justify-between items-start mb-3">
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">{project.ns}</span>
+                                    <span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">{getTranslatedType(project.type)}</span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                                    project.status === 'COMPLETED' 
+                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' 
+                                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                                }`}>
+                                    {getTranslatedStatus(project.status)}
+                                </span>
+                            </div>
+
+                            <div className="mb-3">
+                                <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase leading-tight mb-1">{project.clientName}</h4>
+                                <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-slate-400 font-bold uppercase">
+                                    <UserIcon className="w-3 h-3" />
+                                    {user?.name || '-'}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800">
+                                <div>
+                                    <span className="block text-[8px] text-gray-400 dark:text-slate-500 uppercase font-black">{t('totalTime')}</span>
+                                    <span className="text-xs font-bold text-gray-700 dark:text-slate-200">{formatDuration(pTotalSeconds)}</span>
+                                </div>
+                                <div>
+                                    <span className="block text-[8px] text-gray-400 dark:text-slate-500 uppercase font-black">{t('scheduleTimeCol')}</span>
+                                    <span className="text-xs font-bold text-gray-700 dark:text-slate-200">{formatDate(project.startTime)}</span>
+                                </div>
+                                {isGestor && (
+                                    <div className="col-span-2 border-t border-gray-100 dark:border-slate-800 pt-2">
+                                        <span className="block text-[8px] text-gray-400 dark:text-slate-500 uppercase font-black">{t('costCol')}</span>
+                                        <span className="text-xs font-black text-red-600 dark:text-red-400">
+                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(engineeringHourlyRate * (pTotalSeconds / 3600))}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                                <button 
+                                    onClick={() => setSelectedProject(project)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 rounded-lg text-[10px] font-black uppercase hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors"
+                                >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    {t('viewDetails')}
+                                </button>
+                                {canEdit && (
+                                    <>
+                                        <button 
+                                            onClick={() => handleOpenEdit(project)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg text-[10px] font-black uppercase hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                                        >
+                                            <Edit className="w-3.5 h-3.5" />
+                                            {t('edit')}
+                                        </button>
+                                        <button 
+                                            onClick={() => { if (onDelete) onDelete(project.id); }}
+                                            className="p-1.5 text-red-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })
+            )}
+        </div>
+
+        {/* Desktop Table Layout */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-slate-900 text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700 shadow-sm">
               <tr>

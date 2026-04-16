@@ -923,7 +923,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end pt-2 border-t border-gray-50 dark:border-slate-900">
+
+
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-x-3 gap-y-4 items-end pt-3 border-t border-gray-50 dark:border-slate-800">
           <div className="flex flex-col gap-1">
             <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-1">{t('from')}</span>
             <div className="relative">
@@ -932,7 +934,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm bg-gray-50 dark:bg-black text-gray-700 dark:text-white transition-all"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-[12px] bg-gray-50 dark:bg-black text-gray-700 dark:text-white transition-all shadow-sm"
               />
             </div>
           </div>
@@ -945,7 +947,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm bg-gray-50 dark:bg-black text-gray-700 dark:text-white transition-all"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-[12px] bg-gray-50 dark:bg-black text-gray-700 dark:text-white transition-all shadow-sm"
               />
             </div>
           </div>
@@ -967,7 +969,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           />
 
           {currentUser.role === 'GESTOR' ? (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 col-span-2 sm:col-span-1">
               <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-1">{t('designer')}</span>
               <div className="relative">
                 <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
@@ -977,7 +979,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     setSelectedDesignerForReleases(e.target.value);
                     setSelectedDesignerForChart(e.target.value);
                   }}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm bg-gray-50 dark:bg-black text-gray-700 dark:text-white cursor-pointer appearance-none transition-all"
+                  className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-[12px] bg-gray-50 dark:bg-black text-gray-700 dark:text-white cursor-pointer appearance-none transition-all shadow-sm"
                 >
                   <option value="ALL">{t('all')}</option>
                   {availableDesigners.map((u) => (
@@ -1023,7 +1025,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       {/* Dashboard Visibility Controls */}
       <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
         <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-3">{t('selectDashboards')}</p>
-        <div className="flex flex-wrap gap-4">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-4 gap-y-3">
           <label className="flex items-center gap-2 cursor-pointer group">
             <input 
               type="checkbox" 
@@ -1031,7 +1033,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               onChange={() => setVisibleSections(prev => prev.includes('kpi') ? prev.filter(s => s !== 'kpi') : [...prev, 'kpi'])}
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('totalHours')}</span>
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('totalHours')}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer group">
             <input 
@@ -1040,7 +1042,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               onChange={() => setVisibleSections(prev => prev.includes('ranking') ? prev.filter(s => s !== 'ranking') : [...prev, 'ranking'])}
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('productivityRankingTitle')}</span>
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('productivityRankingTitle')}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer group">
             <input 
@@ -1049,7 +1051,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               onChange={() => setVisibleSections(prev => prev.includes('innovation') ? prev.filter(s => s !== 'innovation') : [...prev, 'innovation'])}
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('innovationStatus')}</span>
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('innovationStatus')}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer group">
             <input 
@@ -1058,7 +1060,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               onChange={() => setVisibleSections(prev => prev.includes('ns_analysis') ? prev.filter(s => s !== 'ns_analysis') : [...prev, 'ns_analysis'])}
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('nsAnalysis')}</span>
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('nsAnalysis')}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer group">
             <input 
@@ -1067,7 +1069,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               onChange={() => setVisibleSections(prev => prev.includes('detailed_report') ? prev.filter(s => s !== 'detailed_report') : [...prev, 'detailed_report'])}
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('detailedReport')}</span>
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('detailedReport')}</span>
           </label>
           {currentUser.role === 'GESTOR' && (
             <>
@@ -1078,7 +1080,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   onChange={() => setVisibleSections(prev => prev.includes('activities') ? prev.filter(s => s !== 'activities') : [...prev, 'activities'])}
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('activitiesByDesigner')}</span>
+                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('activitiesByDesigner')}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input 
@@ -1087,7 +1089,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   onChange={() => setVisibleSections(prev => prev.includes('stops') ? prev.filter(s => s !== 'stops') : [...prev, 'stops'])}
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('stopAnalysis')}</span>
+                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('stopAnalysis')}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input 
@@ -1096,7 +1098,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   onChange={() => setVisibleSections(prev => prev.includes('releases') ? prev.filter(s => s !== 'releases') : [...prev, 'releases'])}
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('teamReleases')}</span>
+                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('teamReleases')}</span>
               </label>
             </>
           )}
@@ -1240,10 +1242,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               </div>
             </div>
 
-            <div className="h-[300px] w-full">
+            <div className="h-[250px] sm:h-[300px] w-full">
               {hoursVsGoalData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={hoursVsGoalData} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+                  <ComposedChart data={hoursVsGoalData} margin={{ top: 10, right: window.innerWidth < 640 ? 10 : 30, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
                     <XAxis dataKey="name" tickLine={false} axisLine={false} style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }} />
                     <YAxis 
@@ -1308,53 +1310,98 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
-                            <tr>
-                                <th className="p-3">{t('designerCol')}</th>
-                                <th className="p-3 text-center">{t('releases')}</th>
-                                <th className="p-3 text-center">{t('variations')}</th>
-                                <th className="p-3 text-center">{t('developments')}</th>
-                                <th className="p-3 text-center">{t('total')}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                            {rankingStats.length === 0 ? (
+                <div>
+                   {/* Mobile List / Desktop Table */}
+                   <div className="md:hidden space-y-3 mb-6">
+                        {rankingStats.length === 0 ? (
+                            <div className="p-8 text-center bg-gray-50 dark:bg-slate-900 rounded-xl text-gray-500 dark:text-slate-400 italic text-sm">
+                                {t('noProjects')}
+                            </div>
+                        ) : (
+                            rankingStats.map((stat, index) => (
+                                <div key={index} className="bg-gray-50 dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
+                                    <div className="flex items-center justify-between mb-3 border-b border-gray-100 dark:border-slate-800 pb-2">
+                                        <div className="flex items-center">
+                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
+                                                index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30' : 
+                                                index === 1 ? 'bg-gray-200 text-gray-700 dark:bg-slate-700' : 
+                                                index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30' : 'bg-blue-50 text-blue-600'
+                                            }`}>
+                                                {index + 1}
+                                            </span>
+                                            <span className="font-bold text-gray-900 dark:text-white uppercase">{stat.name}</span>
+                                        </div>
+                                        <div className="bg-white dark:bg-black px-2 py-1 rounded text-xs font-black text-indigo-600 dark:text-indigo-400 shadow-sm">
+                                            {stat.total} {t('total').toUpperCase()}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="text-center">
+                                            <div className="text-[10px] text-gray-500 dark:text-slate-500 uppercase font-bold">{t('releases')}</div>
+                                            <div className="text-sm font-black text-blue-600">{stat.releases}</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-[10px] text-gray-500 dark:text-slate-500 uppercase font-bold">{t('variations')}</div>
+                                            <div className="text-sm font-black text-orange-600">{stat.variations}</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-[10px] text-gray-500 dark:text-slate-500 uppercase font-bold">{t('developments')}</div>
+                                            <div className="text-sm font-black text-green-600">{stat.developments}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                   </div>
+
+                    <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
                                 <tr>
-                                    <td colSpan={5} className="p-4 text-center text-black dark:text-white italic">
-                                        {rankingPeriod === 'MONTH' ? t('noProjectsMonth') : 
-                                         rankingPeriod === 'YEAR' ? t('noProjectsYear') : 
-                                         t('noProjects')}
-                                    </td>
+                                    <th className="p-3">{t('designerCol')}</th>
+                                    <th className="p-3 text-center">{t('releases')}</th>
+                                    <th className="p-3 text-center">{t('variations')}</th>
+                                    <th className="p-3 text-center">{t('developments')}</th>
+                                    <th className="p-3 text-center">{t('total')}</th>
                                 </tr>
-                            ) : (
-                                rankingStats.map((stat, index) => (
-                                    <tr key={index} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                                        <td className="p-3 font-medium text-black dark:text-white">
-                                            <div className="flex items-center">
-                                                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
-                                                    index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
-                                                    index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-300' : 
-                                                    index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                                                }`}>
-                                                    {index + 1}
-                                                </span>
-                                                {stat.name}
-                                            </div>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                                {rankingStats.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="p-4 text-center text-black dark:text-white italic">
+                                            {rankingPeriod === 'MONTH' ? t('noProjectsMonth') : 
+                                            rankingPeriod === 'YEAR' ? t('noProjectsYear') : 
+                                            t('noProjects')}
                                         </td>
-                                        <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">{stat.releases}</td>
-                                        <td className="p-3 text-center font-bold text-orange-600 dark:text-orange-400">{stat.variations}</td>
-                                        <td className="p-3 text-center font-bold text-green-600 dark:text-green-400">{stat.developments}</td>
-                                        <td className="p-3 text-center font-bold text-black dark:text-white">{stat.total}</td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                                ) : (
+                                    rankingStats.map((stat, index) => (
+                                        <tr key={index} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                                            <td className="p-3 font-medium text-black dark:text-white">
+                                                <div className="flex items-center">
+                                                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
+                                                        index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
+                                                        index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-300' : 
+                                                        index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                                                    }`}>
+                                                        {index + 1}
+                                                    </span>
+                                                    {stat.name}
+                                                </div>
+                                            </td>
+                                            <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">{stat.releases}</td>
+                                            <td className="p-3 text-center font-bold text-orange-600 dark:text-orange-400">{stat.variations}</td>
+                                            <td className="p-3 text-center font-bold text-green-600 dark:text-green-400">{stat.developments}</td>
+                                            <td className="p-3 text-center font-bold text-black dark:text-white">{stat.total}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div className="h-[350px]">
+                <div className="h-[250px] sm:h-[350px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart
                             data={rankingStats}
@@ -1537,7 +1584,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            {/* Mobile Cards / Desktop Table */}
+            <div className="md:hidden space-y-4">
+              {detailedProductReport.slice(0, 10).map((item, idx) => (
+                <div key={idx} className="bg-gray-50 dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">{item.ns}</span>
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                      item.status === ProjectRequestStatus.COMPLETED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                      item.status === ProjectRequestStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                      'bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-400'
+                    }`}>
+                      {item.status}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2 uppercase">{item.clientName}</h4>
+                  <div className="grid grid-cols-2 gap-y-2 text-[10px] font-medium uppercase text-gray-500 dark:text-slate-400">
+                    <div>
+                      <span className="block text-[8px] opacity-60">{t('productType')}</span>
+                      <span className="text-gray-700 dark:text-slate-200">{item.productType}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[8px] opacity-60">{t('bastidor')}</span>
+                      <span className="text-gray-700 dark:text-slate-200">{item.chassis}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[8px] opacity-60">{t('setup')}</span>
+                      <span className="text-gray-700 dark:text-slate-200">{item.setup}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[8px] opacity-60">{t('releasedMonth')}</span>
+                      <span className={item.isReleasedThisMonth ? 'text-emerald-600 font-bold' : ''}>{item.isReleasedThisMonth ? t('yes') : t('no')}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <table className="hidden md:table w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-slate-800">
                   <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('productNs')}</th>

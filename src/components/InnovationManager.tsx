@@ -902,9 +902,93 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         </div>
       )}
 
-      {/* List */}
+      {/* List / Cards */}
       <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
-        <table className="w-full text-sm text-left">
+        {/* Mobile View */}
+        <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-800">
+           {sortedInnovations.length === 0 && (
+              <div className="p-8 text-center text-gray-400 dark:text-slate-500 italic block">
+                 <Lightbulb className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-slate-600 opacity-50" />
+                 {t('noInnovations')}
+              </div>
+           )}
+           {sortedInnovations.map((inv) => (
+             <div key={inv.id} className="p-4 bg-white dark:bg-black">
+                <div className="flex justify-between items-start mb-2">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border tracking-widest ${
+                        inv.type === InnovationType.NEW_PROJECT ? 'bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-900/30 dark:text-purple-400' : 
+                        inv.type === InnovationType.PROCESS_OPTIMIZATION ? 'bg-orange-50 text-orange-700 border-orange-100 dark:bg-orange-900/30 dark:text-orange-400' :
+                        'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-900/30 dark:text-blue-400'
+                    }`}>
+                        {getInnovationTypeLabel(inv.type)}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${getStatusColor(inv.status)}`}>
+                        {getStatusLabel(inv.status)}
+                    </span>
+                </div>
+                
+                <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase leading-tight mb-2 truncate" title={inv.title}>{inv.title}</h4>
+                
+                <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800">
+                    <div>
+                        <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">{t('annualImpactCol')}</span>
+                        <span className={`text-sm font-black ${
+                            inv.status === 'REJECTED' ? 'text-gray-400 dark:text-slate-600 line-through decoration-2' : 
+                            inv.status === 'PENDING' ? 'text-gray-500 dark:text-slate-500' :
+                            'text-emerald-600 dark:text-emerald-400'
+                        }`}>
+                            {formatCurrency(inv.totalAnnualSavings)}
+                        </span>
+                    </div>
+                    <div>
+                        <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">{t('calculationCol')}</span>
+                        <span className="text-xs font-bold text-gray-700 dark:text-slate-300">
+                            {inv.calculationType === CalculationType.ONE_TIME || inv.calculationType === CalculationType.ADD_EXPENSE ? (
+                                <span className={inv.calculationType === CalculationType.ADD_EXPENSE ? 'text-red-500' : ''}>
+                                    {inv.calculationType === CalculationType.ADD_EXPENSE ? t('expenseAbbr') : t('oneTimeAbbr')}
+                                </span>
+                            ) : (
+                                `${formatCurrency(inv.unitSavings)} / ${inv.quantity} ${t('unitsAbbr')}`
+                            )}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase overflow-hidden whitespace-nowrap">
+                        <UserIcon className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{usersMap[inv.authorId] || '...'}</span>
+                    </div>
+                    <div className="flex bg-gray-50 dark:bg-slate-800 p-1 rounded-lg border border-gray-200 dark:border-slate-700">
+                        <button 
+                            onClick={() => setViewingInnovation(inv)}
+                            className="p-1 text-blue-600 dark:text-blue-400"
+                        >
+                            <Eye className="w-4 h-4" />
+                        </button>
+                        {canManage && (
+                           <>
+                             <button 
+                                onClick={() => setEditingInnovation(inv)}
+                                className="p-1 text-amber-600 dark:text-amber-400"
+                            >
+                                <Edit className="w-4 h-4" />
+                            </button>
+                            <button 
+                                onClick={() => setDeleteConfirmationId(inv.id)}
+                                className="p-1 text-red-600 dark:text-red-400"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                           </>
+                        )}
+                    </div>
+                </div>
+             </div>
+           ))}
+        </div>
+
+        <table className="hidden md:table w-full text-sm text-left">
           <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
             <tr>
               <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('title')}>

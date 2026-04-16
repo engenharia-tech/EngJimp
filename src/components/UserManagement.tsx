@@ -358,7 +358,67 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
            <h3 className="font-bold text-black dark:text-white">Membros da Equipe</h3>
            {loadingList && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
         </div>
-        <div className="overflow-x-auto">
+        
+        {/* Mobile View */}
+        <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-800">
+           {users.length === 0 && !loadingList && (
+             <div className="p-8 text-center text-gray-400 dark:text-slate-500 italic block">Nenhum usuário encontrado.</div>
+           )}
+           {users.map((u) => {
+              const canEditThisUser = canEditUser(u);
+              return (
+                <div key={u.id} className={`p-4 ${currentUser.id === u.id ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-lg">
+                                {u.name.charAt(0)}
+                            </div>
+                            <div>
+                                <h4 className="font-black text-gray-900 dark:text-white uppercase">{u.name} {u.surname}</h4>
+                                <div className="flex items-center gap-1">
+                                    <span className="text-[10px] text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">@{u.username}</span>
+                                    {currentUser.id === u.id && <span className="text-[9px] text-blue-600 dark:text-blue-400 font-black uppercase bg-blue-50 dark:bg-blue-900/30 px-1.5 rounded">Você</span>}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex bg-gray-50 dark:bg-slate-800 p-1.5 rounded-lg gap-1 border border-gray-200 dark:border-slate-700">
+                           {canEditThisUser && (
+                            <button onClick={() => handleEdit(u)} className="p-1.5 text-indigo-600 dark:text-indigo-400"><Edit className="w-4 h-4" /></button>
+                           )}
+                           {canDeleteUser && (
+                            <button onClick={() => handleDelete(u)} className="p-1.5 text-red-600 dark:text-red-400"><Trash2 className="w-4 h-4" /></button>
+                           )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-3 mb-2">
+                        <div>
+                            <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Função</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700">
+                                {getRoleIcon(u.role)}
+                                {t(u.role.toLowerCase() as any)}
+                            </span>
+                        </div>
+                        <div>
+                            <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Salário</span>
+                            <span className="text-xs font-black text-gray-800 dark:text-slate-200">
+                                {(isGestor || currentUser.id === u.id) 
+                                ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
+                                : '***'}
+                            </span>
+                        </div>
+                        <div className="col-span-2">
+                             <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Contato</span>
+                             <div className="text-[11px] font-medium text-gray-700 dark:text-slate-300 truncate">{u.email || '-'}</div>
+                             <div className="text-[10px] text-gray-500 font-bold">{u.phone || '-'}</div>
+                        </div>
+                    </div>
+                </div>
+              )
+           })}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left min-w-[800px]">
           <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium">
             <tr>
