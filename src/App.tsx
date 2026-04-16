@@ -933,6 +933,7 @@ const AppContent: React.FC = () => {
               activities={data.operationalActivities}
               activityTypes={data.activityTypes}
               projects={data.projects}
+              interruptions={data.interruptions}
               currentUser={currentUser}
               users={data.users}
               theme={theme}
