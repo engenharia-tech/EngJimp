@@ -9,8 +9,8 @@ export function calcActiveSeconds(from: Date, to: Date, settings: AppSettings, i
   
   if (start >= end) return 0;
 
-  const workdayStartStr = settings.workdayStart || "07:30";
-  const workdayEndStr = settings.workdayEnd || "17:30";
+  const workdayStartStr = settings.workdayStart || "07:42";
+  const workdayEndStr = settings.workdayEnd || "17:33";
   const lunchStartStr = settings.lunchStart || "12:00";
   const lunchEndStr = settings.lunchEnd || "13:00";
   const workdays = settings.workdays || [1, 2, 3, 4, 5];
@@ -85,8 +85,8 @@ export function isWorkingHour(date: Date, settings: AppSettings, isOvertime: boo
   
   if (!isOvertime && !workdays.includes(dayOfWeek)) return false;
 
-  const workdayStartStr = settings.workdayStart || "07:30";
-  const workdayEndStr = settings.workdayEnd || "17:30";
+  const workdayStartStr = settings.workdayStart || "07:42";
+  const workdayEndStr = settings.workdayEnd || "17:33";
   const lunchStartStr = settings.lunchStart || "12:00";
   const lunchEndStr = settings.lunchEnd || "13:00";
 
