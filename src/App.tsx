@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Sparkles } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Sparkles, Cpu } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { AIChat } from './components/AIChat';
+import { NexusChat } from './nexus/NexusChat';
 import { Dashboard } from './components/Dashboard';
 import { ProjectHistory } from './components/ProjectHistory';
 import { UserManagement } from './components/UserManagement';
@@ -141,7 +142,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'assistant'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'assistant' | 'nexus'>('dashboard');
   const [data, setData] = useState<AppState>({ 
     projects: [], 
     issues: [], 
@@ -720,6 +721,8 @@ const AppContent: React.FC = () => {
         <nav className="flex-1 mt-6 overflow-y-auto">
           <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
 
+          <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+
           {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
             <NavItem id="assistant" labelKey="jimpAssistant" icon={Sparkles} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
           )}
@@ -807,6 +810,8 @@ const AppContent: React.FC = () => {
             </div>
             <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             
+            <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+
             {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
               <NavItem id="assistant" labelKey="jimpAssistant" icon={Sparkles} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
@@ -975,6 +980,10 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'assistant' && (
             <AIChat appState={data} currentUser={currentUser} />
+          )}
+
+          {activeTab === 'nexus' && (
+            <NexusChat appState={data} currentUser={currentUser} />
           )}
 
           {activeTab === 'reports' && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
