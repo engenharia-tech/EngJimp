@@ -155,7 +155,12 @@ const AppContent: React.FC = () => {
       interruptionEmailTo: '',
       interruptionEmailTemplate: '',
       companyName: 'JIMP NEXUS',
-      language: 'pt-BR'
+      language: 'pt-BR',
+      workdayStart: '07:42',
+      workdayEnd: '17:33',
+      lunchStart: '12:00',
+      lunchEnd: '13:00',
+      workdays: [1, 2, 3, 4, 5]
     },
     seoData: { keywords: [], metrics: [], tasks: [] },
     activityTypes: [],

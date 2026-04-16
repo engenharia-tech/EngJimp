@@ -72,6 +72,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [pickPart, setPickPart] = useState<'BASE' | 'BOX' | 'BOTH'>('BASE');
   const [pickDesignerEstHours, setPickDesignerEstHours] = useState('');
   const [pickDesignerEstMinutes, setPickDesignerEstMinutes] = useState('');
+  const [pickIsOvertime, setPickIsOvertime] = useState(false);
 
   // Form Data (Start)
   const [ns, setNs] = useState('');
@@ -352,6 +353,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const handleConfirmPick = async () => {
     if (!selectedRequest || isSaving) return;
 
+    // Check Working Hours
+    if (!isWorkingHour(new Date(), settings, pickIsOvertime)) {
+      alert(t('outsideWorkingHours'));
+      return;
+    }
+
     setIsSaving(true);
     try {
       const nsVal = selectedRequest.ns;
@@ -379,6 +386,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           status: 'IN_PROGRESS',
           notes: notesVal,
           userId: currentUser?.id,
+          isOvertime: pickIsOvertime,
           // Se for ambos, dividimos a estimativa entre os dois projetos
           estimatedSeconds: pickPart === 'BOTH' ? estSec / 2 : estSec
         };
@@ -429,6 +437,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
       setShowPickModal(false);
       setSelectedRequest(null);
+      setPickIsOvertime(false);
       addToast(t('nsSelected', { ns: nsVal }), 'success');
     } catch (error) {
       console.error("Error picking project:", error);
@@ -1953,7 +1962,7 @@ JIMPNEXUS
 
               <div>
                 <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('yourEstimateDesigner')}</label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-4">
                   <div className="flex-1">
                     <input 
                       type="number" 
@@ -1974,6 +1983,16 @@ JIMPNEXUS
                     />
                   </div>
                 </div>
+
+                <label className="flex items-center space-x-2 cursor-pointer bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg border border-amber-100 dark:border-amber-900/30 w-full">
+                  <input 
+                    type="checkbox" 
+                    checked={pickIsOvertime}
+                    onChange={e => setPickIsOvertime(e.target.checked)}
+                    className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                  />
+                  <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{t('overtime')}</span>
+                </label>
               </div>
             </div>
 

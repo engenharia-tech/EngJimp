@@ -1,8 +1,8 @@
 export const WORK_SCHEDULE = {
-  morningStart: { hour: 7, minute: 45 },
+  morningStart: { hour: 7, minute: 42 },
   morningEnd: { hour: 12, minute: 0 },
   afternoonStart: { hour: 13, minute: 0 },
-  afternoonEnd: { hour: 18, minute: 0 },
+  afternoonEnd: { hour: 17, minute: 33 },
 };
 
 export function isWorkingHour(date: Date, isOvertime: boolean = false): boolean {
