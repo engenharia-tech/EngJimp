@@ -765,39 +765,46 @@ const AppContent: React.FC = () => {
       </aside>
 
       {/* Mobile Header */}
-      <div className={`md:hidden fixed top-0 w-full ${theme === 'dark' ? 'bg-black border-slate-800' : 'bg-white border-gray-200'} border-b z-20 flex justify-between items-center p-4 shadow-md`}>
+      <div className={`md:hidden fixed top-0 w-full ${theme === 'dark' ? 'bg-black border-slate-800' : 'bg-white border-gray-200'} border-b z-30 flex justify-between items-center px-4 py-3 shadow-md`}>
         <div className="h-8 flex items-center gap-2">
             <Logo 
                 theme={theme}
                 logoUrl={COMPANY_LOGO_URL}
                 companyName={COMPANY_NAME}
-                className="h-full w-auto object-contain max-w-[150px]"
+                className="h-full w-auto object-contain max-w-[120px]"
             />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
             <LanguageSwitcher language={language} setLanguage={setLanguage} />
             <button 
                 onClick={toggleTheme}
-                className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700' : 'bg-slate-800'} hover:bg-slate-700 transition-colors text-slate-300`}
+                className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-slate-900 border border-slate-700' : 'bg-gray-100 border border-gray-200'} transition-colors text-gray-600 dark:text-slate-300`}
             >
-              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
             <button 
                 onClick={() => setIsProfileOpen(true)}
-                className="text-slate-300 hover:text-white p-2"
+                className={`p-2 rounded-lg ${theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
             >
                 <UserCog className="w-5 h-5" />
             </button>
-            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-slate-300 hover:text-white transition-colors">
-              {isMobileMenuOpen ? <X /> : <Menu />}
+            <button 
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+              className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white'} shadow-lg active:scale-95 transition-all`}
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
         </div>
       </div>
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 bg-black z-10 pt-20 md:hidden animate-in slide-in-from-right duration-200">
-          <nav className="flex flex-col h-full overflow-y-auto">
+        <div className="fixed inset-0 bg-white dark:bg-black z-20 pt-20 md:hidden animate-in slide-in-from-top duration-300">
+          <nav className="flex flex-col h-full overflow-y-auto p-4 space-y-1">
+            <div className="px-4 py-2 mb-2">
+              <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t('controlPanel')}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{currentUser.name}</p>
+            </div>
             <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             
             {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
@@ -827,10 +834,10 @@ const AppContent: React.FC = () => {
             {['GESTOR', 'CEO'].includes(currentUser.role) && (
                 <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
-            <div className="mt-auto p-6 border-t border-slate-800">
+            <div className="mt-auto p-4 border-t border-gray-100 dark:border-slate-800">
               <button 
                 onClick={handleLogout}
-                className="flex items-center w-full px-4 py-3 text-left text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
+                className="flex items-center w-full px-4 py-3 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-xl transition-colors font-bold"
               >
                 <LogOut className="w-5 h-5 mr-3" />
                 {t('logout')}
@@ -841,7 +848,7 @@ const AppContent: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <main className={`flex-1 md:ml-64 p-6 pt-24 md:pt-6 transition-all min-h-screen ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
+      <main className={`flex-1 md:ml-64 p-4 md:p-8 pt-24 md:pt-8 transition-all min-h-screen ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
         {isLoading && (
           <div className="fixed top-0 left-0 w-full h-1 bg-blue-100 z-50">
             <div className="h-full bg-blue-600 animate-pulse w-full"></div>
