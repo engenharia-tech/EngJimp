@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, ComposedChart, Line
@@ -19,6 +19,86 @@ interface DashboardProps {
 }
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#ec4899'];
+
+const MultiSelect: React.FC<{
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  t: any;
+}> = ({ label, options, selected, onChange, t }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleOption = (option: string) => {
+    if (selected.includes(option)) {
+      onChange(selected.filter(o => o !== option));
+    } else {
+      onChange([...selected, option]);
+    }
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="flex flex-col gap-1">
+        <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase px-1">{label}</span>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center justify-between w-full md:w-48 p-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-gray-50 dark:bg-black text-sm text-left transition-all hover:border-blue-400"
+        >
+          <span className="truncate text-black dark:text-white">
+            {selected.length === 0 ? t('all') : `${selected.length} ${t('selected') || 'Selecionados'}`}
+          </span>
+          <Filter className={`w-3 h-3 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full md:w-64 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-xl p-2 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+          <div className="flex items-center justify-between p-2 border-b border-gray-100 dark:border-slate-800 mb-2">
+            <button 
+              onClick={() => onChange([])}
+              className="text-[10px] font-bold text-blue-600 hover:underline uppercase"
+            >
+              {t('clearAll') || 'Limpar'}
+            </button>
+            <button 
+              onClick={() => setIsOpen(false)}
+              className="text-[10px] font-bold text-gray-400 hover:text-gray-600 uppercase"
+            >
+              {t('close')}
+            </button>
+          </div>
+          <div className="space-y-1">
+            {options.map(option => (
+              <label key={option} className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition-colors group">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(option)}
+                  onChange={() => toggleOption(option)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-700 dark:text-slate-300 group-hover:text-black dark:group-hover:text-white truncate">
+                  {option}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, settings, onRefresh }) => {
   const { t } = useLanguage();
@@ -49,8 +129,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [selectedDesignerForChart, setSelectedDesignerForChart] = useState<string>('ALL');
   const [selectedDesignerForReleases, setSelectedDesignerForReleases] = useState<string>('ALL');
   const [selectedInterruptionDesigner, setSelectedInterruptionDesigner] = useState<string>('ALL');
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
-  const [selectedSuspension, setSelectedSuspension] = useState<string>('ALL');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedSuspensions, setSelectedSuspensions] = useState<string[]>([]);
+  const [selectedClients, setSelectedClients] = useState<string[]>([]);
 
   const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report']);
 
@@ -83,14 +164,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     t('jul'), t('aug'), t('sep'), t('oct'), t('nov'), t('dec')
   ], [t]);
 
+  const availableClients = useMemo(() => {
+    const clients = new Set<string>();
+    data.projectRequests.forEach(r => { if (r.clientName) clients.add(r.clientName); });
+    data.projects.forEach(p => { if (p.clientName) clients.add(p.clientName); });
+    return Array.from(clients).sort();
+  }, [data.projectRequests, data.projects]);
+
   // Filter Data Logic
   const filteredRequests = useMemo(() => {
     return data.projectRequests.filter(r => {
-      if (selectedCategory !== 'ALL' && r.productType !== selectedCategory) {
+      if (selectedCategories.length > 0 && !selectedCategories.includes(r.productType || '')) {
         return false;
       }
 
-      if (selectedSuspension !== 'ALL' && r.setup !== selectedSuspension) {
+      if (selectedSuspensions.length > 0 && !selectedSuspensions.includes(r.setup || '')) {
+        return false;
+      }
+
+      if (selectedClients.length > 0 && !selectedClients.includes(r.clientName || '')) {
         return false;
       }
 
@@ -115,7 +207,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       return rDate >= start && rDate <= end;
     });
-  }, [data.projectRequests, selectedCategory, startDate, endDate]);
+  }, [data.projectRequests, selectedCategories, selectedSuspensions, selectedClients, startDate, endDate]);
 
   const filteredProjects = useMemo(() => {
     return data.projects.filter(p => {
@@ -130,22 +222,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       }
 
       // Category Filter
-      if (selectedCategory !== 'ALL') {
+      if (selectedCategories.length > 0) {
         const req = data.projectRequests.find(r => r.ns === p.ns);
-        if (req) {
-          if (req.productType !== selectedCategory) return false;
-        } else {
-          // Fallback to implementType if no request found
-          if (p.implementType !== (selectedCategory as any)) return false;
-        }
+        const pCat = req?.productType || p.implementType;
+        if (!selectedCategories.includes(pCat as string)) return false;
       }
 
       // Suspension Filter
-      if (selectedSuspension !== 'ALL') {
+      if (selectedSuspensions.length > 0) {
         const req = data.projectRequests.find(r => r.ns === p.ns);
-        if (req) {
-          if (req.setup !== selectedSuspension) return false;
-        }
+        const pSusp = req?.setup || '';
+        if (!selectedSuspensions.includes(pSusp)) return false;
+      }
+
+      // Client Filter
+      if (selectedClients.length > 0) {
+        const req = data.projectRequests.find(r => r.ns === p.ns);
+        const pClient = req?.clientName || p.clientName || '';
+        if (!selectedClients.includes(pClient)) return false;
       }
 
       if (!startDate && !endDate) return true;
@@ -171,7 +265,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       // A project is relevant if it overlaps with the selected range
       return pStart <= end && pEnd >= start;
     });
-  }, [data.projects, startDate, endDate, currentUser.role, currentUser.id]);
+  }, [data.projects, startDate, endDate, currentUser.role, currentUser.id, selectedCategories, selectedSuspensions, selectedClients, data.projectRequests]);
 
   const filteredIssues = useMemo(() => {
      return data.issues.filter(i => {
@@ -712,11 +806,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       };
     }).filter(item => {
       // Apply filters to the detailed report as well
-      if (selectedCategory !== 'ALL' && item.productType !== selectedCategory) return false;
-      if (selectedSuspension !== 'ALL' && item.setup !== selectedSuspension) return false;
+      if (selectedCategories.length > 0 && !selectedCategories.includes(item.productType)) return false;
+      if (selectedSuspensions.length > 0 && !selectedSuspensions.includes(item.setup)) return false;
+      if (selectedClients.length > 0 && !selectedClients.includes(item.clientName)) return false;
       return true;
     });
-  }, [data.projectRequests, data.projects, selectedCategory, selectedSuspension]);
+  }, [data.projectRequests, data.projects, selectedCategories, selectedSuspensions, selectedClients]);
 
   const handleAiAnalysis = async () => {
     setIsLoadingAi(true);
@@ -825,15 +920,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             />
           </div>
           {currentUser.role === 'GESTOR' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-black dark:text-white uppercase">{t('designer')}</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase px-1">{t('designer')}</span>
               <select
                 value={selectedDesignerForReleases}
                 onChange={(e) => {
                   setSelectedDesignerForReleases(e.target.value);
                   setSelectedDesignerForChart(e.target.value); // Sync both for convenience
                 }}
-                className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
+                className="p-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer w-full md:w-48"
               >
                 <option value="ALL">{t('all')}</option>
                 {availableDesigners.map((u) => (
@@ -842,37 +937,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               </select>
             </div>
           )}
-          
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-black dark:text-white uppercase">{t('category')}</span>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
-            >
-              <option value="ALL">{t('all')}</option>
-              {PRODUCT_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-black dark:text-white uppercase">{t('suspension')}</span>
-            <select
-              value={selectedSuspension}
-              onChange={(e) => setSelectedSuspension(e.target.value)}
-              className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
-            >
-              <option value="ALL">{t('all')}</option>
-              {SUSPENSION_TYPES.map((susp) => (
-                <option key={susp} value={susp}>{susp}</option>
-              ))}
-            </select>
-          </div>
         </div>
-          <button 
-            onClick={handleExportCSV}
+        <button 
+          onClick={handleExportCSV}
             className="flex items-center text-sm font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors ml-auto md:ml-0 uppercase"
           >
             <Download className="w-4 h-4 mr-2" />
@@ -1330,8 +1397,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               <FileText className="w-5 h-5 mr-2 text-blue-500" />
               {t('detailedProductReport')}
             </h3>
-            <button 
-              onClick={() => {
+            <div className="flex items-center gap-2">
+              {(selectedClients.length > 0 || selectedCategories.length > 0 || selectedSuspensions.length > 0) && (
+                <button 
+                  onClick={() => {
+                    setSelectedClients([]);
+                    setSelectedCategories([]);
+                    setSelectedSuspensions([]);
+                  }}
+                  className="text-[10px] font-bold text-red-500 hover:text-red-600 uppercase px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors"
+                >
+                  {t('clearFilters')}
+                </button>
+              )}
+              <button 
+                onClick={() => {
                 const headers = [
                   t('nsHeader'), 
                   t('clientHeader'), 
@@ -1368,6 +1448,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               <Download className="w-4 h-4 mr-1" />
               {t('exportReport')}
             </button>
+          </div>
+        </div>
+
+          <div className="flex flex-wrap items-end gap-4 mb-6 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-100 dark:border-slate-800">
+            <div className="w-full mb-2 flex items-center gap-2 border-b border-gray-200 dark:border-slate-800 pb-2">
+              <Filter className="w-3 h-3 text-blue-500" />
+              <span className="text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('analysisFilters')}</span>
+            </div>
+            <MultiSelect 
+              label={t('client')}
+              options={availableClients}
+              selected={selectedClients}
+              onChange={setSelectedClients}
+              t={t}
+            />
+
+            <MultiSelect 
+              label={t('category')}
+              options={PRODUCT_CATEGORIES}
+              selected={selectedCategories}
+              onChange={setSelectedCategories}
+              t={t}
+            />
+
+            <MultiSelect 
+              label={t('suspension')}
+              options={SUSPENSION_TYPES}
+              selected={selectedSuspensions}
+              onChange={setSelectedSuspensions}
+              t={t}
+            />
+
+            <div className="flex-1" />
+            
+            <div className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase px-1 pb-1">
+              {detailedProductReport.length} {t('results') || 'Resultados'}
+            </div>
           </div>
 
           <div className="overflow-x-auto">

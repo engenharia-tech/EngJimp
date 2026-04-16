@@ -38,7 +38,8 @@ import {
   ActivityType, 
   User, 
   ProjectSession,
-  AppSettings
+  AppSettings,
+  InterruptionRecord
 } from '../types';
 import { format, startOfDay, endOfDay, isWithinInterval, parseISO, differenceInSeconds, addSeconds, subDays, addDays } from 'date-fns';
 import { ptBR, es, enUS } from 'date-fns/locale';
@@ -49,6 +50,7 @@ interface OperationalPerformanceProps {
   activities: OperationalActivity[];
   activityTypes: ActivityType[];
   projects: ProjectSession[];
+  interruptions: InterruptionRecord[];
   currentUser: User;
   users: User[];
   theme: 'light' | 'dark';
@@ -67,6 +69,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   activities,
   activityTypes,
   projects,
+  interruptions,
   currentUser,
   users,
   theme,
@@ -172,8 +175,6 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       if (viewMode === 'day') {
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
-        // Project overlaps with the day if:
-        // projectStart <= dayEnd AND projectEnd >= dayStart
         return projectStart <= end && projectEnd >= start;
       } else if (viewMode === 'month') {
         return projectStart.getMonth() === selectedDate.getMonth() && 
@@ -183,6 +184,26 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       }
     });
   }, [projects, selectedDate, selectedUserId, viewMode]);
+
+  const filteredInterruptions = useMemo(() => {
+    return (interruptions || []).filter(i => {
+      const start = parseISO(i.startTime);
+      const end = i.endTime ? parseISO(i.endTime) : new Date();
+      const isUser = i.designerId === selectedUserId;
+      if (!isUser) return false;
+
+      if (viewMode === 'day') {
+        const dayStart = startOfDay(selectedDate);
+        const dayEnd = endOfDay(selectedDate);
+        return start <= dayEnd && end >= dayStart;
+      } else if (viewMode === 'month') {
+        return start.getMonth() === selectedDate.getMonth() && 
+               start.getFullYear() === selectedDate.getFullYear();
+      } else {
+        return start.getFullYear() === selectedDate.getFullYear();
+      }
+    });
+  }, [interruptions, selectedDate, selectedUserId, viewMode]);
 
   const currentActivity = useMemo(() => {
     return activities.find(a => !a.endTime && a.userId === selectedUserId);
@@ -256,7 +277,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
     const items: any[] = [];
 
-    const processItem = (id: string, type: 'activity' | 'project', name: string, startTime: string, endTime: string | undefined, color: string) => {
+    const processItem = (id: string, type: 'activity' | 'project' | 'pause' | 'interruption', name: string, startTime: string, endTime: string | undefined, color: string) => {
       const start = parseISO(startTime);
       const end = endTime ? parseISO(endTime) : new Date();
 
@@ -320,10 +341,81 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     };
 
     filteredActivities.forEach(a => processItem(a.id, 'activity', a.activityName, a.startTime, a.endTime, '#3b82f6'));
-    filteredProjects.forEach(p => processItem(p.id, 'project', `Projeto: ${p.ns || p.projectCode || 'S/N'}`, p.startTime, p.endTime, '#10b981'));
+    
+    filteredProjects.forEach(p => {
+      // Find interruptions for this project
+      const projectInterruptions = filteredInterruptions.filter(i => i.projectId === p.id || i.projectNs === p.ns);
+      
+      // Collect all exclusions (pauses and interruptions)
+      const exclusions: { start: Date, end: Date, type: 'pause' | 'interruption', name: string, id: string }[] = [];
+      
+      if (p.pauses) {
+        p.pauses.forEach((pause, idx) => {
+          const pStart = parseISO(pause.timestamp);
+          const pEnd = addSeconds(pStart, pause.durationSeconds);
+          exclusions.push({ 
+            start: pStart, 
+            end: pEnd, 
+            type: 'pause', 
+            name: `${t('pause')}: ${pause.reason}`,
+            id: `${p.id}-pause-${idx}`
+          });
+        });
+      }
+      
+      projectInterruptions.forEach(i => {
+        exclusions.push({ 
+          start: parseISO(i.startTime), 
+          end: i.endTime ? parseISO(i.endTime) : new Date(), 
+          type: 'interruption', 
+          name: `${t('interruption')}: ${i.description}`,
+          id: i.id
+        });
+      });
+
+      // Sort exclusions
+      exclusions.sort((a, b) => a.start.getTime() - b.start.getTime());
+
+      // Split project into productive segments
+      const projectStart = parseISO(p.startTime);
+      const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
+      
+      let segments = [{ start: projectStart, end: projectEnd }];
+      
+      exclusions.forEach(ex => {
+        const nextSegments: { start: Date, end: Date }[] = [];
+        segments.forEach(seg => {
+          if (ex.end <= seg.start || ex.start >= seg.end) {
+            nextSegments.push(seg);
+          } else {
+            if (ex.start > seg.start) nextSegments.push({ start: seg.start, end: ex.start });
+            if (ex.end < seg.end) nextSegments.push({ start: ex.end, end: seg.end });
+          }
+        });
+        segments = nextSegments;
+      });
+
+      // Add productive segments
+      segments.forEach((seg, idx) => {
+        processItem(`${p.id}-seg-${idx}`, 'project', `Projeto: ${p.ns || p.projectCode || 'S/N'}`, seg.start.toISOString(), seg.end.toISOString(), '#10b981');
+      });
+
+      // Add exclusions as separate items
+      exclusions.forEach(ex => {
+        processItem(ex.id, ex.type, ex.name, ex.start.toISOString(), ex.end.toISOString(), ex.type === 'pause' ? '#f59e0b' : '#ef4444');
+      });
+    });
+
+    // Add remaining interruptions that are NOT linked to projects
+    filteredInterruptions.forEach(i => {
+      const isLinked = filteredProjects.some(p => i.projectId === p.id || i.projectNs === p.ns);
+      if (!isLinked) {
+        processItem(i.id, 'interruption', `${t('interruption')}: ${i.description}`, i.startTime, i.endTime, '#ef4444');
+      }
+    });
 
     return items.sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [filteredActivities, filteredProjects, selectedDate, viewMode, settings]);
+  }, [filteredActivities, filteredProjects, filteredInterruptions, selectedDate, viewMode, settings, t]);
 
   // Find gaps in the timeline (assuming work day 08:00 - 18:00)
   const gaps = useMemo(() => {
@@ -354,7 +446,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const stats = useMemo(() => {
     const dataMap: Record<string, number> = {
-      [t('projects') || 'Projetos']: 0
+      [t('projects') || 'Projetos']: 0,
+      [t('pauses') || 'Pausas']: 0,
+      [t('interruptions') || 'Interrupções']: 0
     };
 
     // Initialize map with all activity types
@@ -366,6 +460,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       const duration = differenceInSeconds(item.end, item.start);
       if (item.type === 'project') {
         dataMap[t('projects') || 'Projetos'] += duration;
+      } else if (item.type === 'pause') {
+        dataMap[t('pauses') || 'Pausas'] += duration;
+      } else if (item.type === 'interruption') {
+        dataMap[t('interruptions') || 'Interrupções'] += duration;
       } else {
         if (dataMap[item.name] !== undefined) {
           dataMap[item.name] += duration;
@@ -896,10 +994,14 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         ? 'bg-amber-100 border-amber-50 dark:bg-amber-900/30 dark:border-amber-900/10' 
                         : item.type === 'project'
                           ? 'bg-emerald-100 border-emerald-50 dark:bg-emerald-900/30 dark:border-emerald-900/10'
-                          : 'bg-blue-100 border-blue-50 dark:bg-blue-900/30 dark:border-blue-900/10'
+                          : item.type === 'pause'
+                            ? 'bg-orange-100 border-orange-50 dark:bg-orange-900/30 dark:border-orange-900/10'
+                            : item.type === 'interruption'
+                              ? 'bg-red-100 border-red-50 dark:bg-red-900/30 dark:border-red-900/10'
+                              : 'bg-blue-100 border-blue-50 dark:bg-blue-900/30 dark:border-blue-900/10'
                     } flex items-center justify-center z-10`}>
                       <div className={`w-2 h-2 rounded-full ${
-                        item.isGap ? 'bg-amber-500' : item.type === 'project' ? 'bg-emerald-500' : 'bg-blue-500'
+                        item.isGap ? 'bg-amber-500' : item.type === 'project' ? 'bg-emerald-500' : item.type === 'pause' ? 'bg-orange-500' : item.type === 'interruption' ? 'bg-red-500' : 'bg-blue-500'
                       }`} />
                     </div>
 
@@ -908,6 +1010,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         ? canEditCurrent 
                           ? 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/20 border-dashed hover:border-amber-300 cursor-pointer'
                           : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 border-dashed opacity-60'
+                        : item.type === 'pause'
+                          ? 'bg-orange-50/50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-900/20'
+                        : item.type === 'interruption'
+                          ? 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20'
                         : canEditCurrent && item.type === 'activity'
                           ? 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 hover:border-blue-300 cursor-pointer'
                           : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800'
@@ -956,7 +1062,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                             <Flag size={14} className="text-red-500 fill-red-500" />
                           )}
                           <span className={`text-sm font-bold uppercase tracking-wider ${
-                          item.isGap ? 'text-amber-600 dark:text-amber-400' : theme === 'dark' ? 'text-white' : 'text-gray-800'
+                          item.isGap ? 'text-amber-600 dark:text-amber-400' : 
+                          item.type === 'pause' ? 'text-orange-600 dark:text-orange-400' :
+                          item.type === 'interruption' ? 'text-red-600 dark:text-red-400' :
+                          theme === 'dark' ? 'text-white' : 'text-gray-800'
                         }`}>
                           {item.name}
                         </span>
