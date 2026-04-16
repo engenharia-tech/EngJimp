@@ -1246,74 +1246,77 @@ JIMPNEXUS
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredRequests.length === 0 ? (
-                <div className="col-span-full py-8 text-center text-gray-500 dark:text-slate-400 italic">
+                <div className="col-span-full py-12 text-center text-gray-400 dark:text-slate-500 italic">
                   {nsSearch ? t('noResultsFound') : t('noPendingNs')}
                 </div>
               ) : (
                 filteredRequests.map(request => (
-                  <div key={request.id} className="border border-orange-100 dark:border-orange-900/50 rounded-lg p-4 bg-white dark:bg-black hover:shadow-md transition-shadow relative group">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="font-bold text-orange-600 dark:text-orange-400 text-lg">NS {request.ns}</div>
-                      <div className="flex gap-1">
-                        <button 
-                          onClick={() => handlePickRequest(request)}
-                          disabled={isSaving}
-                          className="p-1.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded hover:bg-orange-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={t('designThisOrder')}
-                        >
-                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                        </button>
-                        <button 
-                          onClick={() => handleEditRequest(request)}
-                          className="p-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-600 hover:text-white transition-all"
-                          title={t('editOrder')}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={async () => {
-                            if (isSaving) return;
-                            setIsSaving(true);
-                            try {
-                              await onDeleteProjectRequest(request.id);
-                            } finally {
-                              setIsSaving(false);
-                            }
-                          }}
-                          disabled={isSaving}
-                          className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded hover:bg-red-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={t('deleteOrder')}
-                        >
-                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                        </button>
+                  <div key={request.id} className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group">
+                    <div>
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest block mb-0.5">NS {request.ns}</span>
+                          <h4 className="font-bold text-gray-900 dark:text-white truncate max-w-[150px]" title={request.clientName}>{request.clientName}</h4>
+                        </div>
+                        <div className="flex gap-1">
+                          <button 
+                            onClick={() => handlePickRequest(request)}
+                            disabled={isSaving}
+                            className="p-1.5 bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 rounded hover:bg-orange-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={t('designThisOrder')}
+                          >
+                            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                          </button>
+                          <button 
+                            onClick={() => handleEditRequest(request)}
+                            className="p-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-600 hover:text-white transition-all"
+                            title={t('editOrder')}
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              if (isSaving) return;
+                              setIsSaving(true);
+                              try {
+                                await onDeleteProjectRequest(request.id);
+                              } finally {
+                                setIsSaving(false);
+                              }
+                            }}
+                            disabled={isSaving}
+                            className="p-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded hover:bg-red-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={t('deleteOrder')}
+                          >
+                            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="space-y-1 text-sm">
-                      <div className="font-semibold text-black dark:text-white">{request.clientName}</div>
-                      <div className="text-gray-600 dark:text-slate-400 flex items-center gap-1">
-                        <Truck className="w-3 h-3" /> {request.productType}
-                      </div>
-                      <div className="grid grid-cols-2 gap-x-2 text-[10px] text-gray-500 dark:text-slate-500">
+                      
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] text-gray-500 dark:text-slate-400 mb-3">
+                        <span className="truncate" title={request.productType}>{t('prodAbbr')}: {request.productType}</span>
                         <span className="truncate" title={request.dimension}>{t('dimAbbr')}: {request.dimension}</span>
                         <span className="truncate" title={request.flooring}>{t('assAbbr')}: {request.flooring}</span>
                         <span className="truncate" title={request.setup}>{t('setAbbr')}: {request.setup}</span>
                         <span className="truncate col-span-2" title={request.chassisNumber}>{t('basAbbr')}: {request.chassisNumber || '-'}</span>
-                        <span className="font-bold text-orange-600 dark:text-orange-400">{t('estGerAbbr')}: {request.managementEstimate}h</span>
-                        <span className="font-bold text-blue-600 dark:text-blue-400">{t('estProjAbbr')}: {(request.designerEstimate || 0).toFixed(1)}h</span>
+                        <div className="col-span-2 pt-1 border-t border-gray-50 dark:border-slate-800 mt-1 flex justify-between">
+                          <span className="font-bold text-orange-600 dark:text-orange-400">{t('estGerAbbr')}: {request.managementEstimate}h</span>
+                          <span className="font-bold text-blue-600 dark:text-blue-400">{t('estProjAbbr')}: {(request.designerEstimate || 0).toFixed(1)}h</span>
+                        </div>
                         <span className="font-bold text-green-600 dark:text-green-400 col-span-2">
                           {t('effectiveTime')}: {(allProjects.filter(p => p.ns === request.ns).reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600).toFixed(1)}h
                         </span>
                       </div>
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex flex-wrap gap-1.5 mt-2">
                         {request.needsBase && (
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${request.baseProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${request.baseProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                             {t('base')} {request.baseProjectId ? `(${t('ok')})` : ''}
                           </span>
                         )}
                         {request.needsBox && (
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${request.boxProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${request.boxProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                             {t('box')} {request.boxProjectId ? `(${t('ok')})` : ''}
                           </span>
                         )}
@@ -1394,19 +1397,19 @@ JIMPNEXUS
                   {t('startProject')}
                 </h2>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('productNs')}</label>
+                      <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('productNs')}</label>
                       <input 
                         type="text" 
                         value={ns}
                         onChange={e => setNs(e.target.value)}
-                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
                         placeholder={t('nsPlaceholder')}
                       />
                       {aggregatedInfo && (
-                        <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-1.5 rounded-md border border-amber-100 dark:border-amber-900/30">
-                          <Info className="w-3 h-3" />
+                        <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-lg border border-amber-100 dark:border-amber-900/30">
+                          <Info className="w-3 h-3 flex-shrink-0" />
                           <span>
                             {aggregatedInfo.totalSeconds > 0 
                               ? t('accumulated', { time: formatTime(aggregatedInfo.totalSeconds), count: aggregatedInfo.contributors })
@@ -1416,65 +1419,62 @@ JIMPNEXUS
                       )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('client')}</label>
+                      <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('client')}</label>
                       <div className="relative">
-                        <Building className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
+                        <Building className="absolute left-3 top-3 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <input 
                           type="text" 
                           value={clientName}
                           onChange={e => setClientName(e.target.value)}
-                          className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
                           placeholder={t('clientName')}
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('projectCodeOptional')}</label>
+                      <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('projectCodeOptional')}</label>
                       <div className="relative">
-                        <Hash className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
+                        <Hash className="absolute left-3 top-3 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <input 
                           type="text" 
                           value={projectCode}
                           onChange={e => setProjectCode(e.target.value)}
-                          className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
                           placeholder={t('projectCodePlaceholder')}
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('bastidor')}</label>
+                      <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('bastidor')}</label>
                       <div className="relative">
-                        <Hash className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
+                        <Hash className="absolute left-3 top-3 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <input 
                           type="text" 
                           value={chassis}
                           onChange={e => setChassis(e.target.value)}
-                          className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
                           placeholder={t('chassisNumberPlaceholder')}
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('projectType')}</label>
+                      <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('projectType')}</label>
                       <select 
                         value={type}
                         onChange={e => setType(e.target.value as ProjectType)}
-                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm appearance-none"
                       >
                         {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
-                      <p className="mt-1 text-[10px] text-gray-500 dark:text-slate-400 italic">
-                        {t('otherActivitiesNote')}
-                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('implementationType')}</label>
+                      <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('implementationType')}</label>
                       <div className="relative">
-                        <Truck className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
+                        <Truck className="absolute left-3 top-3 w-4 h-4 text-gray-400 dark:text-slate-500" />
                         <select 
                           value={implementType}
                           onChange={e => setImplementType(e.target.value as ImplementType)}
-                          className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm appearance-none"
                         >
                           {IMPLEMENT_TYPES.map(type => <option key={type} value={type}>{t(type.toLowerCase())}</option>)}
                         </select>
@@ -1483,13 +1483,13 @@ JIMPNEXUS
 
                     {shouldShowFlooring && (
                         <div>
-                        <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('flooringType')}</label>
+                        <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('flooringType')}</label>
                         <div className="relative">
-                            <Layers className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
+                            <Layers className="absolute left-3 top-3 w-4 h-4 text-gray-400 dark:text-slate-500" />
                             <select 
                             value={flooringType}
                             onChange={e => setFlooringType(e.target.value)}
-                            className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                            className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm appearance-none"
                             >
                                 <option value="">{t('select')}</option>
                                 {FLOORING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1498,64 +1498,67 @@ JIMPNEXUS
                         </div>
                     )}
 
-                    <div className="md:col-span-2 lg:col-span-1">
-                      <label className="block text-sm font-medium text-black dark:text-white mb-1">{t('estimatedTime')}</label>
+                    <div className="sm:col-span-2 lg:col-span-1">
+                      <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('estimatedTime')}</label>
                       <div className="flex gap-2">
                         <div className="flex-1 relative">
                           <input 
                             type="number" 
                             value={estHours}
                             onChange={e => setEstHours(e.target.value)}
-                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                            className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
                             placeholder={t('hours')}
                             min="0"
                           />
-                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">{t('hoursAbbr')}</span>
+                          <span className="absolute right-2 top-2.5 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">{t('hoursAbbr')}</span>
                         </div>
                         <div className="flex-1 relative">
                           <input 
                             type="number" 
                             value={estMinutes}
                             onChange={e => setEstMinutes(e.target.value)}
-                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                            className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
                             placeholder={t('minutes')}
                             min="0"
                             max="59"
                           />
-                          <span className="absolute right-2 top-2 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">{t('minutesAbbr')}</span>
+                          <span className="absolute right-2 top-2.5 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase">{t('minutesAbbr')}</span>
                         </div>
                       </div>
                     </div>
                     
                     <div className="flex items-end pb-1">
-                      <label className="flex items-center space-x-2 cursor-pointer bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg border border-amber-100 dark:border-amber-900/30 w-full">
+                      <label className="flex items-center space-x-3 cursor-pointer bg-amber-50 dark:bg-amber-900/10 px-4 py-2.5 rounded-xl border border-amber-100 dark:border-amber-900/20 w-full">
                         <input 
                           type="checkbox" 
                           checked={isOvertime}
                           onChange={e => setIsOvertime(e.target.checked)}
-                          className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                          className="w-5 h-5 text-amber-600 rounded-lg focus:ring-amber-500 border-amber-300"
                         />
-                        <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{t('overtime')}</span>
+                        <span className="text-sm font-black text-amber-700 dark:text-amber-400 uppercase tracking-wider">{t('overtime')}</span>
                       </label>
                     </div>
                   </div>
-                  <button 
-                    onClick={handleStartNew}
-                    disabled={isSaving}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        {t('saving') || 'SALVANDO...'}
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-5 h-5 mr-2" />
-                        {t('startTimer')}
-                      </>
-                    )}
-                  </button>
+
+                  <div className="pt-2">
+                    <button 
+                      onClick={handleStartNew}
+                      disabled={isSaving}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-widest"
+                    >
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          {t('saving') || 'SALVANDO...'}
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-5 h-5 mr-2" />
+                          {t('startProject')}
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
           ) : (

@@ -51,44 +51,54 @@ const MultiSelect: React.FC<{
   return (
     <div className="relative" ref={containerRef}>
       <div className="flex flex-col gap-1">
-        <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase px-1">{label}</span>
+        <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-1">{label}</span>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center justify-between w-full md:w-48 p-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-gray-50 dark:bg-black text-sm text-left transition-all hover:border-blue-400"
+          className={`flex items-center justify-between w-full md:w-48 px-3 py-2 border rounded-lg text-sm text-left transition-all duration-200 ${
+            isOpen 
+              ? 'border-blue-500 ring-2 ring-blue-500/10 bg-white dark:bg-slate-900' 
+              : 'border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-black hover:border-gray-300 dark:hover:border-slate-600'
+          }`}
         >
-          <span className="truncate text-black dark:text-white">
+          <span className="truncate text-gray-700 dark:text-slate-200 font-medium">
             {selected.length === 0 ? t('all') : `${selected.length} ${t('selected') || 'Selecionados'}`}
           </span>
-          <Filter className={`w-3 h-3 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <Filter className={`w-3.5 h-3.5 ml-2 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-blue-500' : ''}`} />
         </button>
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full md:w-64 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-xl p-2 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-          <div className="flex items-center justify-between p-2 border-b border-gray-100 dark:border-slate-800 mb-2">
+        <div className="absolute z-50 mt-2 w-64 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl p-2 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between p-2 border-b border-gray-100 dark:border-slate-800 mb-2 sticky top-0 bg-white dark:bg-slate-900 z-10">
             <button 
               onClick={() => onChange([])}
-              className="text-[10px] font-bold text-blue-600 hover:underline uppercase"
+              className="text-[10px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 uppercase tracking-tight"
             >
               {t('clearAll') || 'Limpar'}
             </button>
             <button 
               onClick={() => setIsOpen(false)}
-              className="text-[10px] font-bold text-gray-400 hover:text-gray-600 uppercase"
+              className="text-[10px] font-bold text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 uppercase tracking-tight"
             >
               {t('close')}
             </button>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {options.map(option => (
-              <label key={option} className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition-colors group">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(option)}
-                  onChange={() => toggleOption(option)}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-xs text-gray-700 dark:text-slate-300 group-hover:text-black dark:group-hover:text-white truncate">
+              <label key={option} className="flex items-center gap-2.5 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg cursor-pointer transition-colors group">
+                <div className="relative flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(option)}
+                    onChange={() => toggleOption(option)}
+                    className="peer w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 bg-white dark:bg-slate-800 transition-all"
+                  />
+                </div>
+                <span className={`text-xs transition-colors truncate ${
+                  selected.includes(option) 
+                    ? 'text-blue-700 dark:text-blue-300 font-bold' 
+                    : 'text-gray-600 dark:text-slate-400 group-hover:text-gray-900 dark:group-hover:text-slate-200'
+                }`}>
                   {option}
                 </span>
               </label>
@@ -886,65 +896,128 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     <div className="space-y-6">
       
       {/* Date Filter Section */}
-      <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center text-black dark:text-white font-bold uppercase">
-          <Filter className="w-5 h-5 mr-2 text-blue-600" />
-          {t('analysisFilters')}
-        </div>
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          {onRefresh && (
-            <button 
-              onClick={onRefresh}
-              className="p-2 text-gray-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
-              title={t('refreshData')}
-            >
-              <Activity className="w-5 h-5" />
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 dark:text-slate-400 uppercase">{t('from')}</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="p-2 border dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-black dark:text-white"
-            />
+      <div className="bg-white dark:bg-black p-5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center text-black dark:text-white font-black uppercase tracking-widest text-sm">
+            <Filter className="w-5 h-5 mr-3 text-blue-600" />
+            {t('analysisFilters')}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-black dark:text-white uppercase">{t('to')}</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="p-2 border dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dark:bg-black dark:text-white"
-            />
-          </div>
-          {currentUser.role === 'GESTOR' && (
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase px-1">{t('designer')}</span>
-              <select
-                value={selectedDesignerForReleases}
-                onChange={(e) => {
-                  setSelectedDesignerForReleases(e.target.value);
-                  setSelectedDesignerForChart(e.target.value); // Sync both for convenience
-                }}
-                className="p-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer w-full md:w-48"
+          
+          <div className="flex items-center gap-2 ml-auto">
+            {onRefresh && (
+              <button 
+                onClick={onRefresh}
+                className="p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-gray-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-all hover:shadow-md active:scale-95"
+                title={t('refreshData')}
               >
-                <option value="ALL">{t('all')}</option>
-                {availableDesigners.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
+                <Activity className="w-4 h-4" />
+              </button>
+            )}
+            <button 
+              onClick={handleExportCSV}
+              className="flex items-center text-[10px] font-black text-gray-600 dark:text-slate-300 hover:text-white bg-white dark:bg-black border border-gray-200 dark:border-slate-700 px-4 py-2.5 rounded-xl hover:bg-blue-600 dark:hover:bg-blue-600 hover:border-blue-600 transition-all shadow-sm uppercase tracking-wider"
+            >
+              <Download className="w-3.5 h-3.5 mr-2" />
+              {t('exportCsv')}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end pt-2 border-t border-gray-50 dark:border-slate-900">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-1">{t('from')}</span>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm bg-gray-50 dark:bg-black text-gray-700 dark:text-white transition-all"
+              />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-1">{t('to')}</span>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm bg-gray-50 dark:bg-black text-gray-700 dark:text-white transition-all"
+              />
+            </div>
+          </div>
+
+          <MultiSelect 
+            label={t('client')}
+            options={availableClients}
+            selected={selectedClients}
+            onChange={setSelectedClients}
+            t={t}
+          />
+
+          <MultiSelect 
+            label={t('category')}
+            options={PRODUCT_CATEGORIES}
+            selected={selectedCategories}
+            onChange={setSelectedCategories}
+            t={t}
+          />
+
+          {currentUser.role === 'GESTOR' ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-1">{t('designer')}</span>
+              <div className="relative">
+                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                <select
+                  value={selectedDesignerForReleases}
+                  onChange={(e) => {
+                    setSelectedDesignerForReleases(e.target.value);
+                    setSelectedDesignerForChart(e.target.value);
+                  }}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm bg-gray-50 dark:bg-black text-gray-700 dark:text-white cursor-pointer appearance-none transition-all"
+                >
+                  <option value="ALL">{t('all')}</option>
+                  {availableDesigners.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <MultiSelect 
+              label={t('suspension')}
+              options={SUSPENSION_TYPES}
+              selected={selectedSuspensions}
+              onChange={setSelectedSuspensions}
+              t={t}
+            />
           )}
         </div>
-        <button 
-          onClick={handleExportCSV}
-            className="flex items-center text-sm font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors ml-auto md:ml-0 uppercase"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            {t('exportCsv')}
-          </button>
+
+        {(selectedClients.length > 0 || selectedCategories.length > 0 || selectedSuspensions.length > 0 || selectedDesignerForReleases !== 'ALL') && (
+          <div className="flex items-center gap-3 pt-2">
+            <button 
+              onClick={() => {
+                setSelectedClients([]);
+                setSelectedCategories([]);
+                setSelectedSuspensions([]);
+                setSelectedDesignerForReleases('ALL');
+                setSelectedDesignerForChart('ALL');
+              }}
+              className="text-[10px] font-black text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 uppercase tracking-widest flex items-center gap-1.5 transition-colors"
+            >
+              <Sparkles className="w-3 h-3" />
+              {t('clearFilters') || 'Limpar Filtros'}
+            </button>
+            <div className="h-3 w-px bg-gray-200 dark:bg-slate-800" />
+            <span className="text-[10px] font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider">
+              {filteredProjects.length} {t('results') || 'Resultados'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Dashboard Visibility Controls */}
@@ -1032,69 +1105,69 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       {/* KPI Section */}
       {visibleSections.includes('kpi') && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {currentUser.role !== 'PROCESSOS' && averageTimes.length > 0 && averageTimes.map((stat) => (
-            <div key={stat.type} className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div key={stat.type} className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
               <div>
-                <p className="text-xs font-bold text-black dark:text-white uppercase tracking-wider mb-1">{t('avgTime')} {stat.type}</p>
-                <p className="text-xl font-bold text-black dark:text-white">{formatDuration(stat.avgSeconds)}</p>
+                <p className="text-[9px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('avgTime')} {stat.type}</p>
+                <p className="text-sm sm:text-xl font-black text-black dark:text-white">{formatDuration(stat.avgSeconds)}</p>
               </div>
-              <div className="h-8 w-8 bg-blue-50 dark:bg-black rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400">
-                <Clock className="w-4 h-4" />
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-blue-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
           ))}
           
           {currentUser.role !== 'PROCESSOS' && (
-            <div className="bg-white dark:bg-black p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">{t('totalHours')}</p>
-                <p className="text-xl font-bold text-indigo-800 dark:text-indigo-300">{totalHours}h</p>
+            <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+              <div className="w-full">
+                <p className="text-[9px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalHours')}</p>
+                <p className="text-sm sm:text-xl font-black text-indigo-800 dark:text-indigo-300">{totalHours}h</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <div className="flex-1 h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className="flex-1 h-1 sm:h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div className="h-full bg-indigo-500" style={{ width: `${goalProgress}%` }}></div>
                   </div>
-                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{goalProgress}%</span>
+                  <span className="text-[8px] sm:text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{goalProgress}%</span>
                 </div>
               </div>
-              <div className="h-8 w-8 bg-indigo-50 dark:bg-black rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                <Activity className="w-4 h-4" />
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-indigo-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+                <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
           )}
 
           {/* Innovation KPI */}
-           <div className="bg-white dark:bg-black p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex items-center justify-between">
+           <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
               <div>
-                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">{t('annualSavings')}</p>
-                <p className="text-xl font-bold text-emerald-800 dark:text-emerald-300">{formatCurrency(totalSavings)}</p>
+                <p className="text-[9px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('annualSavings')}</p>
+                <p className="text-sm sm:text-xl font-black text-emerald-800 dark:text-emerald-300">{formatCurrency(totalSavings)}</p>
               </div>
-              <div className="h-8 w-8 bg-emerald-50 dark:bg-black rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                <TrendingDown className="w-4 h-4" />
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-emerald-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+                <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
 
           {/* Cost KPI */}
-          <div className="bg-white dark:bg-black p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 shadow-sm flex items-center justify-between">
+          <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
             <div>
-              <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">{t('totalProjectValue')}</p>
-              <p className="text-xl font-bold text-blue-800 dark:text-blue-300">{formatCurrency(costData.productive)}</p>
-              <p className="text-[10px] text-blue-500 font-medium mt-1">{t('productiveTimeBase')}</p>
+              <p className="text-[9px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalProjectValue')}</p>
+              <p className="text-sm sm:text-xl font-black text-blue-800 dark:text-blue-300">{formatCurrency(costData.productive)}</p>
+              <p className="text-[8px] sm:text-[10px] text-blue-500 font-medium mt-0.5 sm:mt-1">{t('productiveTimeBase')}</p>
             </div>
-            <div className="h-8 w-8 bg-blue-50 dark:bg-black rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <DollarSign className="w-4 h-4" />
+            <div className="h-7 w-7 sm:h-8 sm:w-8 bg-blue-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
+              <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
 
           {/* Interruption Cost KPI */}
-          <div className="bg-white dark:bg-black p-4 rounded-xl border border-red-100 dark:border-red-900/30 shadow-sm flex items-center justify-between">
+          <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-red-100 dark:border-red-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
             <div>
-              <p className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">{t('interruptionCost')}</p>
-              <p className="text-xl font-bold text-red-800 dark:text-red-300">{formatCurrency(costData.interruption)}</p>
-              <p className="text-[10px] text-red-500 font-medium mt-1">{t('totalTime')}: {formatDuration(costData.totalInterruptionSeconds)}</p>
+              <p className="text-[9px] sm:text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('interruptionCost')}</p>
+              <p className="text-sm sm:text-xl font-black text-red-800 dark:text-red-300">{formatCurrency(costData.interruption)}</p>
+              <p className="text-[8px] sm:text-[10px] text-red-500 font-medium mt-0.5 sm:mt-1">{t('totalTime')}: {formatDuration(costData.totalInterruptionSeconds)}</p>
             </div>
-            <div className="h-8 w-8 bg-red-50 dark:bg-black rounded-full flex items-center justify-center text-red-600 dark:text-red-400">
-              <TrendingDown className="w-4 h-4" />
+            <div className="h-7 w-7 sm:h-8 sm:w-8 bg-red-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 flex-shrink-0">
+              <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
         </div>
@@ -1103,7 +1176,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       {/* AI Insights Section */}
         {currentUser.role !== 'PROCESSOS' && (
           <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-black p-6 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between mb-4 gap-4">
               <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-300 flex items-center">
                 <Sparkles className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
                 {t('aiAnalysis')}
@@ -1111,7 +1184,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               <button 
                 onClick={handleAiAnalysis}
                 disabled={isLoadingAi}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm uppercase"
+                className="w-full sm:w-auto bg-indigo-600 text-white px-6 py-3 sm:py-2 rounded-xl text-sm font-black hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg shadow-indigo-500/20 uppercase tracking-widest active:scale-95"
               >
                 {isLoadingAi ? t('analyzing') : t('generateReport')}
               </button>
@@ -1451,39 +1524,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           </div>
         </div>
 
-          <div className="flex flex-wrap items-end gap-4 mb-6 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-100 dark:border-slate-800">
-            <div className="w-full mb-2 flex items-center gap-2 border-b border-gray-200 dark:border-slate-800 pb-2">
-              <Filter className="w-3 h-3 text-blue-500" />
-              <span className="text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('analysisFilters')}</span>
-            </div>
-            <MultiSelect 
-              label={t('client')}
-              options={availableClients}
-              selected={selectedClients}
-              onChange={setSelectedClients}
-              t={t}
-            />
-
-            <MultiSelect 
-              label={t('category')}
-              options={PRODUCT_CATEGORIES}
-              selected={selectedCategories}
-              onChange={setSelectedCategories}
-              t={t}
-            />
-
-            <MultiSelect 
-              label={t('suspension')}
-              options={SUSPENSION_TYPES}
-              selected={selectedSuspensions}
-              onChange={setSelectedSuspensions}
-              t={t}
-            />
-
-            <div className="flex-1" />
-            
-            <div className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase px-1 pb-1">
-              {detailedProductReport.length} {t('results') || 'Resultados'}
+          <div className="flex flex-wrap items-end gap-4 mb-6">
+            <div className="w-full mb-2 flex items-center justify-between border-b border-gray-100 dark:border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <Layers className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-widest">{t('detailedReport') || 'Relatório Detalhado'}</span>
+              </div>
+              <div className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">
+                {detailedProductReport.length} {t('results') || 'Resultados'}
+              </div>
             </div>
           </div>
 
@@ -1491,14 +1540,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-slate-800">
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('productNs')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('client')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('productType')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('bastidor')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('setup')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('dimension')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('status')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase">{t('releasedMonth')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('productNs')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('client')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('productType')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('bastidor')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('setup')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('dimension')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('status')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('releasedMonth')}</th>
                 </tr>
               </thead>
               <tbody>
