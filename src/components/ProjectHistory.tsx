@@ -321,12 +321,36 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           }
       });
       
-      const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
+      const projectInterruptions = (data.interruptions || []).filter(i => {
+        if (i.projectId) return i.projectId === project.id && i.status === 'RESOLVED';
+        // Fallback for older data without projectId: check if same NS and overlaps with project session
+        if (i.projectNs === project.ns && i.status === 'RESOLVED') {
+          const iStart = new Date(i.startTime);
+          const pStart = new Date(project.startTime);
+          const pEnd = project.endTime ? new Date(project.endTime) : new Date();
+          return iStart >= pStart && iStart < pEnd;
+        }
+        return false;
+      });
+
+      const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + (curr.totalTimeSeconds || 0), 0);
+      const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds - interruptionSeconds);
+      const totalSeconds = netSeconds + interruptionSeconds;
       
-      if (Math.abs(project.totalActiveSeconds - netSeconds) > 1) {
+      const hourlyRate = data.settings?.hourlyCost || 0;
+      const productiveCost = (netSeconds / 3600) * hourlyRate;
+      const interruptionCost = (interruptionSeconds / 3600) * hourlyRate;
+      const totalCost = productiveCost + interruptionCost;
+
+      if (Math.abs(project.totalActiveSeconds - netSeconds) > 2) {
         await onUpdate({
           ...project,
-          totalActiveSeconds: netSeconds
+          totalActiveSeconds: netSeconds,
+          interruptionSeconds,
+          totalSeconds,
+          productiveCost,
+          interruptionCost,
+          totalCost
         });
         addToast(t('projectUpdatedSuccess'), 'success');
       } else {
@@ -604,16 +628,17 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   const stats = useMemo(() => {
     const totalProjects = filteredProjects.length;
     const totalSeconds = filteredProjects.reduce((acc, p) => {
-      const pTotalSeconds = p.totalSeconds || (p.totalActiveSeconds + (p.interruptionSeconds || 0));
-      return acc + pTotalSeconds;
+      // Use only active seconds for the main total to avoid overlap with other projects worked on during interruptions
+      return acc + (p.totalActiveSeconds || 0);
     }, 0);
     const avgSeconds = totalProjects > 0 ? totalSeconds / totalProjects : 0;
     
     let totalCost = 0;
     if (isGestor) {
       filteredProjects.forEach(p => {
-        const pTotalSeconds = p.totalSeconds || (p.totalActiveSeconds + (p.interruptionSeconds || 0));
-        totalCost += engineeringHourlyRate * (pTotalSeconds / 3600);
+        // Cost should also focus on active productive time
+        const pActiveSeconds = p.totalActiveSeconds || 0;
+        totalCost += engineeringHourlyRate * (pActiveSeconds / 3600);
       });
     }
 
@@ -925,7 +950,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 filteredProjects.map((project) => {
                     const user = usersMap[project.userId || ''];
                     const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
-                    const pTotalSeconds = project.totalSeconds || (project.totalActiveSeconds + (project.interruptionSeconds || 0));
+                    const pActiveSeconds = project.totalActiveSeconds;
+                    const pInterruptionSeconds = project.interruptionSeconds || 0;
 
                     return (
                         <div key={project.id} className="p-4 bg-white dark:bg-black">
@@ -953,8 +979,13 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
                             <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800">
                                 <div>
-                                    <span className="block text-[8px] text-gray-400 dark:text-slate-500 uppercase font-black">{t('totalTime')}</span>
-                                    <span className="text-xs font-bold text-gray-700 dark:text-slate-200">{formatDuration(pTotalSeconds)}</span>
+                                    <span className="block text-[8px] text-gray-400 dark:text-slate-500 uppercase font-black">{t('activeTime') || 'Tempo Ativo'}</span>
+                                    <span className="text-xs font-bold text-gray-700 dark:text-slate-200">
+                                      {formatDuration(pActiveSeconds)}
+                                      {pInterruptionSeconds > 0 && (
+                                        <span className="text-[9px] text-amber-500 block">+{formatDuration(pInterruptionSeconds)} {t('interruptionAbbr') || 'Int.'}</span>
+                                      )}
+                                    </span>
                                 </div>
                                 <div>
                                     <span className="block text-[8px] text-gray-400 dark:text-slate-500 uppercase font-black">{t('scheduleTimeCol')}</span>
@@ -964,7 +995,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                     <div className="col-span-2 border-t border-gray-100 dark:border-slate-800 pt-2">
                                         <span className="block text-[8px] text-gray-400 dark:text-slate-500 uppercase font-black">{t('costCol')}</span>
                                         <span className="text-xs font-black text-red-600 dark:text-red-400">
-                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(engineeringHourlyRate * (pTotalSeconds / 3600))}
+                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(engineeringHourlyRate * (pActiveSeconds / 3600))}
                                         </span>
                                     </div>
                                 )}
@@ -1027,8 +1058,9 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const totalVariations = (project.variations || []).length;
                 
                 const user = usersMap[project.userId || ''];
-                const pTotalSeconds = project.totalSeconds || (project.totalActiveSeconds + (project.interruptionSeconds || 0));
-                const cost = engineeringHourlyRate * (pTotalSeconds / 3600);
+                const pActiveSeconds = project.totalActiveSeconds;
+                const pInterruptionSeconds = project.interruptionSeconds || 0;
+                const cost = engineeringHourlyRate * (pActiveSeconds / 3600);
                 
                 const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
 
@@ -1163,7 +1195,12 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                               </span>
                               <span className="text-gray-500 dark:text-slate-500 flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
-                                  {formatDuration(pTotalSeconds)}
+                                  {formatDuration(pActiveSeconds)}
+                                  {pInterruptionSeconds > 0 && (
+                                    <span className="text-[9px] text-amber-500 font-bold ml-1" title={t('interruption')}>
+                                      (+{formatDuration(pInterruptionSeconds)} {t('interruptionAbbr') || 'Int.'})
+                                    </span>
+                                  )}
                               </span>
                           </div>
                           
@@ -1171,11 +1208,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             <div className="w-full h-1 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                               <div 
                                 className={`h-full rounded-full transition-all duration-500 ${
-                                  pTotalSeconds <= project.estimatedSeconds 
+                                  pActiveSeconds <= project.estimatedSeconds 
                                     ? 'bg-green-500' 
                                     : 'bg-red-500'
                                 }`}
-                                style={{ width: `${Math.min(100, (pTotalSeconds / project.estimatedSeconds) * 100)}%` }}
+                                style={{ width: `${Math.min(100, (pActiveSeconds / project.estimatedSeconds) * 100)}%` }}
                               ></div>
                             </div>
                           ) : (
@@ -1184,11 +1221,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
                           {project.estimatedSeconds && (
                               <div className={`text-[9px] font-black uppercase tracking-tighter ${
-                                  pTotalSeconds <= project.estimatedSeconds ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                                  pActiveSeconds <= project.estimatedSeconds ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                               }`}>
-                                  {pTotalSeconds <= project.estimatedSeconds 
-                                      ? `✓ +${formatDuration(project.estimatedSeconds - pTotalSeconds)}`
-                                      : `⚠ -${formatDuration(pTotalSeconds - project.estimatedSeconds)}`
+                                  {pActiveSeconds <= project.estimatedSeconds 
+                                      ? `✓ +${formatDuration(project.estimatedSeconds - pActiveSeconds)}`
+                                      : `⚠ -${formatDuration(pActiveSeconds - project.estimatedSeconds)}`
                                   }
                               </div>
                           )}

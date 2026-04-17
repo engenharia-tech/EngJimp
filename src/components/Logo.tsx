@@ -1,5 +1,6 @@
 import React from 'react';
 import defaultLogoAsset from '../assets/logo.svg';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface LogoProps {
   theme?: 'light' | 'dark';
@@ -16,6 +17,7 @@ export const Logo: React.FC<LogoProps> = ({
   companyName = "JIMP NEXUS",
   textSizeClassName = "text-xl"
 }) => {
+  const { t } = useLanguage();
   // Detect if we are using the default system logo by direct comparison
   const isDefaultLogo = !logoUrl || logoUrl === defaultLogoAsset || logoUrl === '/logo.svg';
 
@@ -28,7 +30,7 @@ export const Logo: React.FC<LogoProps> = ({
       {logoUrl && !isDefaultLogo ? (
         <img 
           src={logoUrl} 
-          alt="Logo" 
+          alt={t('logo')} 
           className="h-full w-auto object-contain"
         />
       ) : (

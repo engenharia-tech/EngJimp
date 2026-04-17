@@ -3,12 +3,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, ComposedChart, Line
 } from 'recharts';
-import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2 } from 'lucide-react';
-import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus } from '../types';
+import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
+import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings } from '../types';
 import { analyzePerformance } from '../services/geminiService';
 import { fetchUsers } from '../services/storageService';
 import { useLanguage } from '../i18n/LanguageContext';
 import { PRODUCT_CATEGORIES, SUSPENSION_TYPES } from '../constants';
+import { parseISO } from 'date-fns';
+import { calcActiveSeconds } from '../utils/workdayCalc';
 
 interface DashboardProps {
   data: AppState;
@@ -387,9 +389,101 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   }, [data.innovations]);
 
   const totalHours = useMemo(() => {
-    const seconds = filteredProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
-    return Math.round(seconds / 3600);
-  }, [filteredProjects]);
+    // Para um cálculo linear "sem margem de erro", precisamos unir todos os intervalos produtivos
+    // de projetos e atividades operacionais, subtraindo as pausas e interrupções.
+    
+    const allProductiveSegments: { start: number; end: number }[] = [];
+
+    // Processar Projetos
+    filteredProjects.forEach(p => {
+        if (!p.startTime) return;
+        const pStart = parseISO(p.startTime).getTime();
+        const pEnd = (p.endTime ? parseISO(p.endTime) : new Date()).getTime();
+
+        let pSegments = [{ start: pStart, end: pEnd }];
+
+        // Subtrair pausas do projeto
+        (p.pauses || []).forEach(pause => {
+            const pauseStart = parseISO(pause.timestamp).getTime();
+            const pauseEnd = pause.durationSeconds === -1 ? Date.now() : pauseStart + pause.durationSeconds * 1000;
+            
+            const next: typeof pSegments = [];
+            pSegments.forEach(seg => {
+                if (pauseEnd <= seg.start || pauseStart >= seg.end) next.push(seg);
+                else {
+                    if (pauseStart > seg.start) next.push({ start: seg.start, end: pauseStart });
+                    if (pauseEnd < seg.end) next.push({ start: pauseEnd, end: seg.end });
+                }
+            });
+            pSegments = next;
+        });
+
+        // Subtrair interrupções resolvidas deste projeto
+        data.interruptions.filter(i => (i.projectId === p.id || i.projectNs === p.ns) && i.status === 'RESOLVED').forEach(i => {
+            const iStart = parseISO(i.startTime).getTime();
+            const iEnd = (i.endTime ? parseISO(i.endTime) : new Date()).getTime();
+            
+            const next: typeof pSegments = [];
+            pSegments.forEach(seg => {
+                if (iEnd <= seg.start || iStart >= seg.end) next.push(seg);
+                else {
+                    if (iStart > seg.start) next.push({ start: seg.start, end: iStart });
+                    if (iEnd < seg.end) next.push({ start: iEnd, end: seg.end });
+                }
+            });
+            pSegments = next;
+        });
+
+        allProductiveSegments.push(...pSegments);
+    });
+
+    // Processar Atividades Operacionais (que já são produtivas por natureza)
+    data.operationalActivities.forEach(a => {
+        const aStart = parseISO(a.startTime).getTime();
+        const aEnd = (a.endTime ? parseISO(a.endTime) : new Date()).getTime();
+        
+        // Filtro de período simplificado comparando timestamps se startDate/endDate existirem
+        let include = true;
+        if (startDate) {
+            const filterStart = new Date(startDate).setHours(0,0,0,0);
+            if (aEnd < filterStart) include = false;
+        }
+        if (endDate) {
+            const filterEnd = new Date(endDate).setHours(23,59,59,999);
+            if (aStart > filterEnd) include = false;
+        }
+
+        if (include) {
+            allProductiveSegments.push({ start: aStart, end: aEnd });
+        }
+    });
+
+    if (allProductiveSegments.length === 0) return 0;
+
+    // Unir intervalos (Interval Union)
+    allProductiveSegments.sort((a, b) => a.start - b.start);
+    const merged: typeof allProductiveSegments = [];
+    let current = { ...allProductiveSegments[0] };
+    
+    for (let i = 1; i < allProductiveSegments.length; i++) {
+        const next = allProductiveSegments[i];
+        if (next.start < current.end) {
+            current.end = Math.max(current.end, next.end);
+        } else {
+            merged.push(current);
+            current = { ...next };
+        }
+    }
+    merged.push(current);
+
+    // Calcular segundos de trabalho reais dentro da união (respeitando expediente e almoço)
+    let totalWorkingSeconds = 0;
+    merged.forEach(seg => {
+        totalWorkingSeconds += calcActiveSeconds(new Date(seg.start), new Date(seg.end), settings, true);
+    });
+
+    return Math.round(totalWorkingSeconds / 3600);
+  }, [filteredProjects, data.operationalActivities, data.interruptions, startDate, endDate, settings, t]);
 
   const goalProgress = useMemo(() => {
     if (monthlyGoal <= 0) return 0;

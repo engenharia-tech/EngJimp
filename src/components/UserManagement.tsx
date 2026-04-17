@@ -614,7 +614,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                                 <div className="flex items-start gap-4">
                                     <div className="w-20 h-20 border border-dashed border-blue-300 dark:border-blue-900/50 rounded-lg flex items-center justify-center bg-white dark:bg-black overflow-hidden">
                                         {logoUrl ? (
-                                            <img src={logoUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+                                            <img src={logoUrl} alt={t('preview')} className="max-w-full max-h-full object-contain" />
                                         ) : (
                                             <Briefcase className="w-8 h-8 text-blue-200 dark:text-blue-900/50" />
                                         )}
