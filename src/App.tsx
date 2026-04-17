@@ -970,7 +970,7 @@ const AppContent: React.FC = () => {
           )}
 
           {activeTab === 'nexus' && (
-            <NexusChat appState={data} currentUser={currentUser} />
+            <NexusChat appState={data} currentUser={currentUser} theme={theme} />
           )}
 
           {activeTab === 'reports' && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (

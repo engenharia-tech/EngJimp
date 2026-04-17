@@ -17,8 +17,11 @@ interface Message {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
+const ChartRenderer: React.FC<{ data: any, theme: 'light' | 'dark' }> = ({ data, theme }) => {
   if (!data || !data.type || !data.series) return null;
+
+  const textColor = theme === 'dark' ? '#94a3b8' : '#64748b';
+  const gridColor = theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
 
   const renderChart = () => {
     switch (data.type.toLowerCase()) {
@@ -26,12 +29,17 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
         return (
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={data.series}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-              <XAxis dataKey="name" fontSize={10} tick={{ fill: 'currentColor' }} />
-              <YAxis fontSize={10} tick={{ fill: 'currentColor' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+              <XAxis dataKey="name" fontSize={10} tick={{ fill: textColor }} axisLine={false} tickLine={false} />
+              <YAxis fontSize={10} tick={{ fill: textColor }} axisLine={false} tickLine={false} />
               <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: 'none', borderRadius: '8px', color: '#fff' }}
-                itemStyle={{ color: '#fff' }}
+                contentStyle={{ 
+                  backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
+                  border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, 
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'
+                }}
+                itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
               />
               <Legend wrapperStyle={{ fontSize: '10px' }} />
               {data.keys.map((key: string, index: number) => (
@@ -44,12 +52,17 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
         return (
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={data.series}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-              <XAxis dataKey="name" fontSize={10} tick={{ fill: 'currentColor' }} />
-              <YAxis fontSize={10} tick={{ fill: 'currentColor' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+              <XAxis dataKey="name" fontSize={10} tick={{ fill: textColor }} axisLine={false} tickLine={false} />
+              <YAxis fontSize={10} tick={{ fill: textColor }} axisLine={false} tickLine={false} />
               <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: 'none', borderRadius: '8px', color: '#fff' }}
-                itemStyle={{ color: '#fff' }}
+                contentStyle={{ 
+                  backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
+                  border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, 
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'
+                }}
+                itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
               />
               <Legend wrapperStyle={{ fontSize: '10px' }} />
               {data.keys.map((key: string, index: number) => (
@@ -76,8 +89,12 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
                 ))}
               </Pie>
               <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: 'none', borderRadius: '8px', color: '#fff' }}
-                itemStyle={{ color: '#fff' }}
+                contentStyle={{ 
+                  backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
+                  border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, 
+                  borderRadius: '12px',
+                }}
+                itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
               />
               <Legend />
             </PieChart>
@@ -87,12 +104,16 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
         return (
           <ResponsiveContainer width="100%" height={250}>
             <AreaChart data={data.series}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-              <XAxis dataKey="name" fontSize={10} tick={{ fill: 'currentColor' }} />
-              <YAxis fontSize={10} tick={{ fill: 'currentColor' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+              <XAxis dataKey="name" fontSize={10} tick={{ fill: textColor }} axisLine={false} tickLine={false} />
+              <YAxis fontSize={10} tick={{ fill: textColor }} axisLine={false} tickLine={false} />
               <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: 'none', borderRadius: '8px', color: '#fff' }}
-                itemStyle={{ color: '#fff' }}
+                contentStyle={{ 
+                  backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
+                  border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, 
+                  borderRadius: '12px',
+                }}
+                itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
               />
               <Legend wrapperStyle={{ fontSize: '10px' }} />
               {data.keys.map((key: string, index: number) => (
@@ -107,14 +128,14 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
   };
 
   return (
-    <div className="mt-4 p-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-200 dark:border-slate-700">
+    <div className={`mt-4 p-4 ${theme === 'dark' ? 'bg-slate-800/20 border-slate-800' : 'bg-gray-50 border-gray-100'} rounded-xl border`}>
       <div className="flex items-center gap-2 mb-4">
         <BarChart3 className="w-4 h-4 text-blue-500" />
-        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{data.title || 'Análise Nexus'}</h4>
+        <h4 className={`text-xs font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}`}>{data.title || 'Análise Nexus'}</h4>
       </div>
       {renderChart()}
       {data.description && (
-        <p className="mt-3 text-[10px] text-gray-500 dark:text-gray-400 italic">
+        <p className={`mt-3 text-[10px] ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'} italic`}>
           {data.description}
         </p>
       )}
@@ -125,9 +146,10 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
 interface NexusChatProps {
   appState: AppState;
   currentUser: User;
+  theme: 'light' | 'dark';
 }
 
-export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser }) => {
+export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, theme }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -213,36 +235,40 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser }) =
   };
 
   return (
-    <div className={`flex flex-col h-full bg-white dark:bg-black border border-gray-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden transition-all duration-300 ${isExpanded ? 'fixed inset-4 z-50' : 'relative'}`}>
+    <div className={`flex flex-col h-full ${theme === 'dark' ? 'bg-black border-slate-800' : 'bg-white border-gray-200'} border rounded-xl shadow-lg overflow-hidden transition-all duration-300 ${isExpanded ? 'fixed inset-4 z-50' : 'relative'}`}>
       {/* Header */}
-      <div className="bg-slate-900 border-b border-slate-700 p-4 flex justify-between items-center text-white">
+      <div className={`${theme === 'dark' ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-gray-100 text-gray-900'} border-b p-4 flex justify-between items-center transition-colors duration-300`}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Cpu className="w-6 h-6 text-white" />
+          <div className={`w-10 h-10 ${theme === 'dark' ? 'bg-blue-600 shadow-blue-500/20' : 'bg-blue-50 border border-blue-100'} rounded-lg flex items-center justify-center shadow-lg transition-all`}>
+            <Cpu className={`w-6 h-6 ${theme === 'dark' ? 'text-white' : 'text-blue-600'}`} />
           </div>
           <div>
             <h3 className="font-black text-sm tracking-tight flex items-center gap-2">
               NEXUS IA 
-              <span className="bg-blue-500/10 text-blue-400 text-[8px] px-1.5 py-0.5 rounded border border-blue-500/30 uppercase tracking-widest font-black">Core</span>
+              <span className={`text-[8px] px-1.5 py-0.5 rounded border uppercase tracking-widest font-black ${
+                theme === 'dark' 
+                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' 
+                  : 'bg-blue-50 text-blue-600 border-blue-100'
+              }`}>Core</span>
             </h3>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Análise de Desempenho Ativa</span>
+              <span className={`w-1.5 h-1.5 ${theme === 'dark' ? 'bg-emerald-500' : 'bg-emerald-600'} rounded-full animate-pulse`} />
+              <span className={`text-[10px] ${theme === 'dark' ? 'text-slate-400' : 'text-gray-500'} font-bold uppercase tracking-wider`}>Análise de Desempenho Ativa</span>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-white"
+            className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-white/5 text-slate-400 hover:text-white' : 'hover:bg-gray-100 text-gray-400 hover:text-gray-900'}`}
             title={isExpanded ? "Minimizar" : "Maximizar"}
           >
             {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
           <button 
             onClick={clearChat}
-            className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-white"
-            title="Reinicializar Assistant"
+            className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-white/5 text-slate-400 hover:text-white' : 'hover:bg-gray-100 text-gray-400 hover:text-gray-900'}`}
+            title="Reinicializar Assistente"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -250,11 +276,11 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser }) =
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50 dark:bg-zinc-950 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800">
+      <div className={`flex-1 overflow-y-auto p-4 space-y-6 ${theme === 'dark' ? 'bg-zinc-950' : 'bg-slate-50'} scrollbar-thin ${theme === 'dark' ? 'scrollbar-thumb-slate-800' : 'scrollbar-thumb-slate-200'}`}>
         <div className="flex justify-center mb-4">
-             <div className="px-3 py-1 bg-blue-500/5 border border-blue-500/10 rounded-full flex items-center gap-2">
+             <div className={`px-3 py-1 ${theme === 'dark' ? 'bg-blue-500/10 border-blue-500/20' : 'bg-blue-50 border-blue-100'} border rounded-full flex items-center gap-2`}>
                 <ShieldCheck className="w-3 h-3 text-blue-500" />
-                <span className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Conexão Segura E2E</span>
+                <span className={`text-[9px] font-black ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'} uppercase tracking-widest`}>Conexão Segura E2E</span>
              </div>
         </div>
 
@@ -267,19 +293,25 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser }) =
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div className={`flex gap-3 max-w-[95%] md:max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-1 ${msg.role === 'user' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-slate-900 border border-slate-700 text-blue-500 shadow-xl'}`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-1 ${
+                  msg.role === 'user' 
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+                    : theme === 'dark'
+                      ? 'bg-slate-900 border border-slate-700 text-blue-400 shadow-xl'
+                      : 'bg-blue-50 border border-blue-200 text-blue-600 shadow-sm shadow-blue-100'
+                }`}>
                   {msg.role === 'user' ? <UserIcon className="w-4 h-4" /> : <Cpu className="w-4 h-4" />}
                 </div>
-                <div className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
                   msg.role === 'user' 
-                    ? 'bg-blue-600 text-white rounded-tr-none' 
-                    : 'bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 text-gray-800 dark:text-slate-200 rounded-tl-none'
+                    ? 'bg-blue-600 text-white rounded-tr-none shadow-md shadow-blue-500/10' 
+                    : `${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-white border-gray-200 text-gray-800'} rounded-tl-none border shadow-sm`
                 }`}>
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <div className={`prose prose-sm ${theme === 'dark' ? 'prose-invert' : ''} max-w-none`}>
                      <p className="whitespace-pre-wrap">{msg.content}</p>
                   </div>
 
-                  {msg.chartData && <ChartRenderer data={msg.chartData} />}
+                  {msg.chartData && <ChartRenderer data={msg.chartData} theme={theme} />}
 
                   <div className={`flex items-center gap-2 mt-3 pt-2 border-t border-black/5 dark:border-white/5 text-[9px] font-black uppercase tracking-widest opacity-40 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -298,8 +330,8 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser }) =
               <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center mt-1">
                 <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
               </div>
-              <div className="p-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl rounded-tl-none flex items-center gap-2">
-                <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest animate-pulse">Sincronizando Dados ERP...</span>
+              <div className={`p-4 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-blue-400' : 'bg-white border-gray-200 text-blue-600'} rounded-2xl rounded-tl-none border flex items-center gap-2 shadow-sm`}>
+                <span className="text-[10px] font-black uppercase tracking-widest animate-pulse">Sincronizando Dados ERP...</span>
               </div>
             </div>
           </div>
@@ -308,19 +340,19 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser }) =
       </div>
 
       {/* Input */}
-      <div className="p-4 bg-white dark:bg-black border-t border-gray-200 dark:border-slate-800">
+      <div className={`p-4 ${theme === 'dark' ? 'bg-black border-slate-800' : 'bg-white border-gray-200'} border-t animate-in slide-in-from-bottom-2`}>
         <form 
           onSubmit={(e) => { e.preventDefault(); handleSend(); }}
           className="flex gap-2"
         >
-          <div className="relative flex-1">
-            <Database className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <div className="relative flex-1 group">
+            <Database className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${theme === 'dark' ? 'text-slate-600 group-focus-within:text-blue-500' : 'text-slate-400 group-focus-within:text-blue-600'}`} />
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ex: Mostre um gráfico da evolução de projetos..."
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 dark:text-white text-sm transition-all"
+              className={`w-full pl-10 pr-4 py-3 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white placeholder:text-slate-600' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400'} border rounded-xl outline-none focus:ring-2 focus:ring-blue-500/50 text-sm transition-all`}
             />
           </div>
           <button
