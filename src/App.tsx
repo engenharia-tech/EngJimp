@@ -669,7 +669,7 @@ const AppContent: React.FC = () => {
   }
 
   const COMPANY_LOGO_URL = data.settings.logoUrl || logoImg;
-  const COMPANY_NAME = data.settings.companyName || 'JIMP NEXUS';
+  const COMPANY_NAME = data.settings.companyName || 'JIMPNexus';
 
   return (
     <div className={`flex min-h-screen ${theme === 'dark' ? 'bg-black text-slate-200' : 'bg-gray-50 text-gray-900'}`}>
