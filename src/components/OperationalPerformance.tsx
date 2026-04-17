@@ -343,8 +343,19 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     filteredActivities.forEach(a => processItem(a.id, 'activity', a.activityName, a.startTime, a.endTime, '#3b82f6'));
     
     filteredProjects.forEach(p => {
-      // Find interruptions for this project
-      const projectInterruptions = filteredInterruptions.filter(i => i.projectId === p.id || i.projectNs === p.ns);
+      // Find interruptions for this project session
+      const projectInterruptions = filteredInterruptions.filter(i => {
+        // Prefer explicit ID match
+        if (i.projectId && i.projectId === p.id) return true;
+        // Fallback to NS but ONLY if it overlaps with this project's time range
+        if (i.projectNs === p.ns) {
+          const pStart = parseISO(p.startTime);
+          const pEnd = p.endTime ? parseISO(p.endTime) : new Date();
+          const iStart = parseISO(i.startTime);
+          return iStart >= pStart && iStart < pEnd;
+        }
+        return false;
+      });
       
       // Collect all exclusions (pauses and interruptions)
       const exclusions: { start: Date, end: Date, type: 'pause' | 'interruption', name: string, id: string }[] = [];
@@ -352,7 +363,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       if (p.pauses) {
         p.pauses.forEach((pause, idx) => {
           const pStart = parseISO(pause.timestamp);
-          const pEnd = addSeconds(pStart, pause.durationSeconds);
+          // Handle -1 duration (active pause)
+          const pEnd = pause.durationSeconds === -1 ? new Date() : addSeconds(pStart, pause.durationSeconds);
           exclusions.push({ 
             start: pStart, 
             end: pEnd, 
@@ -363,23 +375,29 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         });
       }
       
+      const projectStart = parseISO(p.startTime);
+      const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
+
       projectInterruptions.forEach(i => {
-        exclusions.push({ 
-          start: parseISO(i.startTime), 
-          end: i.endTime ? parseISO(i.endTime) : new Date(), 
-          type: 'interruption', 
-          name: `${t('interruption')}: ${i.description}`,
-          id: i.id
-        });
+        const iStart = parseISO(i.startTime);
+        const iEnd = i.endTime ? parseISO(i.endTime) : new Date();
+        
+        // Only include interruption if it actually overlaps with this project session
+        if (iStart < projectEnd && iEnd > projectStart) {
+          exclusions.push({ 
+            start: iStart, 
+            end: iEnd, 
+            type: 'interruption', 
+            name: `${t('interruption')}: ${i.description || i.problemType || t('interruption')}`,
+            id: i.id
+          });
+        }
       });
 
       // Sort exclusions
       exclusions.sort((a, b) => a.start.getTime() - b.start.getTime());
 
       // Split project into productive segments
-      const projectStart = parseISO(p.startTime);
-      const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
-      
       let segments = [{ start: projectStart, end: projectEnd }];
       
       exclusions.forEach(ex => {
@@ -414,16 +432,75 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       }
     });
 
-    return items.sort((a, b) => a.start.getTime() - b.start.getTime());
+    const rawItems = items.sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    // Resolve Overlaps to avoid project/activity leakage (sobrando horas)
+    // Priority: interruption (Red) > activity (Blue) > pause (Orange) > project (Green)
+    const priorityMap: Record<string, number> = {
+      'interruption': 4,
+      'activity': 3,
+      'pause': 2,
+      'project': 1
+    };
+
+    const finalItems: typeof items = [];
+    const points = new Set<number>();
+    rawItems.forEach(item => {
+      points.add(item.start.getTime());
+      points.add(item.end.getTime());
+    });
+
+    const sortedPoints = Array.from(points).sort((a, b) => a - b);
+    
+    for (let i = 0; i < sortedPoints.length - 1; i++) {
+      const sliceStart = sortedPoints[i];
+      const sliceEnd = sortedPoints[i + 1];
+      
+      // Find all candidates for this slice
+      const candidates = rawItems.filter(item => 
+        item.start.getTime() <= sliceStart && item.end.getTime() >= sliceEnd
+      );
+
+      if (candidates.length > 0) {
+        // Sort by priority, then by latest start, then by longest duration (most stable)
+        candidates.sort((a, b) => {
+          const pA = priorityMap[a.type] || 0;
+          const pB = priorityMap[b.type] || 0;
+          if (pA !== pB) return pB - pA;
+          if (a.start.getTime() !== b.start.getTime()) return b.start.getTime() - a.start.getTime();
+          return (b.end.getTime() - b.start.getTime()) - (a.end.getTime() - a.start.getTime());
+        });
+
+        const bestItem = candidates[0];
+        
+        // Merge with last final item if it's the same logical entry
+        const last = finalItems[finalItems.length - 1];
+        // Note: we check name and type to be safe, since ID might vary for split segments
+        if (last && last.name === bestItem.name && last.type === bestItem.type && last.end.getTime() === sliceStart) {
+          last.end = new Date(sliceEnd);
+        } else {
+          finalItems.push({
+            ...bestItem,
+            start: new Date(sliceStart),
+            end: new Date(sliceEnd)
+          });
+        }
+      }
+    }
+
+    return finalItems;
   }, [filteredActivities, filteredProjects, filteredInterruptions, selectedDate, viewMode, settings, t]);
 
-  // Find gaps in the timeline (assuming work day 08:00 - 18:00)
+  // Find gaps in the timeline respecting workday settings
   const gaps = useMemo(() => {
+    const [wsH, wsM] = (settings.workdayStart || "07:42").split(':').map(Number);
+    const [weH, weM] = (settings.workdayEnd || "17:33").split(':').map(Number);
+
     const workStart = new Date(selectedDate);
-    workStart.setHours(8, 0, 0, 0);
+    workStart.setHours(wsH, wsM, 0, 0);
     
     const workEnd = new Date(selectedDate);
-    workEnd.setHours(18, 0, 0, 0);
+    workEnd.setHours(weH, weM, 0, 0);
 
     const foundGaps: { start: Date; end: Date }[] = [];
     let lastEnd = workStart;
@@ -442,7 +519,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     }
 
     return foundGaps.filter(g => differenceInSeconds(g.end, g.start) > 60); // Gaps > 1 min
-  }, [timelineItems, selectedDate]);
+  }, [timelineItems, selectedDate, settings]);
 
   const stats = useMemo(() => {
     const dataMap: Record<string, number> = {
@@ -1010,10 +1087,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         ? canEditCurrent 
                           ? 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/20 border-dashed hover:border-amber-300 cursor-pointer'
                           : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 border-dashed opacity-60'
-                        : item.type === 'pause'
-                          ? 'bg-orange-50/50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-900/20'
-                        : item.type === 'interruption'
-                          ? 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20'
+                        : (item.type === 'pause' || item.type === 'interruption')
+                          ? canEditCurrent
+                            ? `hover:border-blue-300 cursor-pointer ${item.type === 'pause' ? 'bg-orange-50/50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-900/20' : 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20'}`
+                            : `${item.type === 'pause' ? 'bg-orange-50/50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-900/20' : 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20'}`
                         : canEditCurrent && item.type === 'activity'
                           ? 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 hover:border-blue-300 cursor-pointer'
                           : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800'
@@ -1021,7 +1098,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                     onClick={() => {
                       if (!canEditCurrent) return;
                       
-                      if (item.isGap) {
+                      if (item.isGap || item.type === 'interruption' || item.type === 'pause') {
                         setIsEditingGap({ 
                           start: item.start.toISOString(), 
                           end: item.end.toISOString() 
@@ -1081,8 +1158,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         <Clock size={12} />
                         {Math.round(differenceInSeconds(item.end, item.start) / 60)} min
                       </span>
-                        {item.isGap && (
-                          <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                        {(item.isGap || item.type === 'interruption' || item.type === 'pause') && (
+                          <span className={`text-xs font-medium flex items-center gap-1 ${item.isGap ? 'text-amber-600' : 'text-blue-500'}`}>
                             <Plus size={12} />
                             {t('fillGap')}
                           </span>

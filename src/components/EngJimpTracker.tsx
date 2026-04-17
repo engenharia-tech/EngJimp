@@ -205,7 +205,23 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           }
       });
 
-      const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
+      // Also subtract interruption time linked to this project
+      const projectInterruptionSeconds = interruptions
+        .filter(i => (i.projectId === activeProject.id || i.projectNs === activeProject.ns))
+        .reduce((acc, i) => {
+          const iStart = new Date(i.startTime);
+          const iEnd = i.endTime ? new Date(i.endTime) : now;
+          // Only count the part of the interruption that falls within the project's working session (from start to now)
+          const effectiveStart = iStart > start ? iStart : start;
+          const effectiveEnd = iEnd < now ? iEnd : now;
+          
+          if (effectiveStart < effectiveEnd) {
+            return acc + calcActiveSeconds(effectiveStart, effectiveEnd, settings, activeProject.isOvertime);
+          }
+          return acc;
+        }, 0);
+
+      const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds - projectInterruptionSeconds);
       
       // If netSeconds is 0 but the project is NOT paused and we are within working hours,
       // it might be a calculation delay. Let's ensure it shows at least 1 if it just started.
@@ -431,6 +447,21 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       await onUpdateProjectRequest(currentRequest);
 
       if (projectToActivate) {
+        // AUTO-PAUSE previous active project if any
+        if (activeProject && activeProject.id !== projectToActivate.id) {
+          const currentActive = elapsedSeconds;
+          const autoPause: PauseRecord = {
+            reason: `${t('autoPauseTitle') || 'Pausa Automática'}: ${t('projectSwitch') || 'Troca de Projeto'}`,
+            timestamp: new Date().toISOString(),
+            durationSeconds: -1
+          };
+          await onUpdate({
+            ...activeProject,
+            totalActiveSeconds: currentActive,
+            pauses: [...activeProject.pauses, autoPause]
+          });
+        }
+        
         setActiveProject(projectToActivate);
         setLastHeartbeat(Date.now());
       }
@@ -547,6 +578,21 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
     setIsSaving(true);
     try {
+      // AUTO-PAUSE previous active project if any
+      if (activeProject && activeProject.id !== project.id) {
+        const currentActive = elapsedSeconds;
+        const autoPause: PauseRecord = {
+          reason: `${t('autoPauseTitle') || 'Pausa Automática'}: ${t('projectSwitch') || 'Troca de Projeto'}`,
+          timestamp: new Date().toISOString(),
+          durationSeconds: -1
+        };
+        await onUpdate({
+          ...activeProject,
+          totalActiveSeconds: currentActive,
+          pauses: [...activeProject.pauses, autoPause]
+        });
+      }
+
       // MELHORIA 1: Pausar tempo fora do expediente
       // Se o projeto estava IN_PROGRESS e o app foi fechado, calculamos o tempo produtivo desde o último save
       let updatedProject = { ...project };
@@ -554,12 +600,29 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       
       if (project.lastActiveAt) {
         const lastActive = new Date(project.lastActiveAt);
-        const productiveSecondsSinceLastSave = calcActiveSeconds(lastActive, now, settings, project.isOvertime);
+        let productiveSecondsSinceLastSave = calcActiveSeconds(lastActive, now, settings, project.isOvertime);
+        
+        // Find interruptions that happened between lastActive and now
+        const projectHistoryInterruptions = interruptions.filter(i => {
+           const iStart = new Date(i.startTime);
+           // NS fallback for older or pending projects
+           const matchesProject = (i.projectId && i.projectId === project.id) || (i.projectNs === project.ns);
+           return matchesProject && iStart >= lastActive;
+        });
+
+        const overlapInterruptionSeconds = projectHistoryInterruptions.reduce((acc, i) => {
+          const iStart = new Date(i.startTime);
+          const iEnd = i.endTime ? new Date(i.endTime) : now;
+          // Calculate active seconds specifically for this interruption period
+          return acc + calcActiveSeconds(iStart, iEnd, settings, project.isOvertime);
+        }, 0);
+
+        productiveSecondsSinceLastSave = Math.max(0, productiveSecondsSinceLastSave - overlapInterruptionSeconds);
         
         // Se passou tempo produtivo desde o último save, adicionamos ao total
         if (productiveSecondsSinceLastSave > 0) {
           updatedProject.totalActiveSeconds += productiveSecondsSinceLastSave;
-          console.log(`Resuming project ${project.ns}: adding ${productiveSecondsSinceLastSave}s of productive time since last save.`);
+          console.log(`Resuming project ${project.ns}: adding ${productiveSecondsSinceLastSave}s of productive time since last save (after subtracting interruptions).`);
         }
       }
 
@@ -724,7 +787,6 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           }
       });
 
-      const finalSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds);
       const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
 
       // --- NEW CALCULATIONS ---
@@ -735,6 +797,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       });
 
       const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
+      const finalSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds - interruptionSeconds);
       const totalSeconds = finalSeconds + interruptionSeconds;
       
       // Use the hourly rate passed from settings (which is already the effective rate)
