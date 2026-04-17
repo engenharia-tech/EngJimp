@@ -265,8 +265,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   // Combine projects and activities for a full timeline
   const timelineItems = useMemo(() => {
-    const workdayStartStr = settings.workdayStart || "08:00";
-    const workdayEndStr = settings.workdayEnd || "18:00";
+    const workdayStartStr = settings.workdayStart || "07:30";
+    const workdayEndStr = settings.workdayEnd || "17:30";
     const lunchStartStr = settings.lunchStart || "12:00";
     const lunchEndStr = settings.lunchEnd || "13:00";
 
@@ -294,7 +294,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       const overlapStart = start < dayStart ? dayStart : start;
       const overlapEnd = end > dayEnd ? dayEnd : end;
 
-      if (overlapStart >= overlapEnd) return;
+      // Ensure ongoing items (no endTime) are not filtered out even if duration is 0
+      const isOngoing = !endTime;
+      if (overlapStart >= overlapEnd && !isOngoing) return;
 
       // Further clip to work hours
       const workStart = new Date(selectedDate);
@@ -376,7 +378,16 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       }
       
       const projectStart = parseISO(p.startTime);
-      const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
+      // For ongoing projects, use lastActiveAt (heartbeat) if available to avoid gaps filling when app was closed
+      let projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
+      if (!p.endTime && p.status === 'IN_PROGRESS' && p.lastActiveAt) {
+        const lastActive = parseISO(p.lastActiveAt);
+        const now = new Date();
+        // If last active was more than 5 minutes ago, cap the session there
+        if (differenceInSeconds(now, lastActive) > 300) {
+          projectEnd = lastActive;
+        }
+      }
 
       projectInterruptions.forEach(i => {
         const iStart = parseISO(i.startTime);
@@ -415,7 +426,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
       // Add productive segments
       segments.forEach((seg, idx) => {
-        processItem(`${p.id}-seg-${idx}`, 'project', `Projeto: ${p.ns || p.projectCode || 'S/N'}`, seg.start.toISOString(), seg.end.toISOString(), '#10b981');
+        processItem(`${p.id}-seg-${idx}`, 'project', `${t('project')}: ${p.ns || p.projectCode || 'S/N'}`, seg.start.toISOString(), seg.end.toISOString(), '#10b981');
       });
 
       // Add exclusions as separate items
@@ -493,8 +504,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   // Find gaps in the timeline respecting workday settings
   const gaps = useMemo(() => {
-    const [wsH, wsM] = (settings.workdayStart || "07:42").split(':').map(Number);
-    const [weH, weM] = (settings.workdayEnd || "17:33").split(':').map(Number);
+    const [wsH, wsM] = (settings.workdayStart || "07:30").split(':').map(Number);
+    const [weH, weM] = (settings.workdayEnd || "17:30").split(':').map(Number);
 
     const workStart = new Date(selectedDate);
     workStart.setHours(wsH, wsM, 0, 0);
@@ -505,17 +516,26 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     const foundGaps: { start: Date; end: Date }[] = [];
     let lastEnd = workStart;
 
+    const now = new Date();
+    const isToday = selectedDate.toDateString() === now.toDateString();
+    // Cap gaps at current time if it's today and workday hasn't ended
+    const dayLimit = isToday ? (now < workEnd ? now : workEnd) : workEnd;
+
     timelineItems.forEach(item => {
       if (item.start > lastEnd) {
-        foundGaps.push({ start: lastEnd, end: item.start });
+        // Only push gap if start is before limit
+        const gapEnd = item.start > dayLimit ? dayLimit : item.start;
+        if (gapEnd > lastEnd) {
+          foundGaps.push({ start: lastEnd, end: gapEnd });
+        }
       }
       if (item.end > lastEnd) {
         lastEnd = item.end;
       }
     });
 
-    if (lastEnd < workEnd) {
-      foundGaps.push({ start: lastEnd, end: workEnd });
+    if (lastEnd < dayLimit) {
+      foundGaps.push({ start: lastEnd, end: dayLimit });
     }
 
     return foundGaps.filter(g => differenceInSeconds(g.end, g.start) > 60); // Gaps > 1 min
@@ -523,9 +543,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const stats = useMemo(() => {
     const dataMap: Record<string, number> = {
-      [t('projects') || 'Projetos']: 0,
-      [t('pauses') || 'Pausas']: 0,
-      [t('interruptions') || 'Interrupções']: 0
+      [t('projects')]: 0,
+      [t('pauses')]: 0,
+      [t('interruptions')]: 0
     };
 
     // Initialize map with all activity types

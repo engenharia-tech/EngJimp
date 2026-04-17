@@ -140,17 +140,6 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Nome da Empresa</label>
-              <input
-                type="text"
-                disabled={!isEditing}
-                value={formData.companyName || ''}
-                onChange={e => setFormData({ ...formData, companyName: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
-                placeholder="Ex: Minha Empresa LTDA"
-              />
-            </div>
-            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Idioma do Sistema</label>
               <select
                 disabled={!isEditing}

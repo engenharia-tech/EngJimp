@@ -14,7 +14,7 @@ export const Logo: React.FC<LogoProps> = ({
   theme = 'dark', 
   className = "h-10 w-auto", 
   logoUrl,
-  companyName = "JIMP NEXUS",
+  companyName = "JIMPNexus",
   textSizeClassName = "text-xl"
 }) => {
   const { t } = useLanguage();

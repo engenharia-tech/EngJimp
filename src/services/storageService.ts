@@ -455,7 +455,8 @@ export const updateProject = async (project: ProjectSession): Promise<AppState> 
         notes: project.notes,
         estimated_seconds: project.estimatedSeconds,
         user_id: project.userId,
-        is_overtime: project.isOvertime
+        is_overtime: project.isOvertime,
+        updated_at: new Date().toISOString()
       })
       .eq('id', project.id);
 
@@ -739,7 +740,8 @@ export const updateInterruption = async (interruption: InterruptionRecord): Prom
       responsible_person: interruption.responsiblePerson,
       description: interruption.description,
       status: interruption.status,
-      total_time_seconds: interruption.totalTimeSeconds
+      total_time_seconds: interruption.totalTimeSeconds,
+      updated_at: new Date().toISOString()
     };
 
     if (interruption.projectId) {

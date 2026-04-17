@@ -24,10 +24,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [webhookUrl, setWebhookUrl] = useState('');
   const [showWebhookHelp, setShowWebhookHelp] = useState(false);
 
-  // White Label & Settings State
+  // Settings State
   const [hourlyCost, setHourlyCost] = useState<number>(0);
-  const [companyName, setCompanyName] = useState('');
-  const [logoUrl, setLogoUrl] = useState('');
 
   useEffect(() => {
       setWebhookUrl(getWebhookUrl());
@@ -36,43 +34,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
           const state = await fetchAppState();
           if (state.settings) {
               setHourlyCost(state.settings.hourlyCost);
-              setCompanyName(state.settings.companyName || '');
-              setLogoUrl(state.settings.logoUrl || '');
           }
       };
       loadSettings();
   }, []);
-
-  const handleSaveSettings = async () => {
-      try {
-          await updateSettings({
-              hourlyCost,
-              companyName,
-              logoUrl
-          });
-          addToast("Configurações atualizadas com sucesso!", "success");
-          // Force a reload or notify App.tsx if needed, but App.tsx usually re-fetches on interval or we can just tell user to refresh
-          // In a real app we'd use a global state manager or context
-          window.location.reload(); // Simple way to apply white label changes globally
-      } catch (error) {
-          addToast("Erro ao atualizar configurações.", "error");
-      }
-  };
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          if (file.size > 500 * 1024) { // 500KB limit
-              addToast("A imagem deve ter no máximo 500KB.", "error");
-              return;
-          }
-          const reader = new FileReader();
-          reader.onloadend = () => {
-              setLogoUrl(reader.result as string);
-          };
-          reader.readAsDataURL(file);
-      }
-  };
 
   const handleSaveWebhook = () => {
       saveWebhookUrl(webhookUrl);
@@ -573,84 +538,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                                 </ol>
                             </div>
                         )}
-                    </div>
-                </div>
-
-                {/* White Label & Hourly Cost Configuration */}
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-900/30 md:col-span-2">
-                    <h4 className="font-semibold text-black dark:text-white mb-4 flex items-center">
-                        <Shield className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
-                        Configurações da Empresa (White Label)
-                    </h4>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase block mb-1">Nome da Empresa</label>
-                                <input 
-                                    type="text" 
-                                    value={companyName}
-                                    onChange={(e) => setCompanyName(e.target.value)}
-                                    className="w-full p-2 border border-blue-300 dark:border-blue-900/50 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-                                    placeholder="Ex: Minha Empresa LTDA"
-                                />
-                            </div>
-                            
-                            <div>
-                                <label className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase block mb-1">Custo Hora Engenharia (R$)</label>
-                                <input 
-                                    type="number" 
-                                    value={hourlyCost}
-                                    onChange={(e) => setHourlyCost(Number(e.target.value))}
-                                    className="w-full p-2 border border-blue-300 dark:border-blue-900/50 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
-                                    placeholder="Ex: 150.00"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase block mb-1">Logo da Empresa</label>
-                                <div className="flex items-start gap-4">
-                                    <div className="w-20 h-20 border border-dashed border-blue-300 dark:border-blue-900/50 rounded-lg flex items-center justify-center bg-white dark:bg-black overflow-hidden">
-                                        {logoUrl ? (
-                                            <img src={logoUrl} alt={t('preview')} className="max-w-full max-h-full object-contain" />
-                                        ) : (
-                                            <Briefcase className="w-8 h-8 text-blue-200 dark:text-blue-900/50" />
-                                        )}
-                                    </div>
-                                    <div className="flex-1">
-                                        <input 
-                                            type="file" 
-                                            accept="image/*"
-                                            onChange={handleLogoUpload}
-                                            className="hidden" 
-                                            id="logo-upload"
-                                        />
-                                        <label 
-                                            htmlFor="logo-upload"
-                                            className="inline-block bg-white dark:bg-black border border-blue-300 dark:border-blue-900/50 text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded text-xs font-bold cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-                                        >
-                                            Selecionar Imagem
-                                        </label>
-                                        <p className="text-[10px] text-gray-500 dark:text-slate-500 mt-2 leading-tight">
-                                            Recomendado: PNG ou SVG com fundo transparente.<br />
-                                            Tamanho ideal: 200x50px (proporção retangular).<br />
-                                            Máximo: 500KB.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="mt-6 pt-4 border-t border-blue-100 dark:border-blue-900/30">
-                        <button 
-                            onClick={handleSaveSettings}
-                            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-sm font-bold transition-colors"
-                        >
-                            Salvar Todas as Configurações
-                        </button>
                     </div>
                 </div>
 
