@@ -197,7 +197,7 @@ const AppContent: React.FC = () => {
       try {
         // Add a timeout to prevent hanging forever (30 seconds)
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Timeout loading app state")), 30000)
+          setTimeout(() => reject(new Error("Timeout loading app state")), 120000)
         );
 
         const initializationPromise = (async () => {
@@ -359,27 +359,37 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleProjectUpdate = async (project: ProjectSession) => {
+  const handleProjectUpdate = async (project: ProjectSession, isHeartbeat = false) => {
     const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
-      addToast(t('noPermissionEdit'), 'error');
+      if (!isHeartbeat) addToast(t('noPermissionEdit'), 'error');
       return;
     }
+    
+    // Update local state immediately for responsiveness
     setData(prev => ({
         ...prev,
         projects: prev.projects.map(p => p.id === project.id ? project : p)
     }));
+    
     try {
-        const updatedData = await updateProject(project);
-        setData(updatedData);
-        if (project.status === 'COMPLETED') {
-             addToast(t('projectCompletedSuccess'), 'success');
-        } else {
-             addToast(t('projectUpdatedSuccess'), 'success');
+        const updatedData = await updateProject(project, isHeartbeat);
+        if (updatedData) {
+          setData(updatedData);
+        }
+        
+        if (!isHeartbeat) {
+          if (project.status === 'COMPLETED') {
+               addToast(t('projectCompletedSuccess'), 'success');
+          } else {
+               addToast(t('projectUpdatedSuccess'), 'success');
+          }
         }
     } catch (e) {
         console.error("Erro ao atualizar projeto:", e);
-        addToast(t('errorUpdatingProject'), 'error');
+        if (!isHeartbeat) {
+          addToast(t('errorUpdatingProject'), 'error');
+        }
     }
   };
 
@@ -536,12 +546,23 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const onUpdateInterruption = async (interruption: InterruptionRecord) => {
+  const onUpdateInterruption = async (interruption: InterruptionRecord, isHeartbeat = false) => {
+    // Update locally first
+    setData(prev => ({
+      ...prev,
+      interruptions: (prev.interruptions || []).map(i => i.id === interruption.id ? interruption : i)
+    }));
+
     try {
-      const updatedData = await updateInterruption(interruption);
-      setData(updatedData);
+      const updatedData = await updateInterruption(interruption, isHeartbeat);
+      if (updatedData) {
+        setData(updatedData);
+      }
     } catch (e) {
-      addToast(t('errorUpdatingInterruption'), 'error');
+      console.error("Erro ao atualizar interrupção:", e);
+      if (!isHeartbeat) {
+        addToast(t('errorUpdatingInterruption'), 'error');
+      }
     }
   };
 
@@ -931,7 +952,7 @@ const AppContent: React.FC = () => {
             <InterruptionManager 
               data={displayData}
               currentUser={currentUser}
-              onUpdate={handleInterruptionUpdate}
+              onUpdate={onUpdateInterruption}
               addToast={addToast}
             />
           )}

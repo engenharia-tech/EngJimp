@@ -17,9 +17,9 @@ interface EngJimpTrackerProps {
   interruptions: InterruptionRecord[];
   settings: AppSettings;
   onCreate: (project: ProjectSession) => Promise<AppState | undefined>;
-  onUpdate: (project: ProjectSession) => void;
+  onUpdate: (project: ProjectSession, isHeartbeat?: boolean) => void;
   onAddInterruption: (interruption: InterruptionRecord) => void;
-  onUpdateInterruption: (interruption: InterruptionRecord) => void;
+  onUpdateInterruption: (interruption: InterruptionRecord, isHeartbeat?: boolean) => void;
   projectRequests: ProjectRequest[];
   onAddProjectRequest: (request: ProjectRequest) => void;
   onUpdateProjectRequest: (request: ProjectRequest) => void;
@@ -239,7 +239,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           onUpdate({
             ...activeProject,
             totalActiveSeconds: elapsedSeconds
-          });
+          }, true);
           setLastHeartbeat(now);
         }
       }, 10000); // Check every 10s if 60s passed
