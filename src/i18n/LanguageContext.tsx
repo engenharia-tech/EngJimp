@@ -25,7 +25,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let text = translations[language][key] || translations['pt-BR'][key] || key;
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
-        text = text.replace(`{${k}}`, String(v));
+        const value = String(v);
+        text = text.split(`{${k}}`).join(value);
+        text = text.split(`{{${k}}}`).join(value);
       });
     }
     return text.toUpperCase();

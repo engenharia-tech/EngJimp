@@ -39,9 +39,9 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
     try {
       await onUpdate(formData);
       setIsEditing(false);
-      addToast('Configurações salvas com sucesso!', 'success');
+      addToast(t('settingsSavedSuccess'), 'success');
     } catch (error) {
-      addToast('Erro ao salvar configurações.', 'error');
+      addToast(t('errorUpdatingSettings'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -49,7 +49,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
 
   const handleTestEmail = async () => {
     if (!formData.emailTo) {
-      addToast('Preencha o campo de destinatário para testar.', 'error');
+      addToast(t('errorFillingRequired'), 'error');
       return;
     }
 
@@ -59,8 +59,8 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subject: 'Teste de Conexão - JIMPNEXUS',
-          body: 'Este é um e-mail de teste para validar as configurações do sistema.',
+          subject: t('testEmailSubject'),
+          body: t('testEmailBody'),
           to: formData.emailTo
         })
       });
@@ -76,13 +76,13 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
       }
 
       if (result.success) {
-        addToast('E-mail de teste enviado com sucesso!', 'success');
+        addToast(t('testEmailSent'), 'success');
       } else {
-        addToast(`Erro ao enviar: ${result.error || 'Verifique as configurações'}`, 'error');
+        addToast(t('emailError') + `: ${result.error || t('checkSettings')}`, 'error');
         if (result.details) console.error("Detalhes do erro:", result.details);
       }
     } catch (error: any) {
-      addToast(`Erro de conexão: ${error.message || 'Falha ao contatar o servidor'}`, 'error');
+      addToast(t('connectionError', { message: error.message || t('errorGeneric') }), 'error');
     } finally {
       setIsTesting(false);
     }
@@ -97,12 +97,12 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
       const resProj = await recalculateAllProjectTimes();
       
       if (resInt.success && resProj.success) {
-        addToast('Tempos recalculados com sucesso!', 'success');
+        addToast(t('recalculationSuccess'), 'success');
       } else {
-        addToast('Erro parcial ao recalcular tempos.', 'warning');
+        addToast(t('recalculationPartialSuccess'), 'warning');
       }
     } catch (error) {
-      addToast('Erro ao recalcular tempos.', 'error');
+      addToast(t('recalculationError'), 'error');
     } finally {
       setIsRecalculating(false);
     }
@@ -114,9 +114,9 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
         <div>
           <h2 className="text-2xl font-bold text-black dark:text-white flex items-center">
             <SettingsIcon className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
-            Configurações do Sistema
+            {t('systemSettings')}
           </h2>
-          <p className="text-gray-600 dark:text-slate-400 mt-1">Ajuste as preferências globais e integrações.</p>
+          <p className="text-gray-600 dark:text-slate-400 mt-1">{t('adjustGlobalPreferences')}</p>
         </div>
         {!isEditing && (
           <button
@@ -126,7 +126,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
             }}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center transition-all shadow-md"
           >
-            Alterar Configurações
+            {t('editSettings')}
           </button>
         )}
       </div>
@@ -136,20 +136,20 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
         <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
           <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
             <Globe className="w-5 h-5 mr-2 text-blue-500" />
-            Geral
+            {t('general')}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Idioma do Sistema</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{t('systemLanguage')}</label>
               <select
                 disabled={!isEditing}
                 value={formData.language || 'pt-BR'}
                 onChange={e => setFormData({ ...formData, language: e.target.value as any })}
                 className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               >
-                <option value="pt-BR">Português (Brasil)</option>
-                <option value="en-US">English (US)</option>
-                <option value="es-ES">Español</option>
+                <option value="pt-BR">{t('portuguese')}</option>
+                <option value="en-US">{t('english')}</option>
+                <option value="es-ES">{t('spanish')}</option>
               </select>
             </div>
             <div>
@@ -171,7 +171,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
                       <div className={`block w-10 h-6 rounded-full transition-colors ${formData.useAutomaticCost ? 'bg-blue-600' : 'bg-gray-300 dark:bg-slate-700'}`}></div>
                       <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.useAutomaticCost ? 'transform translate-x-4' : ''}`}></div>
                     </div>
-                    <span className="ml-3 text-sm font-medium text-gray-700 dark:text-slate-300">Cálculo Automático (Baseado em Salários)</span>
+                    <span className="ml-3 text-sm font-medium text-gray-700 dark:text-slate-300">{t('automaticCostCalculation')}</span>
                   </label>
                 </div>
 
@@ -190,10 +190,10 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
                 ) : (
                   <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
                     <p className="text-xs text-blue-700 dark:text-blue-300 font-bold mb-1">
-                      Custo Hora Calculado: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calculatedRate)}
+                      {t('hourlyCostCalculated')} {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calculatedRate)}
                     </p>
                     <p className="text-[10px] text-blue-600 dark:text-blue-400">
-                      O custo hora será calculado automaticamente somando os salários de todos os usuários (exceto CEO e salários zerados) e dividindo por 220 horas mensais.
+                      {t('automaticCostCalculationDesc')}
                     </p>
                   </div>
                 )}
@@ -206,15 +206,15 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
         <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
           <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
             <Clock className="w-5 h-5 mr-2 text-amber-500" />
-            Configuração de Expediente
+            {t('workdayConfig')}
           </h3>
           <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
-            Defina o horário de trabalho e os dias da semana para o cálculo automático de tempo produtivo.
+            {t('workdayConfigDesc')}
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Início do Expediente</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{t('workdayStart')}</label>
               <input
                 type="time"
                 disabled={!isEditing}
@@ -224,7 +224,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Fim do Expediente</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{t('workdayEnd')}</label>
               <input
                 type="time"
                 disabled={!isEditing}
@@ -237,7 +237,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Início do Almoço</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{t('lunchStart')}</label>
               <input
                 type="time"
                 disabled={!isEditing}
@@ -247,7 +247,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Fim do Almoço</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">{t('lunchEnd')}</label>
               <input
                 type="time"
                 disabled={!isEditing}
@@ -259,9 +259,9 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Dias de Trabalho</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">{t('workDays')}</label>
             <div className="flex flex-wrap gap-2">
-              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, index) => {
+              {(t('daysShort') || 'Dom,Seg,Ter,Qua,Qui,Sex,Sáb').split(',').map((day: string, index: number) => {
                 const isSelected = (formData.workdays || [1, 2, 3, 4, 5]).includes(index);
                 return (
                   <button
@@ -293,18 +293,18 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
         <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
           <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
             <Mail className="w-5 h-5 mr-2 text-emerald-500" />
-            Configuração de E-mail
+            {t('emailConfig')}
           </h3>
           
           <div className="grid grid-cols-1 gap-6">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Destinatários Padrão (To)</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">{t('defaultRecipients')}</label>
                 {isEditing && (
                   <button 
                     type="button"
                     onClick={() => {
-                      const email = window.prompt('Digite o e-mail para adicionar:');
+                      const email = window.prompt(t('enterEmailToAdd' as any) || 'Digite o e-mail:');
                       if (email && email.includes('@')) {
                         const current = formData.emailTo ? formData.emailTo.split(',').map(e => e.trim()) : [];
                         if (!current.includes(email)) {
@@ -315,7 +315,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
                     className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center"
                   >
                     <Mail className="w-3 h-3 mr-1" />
-                    + Adicionar E-mail
+                    {t('addEmail')}
                   </button>
                 )}
               </div>
@@ -335,17 +335,17 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
                   </span>
                 ))}
               </div>
-              <p className="text-[10px] text-gray-500 mt-1">E-mails que recebem notificações de projetos finalizados.</p>
+              <p className="text-[10px] text-gray-500 mt-1">{t('emailNotificationDesc')}</p>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Destinatários para Interrupções</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">{t('recipientsForInterruptions')}</label>
                 {isEditing && (
                   <button 
                     type="button"
                     onClick={() => {
-                      const email = window.prompt('Digite o e-mail para adicionar:');
+                      const email = window.prompt(t('enterEmailToAdd' as any) || 'Digite o e-mail:');
                       if (email && email.includes('@')) {
                         const current = formData.interruptionEmailTo ? formData.interruptionEmailTo.split(',').map(e => e.trim()) : [];
                         if (!current.includes(email)) {
@@ -356,7 +356,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
                     className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center"
                   >
                     <Mail className="w-3 h-3 mr-1" />
-                    + Adicionar E-mail
+                    {t('addEmail')}
                   </button>
                 )}
               </div>
@@ -376,14 +376,14 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
                   </span>
                 ))}
               </div>
-              <p className="text-[10px] text-gray-500 mt-1">E-mails que recebem alertas automáticos de interrupções.</p>
+              <p className="text-[10px] text-gray-500 mt-1">{t('emailInterruptionDesc')}</p>
             </div>
           </div>
 
           <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Template de E-mail de Interrupção</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">{t('interruptionEmailTemplateLabel')}</label>
             <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800 mb-3">
-              <p className="text-[10px] text-blue-700 dark:text-blue-300 font-bold uppercase mb-1">Tags Disponíveis:</p>
+              <p className="text-[10px] text-blue-700 dark:text-blue-300 font-bold uppercase mb-1">{t('availableTags')}:</p>
               <div className="flex flex-wrap gap-2">
                 <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[NS_PARADA]</span>
                 <span className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">[CLIENTE]</span>
@@ -403,9 +403,9 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
               placeholder={`“E-mail automático, não responda este e-mail”\n\nOlá,\n\n Informamos que a [NS_PARADA] está interrompida no departamento de engenharia, \nTipo de Problema: [TIPO_PROBLEMA]\nArea Responsável: [AREA_RESPONSAVEL]\nResponsável da resposta: [RESPONSAVEL_RESPOSTA]\nData e hora da parada: [DATA_HORA]\nMotivo: [MOTIVO]\n\nOutras perdas: [OUTRAS_PERDAS]\n\naguardamos as informações para retornarmos o projeto, enquanto isso estará com um put andou o tempo de projeto parado`}
             />
             <div className="mt-3 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800">
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Rodapé Padrão (Fixo):</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">{t('standardFooter')}:</p>
               <p className="text-xs text-gray-500 dark:text-slate-400 italic">
-                Dúvidas falar com matheus.p@joinvilleimplementos.com.br e engenharia@joinvilleimplementos.com.br
+                {t('footerContactInfo')}
               </p>
             </div>
           </div>
@@ -421,7 +421,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
               }}
               className="px-6 py-3 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-200 font-bold rounded-lg transition-all"
             >
-              Cancelar
+              {t('cancel')}
             </button>
             <button
               type="submit"
@@ -433,7 +433,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
               ) : (
                 <Save className="w-5 h-5 mr-2" />
               )}
-              Salvar Configurações
+              {t('saveConfigurations')}
             </button>
           </div>
         )}
@@ -451,7 +451,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
               ) : (
                 <Clock className="w-5 h-5 mr-2" />
               )}
-              Recalcular Tempos Históricos
+              {t('recalculateHistoricTimes')}
             </button>
             <button
               type="button"
@@ -464,7 +464,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
               ) : (
                 <Send className="w-5 h-5 mr-2" />
               )}
-              Testar Conexão
+              {t('testConnection')}
             </button>
           </div>
         )}

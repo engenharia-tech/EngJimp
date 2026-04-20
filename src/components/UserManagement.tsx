@@ -41,7 +41,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
   const handleSaveWebhook = () => {
       saveWebhookUrl(webhookUrl);
-      addToast("URL de integração salva com sucesso!", "success");
+      addToast(t("webhookUrlSavedSuccess"), "success");
   };
   
   // Form State
@@ -93,7 +93,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     }
     
     if (result.success) {
-      addToast(`Usuário ${name} ${editingUserId ? 'atualizado' : 'criado'} com sucesso!`, 'success');
+      addToast(editingUserId ? t('userUpdatedSuccess', { name }) : t('userCreatedSuccess', { name }), 'success');
       await loadList(); // Refresh list
       resetForm();
     } else {
@@ -502,23 +502,23 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                                 onClick={handleSaveWebhook}
                                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold"
                             >
-                                Salvar
+                                {t('save')}
                             </button>
                         </div>
                         <button 
                             onClick={() => setShowWebhookHelp(!showWebhookHelp)}
                             className="text-xs text-green-600 dark:text-emerald-500 underline hover:text-green-800 dark:hover:text-emerald-400 mt-1"
                         >
-                            Como configurar isso?
+                            {t('howToConfigureThis')}
                         </button>
                         
                         {showWebhookHelp && (
                             <div className="mt-4 bg-white dark:bg-black p-4 rounded border border-green-200 dark:border-emerald-900/30 text-sm text-gray-600 dark:text-slate-400 space-y-2">
-                                <p><strong>Passo a Passo (Power Automate):</strong></p>
+                                <p><strong>{t('stepByStepPowerAutomate')}</strong></p>
                                 <ol className="list-decimal pl-5 space-y-1">
-                                    <li>Crie um novo fluxo "Instantâneo" no Power Automate.</li>
-                                    <li>Escolha o gatilho: <strong>"Quando uma solicitação HTTP é recebida"</strong>.</li>
-                                    <li>No corpo da solicitação (Schema), use este JSON de exemplo:
+                                    <li>{t('excelWebhookHelpLine1')}</li>
+                                    <li>{t('excelWebhookHelpLine2')}</li>
+                                    <li>{t('excelWebhookHelpLine3')}
                                         <pre className="bg-gray-100 dark:bg-black p-2 rounded mt-1 text-xs font-mono dark:text-slate-300">
 {`{
   "projetista": "Nome",
@@ -530,11 +530,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 }`}
                                         </pre>
                                     </li>
-                                    <li>Adicione uma ação: <strong>"Excel Online (Business) - Adicionar uma linha em uma tabela"</strong>.</li>
-                                    <li><strong>DICA IMPORTANTE:</strong> PARA ESCREVER EM ABAS DIFERENTES (EX: "ABRIL"), VOCÊ PRECISARÁ USAR UMA CONDIÇÃO NO POWER AUTOMATE BASEADA NO CAMPO <code>MES_REFERENCIA</code> PARA ESCOLHER A TABELA CORRETA.</li>
-                                    <li>Selecione seu arquivo Excel e mapeie os campos do JSON para as colunas.</li>
-                                    <li>Salve o fluxo e copie a <strong>URL HTTP POST</strong> gerada.</li>
-                                    <li>Cole a URL acima e clique em Salvar.</li>
+                                    <li>{t('excelWebhookHelpLine4')}</li>
+                                    <li><strong>{t('excelWebhookHelpLine5')}</strong></li>
+                                    <li>{t('excelWebhookHelpLine6')}</li>
+                                    <li>{t('webhookUrlSavedSuccess')}</li>
                                 </ol>
                             </div>
                         )}
@@ -543,13 +542,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
 
                 {/* Remove Duplicates */}
                 <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-900/30">
-                    <h4 className="font-semibold text-black dark:text-white mb-2">Remover Projetos Duplicados</h4>
+                    <h4 className="font-semibold text-black dark:text-white mb-2">{t('removeDuplicateProjects')}</h4>
                     <p className="text-sm text-orange-600 dark:text-orange-500/80 mb-4">
-                        Localiza e permite apagar projetos com o mesmo NS e Cliente, mantendo o mais recente.
+                        {t('removeDuplicateProjectsDesc')}
                     </p>
                     <button 
                         onClick={async () => {
-                            addToast("Buscando duplicatas...", "info");
+                            addToast(t('searchingDuplicates'), "info");
                             setIsCleaning(true);
                             
                             try {
@@ -558,15 +557,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                                     if (res.duplicates.length > 0) {
                                         setDuplicateGroups(res.duplicates);
                                         setShowDuplicateModal(true);
-                                        addToast(`${res.duplicates.length} duplicatas encontradas.`, "success");
+                                        addToast(t('duplicateFoundCount', { count: res.duplicates.length }), "success");
                                     } else {
-                                        addToast("Nenhuma duplicata encontrada.", "success");
+                                        addToast(t('noDuplicatesFound'), "success");
                                     }
                                 } else {
-                                    addToast("Erro: " + res.message, "error");
+                                    addToast(t('error') + ": " + res.message, "error");
                                 }
                             } catch (e) {
-                                addToast("Erro inesperado ao processar.", "error");
+                                addToast(t('errorGeneric'), "error");
                             } finally {
                                 setIsCleaning(false);
                             }
@@ -575,7 +574,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                         className="bg-orange-100 dark:bg-orange-900/30 hover:bg-orange-200 dark:hover:bg-orange-900/50 text-orange-700 dark:text-orange-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
                     >
                         {isCleaning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                        Buscar Duplicatas
+                        {t('searchDuplicatesButton' as any) || 'Buscar Duplicatas'}
                     </button>
                 </div>
 
@@ -583,10 +582,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-900/30">
                     <h4 className="font-semibold text-black dark:text-white mb-2 flex items-center">
                         <Activity className="w-5 h-5 mr-2 text-indigo-600" />
-                        Atualizar Valores de Projetos
+                        {t('updateProjectValues' as any) || 'Atualizar Valores de Projetos'}
                     </h4>
                     <p className="text-sm text-indigo-600 dark:text-indigo-400 mb-4">
-                        Recalcula o custo de todos os projetos no banco de dados usando a regra atual (Tempo Produtivo × Custo Hora).
+                        {t('recalculateCostsDesc' as any) || 'Recalcula o custo de todos os projetos no banco de dados usando a regra atual.'}
                     </p>
                     <button 
                         onClick={async () => {
@@ -595,13 +594,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                             const res = await recalculateAllProjectCosts();
                             setIsRecalculating(false);
                             if(res.success) addToast(res.message, "success");
-                            else addToast("Erro: " + res.message, "error");
+                            else addToast(t('error') + ": " + res.message, "error");
                         }}
                         disabled={isRecalculating}
                         className="bg-indigo-100 dark:bg-indigo-900/30 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center"
                     >
                         {isRecalculating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Activity className="w-4 h-4 mr-2" />}
-                        Recalcular e Sincronizar Custos
+                        {t('recalculateAndSyncButton' as any) || 'Recalcular e Sincronizar Custos'}
                     </button>
                 </div>
             </div>
@@ -611,22 +610,22 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
       {deleteConfirmationUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">Confirmar Exclusão</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">{t('confirmDeletion')}</h3>
                 <p className="text-gray-600 dark:text-slate-400 mb-6">
-                    Tem certeza que deseja excluir o usuário <strong>{deleteConfirmationUser.name}</strong>? Esta ação não pode ser desfeita.
+                    {t('confirmDeletionDesc', { name: deleteConfirmationUser.name })}
                 </p>
                 <div className="flex justify-end gap-3">
                     <button 
                         onClick={() => setDeleteConfirmationUser(null)}
                         className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
                     >
-                        Cancelar
+                        {t('cancel')}
                     </button>
                     <button 
                         onClick={confirmDelete}
                         className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors shadow-sm"
                     >
-                        Sim, Excluir
+                        {t('yesDelete')}
                     </button>
                 </div>
             </div>
@@ -639,7 +638,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
                         <AlertCircle className="w-6 h-6 mr-2 text-orange-600 dark:text-orange-400" />
-                        Resolver Duplicatas ({duplicateGroups.length})
+                        {t('resolveDuplicates', { count: duplicateGroups.length })}
                     </h3>
                     <button onClick={() => setShowDuplicateModal(false)} className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
                         <X className="w-6 h-6" />
@@ -652,30 +651,30 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                             {/* Keep */}
                             <div className="bg-white dark:bg-black p-3 rounded border border-green-200 dark:border-emerald-900/30 shadow-sm">
                                 <div className="flex justify-between items-start mb-2">
-                                    <span className="bg-green-100 dark:bg-emerald-900/40 text-green-800 dark:text-emerald-400 text-xs font-bold px-2 py-1 rounded">MANTER</span>
+                                    <span className="bg-green-100 dark:bg-emerald-900/40 text-green-800 dark:text-emerald-400 text-xs font-bold px-2 py-1 rounded">{t('keep')}</span>
                                     <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.keep.id.slice(-4)}</span>
                                 </div>
                                 <p className="font-bold text-gray-800 dark:text-slate-200">{group.keep.ns}</p>
-                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.keep.clientName || 'Sem cliente'}</p>
+                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.keep.clientName || t('noClient')}</p>
                                 <div className="mt-2 text-xs text-gray-500 dark:text-slate-500 space-y-1">
-                                    <p>Início: {new Date(group.keep.startTime).toLocaleString()}</p>
-                                    <p>Tempo: {(group.keep.totalActiveSeconds / 3600).toFixed(2)}h</p>
-                                    <p>Status: {group.keep.status}</p>
+                                    <p>{t('start')}: {new Date(group.keep.startTime).toLocaleString()}</p>
+                                    <p>{t('timeCol' as any) || 'Tempo'}: {(group.keep.totalActiveSeconds / 3600).toFixed(2)}h</p>
+                                    <p>{t('statusLabel' as any) || 'Status'}: {group.keep.status}</p>
                                 </div>
                             </div>
 
                             {/* Discard */}
                             <div className="bg-white dark:bg-black p-3 rounded border border-red-200 dark:border-red-900/30 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
                                 <div className="flex justify-between items-start mb-2">
-                                    <span className="bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-400 text-xs font-bold px-2 py-1 rounded">APAGAR</span>
+                                    <span className="bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-400 text-xs font-bold px-2 py-1 rounded">{t('discard')}</span>
                                     <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.discard.id.slice(-4)}</span>
                                 </div>
                                 <p className="font-bold text-gray-800 dark:text-slate-200">{group.discard.ns}</p>
-                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.discard.clientName || 'Sem cliente'}</p>
+                                <p className="text-sm text-gray-600 dark:text-slate-400">{group.discard.clientName || t('noClient')}</p>
                                 <div className="mt-2 text-xs text-gray-500 dark:text-slate-500 space-y-1">
-                                    <p>Início: {new Date(group.discard.startTime).toLocaleString()}</p>
-                                    <p>Tempo: {(group.discard.totalActiveSeconds / 3600).toFixed(2)}h</p>
-                                    <p>Status: {group.discard.status}</p>
+                                    <p>{t('start')}: {new Date(group.discard.startTime).toLocaleString()}</p>
+                                    <p>{t('timeCol' as any) || 'Tempo'}: {(group.discard.totalActiveSeconds / 3600).toFixed(2)}h</p>
+                                    <p>{t('statusLabel' as any) || 'Status'}: {group.discard.status}</p>
                                 </div>
                                 <button 
                                     onClick={async () => {
@@ -683,18 +682,18 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                                         const res = await deleteProjectById(group.discard.id, group.discard.ns);
                                         if (res.success) {
                                             // Pop-up requested by user
-                                            window.alert("PROJETO EXCLUÍDO COM SUCESSO!");
+                                            window.alert(t('projectDeletedSuccess' as any) || "PROJETO EXCLUÍDO COM SUCESSO!");
                                             // Update UI instantly without reload
                                             setDuplicateGroups(prev => prev.filter(g => g.discard.id !== group.discard.id));
                                         } else {
-                                            addToast("Erro ao excluir: " + res.message, "error");
-                                            window.alert("ERRO AO EXCLUIR: " + res.message.toUpperCase());
+                                            addToast(t('errorPrefix') + res.message, "error");
+                                            window.alert((t('errorPrefix') + res.message).toUpperCase());
                                         }
                                     }}
                                     className="mt-3 w-full bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/30 py-1 rounded text-xs font-bold flex items-center justify-center"
                                 >
                                     <Trash2 className="w-3 h-3 mr-1" />
-                                    EXCLUIR ESTE
+                                    {t('deleteThis')}
                                 </button>
                             </div>
                             
@@ -706,7 +705,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     {duplicateGroups.length === 0 && (
                         <div className="text-center py-10 text-gray-500 dark:text-slate-400">
                             <CheckCircle className="w-12 h-12 mx-auto text-green-500 dark:text-emerald-500 mb-3" />
-                            <p>Todas as duplicatas foram resolvidas!</p>
+                            <p>{t('allDuplicatesResolved')}</p>
                         </div>
                     )}
                 </div>
@@ -719,7 +718,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                         }}
                         className="px-4 py-2 bg-gray-800 dark:bg-black hover:bg-gray-900 dark:hover:bg-slate-600 text-white rounded-lg font-medium text-sm"
                     >
-                        Fechar e Atualizar
+                        {t('closeAndUpdate')}
                     </button>
                 </div>
             </div>
