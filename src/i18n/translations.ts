@@ -231,6 +231,7 @@ export const translations = {
     "avgTime": "TEMPO MÉDIO",
     "avgVariationTime": "TEMPO MÉDIO DE VARIAÇÃO",
     "designerCol": "PROJETISTA",
+    "development": "DESENVOLVIMENTO",
     "developments": "DESENVOLVIMENTOS",
     "backlinks": "BACKLINKS TOTAIS",
     "basculante": "BASCULANTE",

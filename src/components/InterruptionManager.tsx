@@ -23,7 +23,7 @@ import { calcActiveSeconds } from '../utils/workdayCalc';
 interface InterruptionManagerProps {
   data: AppState;
   currentUser: User;
-  onUpdate: (newState: AppState) => void;
+  onUpdate: (interruption: InterruptionRecord, isHeartbeat?: boolean) => void;
   addToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -98,10 +98,11 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         openInterruptions.forEach(async (i) => {
           const startTime = new Date(i.startTime);
           const currentDuration = calcActiveSeconds(startTime, new Date(), data.settings);
-          await updateInterruption({
+          onUpdate({
             ...i,
-            totalTimeSeconds: currentDuration
-          });
+            totalTimeSeconds: currentDuration,
+            lastActiveAt: new Date().toISOString()
+          }, true);
         });
         setLastHeartbeat(currentTime);
       }
@@ -111,7 +112,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       clearInterval(timer);
       clearInterval(heartbeat);
     };
-  }, [data.interruptions, currentUser.id, data.settings, lastHeartbeat]);
+  }, [data.interruptions, currentUser.id, data.settings, lastHeartbeat, onUpdate]);
 
   // Update email body when form fields change
   useEffect(() => {

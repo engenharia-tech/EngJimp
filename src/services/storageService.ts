@@ -435,7 +435,7 @@ export const addProject = async (project: ProjectSession): Promise<AppState> => 
   }
 };
 
-export const updateProject = async (project: ProjectSession): Promise<AppState> => {
+export const updateProject = async (project: ProjectSession, skipFetch = false): Promise<AppState> => {
   try {
     const { error } = await supabase
       .from('projects')
@@ -461,6 +461,11 @@ export const updateProject = async (project: ProjectSession): Promise<AppState> 
       .eq('id', project.id);
 
     if (error) throw error;
+    if (skipFetch) {
+       // Return current local state (mock state) if skipFetch is true
+       // In a real app we might return the single object, but let's just fetch everything if skipFetch is false
+       return null as any; 
+    }
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO UPDATE PROJECT", error);
@@ -727,7 +732,7 @@ export const addInterruption = async (interruption: InterruptionRecord): Promise
   }
 };
 
-export const updateInterruption = async (interruption: InterruptionRecord): Promise<AppState> => {
+export const updateInterruption = async (interruption: InterruptionRecord, skipFetch = false): Promise<AppState> => {
   try {
     const payload: any = {
       project_ns: interruption.projectNs,
@@ -757,6 +762,7 @@ export const updateInterruption = async (interruption: InterruptionRecord): Prom
       console.error("SUPABASE ERROR UPDATING INTERRUPTION:", error);
       throw error;
     }
+    if (skipFetch) return null as any;
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO UPDATE INTERRUPTION", error);
