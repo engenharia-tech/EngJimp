@@ -119,6 +119,19 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
   const [isSaving, setIsSaving] = useState(false);
 
+  // Refs for heartbeat values to avoid stale closures in intervals
+  const lastHeartbeatRef = useRef<number>(Date.now());
+  const elapsedSecondsRef = useRef<number>(0);
+  const onUpdateRef = useRef(onUpdate);
+
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
+  useEffect(() => {
+    elapsedSecondsRef.current = elapsedSeconds;
+  }, [elapsedSeconds]);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const filteredRequests = useMemo(() => {
@@ -235,11 +248,13 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       // Heartbeat every 60 seconds to update lastActiveAt (updated_at in DB)
       const heartbeatInterval = setInterval(() => {
         const now = Date.now();
-        if (now - lastHeartbeat >= 60000) {
-          onUpdate({
+        if (now - lastHeartbeatRef.current >= 60000) {
+          console.log(`[Heartbeat] Updating project ${activeProject.ns}. Elapsed: ${elapsedSecondsRef.current}s`);
+          onUpdateRef.current({
             ...activeProject,
-            totalActiveSeconds: elapsedSeconds
+            totalActiveSeconds: elapsedSecondsRef.current
           }, true);
+          lastHeartbeatRef.current = now;
           setLastHeartbeat(now);
         }
       }, 10000); // Check every 10s if 60s passed
