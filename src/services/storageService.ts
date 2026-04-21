@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus, InnovationType } from '../types';
+import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus, InnovationType, GanttTask } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 
@@ -44,6 +44,7 @@ const defaultState: AppState = {
   operationalActivities: [],
   projectRequests: [],
   users: [],
+  ganttTasks: [],
   settings: { 
     hourlyCost: 150,
     workdayStart: "07:30",
@@ -147,19 +148,9 @@ export const fetchSettings = async (): Promise<AppSettings> => {
 
 export const fetchAppState = async (): Promise<AppState> => {
   try {
+    const start = Date.now();
     // Fetch all data in parallel for speed
-    const [
-      { data: projectsData, error: projectsError },
-      { data: issuesData, error: issuesError },
-      { data: innovationsData, error: innovationsError },
-      { data: interruptionsData, error: interruptionsError },
-      { data: interruptionTypesData, error: interruptionTypesError },
-      { data: activityTypesData, error: activityTypesError },
-      { data: operationalActivitiesData, error: operationalActivitiesError },
-      { data: projectRequestsData, error: projectRequestsError },
-      { data: usersData, error: usersError },
-      settings
-    ] = await Promise.all([
+    const fetches = [
       supabase.from('projects').select('*').order('start_time', { ascending: false }),
       supabase.from('issues').select('*').order('date', { ascending: false }),
       supabase.from('innovations').select('*').order('created_at', { ascending: false }),
@@ -169,22 +160,53 @@ export const fetchAppState = async (): Promise<AppState> => {
       supabase.from('operational_activities').select('*').order('start_time', { ascending: false }),
       supabase.from('project_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('users').select('*'),
+      supabase.from('gantt_tasks').select('*').order('order', { ascending: true }),
       fetchSettings()
-    ]);
+    ];
 
-    if (projectsError) throw projectsError;
-    if (issuesError) throw issuesError;
-    if (innovationsError) throw innovationsError;
-    if (interruptionsError) throw interruptionsError;
-    if (interruptionTypesError) throw interruptionTypesError;
-    if (activityTypesError) throw activityTypesError;
-    if (operationalActivitiesError) throw operationalActivitiesError;
-    if (projectRequestsError) throw projectRequestsError;
-    if (usersError) throw usersError;
+    const results = await Promise.all(fetches);
+    
+    // De-structure after await to improve readability and debug errors individually
+    const projectsRes = results[0] as any;
+    const issuesRes = results[1] as any;
+    const innovationsRes = results[2] as any;
+    const interruptionsRes = results[3] as any;
+    const interruptionTypesRes = results[4] as any;
+    const activityTypesRes = results[5] as any;
+    const operationalActivitiesRes = results[6] as any;
+    const projectRequestsRes = results[7] as any;
+    const usersRes = results[8] as any;
+    const ganttTasksRes = results[9] as any;
+    const settings = results[10] as AppSettings;
 
-    console.log(`FETCH APP STATE: Found ${projectsData?.length || 0} projects, ${usersData?.length || 0} users, ${innovationsData?.length || 0} innovations`);
+    if (projectsRes.error) console.error("Error projects:", projectsRes.error);
+    if (issuesRes.error) console.error("Error issues:", issuesRes.error);
+    if (innovationsRes.error) console.error("Error innovations:", innovationsRes.error);
+    if (interruptionsRes.error) console.error("Error interruptions:", interruptionsRes.error);
+    if (interruptionTypesRes.error) console.error("Error intTypes:", interruptionTypesRes.error);
+    if (activityTypesRes.error) console.error("Error actTypes:", activityTypesRes.error);
+    if (operationalActivitiesRes.error) console.error("Error opActs:", operationalActivitiesRes.error);
+    if (projectRequestsRes.error) console.error("Error requests:", projectRequestsRes.error);
+    if (usersRes.error) console.error("Error users:", usersRes.error);
+    if (ganttTasksRes.error) console.error("Error gantt:", ganttTasksRes.error);
 
-    let activityTypes: ActivityType[] = (activityTypesData || []).map((t: any) => ({
+    const state: AppState = {
+      settings,
+      projects: projectsRes.data || [],
+      issues: issuesRes.data || [],
+      innovations: innovationsRes.data || [],
+      interruptions: interruptionsRes.data || [],
+      interruptionTypes: interruptionTypesRes.data || [],
+      activityTypes: activityTypesRes.data || [],
+      operationalActivities: operationalActivitiesRes.data || [],
+      projectRequests: projectRequestsRes.data || [],
+      users: usersRes.data || [],
+      ganttTasks: ganttTasksRes.data || []
+    };
+
+    console.log(`FETCH APP STATE COMPLETED IN ${Date.now() - start}ms: Found ${state.projects.length} projects, ${state.users.length} users`);
+
+    let activityTypes: ActivityType[] = (activityTypesRes.data || []).map((t: any) => ({
       id: t.id,
       name: t.name,
       isActive: t.is_active
@@ -219,34 +241,34 @@ export const fetchAppState = async (): Promise<AppState> => {
       }
     }
 
-    // Map DB columns (snake_case) to Types (camelCase)
-    const projects: ProjectSession[] = (projectsData || []).map((p: any) => ({
+    const projects: ProjectSession[] = (projectsRes.data || []).map((p: any) => ({
       id: p.id,
       ns: p.ns,
       clientName: p.client_name,
       flooringType: p.flooring_type,
       projectCode: p.project_code,
-      type: p.type,
-      implementType: p.implement_type,
+      chassisNumber: p.chassis_number,
+      type: p.type as ProjectType,
+      implementType: p.implement_type as ImplementType,
       startTime: p.start_time,
       endTime: p.end_time,
-      totalActiveSeconds: p.total_active_seconds,
+      totalActiveSeconds: p.total_active_seconds || 0,
       interruptionSeconds: p.interruption_seconds || 0,
-      totalSeconds: p.total_seconds || p.total_active_seconds,
+      totalSeconds: p.total_seconds || 0,
       productiveCost: p.productive_cost || 0,
       interruptionCost: p.interruption_cost || 0,
       totalCost: p.total_cost || 0,
       pauses: typeof p.pauses === 'string' ? JSON.parse(p.pauses) : (p.pauses || []),
       variations: typeof p.variations === 'string' ? JSON.parse(p.variations) : (p.variations || []),
-      status: p.status,
+      status: p.status as 'COMPLETED' | 'IN_PROGRESS',
       notes: p.notes,
       userId: p.user_id,
-      estimatedSeconds: p.estimated_seconds,
+      estimatedSeconds: p.estimated_seconds || 0,
       isOvertime: p.is_overtime,
       lastActiveAt: p.updated_at
     }));
 
-    const issues: IssueRecord[] = (issuesData || []).map((i: any) => ({
+    const issues: IssueRecord[] = (issuesRes.data || []).map((i: any) => ({
       id: i.id,
       projectNs: i.project_ns,
       type: i.type,
@@ -255,7 +277,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       reportedBy: i.reported_by
     }));
 
-    const innovations: InnovationRecord[] = (innovationsData || []).map((inv: any) => ({
+    const innovations: InnovationRecord[] = (innovationsRes.data || []).map((inv: any) => ({
       id: inv.id,
       title: inv.title,
       description: inv.description,
@@ -281,7 +303,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       unitProductValue: inv.unit_product_value
     }));
 
-    const interruptions: InterruptionRecord[] = (interruptionsData || []).map((i: any) => ({
+    const interruptions: InterruptionRecord[] = (interruptionsRes.data || []).map((i: any) => ({
       id: i.id,
       projectId: i.project_id,
       projectNs: i.project_ns,
@@ -298,13 +320,13 @@ export const fetchAppState = async (): Promise<AppState> => {
       lastActiveAt: i.updated_at
     }));
 
-    const interruptionTypes: InterruptionType[] = (interruptionTypesData || []).map((t: any) => ({
+    const interruptionTypes: InterruptionType[] = (interruptionTypesRes.data || []).map((t: any) => ({
       id: t.id,
       name: t.name,
       isActive: t.is_active
     }));
 
-    const operationalActivities: OperationalActivity[] = (operationalActivitiesData || []).map((a: any) => ({
+    const operationalActivities: OperationalActivity[] = (operationalActivitiesRes.data || []).map((a: any) => ({
       id: a.id,
       userId: a.user_id,
       activityTypeId: a.activity_type_id,
@@ -317,7 +339,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       isFlagged: a.is_flagged
     }));
 
-    const projectRequests: ProjectRequest[] = (projectRequestsData || []).map((r: any) => ({
+    const projectRequests: ProjectRequest[] = (projectRequestsRes.data || []).map((r: any) => ({
       id: r.id,
       clientName: r.client_name,
       ns: r.ns,
@@ -337,7 +359,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       designerEstimate: r.designer_estimate
     }));
 
-    const users: User[] = (usersData || []).map((u: any) => ({
+    const users: User[] = (usersRes.data || []).map((u: any) => ({
       id: u.id,
       username: u.username,
       password: u.password,
@@ -349,10 +371,68 @@ export const fetchAppState = async (): Promise<AppState> => {
       salary: Number(u.salary) || 0
     })).sort((a, b) => a.name.localeCompare(b.name));
 
-    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, settings };
+    const ganttTasks: GanttTask[] = (ganttTasksRes.data || []).map((t: any) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      parentId: t.parent_id,
+      startDate: t.start_date,
+      endDate: t.end_date,
+      color: t.color,
+      isMilestone: t.is_milestone,
+      assignedTo: t.assigned_to || [],
+      progress: t.progress || 0,
+      attachments: t.attachments || [],
+      createdAt: t.created_at,
+      updatedAt: t.updated_at,
+      workload: t.workload,
+      reports: t.reports,
+      order: t.order
+    }));
+
+    // Seed default gantt task if empty
+    if (ganttTasks.length === 0) {
+        console.log("SEEDING DEFAULT GANTT TASK...");
+        const demoTask: any = {
+            id: crypto.randomUUID(),
+            title: 'Projeto Nexus Beta',
+            description: 'Desenvolvimento inicial da aba GanttNexus para gestão de tarefas.',
+            start_date: new Date().toISOString().split('T')[0],
+            end_date: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+            color: 'bg-indigo-500',
+            is_milestone: false,
+            assigned_to: users.length > 0 ? [users[0].id] : [],
+            progress: 30,
+            order: 0,
+            workload: 40,
+            reports: 'Iniciamos o desenvolvimento da arquitetura de visualização temporal.'
+        };
+        
+        await supabase.from('gantt_tasks').insert([demoTask]);
+        // After inserting, we could re-fetch or just add to result
+        ganttTasks.push({
+            id: demoTask.id,
+            title: demoTask.title,
+            description: demoTask.description,
+            startDate: demoTask.start_date,
+            endDate: demoTask.end_date,
+            color: demoTask.color,
+            isMilestone: demoTask.is_milestone,
+            assignedTo: demoTask.assigned_to,
+            progress: demoTask.progress,
+            order: demoTask.order,
+            workload: demoTask.workload,
+            reports: demoTask.reports,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            attachments: []
+        });
+    }
+
+    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, settings };
   } catch (error) {
     console.error("FAILED TO LOAD DATA FROM SUPABASE", error);
-    return { ...defaultState, users: [] };
+    return { ...defaultState, users: [], ganttTasks: [] };
   }
 };
 
@@ -413,11 +493,17 @@ export const addProject = async (project: ProjectSession): Promise<AppState> => 
       client_name: project.clientName,
       flooring_type: project.flooringType,
       project_code: project.projectCode,
+      chassis_number: project.chassisNumber,
       type: project.type,
       implement_type: project.implementType,
       start_time: project.startTime,
       end_time: project.endTime,
       total_active_seconds: project.totalActiveSeconds,
+      interruption_seconds: project.interruptionSeconds || 0,
+      total_seconds: project.totalSeconds || 0,
+      productive_cost: project.productiveCost || 0,
+      interruption_cost: project.interruptionCost || 0,
+      total_cost: project.totalCost || 0,
       pauses: project.pauses,
       variations: project.variations,
       status: project.status,
@@ -444,16 +530,22 @@ export const updateProject = async (project: ProjectSession, skipFetch = false):
         client_name: project.clientName,
         flooring_type: project.flooringType,
         project_code: project.projectCode,
+        chassis_number: project.chassisNumber,
         type: project.type,
         implement_type: project.implementType,
         start_time: project.startTime,
         end_time: project.endTime || null,
-        total_active_seconds: project.totalActiveSeconds,
-        pauses: project.pauses,
-        variations: project.variations,
+        total_active_seconds: Math.round(Number.isFinite(project.totalActiveSeconds) ? project.totalActiveSeconds : 0),
+        interruption_seconds: Math.round(Number.isFinite(project.interruptionSeconds) ? (project.interruptionSeconds || 0) : 0),
+        total_seconds: Math.round(Number.isFinite(project.totalSeconds) ? (project.totalSeconds || 0) : 0),
+        productive_cost: Number(Number(project.productiveCost || 0).toFixed(2)),
+        interruption_cost: Number(Number(project.interruptionCost || 0).toFixed(2)),
+        total_cost: Number(Number(project.totalCost || 0).toFixed(2)),
+        estimated_seconds: Math.round(Number.isFinite(project.estimatedSeconds) ? project.estimatedSeconds : 0),
+        pauses: project.pauses || [],
+        variations: project.variations || [],
         status: project.status,
         notes: project.notes,
-        estimated_seconds: project.estimatedSeconds,
         user_id: project.userId,
         is_overtime: project.isOvertime,
         updated_at: new Date().toISOString()
@@ -462,8 +554,6 @@ export const updateProject = async (project: ProjectSession, skipFetch = false):
 
     if (error) throw error;
     if (skipFetch) {
-       // Return current local state (mock state) if skipFetch is true
-       // In a real app we might return the single object, but let's just fetch everything if skipFetch is false
        return null as any; 
     }
     return fetchAppState();
@@ -1014,13 +1104,14 @@ export const updateProjectRequest = async (request: ProjectRequest): Promise<App
         flooring: request.flooring,
         setup: request.setup,
         status: request.status,
+        chassis_number: request.chassisNumber,
         assigned_to: request.assignedTo,
         needs_base: request.needsBase,
         needs_box: request.needsBox,
         base_project_id: request.baseProjectId,
         box_project_id: request.boxProjectId,
-        management_estimate: request.managementEstimate,
-        designer_estimate: request.designerEstimate
+        management_estimate: Math.round(Number.isFinite(request.managementEstimate) ? (request.managementEstimate || 0) : 0),
+        designer_estimate: Math.round(Number.isFinite(request.designerEstimate) ? (request.designerEstimate || 0) : 0)
       })
       .eq('id', request.id);
 
@@ -1739,4 +1830,74 @@ export const removeDuplicateProjects = async (): Promise<{ success: boolean; mes
   }
   
   return { success: true, message: `Removidos ${deletedCount} duplicatas.`, count: deletedCount };
+};
+
+export const addGanttTask = async (task: GanttTask): Promise<AppState> => {
+  try {
+    const { error } = await supabase.from('gantt_tasks').insert([{
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      parent_id: task.parentId,
+      start_date: task.startDate,
+      end_date: task.endDate,
+      color: task.color,
+      is_milestone: task.isMilestone,
+      assigned_to: task.assignedTo,
+      progress: task.progress,
+      attachments: task.attachments,
+      created_at: task.createdAt,
+      updated_at: task.updatedAt,
+      workload: task.workload,
+      reports: task.reports,
+      order: task.order
+    }]);
+
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("FAILED TO ADD GANTT TASK", error);
+    throw error;
+  }
+};
+
+export const updateGanttTask = async (task: GanttTask): Promise<AppState> => {
+  try {
+    const { error } = await supabase
+      .from('gantt_tasks')
+      .update({
+        title: task.title,
+        description: task.description,
+        parent_id: task.parentId,
+        start_date: task.startDate,
+        end_date: task.endDate,
+        color: task.color,
+        is_milestone: task.isMilestone,
+        assigned_to: task.assignedTo,
+        progress: task.progress,
+        attachments: task.attachments,
+        updated_at: new Date().toISOString(),
+        workload: task.workload,
+        reports: task.reports,
+        order: task.order
+      })
+      .eq('id', task.id);
+
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("FAILED TO UPDATE GANTT TASK", error);
+    throw error;
+  }
+};
+
+export const deleteGanttTask = async (id: string): Promise<AppState> => {
+  try {
+    const { error } = await supabase.from('gantt_tasks').delete().eq('id', id);
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("FAILED TO DELETE GANTT TASK", error);
+    throw error;
+  }
 };

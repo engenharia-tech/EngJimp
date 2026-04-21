@@ -300,6 +300,33 @@ export interface ProjectRequest {
   designerEstimate?: number;   // in hours
 }
 
+export interface GanttAttachment {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  uploadedAt: string;
+}
+
+export interface GanttTask {
+  id: string;
+  title: string;
+  description?: string;
+  parentId?: string | null;
+  startDate: string;
+  endDate: string;
+  color: string;
+  isMilestone: boolean;
+  assignedTo: string[]; // List of user IDs
+  progress: number;
+  attachments: GanttAttachment[];
+  createdAt: string;
+  updatedAt: string;
+  workload?: { [userId: string]: number }; // Hours dedicated per person
+  reports?: string; // Reporting/Notes
+  order?: number;
+}
+
 export interface AppState {
   projects: ProjectSession[];
   issues: IssueRecord[];
@@ -309,6 +336,7 @@ export interface AppState {
   activityTypes: ActivityType[];
   operationalActivities: OperationalActivity[];
   projectRequests: ProjectRequest[];
+  ganttTasks: GanttTask[]; // New field
   users: User[];
   settings: AppSettings;
   seoData?: SEOData;

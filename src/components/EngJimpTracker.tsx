@@ -862,12 +862,17 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           updatedRequest.status = ProjectRequestStatus.COMPLETED;
         }
         
-        onUpdateProjectRequest(updatedRequest);
+        await onUpdateProjectRequest(updatedRequest);
       }
 
       // 1. Update DB
-      console.log("Finalizing project in DB:", finishedProject.ns);
-      await onUpdate(finishedProject);
+      console.log("Finalizing project in DB:", finishedProject.ns, finishedProject);
+      try {
+        await onUpdate(finishedProject);
+      } catch (dbError) {
+        console.error("Database update failed in confirmFinish:", dbError);
+        throw dbError; // Propagate to outer try/catch
+      }
       console.log("Project updated successfully in DB.");
       
       // Close modal and clear active project immediately after DB success
