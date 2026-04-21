@@ -49,6 +49,7 @@ const logoImg = '/logo.svg';
 const COMPANY_LOGO_URL = logoImg;
 
 import { Logo } from './components/Logo';
+import { GanttNexus } from './components/GanttNexus';
 import { ToastProvider, useToast } from './components/Toast';
 import { useLanguage } from './i18n/LanguageContext';
 import { Language } from './i18n/translations';
@@ -141,7 +142,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'nexus'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'nexus' | 'gantt'>('dashboard');
   const [data, setData] = useState<AppState>({ 
     projects: [], 
     issues: [], 
@@ -165,7 +166,8 @@ const AppContent: React.FC = () => {
     seoData: { keywords: [], metrics: [], tasks: [] },
     activityTypes: [],
     operationalActivities: [],
-    projectRequests: []
+    projectRequests: [],
+    ganttTasks: []
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -391,7 +393,9 @@ const AppContent: React.FC = () => {
     } catch (e) {
         console.error(`Erro ao atualizar projeto ${project.ns} (isHeartbeat=${isHeartbeat}):`, e);
         if (!isHeartbeat) {
-          addToast(t('errorUpdatingProject'), 'error');
+          const detail = (e as any)?.message || (e as any)?.details || JSON.stringify(e);
+          addToast(`${t('errorUpdatingProject')} (${detail})`, 'error');
+          throw e; // RE-THROW so sub-components can handle failure
         }
     }
   };
@@ -746,6 +750,8 @@ const AppContent: React.FC = () => {
 
           <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
 
+          <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+
           {canUseTracker && (
             <>
               <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
@@ -830,7 +836,7 @@ const AppContent: React.FC = () => {
             <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             
             <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-
+            <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             {canUseTracker && (
               <>
                 <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
@@ -995,6 +1001,10 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'nexus' && (
             <NexusChat appState={data} currentUser={currentUser} theme={theme} />
+          )}
+
+          {activeTab === 'gantt' && (
+            <GanttNexus state={data} onUpdateState={(newData) => setData(newData)} />
           )}
 
           {activeTab === 'reports' && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
