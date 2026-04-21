@@ -373,6 +373,9 @@ const AppContent: React.FC = () => {
     }));
     
     try {
+        if (isHeartbeat) {
+          console.log(`[App] Heartbeat update for NS: ${project.ns}`);
+        }
         const updatedData = await updateProject(project, isHeartbeat);
         if (updatedData) {
           setData(updatedData);
@@ -386,7 +389,7 @@ const AppContent: React.FC = () => {
           }
         }
     } catch (e) {
-        console.error("Erro ao atualizar projeto:", e);
+        console.error(`Erro ao atualizar projeto ${project.ns} (isHeartbeat=${isHeartbeat}):`, e);
         if (!isHeartbeat) {
           addToast(t('errorUpdatingProject'), 'error');
         }

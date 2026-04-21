@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -62,6 +62,12 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   // Type Manager State
   const [newTypeName, setNewTypeName] = useState('');
   const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
+  const lastHeartbeatRef = useRef<number>(Date.now());
+  const onUpdateRef = useRef(onUpdate);
+
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
 
   const canManage = currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR';
   const isCEO = currentUser.role === 'CEO';
@@ -93,17 +99,18 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     // Heartbeat for open interruptions
     const heartbeat = setInterval(() => {
       const currentTime = Date.now();
-      if (currentTime - lastHeartbeat >= 60000) {
+      if (currentTime - lastHeartbeatRef.current >= 60000) {
         const openInterruptions = data.interruptions.filter(i => i.status === InterruptionStatus.OPEN && i.designerId === currentUser.id);
         openInterruptions.forEach(async (i) => {
           const startTime = new Date(i.startTime);
           const currentDuration = calcActiveSeconds(startTime, new Date(), data.settings);
-          onUpdate({
+          onUpdateRef.current({
             ...i,
             totalTimeSeconds: currentDuration,
             lastActiveAt: new Date().toISOString()
           }, true);
         });
+        lastHeartbeatRef.current = currentTime;
         setLastHeartbeat(currentTime);
       }
     }, 10000);
