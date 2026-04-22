@@ -1865,7 +1865,7 @@ export const removeDuplicateProjects = async (): Promise<{ success: boolean; mes
 
 export const addGanttTask = async (task: GanttTask): Promise<AppState> => {
   try {
-    const { error } = await supabase.from('gantt_tasks').insert([{
+    const payload: any = {
       id: task.id,
       title: task.title,
       description: task.description,
@@ -1874,21 +1874,28 @@ export const addGanttTask = async (task: GanttTask): Promise<AppState> => {
       end_date: task.endDate,
       color: task.color,
       is_milestone: task.isMilestone,
-      assigned_to: task.assignedTo,
-      progress: task.progress,
-      attachments: task.attachments,
-      created_at: task.createdAt,
-      updated_at: task.updatedAt,
-      workload: task.workload,
-      reports: task.reports,
-      order: task.order,
-      dependencies: task.dependencies,
-      status: task.status,
-      priority: task.priority,
-      category: task.category
-    }]);
+      assigned_to: task.assignedTo || [],
+      progress: task.progress || 0,
+      attachments: task.attachments || [],
+      created_at: task.createdAt || new Date().toISOString(),
+      updated_at: task.updatedAt || new Date().toISOString(),
+      status: task.status || 'todo',
+      priority: task.priority || 'medium',
+      "order": task.order || 0
+    };
 
-    if (error) throw error;
+    // Only add these if they are present, to avoid errors if columns are missing in older schemas
+    if (task.workload) payload.workload = task.workload;
+    if (task.reports) payload.reports = task.reports;
+    if (task.dependencies) payload.dependencies = task.dependencies;
+    if (task.category) payload.category = task.category;
+
+    const { error } = await supabase.from('gantt_tasks').insert([payload]);
+
+    if (error) {
+      console.error("SUPABASE GANTT INSERT ERROR:", error);
+      throw error;
+    }
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO ADD GANTT TASK", error);
@@ -1898,31 +1905,38 @@ export const addGanttTask = async (task: GanttTask): Promise<AppState> => {
 
 export const updateGanttTask = async (task: GanttTask): Promise<AppState> => {
   try {
+    const payload: any = {
+      title: task.title,
+      description: task.description,
+      parent_id: task.parentId,
+      start_date: task.startDate,
+      end_date: task.endDate,
+      color: task.color,
+      is_milestone: task.isMilestone,
+      assigned_to: task.assignedTo || [],
+      progress: task.progress || 0,
+      attachments: task.attachments || [],
+      updated_at: new Date().toISOString(),
+      status: task.status || 'todo',
+      priority: task.priority || 'medium',
+      "order": task.order
+    };
+
+    // Only add these if they are present
+    if (task.workload) payload.workload = task.workload;
+    if (task.reports) payload.reports = task.reports;
+    if (task.dependencies) payload.dependencies = task.dependencies;
+    if (task.category) payload.category = task.category;
+
     const { error } = await supabase
       .from('gantt_tasks')
-      .update({
-        title: task.title,
-        description: task.description,
-        parent_id: task.parentId,
-        start_date: task.startDate,
-        end_date: task.endDate,
-        color: task.color,
-        is_milestone: task.isMilestone,
-        assigned_to: task.assignedTo,
-        progress: task.progress,
-        attachments: task.attachments,
-        updated_at: new Date().toISOString(),
-        workload: task.workload,
-        reports: task.reports,
-        order: task.order,
-        dependencies: task.dependencies,
-        status: task.status,
-        priority: task.priority,
-        category: task.category
-      })
+      .update(payload)
       .eq('id', task.id);
 
-    if (error) throw error;
+    if (error) {
+      console.error("SUPABASE GANTT UPDATE ERROR:", error);
+      throw error;
+    }
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO UPDATE GANTT TASK", error);
