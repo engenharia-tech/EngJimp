@@ -322,10 +322,9 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
       const newState = await updateGanttTask(updatedTask);
       onUpdateState(newState);
     } catch (error) { 
-      console.error(error);
-      alert("Erro ao atualizar campo. Verifique sua conexão.");
-      // Re-fetch to sync
-      window.location.reload(); // Hard fallback for sync if failed
+      console.error("Gantt update field error:", error);
+      alert("Erro ao sincronizar alteração. " + (error instanceof Error ? error.message : "Verifique sua conexão."));
+      // Don't reload, let the optimistic state stay or suggest refresh
     }
   };
 
@@ -387,7 +386,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
       onUpdateState(newState);
     } catch (error) { 
       console.error("Save error:", error);
-      alert("Erro ao salvar tarefa. Verifique sua conexão.");
+      alert("Erro ao salvar tarefa. " + (error instanceof Error ? error.message : "Verifique sua conexão."));
       // Fallback: restore adding state if failed
       setInlineAdding(currentAdding);
       setInlineTitle(titleToSave);
