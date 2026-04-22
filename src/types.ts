@@ -275,6 +275,20 @@ export enum ProjectRequestStatus {
   CANCELLED = 'CANCELADO'
 }
 
+export enum GanttTaskStatus {
+  TODO = 'todo',
+  IN_PROGRESS = 'in_progress',
+  DONE = 'done',
+  CLOSED = 'closed'
+}
+
+export enum TaskPriority {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+  URGENT = 'urgent'
+}
+
 export interface ProjectRequest {
   id: string;
   clientName: string;
@@ -325,6 +339,10 @@ export interface GanttTask {
   workload?: { [userId: string]: number }; // Hours dedicated per person
   reports?: string; // Reporting/Notes
   order?: number;
+  dependencies?: string[]; // IDs of predecessor tasks
+  status: GanttTaskStatus;
+  priority: TaskPriority;
+  category?: string;
 }
 
 export interface AppState {

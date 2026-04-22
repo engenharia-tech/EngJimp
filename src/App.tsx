@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { NexusChat } from './nexus/NexusChat';
 import { Dashboard } from './components/Dashboard';
@@ -49,7 +49,7 @@ const logoImg = '/logo.svg';
 const COMPANY_LOGO_URL = logoImg;
 
 import { Logo } from './components/Logo';
-import { GanttNexus } from './components/GanttNexus';
+import { ProjectNexus } from './components/ProjectNexus/ProjectNexus';
 import { ToastProvider, useToast } from './components/Toast';
 import { useLanguage } from './i18n/LanguageContext';
 import { Language } from './i18n/translations';
@@ -750,7 +750,7 @@ const AppContent: React.FC = () => {
 
           <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
 
-          <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+          <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
 
           {canUseTracker && (
             <>
@@ -1004,7 +1004,7 @@ const AppContent: React.FC = () => {
           )}
 
           {activeTab === 'gantt' && (
-            <GanttNexus state={data} onUpdateState={(newData) => setData(newData)} />
+            <ProjectNexus state={data} onUpdateState={(newData) => setData(newData)} />
           )}
 
           {activeTab === 'reports' && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (

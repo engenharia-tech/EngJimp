@@ -60,7 +60,78 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
   const [zoomLevel, setZoomLevel] = useState(32); // px per day
   const [showOnlyMyTasks, setShowOnlyMyTasks] = useState(false);
 
+  // Drag and drop state
+  const [interactingTask, setInteractingTask] = useState<{
+    id: string;
+    type: 'drag' | 'resize';
+    startX: number;
+    originalStartDate: string;
+    originalEndDate: string;
+  } | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const currentUser = state.users.find(u => u.username === localStorage.getItem('nexus_user'));
+
+  // Drag and drop / Resize Logic
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!interactingTask || !containerRef.current) return;
+
+      const deltaX = e.clientX - interactingTask.startX;
+      const daysMoved = Math.round(deltaX / zoomLevel);
+
+      const task = state.ganttTasks.find(t => t.id === interactingTask.id);
+      if (!task) return;
+
+      if (interactingTask.type === 'drag') {
+        const newStart = format(addDays(new Date(interactingTask.originalStartDate), daysMoved), 'yyyy-MM-dd');
+        const newEnd = format(addDays(new Date(interactingTask.originalEndDate), daysMoved), 'yyyy-MM-dd');
+        
+        // Update local state temporarily for preview
+        const updatedTasks = state.ganttTasks.map(t => 
+          t.id === task.id ? { ...t, startDate: newStart, endDate: newEnd } : t
+        );
+        onUpdateState({ ...state, ganttTasks: updatedTasks });
+      } else if (interactingTask.type === 'resize') {
+        const newEnd = format(addDays(new Date(interactingTask.originalEndDate), daysMoved), 'yyyy-MM-dd');
+        
+        // Ensure end date is not before start date
+        if (differenceInDays(new Date(newEnd), new Date(task.startDate)) >= 0) {
+          const updatedTasks = state.ganttTasks.map(t => 
+            t.id === task.id ? { ...t, endDate: newEnd } : t
+          );
+          onUpdateState({ ...state, ganttTasks: updatedTasks });
+        }
+      }
+    };
+
+    const handleMouseUp = async () => {
+      if (!interactingTask) return;
+      
+      const task = state.ganttTasks.find(t => t.id === interactingTask.id);
+      if (task) {
+        // Persist to DB
+        try {
+          await updateGanttTask(task);
+        } catch (error) {
+          console.error("Failed to persist task update after interaction", error);
+        }
+      }
+      
+      setInteractingTask(null);
+    };
+
+    if (interactingTask) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [interactingTask, zoomLevel, state, onUpdateState]);
 
   // Timeline preparation
   const timelineInterval = useMemo(() => {
@@ -274,8 +345,29 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
                   left: `${differenceInDays(new Date(task.startDate), timelineInterval.start) * zoomLevel}px`,
                   width: `${(differenceInDays(new Date(task.endDate), new Date(task.startDate)) + 1) * zoomLevel}px`
                 }}
-                onClick={() => handleEditTask(task)}
+                onMouseDown={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const isResize = rect.width - x < 10; // 10px handle on right
+                  
+                  setInteractingTask({
+                    id: task.id,
+                    type: isResize ? 'resize' : 'drag',
+                    startX: e.clientX,
+                    originalStartDate: task.startDate,
+                    originalEndDate: task.endDate
+                  });
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  // Prevent click if we were just dragging
+                  if (interactingTask) return;
+                  handleEditTask(task);
+                }}
               >
+                {/* Resize handle visual hint */}
+                <div className="absolute right-0 top-0 bottom-0 w-1 bg-white/20 group-hover/bar:bg-white/40 cursor-ew-resize opacity-0 group-hover/bar:opacity-100" />
+                
                 {/* Progress Overlay */}
                 <div 
                   className="absolute left-0 top-0 bottom-0 bg-black/15 group-hover/bar:bg-black/25 transition-colors"
@@ -503,6 +595,32 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
 
         {/* Task Rows */}
         <div className="relative min-w-max">
+          <svg className="absolute inset-0 z-0 pointer-events-none w-full h-full min-h-screen">
+             <defs>
+               <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                 <path d="M 0 0 L 10 5 L 0 10 z" className="fill-slate-300" />
+               </marker>
+             </defs>
+             {state.ganttTasks.map(task => {
+                if (!task.dependencies || task.dependencies.length === 0) return null;
+                return task.dependencies.map(depId => {
+                  const pred = state.ganttTasks.find(t => t.id === depId);
+                  if (!pred) return null;
+                  const predIndex = state.ganttTasks.indexOf(pred);
+                  const taskIndex = state.ganttTasks.indexOf(task);
+                  if (predIndex === -1 || taskIndex === -1) return null;
+                  const ROW_HEIGHT = 41;
+                  const x1 = (differenceInDays(new Date(pred.endDate), timelineInterval.start) + 1) * zoomLevel;
+                  const y1 = predIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
+                  const x2 = differenceInDays(new Date(task.startDate), timelineInterval.start) * zoomLevel;
+                  const y2 = taskIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
+                  const midX = x1 + (x2 - x1) / 2;
+                  return (
+                    <path key={`${pred.id}-${task.id}`} d={`M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`} className="stroke-slate-300 fill-none stroke-[1.5]" markerEnd="url(#arrow)" />
+                  );
+                });
+             })}
+          </svg>
           {/* Today Line */}
           <div 
             className="absolute top-0 bottom-0 w-0.5 bg-rose-500 z-[15] shadow-[0_0_8px_rgba(244,63,94,0.5)] pointer-events-none"
@@ -672,6 +790,39 @@ const GanttTaskModal: React.FC<ModalProps> = ({ isOpen, task, onClose, onSave, u
                 onChange={e => setFormData({ ...formData, progress: parseInt(e.target.value) })}
                 className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
               />
+            </div>
+
+            {/* Dependencies */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                 <Lock size={16} className="text-indigo-600" />
+                 {t('dependencies')} (Predecessors)
+              </label>
+              <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg min-h-[60px] max-h-40 overflow-y-auto">
+                {allTasks.filter(at => at.id !== formData.id).map(at => {
+                  const isSelected = formData.dependencies?.includes(at.id);
+                  return (
+                    <button
+                      key={at.id}
+                      onClick={() => {
+                        const deps = formData.dependencies || [];
+                        const nextDeps = isSelected ? deps.filter(id => id !== at.id) : [...deps, at.id];
+                        setFormData({ ...formData, dependencies: nextDeps });
+                      }}
+                      className={`px-3 py-1 text-xs rounded-full border transition-all ${
+                        isSelected 
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                          : 'bg-white text-slate-600 border-slate-300 hover:border-indigo-400'
+                      }`}
+                    >
+                      {at.title || 'Untitled'}
+                    </button>
+                  );
+                })}
+                {allTasks.filter(at => at.id !== formData.id).length === 0 && (
+                  <p className="text-xs text-slate-400 italic">No other tasks available for dependencies.</p>
+                )}
+              </div>
             </div>
 
             {/* Workload */}

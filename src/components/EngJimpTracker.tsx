@@ -270,7 +270,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [activeProject, showPauseModal]);
+  }, [activeProject, showPauseModal, settings, interruptions]);
 
 
   const handleStartNew = async () => {
@@ -1717,8 +1717,9 @@ JIMPNEXUS
                     <div className="text-7xl font-mono font-bold text-blue-600 dark:text-blue-400 tracking-tight">
                         {formatTime(elapsedSeconds)}
                     </div>
-                    {elapsedSeconds === 0 && !showPauseModal && (
-                        <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-3 py-1 rounded-full border border-amber-100 dark:border-amber-900/30">
+                    {!isWorkingHour(new Date(), settings, activeProject.isOvertime) && (
+                        <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-3 py-1 rounded-full border border-amber-100 dark:border-amber-900/30 flex items-center">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 animate-pulse"></span>
                             {t('outsideWorkingHoursPaused')}
                         </div>
                     )}
