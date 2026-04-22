@@ -29,11 +29,12 @@ import { DashboardView } from './DashboardView';
 interface ProjectNexusProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
+  onRefresh?: () => void;
 }
 
 export type NexusTab = 'gantt' | 'kanban' | 'list' | 'calendar' | 'workload' | 'people' | 'dashboard';
 
-export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState }) => {
+export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState, onRefresh }) => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<NexusTab>('gantt');
   const [showProjectList, setShowProjectList] = useState(false);
@@ -78,8 +79,8 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
             Dono do projeto
           </button>
           <div className="flex items-center gap-1">
-            <button className="p-2 hover:bg-slate-100 rounded text-slate-500" title="History"><History size={18} /></button>
-            <button className="p-2 hover:bg-slate-100 rounded text-slate-500" title="Settings"><Settings size={18} /></button>
+            <button onClick={onRefresh} className="p-2 hover:bg-slate-100 rounded text-slate-500" title="Atualizar dados"><History size={18} /></button>
+            <button onClick={() => setActiveTab('dashboard')} className="p-2 hover:bg-slate-100 rounded text-slate-500" title="Configurações"><Settings size={18} /></button>
             <button className="p-2 hover:bg-slate-100 rounded text-slate-500"><MoreHorizontal size={18} /></button>
           </div>
         </div>

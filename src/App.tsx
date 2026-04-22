@@ -1004,7 +1004,7 @@ const AppContent: React.FC = () => {
           )}
 
           {activeTab === 'gantt' && (
-            <ProjectNexus state={data} onUpdateState={(newData) => setData(newData)} />
+            <ProjectNexus state={data} onUpdateState={(newData) => setData(newData)} onRefresh={handleRefresh} />
           )}
 
           {activeTab === 'reports' && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
