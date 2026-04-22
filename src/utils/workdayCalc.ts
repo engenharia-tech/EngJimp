@@ -3,90 +3,94 @@ import { AppSettings } from '../types';
 /**
  * Calculates the number of active seconds between two dates, considering the workday settings.
  */
-export function calcActiveSeconds(from: Date, to: Date, settings: AppSettings, isOvertime: boolean = false): number {
-  const start = from.getTime();
-  const end = to.getTime();
+export function calcActiveSeconds(from: Date | string, to: Date | string, settings: AppSettings, isOvertime: boolean = false): number {
+  const startDate = new Date(from);
+  const endDate = new Date(to);
+  const startMs = startDate.getTime();
+  const endMs = endDate.getTime();
   
-  if (start >= end) return 0;
+  if (isNaN(startMs) || isNaN(endMs) || startMs >= endMs) return 0;
 
-  const workdayStartStr = settings.workdayStart || "07:42";
-  const workdayEndStr = settings.workdayEnd || "17:33";
+  // Ensure default business hours are consistent
+  const workdayStartStr = settings.workdayStart || "07:30";
+  const workdayEndStr = settings.workdayEnd || "17:30";
   const lunchStartStr = settings.lunchStart || "12:00";
   const lunchEndStr = settings.lunchEnd || "13:00";
-  const workdays = settings.workdays || [1, 2, 3, 4, 5];
+  const workdays = (settings.workdays || [1, 2, 3, 4, 5]).map(Number); // Ensure numbers
 
   const [startH, startM] = workdayStartStr.split(':').map(Number);
   const [endH, endM] = workdayEndStr.split(':').map(Number);
-  const [lunchStartH, lunchStartM] = lunchStartStr.split(':').map(Number);
-  const [lunchEndH, lunchEndM] = lunchEndStr.split(':').map(Number);
+  const [lunchHS, lunchMS] = lunchStartStr.split(':').map(Number);
+  const [lunchHE, lunchME] = lunchEndStr.split(':').map(Number);
 
-  let totalSeconds = 0;
-  
-  // Start from the 'from' date
-  let current = new Date(from);
-  
-  // We process day by day
-  while (current.getTime() < end) {
+  let totalMs = 0;
+  let current = new Date(startDate);
+
+  // We process day by day to correctly handle business hours and lunch breaks
+  while (current.getTime() < endMs) {
     const dayOfWeek = current.getDay();
     
     // If overtime, we count every day. If not, only workdays.
     if (isOvertime || workdays.includes(dayOfWeek)) {
-      // Define the workday boundaries for the current day
-      const dayStart = new Date(current);
-      const dayEnd = new Date(current);
-
+      const dayStartBoundary = new Date(current);
+      const dayEndBoundary = new Date(current);
+      
       if (isOvertime) {
-          // In overtime mode, the whole day is potentially active
-          dayStart.setHours(0, 0, 0, 0);
-          dayEnd.setHours(23, 59, 59, 999);
+        dayStartBoundary.setHours(0, 0, 0, 0);
+        dayEndBoundary.setHours(23, 59, 59, 999);
       } else {
-          dayStart.setHours(startH, startM, 0, 0);
-          dayEnd.setHours(endH, endM, 0, 0);
+        dayStartBoundary.setHours(startH, startM, 0, 0);
+        dayEndBoundary.setHours(endH, endM, 0, 0);
       }
 
-      // Calculate the intersection of [from, to] and [dayStart, dayEnd]
-      const overlapStart = Math.max(start, dayStart.getTime());
-      const overlapEnd = Math.min(end, dayEnd.getTime());
+      const overlapStart = Math.max(startMs, dayStartBoundary.getTime());
+      const overlapEnd = Math.min(endMs, dayEndBoundary.getTime());
 
       if (overlapStart < overlapEnd) {
         let activeMs = overlapEnd - overlapStart;
 
-        // Subtract lunch break if it overlaps
-        const lunchStart = new Date(current);
-        lunchStart.setHours(lunchStartH, lunchStartM, 0, 0);
-        const lunchEnd = new Date(current);
-        lunchEnd.setHours(lunchEndH, lunchEndM, 0, 0);
+        // Subtract lunch break if it overlaps and not in overtime
+        if (!isOvertime) {
+          const lStart = new Date(current);
+          const lEnd = new Date(current);
+          lStart.setHours(lunchHS, lunchMS, 0, 0);
+          lEnd.setHours(lunchHE, lunchME, 0, 0);
 
-        const lunchOverlapStart = Math.max(overlapStart, lunchStart.getTime());
-        const lunchOverlapEnd = Math.min(overlapEnd, lunchEnd.getTime());
+          const lunchOverlapStart = Math.max(overlapStart, lStart.getTime());
+          const lunchOverlapEnd = Math.min(overlapEnd, lEnd.getTime());
 
-        if (!isOvertime && lunchOverlapStart < lunchOverlapEnd) {
-          activeMs -= (lunchOverlapEnd - lunchOverlapStart);
+          if (lunchOverlapStart < lunchOverlapEnd) {
+            activeMs -= (lunchOverlapEnd - lunchOverlapStart);
+          }
         }
-
-        totalSeconds += activeMs / 1000;
+        
+        if (activeMs > 0) {
+          totalMs += activeMs;
+        }
       }
     }
 
-    // Advance to the next day at 00:00:00
+    // Advance to next day at midnight
     current.setDate(current.getDate() + 1);
     current.setHours(0, 0, 0, 0);
   }
 
-  return Math.round(totalSeconds);
+  return Math.round(totalMs / 1000);
 }
 
 /**
  * Checks if a given date is within the configured workday.
  */
 export function isWorkingHour(date: Date, settings: AppSettings, isOvertime: boolean = false): boolean {
-  const dayOfWeek = date.getDay();
-  const workdays = settings.workdays || [1, 2, 3, 4, 5];
-  
-  if (!isOvertime && !workdays.includes(dayOfWeek)) return false;
+  if (isOvertime) return true;
 
-  const workdayStartStr = settings.workdayStart || "07:42";
-  const workdayEndStr = settings.workdayEnd || "17:33";
+  const dayOfWeek = date.getDay();
+  const workdays = (settings.workdays || [1, 2, 3, 4, 5]).map(Number); // Ensure numbers
+  
+  if (!workdays.includes(dayOfWeek)) return false;
+
+  const workdayStartStr = settings.workdayStart || "07:30";
+  const workdayEndStr = settings.workdayEnd || "17:30";
   const lunchStartStr = settings.lunchStart || "12:00";
   const lunchEndStr = settings.lunchEnd || "13:00";
 
@@ -95,15 +99,17 @@ export function isWorkingHour(date: Date, settings: AppSettings, isOvertime: boo
   const [lStartH, lStartM] = lunchStartStr.split(':').map(Number);
   const [lEndH, lEndM] = lunchEndStr.split(':').map(Number);
 
-  const startMinutes = startH * 60 + startM;
-  const endMinutes = endH * 60 + endM;
-  const lunchStartMinutes = lStartH * 60 + lStartM;
-  const lunchEndMinutes = lEndH * 60 + lEndM;
-  const currentMinutes = date.getHours() * 60 + date.getMinutes();
+  const startTotSeconds = (startH * 60 + startM) * 60;
+  const endTotSeconds = (endH * 60 + endM) * 60;
+  const lunchStartTotSeconds = (lStartH * 60 + lStartM) * 60;
+  const lunchEndTotSeconds = (lEndH * 60 + lEndM) * 60;
+  
+  const currentTotSeconds = (date.getHours() * 60 + date.getMinutes()) * 60 + date.getSeconds();
 
-  const isLunch = currentMinutes >= lunchStartMinutes && currentMinutes < lunchEndMinutes;
+  // Check if it's lunch time
+  if (currentTotSeconds >= lunchStartTotSeconds && currentTotSeconds < lunchEndTotSeconds) {
+    return false;
+  }
 
-  if (isOvertime) return true;
-
-  return currentMinutes >= startMinutes && currentMinutes < endMinutes && !isLunch;
+  return currentTotSeconds >= startTotSeconds && currentTotSeconds < endTotSeconds;
 }

@@ -81,7 +81,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     interruptionEmailTemplate: localStorage.getItem('interruption_email_template') || '',
     workdayStart: localStorage.getItem('workday_start') || "07:30",
     workdayEnd: localStorage.getItem('workday_end') || "17:30",
-    workdays: JSON.parse(localStorage.getItem('workdays') || "[1,2,3,4,5]"),
+    workdays: (JSON.parse(localStorage.getItem('workdays') || "[1,2,3,4,5]") as any[]).map(Number),
     lunchStart: localStorage.getItem('lunch_start') || "12:00",
     lunchEnd: localStorage.getItem('lunch_end') || "13:00",
     language: (localStorage.getItem('language') as any) || "pt-BR"
@@ -119,7 +119,14 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (interruptionEmailTemplateRow) settings.interruptionEmailTemplate = interruptionEmailTemplateRow.value === 'null' ? '' : (interruptionEmailTemplateRow.value || '');
       if (workdayStartRow) settings.workdayStart = workdayStartRow.value || "07:30";
       if (workdayEndRow) settings.workdayEnd = workdayEndRow.value || "17:30";
-      if (workdaysRow) settings.workdays = JSON.parse(workdaysRow.value || "[1,2,3,4,5]");
+      if (workdaysRow) {
+        try {
+          const parsedWorkdays = JSON.parse(workdaysRow.value || "[1,2,3,4,5]");
+          settings.workdays = Array.isArray(parsedWorkdays) ? parsedWorkdays.map(Number) : [1, 2, 3, 4, 5];
+        } catch (e) {
+          settings.workdays = [1, 2, 3, 4, 5];
+        }
+      }
       if (lunchStartRow) settings.lunchStart = lunchStartRow.value || "12:00";
       if (lunchEndRow) settings.lunchEnd = lunchEndRow.value || "13:00";
       if (languageRow) settings.language = (languageRow.value as any) || "pt-BR";
@@ -387,31 +394,54 @@ export const fetchAppState = async (): Promise<AppState> => {
       updatedAt: t.updated_at,
       workload: t.workload,
       reports: t.reports,
-      order: t.order
+      order: t.order,
+      status: t.status || 'todo',
+      priority: t.priority || 'medium',
+      category: t.category,
+      dependencies: t.dependencies || []
     }));
 
-    // Seed default gantt task if empty
+    // Seed default gantt tasks if empty
     if (ganttTasks.length === 0) {
-        console.log("SEEDING DEFAULT GANTT TASK...");
-        const demoTask: any = {
-            id: crypto.randomUUID(),
-            title: 'Projeto Nexus Beta',
-            description: 'Desenvolvimento inicial da aba GanttNexus para gestão de tarefas.',
+        console.log("SEEDING DEFAULT GANTT TASKS...");
+        const parentId = 'task-root-1';
+        const subId = 'task-sub-1';
+        
+        const demoTasks: any[] = [
+          {
+            id: parentId,
+            title: 'Adição de material',
+            description: 'Fase inicial de aquisição e preparação de materiais.',
             start_date: new Date().toISOString().split('T')[0],
-            end_date: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-            color: 'bg-indigo-500',
+            end_date: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+            color: 'bg-indigo-600',
             is_milestone: false,
             assigned_to: users.length > 0 ? [users[0].id] : [],
-            progress: 30,
+            progress: 0,
             order: 0,
-            workload: 40,
-            reports: 'Iniciamos o desenvolvimento da arquitetura de visualização temporal.'
-        };
+            status: 'todo'
+          },
+          {
+            id: subId,
+            parent_id: parentId,
+            title: 'Para-choque',
+            description: 'Montagem e verificação do para-choque.',
+            start_date: new Date().toISOString().split('T')[0],
+            end_date: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+            color: 'bg-blue-500',
+            is_milestone: false,
+            assigned_to: users.length > 0 ? [users[0].id] : [],
+            progress: 0,
+            order: 0,
+            status: 'todo'
+          }
+        ];
         
-        await supabase.from('gantt_tasks').insert([demoTask]);
-        // After inserting, we could re-fetch or just add to result
-        ganttTasks.push({
+        await supabase.from('gantt_tasks').insert(demoTasks);
+        
+        ganttTasks.push(...demoTasks.map(demoTask => ({
             id: demoTask.id,
+            parentId: demoTask.parent_id || null,
             title: demoTask.title,
             description: demoTask.description,
             startDate: demoTask.start_date,
@@ -421,12 +451,13 @@ export const fetchAppState = async (): Promise<AppState> => {
             assignedTo: demoTask.assigned_to,
             progress: demoTask.progress,
             order: demoTask.order,
-            workload: demoTask.workload,
-            reports: demoTask.reports,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            attachments: []
-        });
+            attachments: [],
+            status: demoTask.status as any,
+            priority: 'medium' as any,
+            dependencies: []
+        })));
     }
 
     return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, settings };
@@ -1850,7 +1881,11 @@ export const addGanttTask = async (task: GanttTask): Promise<AppState> => {
       updated_at: task.updatedAt,
       workload: task.workload,
       reports: task.reports,
-      order: task.order
+      order: task.order,
+      dependencies: task.dependencies,
+      status: task.status,
+      priority: task.priority,
+      category: task.category
     }]);
 
     if (error) throw error;
@@ -1879,7 +1914,11 @@ export const updateGanttTask = async (task: GanttTask): Promise<AppState> => {
         updated_at: new Date().toISOString(),
         workload: task.workload,
         reports: task.reports,
-        order: task.order
+        order: task.order,
+        dependencies: task.dependencies,
+        status: task.status,
+        priority: task.priority,
+        category: task.category
       })
       .eq('id', task.id);
 
