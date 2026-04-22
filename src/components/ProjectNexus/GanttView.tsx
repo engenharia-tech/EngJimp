@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
-  Plus, 
   ChevronRight, 
   ChevronDown, 
   Calendar, 
@@ -24,6 +23,9 @@ import {
   X,
   PlusCircle,
   MoreHorizontal,
+  Plus,
+  Target,
+  History,
   ChevronUp,
   Settings,
   Tag,
@@ -71,6 +73,7 @@ const generateId = () => {
 interface GanttViewProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
+  onRefresh?: () => void;
 }
 
 const COLORS = [
@@ -79,7 +82,7 @@ const COLORS = [
   'bg-slate-500', 'bg-orange-500'
 ];
 
-export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) => {
+export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRefresh }) => {
   const { t, language } = useLanguage();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
@@ -101,9 +104,19 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
     originalEndDate: string;
   } | null>(null);
 
+  const [isSaving, setIsSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const scrollHeaderRef = useRef<HTMLDivElement>(null);
+  const rowsAreaRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to today on mount
+  useEffect(() => {
+    if (rowsAreaRef.current) {
+      const scrollPos = todayLeft - 200; // Show a bit before today
+      rowsAreaRef.current.scrollLeft = Math.max(0, scrollPos);
+    }
+  }, []); // Only once
 
   const [sidebarWidth, setSidebarWidth] = useState(window.innerWidth < 768 ? 180 : 450);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -180,7 +193,12 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
       if (!interactingTask) return;
       const task = state.ganttTasks.find(t => t.id === interactingTask.id);
       if (task) {
-        try { await updateGanttTask(task); } catch (error) { console.error(error); }
+        try { 
+          await updateGanttTask(task); 
+        } catch (error) { 
+          console.error("Gantt drag/resize sync error:", error);
+          alert("Erro ao sincronizar movimento: " + (error instanceof Error ? error.message : "Desconhecido"));
+        }
       }
       setInteractingTask(null);
     };
@@ -208,13 +226,17 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
   const todayLeft = differenceInDays(new Date(), timelineInterval.start) * zoomLevel;
 
   const rootTasks = useMemo(() => {
-    const buildTree = (parentId: string | null = null): (GanttTask & { children: any[] })[] => {
+    const buildTree = (parentId: string | null = null, depth = 0): (GanttTask & { children: any[] })[] => {
+      if (depth > 10) return []; // Safety recursion break
       return state.ganttTasks
-        .filter(t => t.parentId === parentId)
+        .filter(t => {
+          if (parentId === null) return !t.parentId || t.parentId === "";
+          return t.parentId === parentId;
+        })
         .sort((a, b) => (a.order || 0) - (b.order || 0))
         .map(t => ({
           ...t,
-          children: buildTree(t.id)
+          children: buildTree(t.id, depth + 1)
         }));
     };
     return buildTree(null);
@@ -251,7 +273,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
 
   const handleAddTask = (parentId: string | null = null) => {
     const newTask: Partial<GanttTask> = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       title: '',
       parentId: parentId,
       startDate: format(new Date(), 'yyyy-MM-dd'),
@@ -265,8 +287,12 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
       attachments: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      order: state.ganttTasks.length
+      order: state.ganttTasks.length,
+      dependencies: []
     };
+    if (parentId) {
+      setExpandedTasks(prev => new Set(prev).add(parentId));
+    }
     setEditingTask(newTask as GanttTask);
     setIsModalOpen(true);
   };
@@ -356,17 +382,15 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
 
   const handleSaveInline = async () => {
     const titleToSave = inlineTitle.trim();
-    if (!titleToSave || !inlineAdding) return;
+    if (!titleToSave || !inlineAdding || isSaving) return;
     
-    // Immediate clear to prevent double-save
+    setIsSaving(true);
     const currentAdding = inlineAdding;
-    setInlineAdding(null);
-    setInlineTitle('');
 
     const newTask: GanttTask = {
       id: generateId(),
       title: titleToSave,
-      parentId: currentAdding.parentId,
+      parentId: currentAdding.parentId || null,
       startDate: format(new Date(), 'yyyy-MM-dd'),
       endDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
       color: currentAdding.type === 'milestone' ? 'bg-amber-500' : 'bg-blue-500',
@@ -381,15 +405,21 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
       order: state.ganttTasks.length,
       dependencies: []
     };
+    // Optimistic Update
+    onUpdateState({ ...state, ganttTasks: [...state.ganttTasks, newTask] });
+    setInlineAdding(null);
+    setInlineTitle('');
+
     try {
       const newState = await addGanttTask(newTask);
       onUpdateState(newState);
     } catch (error) { 
       console.error("Save error:", error);
-      alert("Erro ao salvar tarefa. " + (error instanceof Error ? error.message : "Verifique sua conexão."));
-      // Fallback: restore adding state if failed
-      setInlineAdding(currentAdding);
-      setInlineTitle(titleToSave);
+      alert("Erro ao salvar tarefa: " + (error instanceof Error ? error.message : "Erro desconhecido"));
+      // Revert optimistic update
+      onUpdateState(state);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -453,7 +483,15 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
                             {task.title || 'Tarefa sem nome'}
                           </span>
                           <div className={`flex items-center gap-1 transition-opacity ${isMobile ? 'opacity-40' : 'opacity-0 group-hover/title:opacity-100'}`}>
-                            <PlusCircle size={12} className="text-blue-500 dark:text-blue-400" onClick={(e) => { e.stopPropagation(); setInlineAdding({ parentId: task.id, type: 'task' }); }} />
+                            <PlusCircle 
+                              size={12} 
+                              className="text-blue-500 dark:text-blue-400 cursor-pointer" 
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if (!expandedTasks.has(task.id)) toggleExpand(task.id);
+                                setInlineAdding({ parentId: task.id, type: 'task' }); 
+                              }} 
+                            />
                             {!isMobile && <Trash2 size={12} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400" onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }} />}
                           </div>
                         </div>
@@ -539,11 +577,12 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
                                <input 
                                 autoFocus value={inlineTitle} onChange={e => setInlineTitle(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && handleSaveInline()}
-                                className="text-xs text-slate-600 dark:text-slate-300 w-full outline-none bg-transparent"
+                                disabled={isSaving}
+                                className={`text-xs text-slate-600 dark:text-slate-300 w-full outline-none bg-transparent ${isSaving ? 'opacity-50' : ''}`}
                                 placeholder="..."
                                />
-                               <button onClick={handleSaveInline} className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"><CheckCircle2 size={12} /></button>
-                               <button onClick={() => setInlineAdding(null)} className="text-slate-400 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"><X size={12} /></button>
+                               <button disabled={isSaving} onClick={handleSaveInline} className={`text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors ${isSaving ? 'animate-pulse' : ''}`}><CheckCircle2 size={12} /></button>
+                               <button disabled={isSaving} onClick={() => setInlineAdding(null)} className="text-slate-400 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"><X size={12} /></button>
                             </div>
                          </div>
                        </div>
@@ -583,6 +622,26 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
       {/* Toolbar as seen in Image 1 */}
       <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shadow-sm z-30 transition-colors overflow-hidden">
         <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar max-w-[60%] sm:max-w-none">
+          <div className="flex items-center gap-1 group">
+             <button 
+              onClick={() => {
+                if (rowsAreaRef.current) {
+                  rowsAreaRef.current.scrollTo({ left: todayLeft - 200, behavior: 'smooth' });
+                }
+              }}
+              className="p-1.5 rounded text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors flex items-center gap-1"
+             >
+                <Target size={18} />
+                <span className="text-[10px] font-bold uppercase hidden md:inline">Hoje</span>
+             </button>
+          </div>
+          <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1 flex-shrink-0" />
+          <ToolbarButton 
+            icon={<History size={16} />} 
+            onClick={onRefresh} 
+            title="Atualizar dados"
+            className="flex"
+          />
           <ToolbarButton icon={<Columns size={16} />} className="hidden sm:flex" />
           <ToolbarButton icon={<ArrowDownWideNarrow size={16} />} className="hidden sm:flex" />
           <ToolbarButton icon={<Maximize2 size={16} />} />
@@ -745,8 +804,22 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
         </div>
 
         {/* Rows (Scrolling area) */}
-        <div className="flex-grow overflow-auto" onScroll={handleScroll}>
+        <div className="flex-grow overflow-auto no-scrollbar" onScroll={handleScroll} ref={rowsAreaRef}>
           <div className="relative min-w-max">
+            {/* Empty State */}
+            {state.ganttTasks.length === 0 && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-20 text-slate-400 bg-white/50 dark:bg-slate-900/50 z-20">
+                <Target size={48} className="mb-4 opacity-20" />
+                <p className="text-sm font-medium">Nenhuma tarefa encontrada no Gantt</p>
+                <p className="text-xs mt-1">Use os botões acima para criar a primeira tarefa ou marco.</p>
+                <button 
+                  onClick={() => handleAddTask(null)}
+                  className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors"
+                >
+                  Criar Nova Tarefa
+                </button>
+              </div>
+            )}
             {/* Today Line */}
             <div 
               className="absolute top-0 bottom-0 w-px bg-rose-400 dark:bg-rose-500/50 z-10 pointer-events-none"
@@ -864,7 +937,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState }) =>
             >
               <ContextItem icon={<Maximize2 size={16} />} label="Configurações da tarefa" onClick={() => { handleEditTask(state.ganttTasks.find(t => t.id === contextMenu.taskId)!); setContextMenu(null); }} />
               <div className="h-px bg-slate-100 dark:bg-slate-800 my-1" />
-              <ContextItem icon={<Minimize2 size={16} className="scale-y-[-1]" />} label="Adicionar uma subtarefa" onClick={() => { setInlineAdding({ parentId: contextMenu.taskId, type: 'task' }); setContextMenu(null); }} />
+              <ContextItem icon={<Minimize2 size={16} className="scale-y-[-1]" />} label="Adicionar uma subtarefa" onClick={() => { 
+                if (!expandedTasks.has(contextMenu.taskId)) toggleExpand(contextMenu.taskId);
+                setInlineAdding({ parentId: contextMenu.taskId, type: 'task' }); 
+                setContextMenu(null); 
+              }} />
               <ContextItem icon={<Plus size={16} />} label="Adicionar uma tarefa" onClick={() => { setInlineAdding({ parentId: null, type: 'task' }); setContextMenu(null); }} />
               <ContextItem icon={<Milestone size={16} />} label="Adicionar um marco" onClick={() => { setInlineAdding({ parentId: null, type: 'milestone' }); setContextMenu(null); }} />
               <div className="h-px bg-slate-100 dark:bg-slate-800 my-1" />
@@ -919,8 +996,12 @@ const ContextItem = ({ icon, label, onClick, className = "", disabled = false }:
   </button>
 );
 
-const ToolbarButton = ({ icon, active = false, className = "" }: { icon: React.ReactNode, active?: boolean, className?: string }) => (
-  <button className={`p-1.5 rounded transition-colors ${active ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'} ${className}`}>
+const ToolbarButton = ({ icon, active = false, onClick, title, className = "" }: { icon: React.ReactNode, active?: boolean, onClick?: () => void, title?: string, className?: string }) => (
+  <button 
+    onClick={onClick}
+    title={title}
+    className={`p-1.5 rounded transition-colors ${active ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'} ${className}`}
+  >
     {icon}
   </button>
 );
@@ -957,7 +1038,7 @@ const StatusPicker = ({ status, onUpdate }: { status: GanttTaskStatus, onUpdate:
   const current = options.find(o => o.id === status) || options[0];
 
   return (
-    <div className="relative w-24 flex-shrink-0" ref={containerRef}>
+    <div className="relative w-24 flex-shrink-0" ref={containerRef} style={{ zIndex: isOpen ? 100 : 1 }}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center justify-between px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors"
@@ -1007,7 +1088,7 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
   const assignedUsers = assignedTo.map(id => users.find(u => u.id === id)).filter(Boolean);
 
   return (
-    <div className="relative mr-4 flex-shrink-0" ref={containerRef}>
+    <div className="relative mr-4 flex-shrink-0" ref={containerRef} style={{ zIndex: isOpen ? 100 : 1 }}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="flex -space-x-2 items-center"
