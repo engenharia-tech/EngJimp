@@ -35,7 +35,7 @@ import {
   Layout,
   AlignLeft
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   format, 
   addDays, 
@@ -86,6 +86,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   const { t, language } = useLanguage();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<GanttTask | null>(null);
   const [zoomLevel, setZoomLevel] = useState(32); // px per day
@@ -438,8 +439,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               <div className={`flex h-10 border-b border-slate-100 dark:border-slate-800 items-stretch hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group ${isTopLevel ? 'bg-white dark:bg-slate-900' : ''}`}>
                 {/* Left Side: Task Info */}
                 <div 
-                  className="flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-inherit group-hover:bg-slate-50 dark:group-hover:bg-slate-800 shadow-[4px_0_4px_-4px_rgba(0,0,0,0.1)] transition-colors"
-                  style={{ paddingLeft: `${depth * (isMobile ? 12 : 20) + 8}px`, width: `${sidebarWidth}px` }}
+                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-inherit group-hover:bg-slate-50 dark:group-hover:bg-slate-800 shadow-[4px_0_4px_-4px_rgba(0,0,0,0.1)] transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 border-r-0 opacity-0' : ''}`}
+                  style={{ paddingLeft: `${depth * (isMobile ? 12 : 20) + 8}px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
                 >
                   <div className="flex items-center gap-2 w-full">
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 w-8 font-mono">{rowNumber}</span>
@@ -642,10 +643,18 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
             title="Atualizar dados"
             className="flex"
           />
-          <ToolbarButton icon={<Columns size={16} />} className="hidden sm:flex" />
+          <ToolbarButton 
+            icon={isSidebarVisible ? <Minimize2 size={16} /> : <Maximize2 size={16} />} 
+            onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+            title={isSidebarVisible ? "Recolher lateral" : "Expandir lateral"}
+          />
+          <ToolbarButton 
+            icon={<Columns size={16} />} 
+            onClick={() => setSidebarWidth(isSidebarVisible && sidebarWidth > 200 ? 200 : 450)}
+            title="Ajustar largura"
+            className="hidden sm:flex" 
+          />
           <ToolbarButton icon={<ArrowDownWideNarrow size={16} />} className="hidden sm:flex" />
-          <ToolbarButton icon={<Maximize2 size={16} />} />
-          <ToolbarButton icon={<Minimize2 size={16} />} />
           
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1 flex-shrink-0" />
           

@@ -64,10 +64,20 @@ const defaultState: AppState = {
 const parseSafeNumber = (val: any): number => {
   if (val === null || val === undefined || val === '') return 0;
   if (typeof val === 'number') return val;
-  // Handle strings with commas (Brazilian format)
   const cleaned = String(val).replace(/\./g, '').replace(',', '.');
   const num = parseFloat(cleaned);
   return isNaN(num) ? 0 : num;
+};
+
+const parseSafeJson = (val: any, fallback: any = []) => {
+  if (val === null || val === undefined || val === '') return fallback;
+  if (typeof val !== 'string') return val;
+  try {
+    return JSON.parse(val);
+  } catch (e) {
+    console.error("JSON parse error:", e, "Value:", val);
+    return fallback;
+  }
 };
 
 export const fetchSettings = async (): Promise<AppSettings> => {
@@ -265,8 +275,8 @@ export const fetchAppState = async (): Promise<AppState> => {
       productiveCost: p.productive_cost || 0,
       interruptionCost: p.interruption_cost || 0,
       totalCost: p.total_cost || 0,
-      pauses: typeof p.pauses === 'string' ? JSON.parse(p.pauses) : (p.pauses || []),
-      variations: typeof p.variations === 'string' ? JSON.parse(p.variations) : (p.variations || []),
+      pauses: parseSafeJson(p.pauses),
+      variations: parseSafeJson(p.variations),
       status: p.status as 'COMPLETED' | 'IN_PROGRESS',
       notes: p.notes,
       userId: p.user_id,
@@ -302,8 +312,8 @@ export const fetchAppState = async (): Promise<AppState> => {
       createdAt: inv.created_at,
       
       // New fields
-      materials: typeof inv.materials === 'string' ? JSON.parse(inv.materials) : (inv.materials || []),
-      machine: typeof inv.machine === 'string' ? JSON.parse(inv.machine) : (inv.machine || undefined),
+      materials: parseSafeJson(inv.materials, []),
+      machine: parseSafeJson(inv.machine, undefined),
       productivityBefore: inv.productivity_before,
       productivityAfter: inv.productivity_after,
       unitProductCost: inv.unit_product_cost,
@@ -354,6 +364,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       dimension: r.dimension,
       flooring: r.flooring,
       setup: r.setup,
+      chassisNumber: r.chassis_number,
       status: r.status as ProjectRequestStatus,
       createdAt: r.created_at,
       createdBy: r.created_by,
@@ -362,8 +373,8 @@ export const fetchAppState = async (): Promise<AppState> => {
       needsBox: r.needs_box ?? true,
       baseProjectId: r.base_project_id,
       boxProjectId: r.box_project_id,
-      managementEstimate: r.management_estimate,
-      designerEstimate: r.designer_estimate
+      managementEstimate: parseSafeNumber(r.management_estimate),
+      designerEstimate: parseSafeNumber(r.designer_estimate)
     }));
 
     const users: User[] = (usersRes.data || []).map((u: any) => ({
@@ -387,9 +398,9 @@ export const fetchAppState = async (): Promise<AppState> => {
       endDate: t.end_date,
       color: t.color,
       isMilestone: t.is_milestone,
-      assignedTo: t.assigned_to || [],
+      assignedTo: Array.isArray(t.assigned_to) ? t.assigned_to : (typeof t.assigned_to === 'string' ? JSON.parse(t.assigned_to) : []),
       progress: t.progress || 0,
-      attachments: t.attachments || [],
+      attachments: Array.isArray(t.attachments) ? t.attachments : (typeof t.attachments === 'string' ? JSON.parse(t.attachments) : []),
       createdAt: t.created_at,
       updatedAt: t.updated_at,
       workload: t.workload,
@@ -398,7 +409,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       status: t.status || 'todo',
       priority: t.priority || 'medium',
       category: t.category,
-      dependencies: t.dependencies || []
+      dependencies: Array.isArray(t.dependencies) ? t.dependencies : (typeof t.dependencies === 'string' ? JSON.parse(t.dependencies) : [])
     }));
 
     // Seed default gantt tasks if empty
@@ -1097,7 +1108,7 @@ export const deleteOperationalActivity = async (id: string): Promise<AppState> =
 
 export const addProjectRequest = async (request: ProjectRequest): Promise<AppState> => {
   try {
-    const { error } = await supabase.from('project_requests').insert([{
+    const payload: any = {
       id: request.id,
       client_name: request.clientName,
       ns: request.ns,
@@ -1106,16 +1117,47 @@ export const addProjectRequest = async (request: ProjectRequest): Promise<AppSta
       flooring: request.flooring,
       setup: request.setup,
       status: request.status,
-      created_at: request.createdAt,
+      created_at: new Date().toISOString(),
       created_by: request.createdBy,
-      assigned_to: request.assignedTo,
+      assigned_to: request.assignedTo || null,
+      chassis_number: request.chassisNumber || null,
       needs_base: request.needsBase,
       needs_box: request.needsBox,
-      management_estimate: request.managementEstimate,
-      designer_estimate: request.designerEstimate
-    }]);
+      management_estimate: Number.isFinite(request.managementEstimate) ? request.managementEstimate : 0,
+      designer_estimate: Number.isFinite(request.designerEstimate) ? request.designerEstimate : 0
+    };
 
-    if (error) throw error;
+    console.log("ADDING PROJECT REQUEST PAYLOAD:", payload);
+
+    const { error } = await supabase
+      .from('project_requests')
+      .insert([payload]);
+
+    if (error) {
+       console.error("SUPABASE ADD PROJECT REQUEST ERROR (FULL):", error);
+       
+       if (error.message?.toLowerCase().includes('column') || error.message?.toLowerCase().includes('schema cache')) {
+         console.warn("Retrying add with minimal payload due to potential database schema mismatch...");
+         const minimalPayload = {
+           id: request.id,
+           client_name: request.clientName,
+           ns: request.ns,
+           product_type: request.productType || '',
+           dimension: request.dimension || '',
+           status: request.status,
+           created_at: new Date().toISOString(),
+           created_by: request.createdBy
+         };
+         const { error: retryError } = await supabase
+           .from('project_requests')
+           .insert([minimalPayload]);
+           
+         if (retryError) throw retryError;
+         return fetchAppState();
+       }
+       
+       throw error;
+    }
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO ADD PROJECT REQUEST", error);
@@ -1125,28 +1167,55 @@ export const addProjectRequest = async (request: ProjectRequest): Promise<AppSta
 
 export const updateProjectRequest = async (request: ProjectRequest): Promise<AppState> => {
   try {
+    const payload: any = {
+      client_name: request.clientName,
+      ns: request.ns,
+      product_type: request.productType,
+      dimension: request.dimension,
+      flooring: request.flooring,
+      setup: request.setup,
+      status: request.status,
+      chassis_number: request.chassisNumber || null,
+      assigned_to: request.assignedTo || null,
+      needs_base: request.needsBase,
+      needs_box: request.needsBox,
+      base_project_id: request.baseProjectId || null,
+      box_project_id: request.boxProjectId || null,
+      management_estimate: Number.isFinite(request.managementEstimate) ? request.managementEstimate : 0,
+      designer_estimate: Number.isFinite(request.designerEstimate) ? request.designerEstimate : 0
+    };
+
+    console.log("UPDATING PROJECT REQUEST:", request.id, payload);
+
     const { error } = await supabase
       .from('project_requests')
-      .update({
-        client_name: request.clientName,
-        ns: request.ns,
-        product_type: request.productType,
-        dimension: request.dimension,
-        flooring: request.flooring,
-        setup: request.setup,
-        status: request.status,
-        chassis_number: request.chassisNumber,
-        assigned_to: request.assignedTo,
-        needs_base: request.needsBase,
-        needs_box: request.needsBox,
-        base_project_id: request.baseProjectId,
-        box_project_id: request.boxProjectId,
-        management_estimate: Math.round(Number.isFinite(request.managementEstimate) ? (request.managementEstimate || 0) : 0),
-        designer_estimate: Math.round(Number.isFinite(request.designerEstimate) ? (request.designerEstimate || 0) : 0)
-      })
+      .update(payload)
       .eq('id', request.id);
 
-    if (error) throw error;
+    if (error) {
+       console.error("SUPABASE UPDATE ERROR (FULL):", error);
+       
+       // Handle missing columns gracefully by retrying with minimal payload if needed
+       if (error.message?.toLowerCase().includes('column') || error.message?.toLowerCase().includes('schema cache')) {
+         console.warn("Retrying update with minimal payload due to database schema mismatch...");
+         const minimalPayload = {
+           client_name: request.clientName,
+           ns: request.ns,
+           product_type: request.productType,
+           dimension: request.dimension,
+           status: request.status
+         };
+         const { error: retryError } = await supabase
+           .from('project_requests')
+           .update(minimalPayload)
+           .eq('id', request.id);
+         
+         if (retryError) throw retryError;
+         return fetchAppState();
+       }
+       
+       throw error;
+    }
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO UPDATE PROJECT REQUEST", error);

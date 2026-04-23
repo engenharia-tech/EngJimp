@@ -61,13 +61,15 @@ interface NavItemProps {
   activeTab: string;
   theme: string;
   t: any;
+  isCollapsed?: boolean;
   onClick: (id: any) => void;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ id, labelKey, icon: Icon, activeTab, theme, t, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ id, labelKey, icon: Icon, activeTab, theme, t, isCollapsed, onClick }) => (
   <button
     onClick={() => onClick(id)}
-    className={`flex items-center w-full px-6 py-4 text-left transition-colors border-l-4 ${
+    title={isCollapsed ? t(labelKey) : undefined}
+    className={`flex items-center w-full ${isCollapsed ? 'justify-center px-0' : 'px-6'} py-4 text-left transition-all border-l-4 ${
       activeTab === id 
         ? theme === 'dark' 
           ? 'bg-blue-900/20 border-orange-500 text-blue-400 font-medium' 
@@ -77,8 +79,8 @@ const NavItem: React.FC<NavItemProps> = ({ id, labelKey, icon: Icon, activeTab, 
           : 'border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900'
     }`}
   >
-    <Icon className={`w-5 h-5 mr-3 ${activeTab === id ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
-    {t(labelKey).toUpperCase()}
+    <Icon className={`w-5 h-5 ${isCollapsed ? '' : 'mr-3'} ${activeTab === id ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
+    {!isCollapsed && <span className="truncate">{t(labelKey).toUpperCase()}</span>}
   </button>
 );
 
@@ -170,6 +172,13 @@ const AppContent: React.FC = () => {
     ganttTasks: []
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar_collapsed') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sidebar_collapsed', String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
   const [isLoading, setIsLoading] = useState(false);
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -663,17 +672,26 @@ const AppContent: React.FC = () => {
       const updatedData = await addProjectRequest(request);
       setData(updatedData);
       addToast(t('nsRegisteredSuccess'), 'success');
-    } catch (e) {
-      addToast(t('errorRegisteringNS'), 'error');
+    } catch (e: any) {
+      console.error("onAddProjectRequest error:", e);
+      const detail = e.message || (typeof e === 'string' ? e : "");
+      addToast(`${t('errorRegisteringNS')}: ${detail}`, 'error');
+      throw e;
     }
   };
 
   const onUpdateProjectRequest = async (request: any) => {
     try {
       const updatedData = await updateProjectRequest(request);
-      setData(updatedData);
-    } catch (e) {
-      addToast(t('errorUpdatingNS'), 'error');
+      if (updatedData) {
+        setData(updatedData);
+        addToast(t('nsUpdatedSuccess') || 'Pedido atualizado com sucesso!', 'success');
+      }
+    } catch (e: any) {
+      console.error("onUpdateProjectRequest error:", e);
+      const detail = e.message || (typeof e === 'string' ? e : "");
+      addToast(`${t('errorUpdatingNS')}: ${detail}`, 'error');
+      throw e;
     }
   };
 
@@ -702,10 +720,10 @@ const AppContent: React.FC = () => {
   return (
     <div className={`flex min-h-screen ${theme === 'dark' ? 'bg-black text-slate-200' : 'bg-gray-50 text-gray-900'}`}>
       {/* Sidebar for Desktop */}
-      <aside className={`hidden md:flex flex-col w-64 ${theme === 'dark' ? 'bg-black border-slate-800 text-white' : 'bg-white border-gray-200 text-slate-900'} border-r fixed h-full z-10 shadow-xl`}>
-        <div className={`p-6 border-b ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'}`}>
-          <div className="mb-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+      <aside className={`hidden md:flex flex-col ${isSidebarCollapsed ? 'w-20' : 'w-64'} ${theme === 'dark' ? 'bg-black border-slate-800 text-white' : 'bg-white border-gray-200 text-slate-900'} border-r fixed h-full z-10 shadow-xl transition-all duration-300 ease-in-out`}>
+        <div className={`p-4 border-b ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'}`}>
+          <div className="mb-4 flex items-center justify-between">
+            <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'hidden' : 'flex'}`}>
                <Logo 
                  theme={theme}
                  logoUrl={COMPANY_LOGO_URL}
@@ -713,81 +731,98 @@ const AppContent: React.FC = () => {
                  className="h-10 w-auto max-w-[180px] object-contain" 
                />
             </div>
-            <button 
-              onClick={toggleTheme}
-              className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700 hover:bg-slate-900 text-slate-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'} transition-colors`}
-              title={theme === 'light' ? t('darkMode') : t('lightMode')}
-            >
-              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            </button>
+            <div className={`flex flex-col gap-2 ${isSidebarCollapsed ? 'w-full items-center' : ''}`}>
+              <button 
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700 hover:bg-slate-900 text-slate-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'} transition-colors mb-2`}
+                title={isSidebarCollapsed ? t('expandSidebar') : t('collapseSidebar')}
+              >
+                {isSidebarCollapsed ? <Menu className="w-5 h-5" /> : <X className="w-5 h-5" />}
+              </button>
+              
+              {!isSidebarCollapsed && (
+                <button 
+                  onClick={toggleTheme}
+                  className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700 hover:bg-slate-900 text-slate-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'} transition-colors`}
+                  title={theme === 'light' ? t('darkMode') : t('lightMode')}
+                >
+                  {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="mb-6">
-            <LanguageSwitcher language={language} setLanguage={setLanguage} />
-          </div>
-          
-          <div className={`flex items-center ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'} text-xs mb-1 uppercase tracking-wider font-semibold`}>
-            {t('controlPanel')}
-          </div>
-          <div className="flex items-center justify-between group">
-            <p className={`text-sm font-medium ${theme === 'dark' ? 'text-slate-200' : 'text-gray-700'} truncate`}>{currentUser.name}</p>
-            <button 
-                onClick={() => setIsProfileOpen(true)}
-                className={`${theme === 'dark' ? 'text-slate-500 hover:text-white hover:bg-slate-900' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'} transition-colors p-1 rounded`}
-                title={t('myProfile')}
-            >
-                <UserCog className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex items-center mt-2 gap-2">
-            <span className={`text-[10px] uppercase tracking-wider font-bold ${theme === 'dark' ? 'text-slate-400 bg-black border-slate-700' : 'text-gray-500 bg-gray-100 border-gray-200'} border px-2 py-0.5 rounded-full inline-block`}>
-                {t(currentUser.role.toLowerCase() as any)}
-            </span>
-          </div>
+          {!isSidebarCollapsed && (
+            <>
+              <div className="mb-6">
+                <LanguageSwitcher language={language} setLanguage={setLanguage} />
+              </div>
+              
+              <div className={`flex items-center ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'} text-xs mb-1 uppercase tracking-wider font-semibold`}>
+                {t('controlPanel')}
+              </div>
+              <div className="flex items-center justify-between group">
+                <p className={`text-sm font-medium ${theme === 'dark' ? 'text-slate-200' : 'text-gray-700'} truncate`}>{currentUser.name}</p>
+                <button 
+                    onClick={() => setIsProfileOpen(true)}
+                    className={`${theme === 'dark' ? 'text-slate-500 hover:text-white hover:bg-slate-900' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'} transition-colors p-1 rounded`}
+                    title={t('myProfile')}
+                >
+                    <UserCog className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex items-center mt-2 gap-2">
+                <span className={`text-[10px] uppercase tracking-wider font-bold ${theme === 'dark' ? 'text-slate-400 bg-black border-slate-700' : 'text-gray-500 bg-gray-100 border-gray-200'} border px-2 py-0.5 rounded-full inline-block`}>
+                    {t(currentUser.role.toLowerCase() as any)}
+                </span>
+              </div>
+            </>
+          )}
         </div>
-        <nav className="flex-1 mt-6 overflow-y-auto">
-          <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+        <nav className="flex-1 mt-6 overflow-y-auto custom-scrollbar">
+          <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
 
-          <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+          <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
 
-          <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+          <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
 
           {canUseTracker && (
             <>
-              <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-              <NavItem id="history" labelKey="history" icon={History} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-              <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-              <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
+              <NavItem id="history" labelKey="history" icon={History} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
+              <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
+              <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
             </>
           )}
           
           {canSeeInnovations && (
-             <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+             <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
           {['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
-            <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
           {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
-            <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
           {['GESTOR', 'CEO'].includes(currentUser.role) && (
-            <NavItem id="settings" labelKey="settings" icon={UserCog} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            <NavItem id="settings" labelKey="settings" icon={UserCog} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
           
           {['GESTOR', 'CEO'].includes(currentUser.role) && (
-            <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
         </nav>
-        <div className={`p-6 border-t ${theme === 'dark' ? 'border-slate-800 bg-black' : 'border-gray-100 bg-gray-50'}`}>
+        <div className={`p-6 border-t ${theme === 'dark' ? 'border-slate-800 bg-black' : 'border-gray-100 bg-gray-50'} ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
           <button 
             onClick={handleLogout}
-            className="flex items-center text-sm text-red-400 hover:text-red-300 hover:bg-red-50 dark:hover:bg-slate-800/50 p-2 rounded-lg font-medium transition-colors w-full"
+            className={`flex items-center text-sm text-red-400 hover:text-red-300 hover:bg-red-50 dark:hover:bg-slate-800/50 p-2 rounded-lg font-medium transition-colors ${isSidebarCollapsed ? 'justify-center w-10' : 'w-full'}`}
+            title={isSidebarCollapsed ? t('logout') : undefined}
           >
-            <LogOut className="w-4 h-4 mr-2" />
-            {t('logout')}
+            <LogOut className={`w-4 h-4 ${isSidebarCollapsed ? '' : 'mr-2'}`} />
+            {!isSidebarCollapsed && t('logout')}
           </button>
         </div>
       </aside>
@@ -874,7 +909,7 @@ const AppContent: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <main className={`flex-1 md:ml-64 p-4 md:p-8 pt-24 md:pt-8 transition-all min-h-screen ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
+      <main className={`flex-1 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} p-4 md:p-8 pt-24 md:pt-8 transition-all duration-300 min-h-screen ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
         {isLoading && (
           <div className="fixed top-0 left-0 w-full h-1 bg-blue-100 z-50">
             <div className="h-full bg-blue-600 animate-pulse w-full"></div>
