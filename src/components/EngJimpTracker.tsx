@@ -119,6 +119,32 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
   const [isSaving, setIsSaving] = useState(false);
 
+  // Sync active project if it's updated in the background (via props or other tabs)
+  useEffect(() => {
+    if (activeProject && existingProjects) {
+      const updated = existingProjects.find(p => p.id === activeProject.id && p.status === 'IN_PROGRESS');
+      if (updated) {
+        // Only update if there's a significant change to avoid infinite loops
+        // comparing core fields (status, ns, startTime, plus pauses/variations length)
+        const hasSubstantialChange = 
+          updated.status !== activeProject.status || 
+          updated.ns !== activeProject.ns ||
+          updated.pauses.length !== activeProject.pauses.length ||
+          updated.variations.length !== activeProject.variations.length;
+
+        if (hasSubstantialChange) {
+          console.log(`[Sync] Syncing active project ${activeProject.ns} from props`);
+          setActiveProject(updated);
+        }
+      } else if (activeProject.status === 'IN_PROGRESS') {
+        // If it was in progress but no longer found as in progress in global data
+        // (Possibly finished or deleted in another tab)
+        console.log(`[Sync] Active project ${activeProject.ns} no longer in progress globally. Clearing local active state.`);
+        setActiveProject(null);
+      }
+    }
+  }, [existingProjects, activeProject?.id, activeProject?.status]);
+
   // Refs for heartbeat values to avoid stale closures in intervals
   const lastHeartbeatRef = useRef<number>(Date.now());
   const elapsedSecondsRef = useRef<number>(0);
@@ -494,6 +520,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   };
 
   const handleRegisterNS = async () => {
+    if (isSaving) return;
     if (!nsNumber.trim() || !nsClient.trim()) {
       addToast(t('fillRequiredFields'), 'error');
       return;
@@ -518,7 +545,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
             managementEstimate: parseFloat(nsManagementEstimate) || 0,
           };
           await onUpdateProjectRequest(updatedRequest);
-          addToast(t('nsUpdatedSuccess'), 'success');
+          addToast(t('nsUpdatedSuccess') || 'Pedido atualizado com sucesso!', 'success');
         }
         setEditingRequestId(null);
       } else {
@@ -540,6 +567,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         };
 
         await onAddProjectRequest(newRequest);
+        addToast(t('nsRegisteredSuccess') || 'Pedido registrado com sucesso!', 'success');
       }
       
       // Reset form
@@ -556,7 +584,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       setShowNSForm(false);
     } catch (error) {
       console.error("Error registering NS:", error);
-      addToast(t('errorRegisteringNS'), 'error');
+      // If we got here, a toast was likely already shown by App.tsx, but we'll ensure feedback.
     } finally {
       setIsSaving(false);
     }
