@@ -102,6 +102,7 @@ export interface VariationRecord {
 
 export interface ProjectSession {
   id: string;
+  name: string; // Unified name field
   ns: string;
   clientName?: string;
   flooringType?: string;

@@ -228,10 +228,17 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
 
   const rootTasks = useMemo(() => {
     const buildTree = (parentId: string | null = null, depth = 0): (GanttTask & { children: any[] })[] => {
-      if (depth > 10) return []; // Safety recursion break
+      if (depth > 20) return []; // Safety recursion break
       return state.ganttTasks
         .filter(t => {
-          if (parentId === null) return !t.parentId || t.parentId === "";
+          // A task is a root task if its parentId is null, empty, or points to a non-existent task
+          if (parentId === null) {
+            const isAtRoot = !t.parentId || t.parentId === "" || t.parentId === "null";
+            if (isAtRoot) return true;
+            // Also include orphaned tasks at root
+            const parentExists = state.ganttTasks.some(p => p.id === t.parentId);
+            return !parentExists;
+          }
           return t.parentId === parentId;
         })
         .sort((a, b) => (a.order || 0) - (b.order || 0))
@@ -240,7 +247,9 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
           children: buildTree(t.id, depth + 1)
         }));
     };
-    return buildTree(null);
+    const tree = buildTree(null);
+    console.log("BUILT GANTT TREE WITH", tree.length, "ROOT NODES");
+    return tree;
   }, [state.ganttTasks]);
 
   const flattenedTasks = useMemo(() => {
@@ -568,10 +577,10 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                   {/* Inline adding for this group */}
                   {inlineAdding && inlineAdding.parentId === task.id ? (
                     <div className="flex h-10 border-b border-slate-100 dark:border-slate-800 items-stretch bg-blue-50/20 dark:bg-blue-900/10">
-                       <div 
-                        className="flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-inherit" 
-                        style={{ paddingLeft: `${(depth + 1) * 20 + 8}px`, width: `${sidebarWidth}px` }}
-                      >
+                        <div 
+                          className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-inherit transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 opacity-0 border-none' : 'opacity-100'}`} 
+                          style={{ paddingLeft: `${(depth + 1) * 20 + 8}px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
+                        >
                          <div className="flex items-center gap-2 w-full">
                             <span className="text-[10px] text-slate-400 dark:text-slate-500 w-8 font-mono">{rowNumber}.{task.children.length + 1}</span>
                             <div className="flex items-center gap-2 flex-grow border border-blue-300 dark:border-blue-700 rounded bg-white dark:bg-slate-900 px-2 py-0.5 shadow-sm">
@@ -592,10 +601,10 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                   ) : (
                     /* The buttons below the group, exactly like in the video */
                     <div className="flex h-10 border-b border-slate-100 dark:border-slate-800 items-stretch group/inline">
-                       <div 
-                        className="flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-white dark:bg-slate-900 transition-colors" 
-                        style={{ paddingLeft: `${(depth + 1) * (isMobile ? 12 : 20) + (isMobile ? 16 : 28)}px`, width: `${sidebarWidth}px` }}
-                      >
+                        <div 
+                          className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-white dark:bg-slate-900 transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 opacity-0 border-none' : 'opacity-100'}`} 
+                          style={{ paddingLeft: `${(depth + 1) * (isMobile ? 12 : 20) + (isMobile ? 16 : 28)}px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
+                        >
                          <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] font-bold text-[#0070e0] dark:text-blue-400 opacity-60 hover:opacity-100 transition-opacity">
                             <button onClick={() => setInlineAdding({ parentId: task.id, type: 'task' })} className="flex items-center gap-1.5 hover:underline whitespace-nowrap">
                               <Plus size={14} /> {isMobile ? "Tarefa" : "Adicionar uma tarefa"}
@@ -738,8 +747,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
         {/* Timeline Header (Sync horizontal scroll with rows) */}
         <div className="flex-shrink-0 flex items-stretch border-b border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/50 z-30 overflow-hidden sticky top-0 transition-colors">
           <div 
-            className="flex-shrink-0 border-r border-slate-300 dark:border-slate-800 flex items-center px-4 bg-white dark:bg-slate-900 relative transition-colors"
-            style={{ width: `${sidebarWidth}px` }}
+            className={`flex-shrink-0 border-r border-slate-300 dark:border-slate-800 flex items-center px-4 bg-white dark:bg-slate-900 relative transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 opacity-0 border-none' : 'opacity-100'}`}
+            style={{ width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
           >
             <div className="flex items-center gap-2 sm:gap-8 w-full">
               <span className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 w-4">#</span>
@@ -882,8 +891,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               {inlineAdding && inlineAdding.parentId === null && (
                 <div className="flex h-10 border-b border-slate-100 dark:border-slate-800 items-stretch bg-blue-50/30 dark:bg-blue-900/10 transition-colors">
                   <div 
-                    className="flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-white dark:bg-slate-900 transition-colors" 
-                    style={{ paddingLeft: `8px`, width: `${sidebarWidth}px` }}
+                    className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-white dark:bg-slate-900 transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 opacity-0 border-none' : 'opacity-100'}`} 
+                    style={{ paddingLeft: `8px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
                   >
                       <div className="flex items-center gap-2 w-full">
                         <span className="text-[10px] text-slate-400 dark:text-slate-500 w-8 font-mono">{rootTasks.length + 1}</span>

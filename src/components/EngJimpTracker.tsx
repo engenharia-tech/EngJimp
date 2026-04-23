@@ -352,6 +352,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
       const newProject: ProjectSession = {
         id: projectId,
+        name: clientName || projectCode || ns || 'Sem Nome',
         ns,
         clientName,
         projectCode,
@@ -431,6 +432,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       const startProject = async (partType: ImplementType) => {
         const newProject: ProjectSession = {
           id: crypto.randomUUID(),
+          name: clientVal || selectedRequest.chassisNumber || nsVal || 'Sem Nome',
           ns: nsVal,
           clientName: clientVal,
           chassisNumber: selectedRequest.chassisNumber,

@@ -91,7 +91,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     interruptionEmailTemplate: localStorage.getItem('interruption_email_template') || '',
     workdayStart: localStorage.getItem('workday_start') || "07:30",
     workdayEnd: localStorage.getItem('workday_end') || "17:30",
-    workdays: (JSON.parse(localStorage.getItem('workdays') || "[1,2,3,4,5]") as any[]).map(Number),
+    workdays: parseSafeJson(localStorage.getItem('workdays'), [1,2,3,4,5]).map(Number),
     lunchStart: localStorage.getItem('lunch_start') || "12:00",
     lunchEnd: localStorage.getItem('lunch_end') || "13:00",
     language: (localStorage.getItem('language') as any) || "pt-BR"
@@ -164,6 +164,18 @@ export const fetchSettings = async (): Promise<AppSettings> => {
 };
 
 export const fetchAppState = async (): Promise<AppState> => {
+  let projects: ProjectSession[] = [];
+  let issues: IssueRecord[] = [];
+  let innovations: InnovationRecord[] = [];
+  let interruptions: InterruptionRecord[] = [];
+  let interruptionTypes: InterruptionType[] = [];
+  let activityTypes: ActivityType[] = [];
+  let operationalActivities: OperationalActivity[] = [];
+  let projectRequests: ProjectRequest[] = [];
+  let users: User[] = [];
+  let ganttTasks: GanttTask[] = [];
+  let settings: AppSettings = { ...defaultState.settings };
+
   try {
     const start = Date.now();
     // Fetch all data in parallel for speed
@@ -182,8 +194,6 @@ export const fetchAppState = async (): Promise<AppState> => {
     ];
 
     const results = await Promise.all(fetches);
-    
-    // De-structure after await to improve readability and debug errors individually
     const projectsRes = results[0] as any;
     const issuesRes = results[1] as any;
     const innovationsRes = results[2] as any;
@@ -194,223 +204,142 @@ export const fetchAppState = async (): Promise<AppState> => {
     const projectRequestsRes = results[7] as any;
     const usersRes = results[8] as any;
     const ganttTasksRes = results[9] as any;
-    const settings = results[10] as AppSettings;
+    settings = results[10] as AppSettings;
 
-    if (projectsRes.error) console.error("Error projects:", projectsRes.error);
-    if (issuesRes.error) console.error("Error issues:", issuesRes.error);
-    if (innovationsRes.error) console.error("Error innovations:", innovationsRes.error);
-    if (interruptionsRes.error) console.error("Error interruptions:", interruptionsRes.error);
-    if (interruptionTypesRes.error) console.error("Error intTypes:", interruptionTypesRes.error);
-    if (activityTypesRes.error) console.error("Error actTypes:", activityTypesRes.error);
-    if (operationalActivitiesRes.error) console.error("Error opActs:", operationalActivitiesRes.error);
-    if (projectRequestsRes.error) console.error("Error requests:", projectRequestsRes.error);
-    if (usersRes.error) console.error("Error users:", usersRes.error);
-    if (ganttTasksRes.error) console.error("Error gantt:", ganttTasksRes.error);
-
-    const state: AppState = {
-      settings,
-      projects: projectsRes.data || [],
-      issues: issuesRes.data || [],
-      innovations: innovationsRes.data || [],
-      interruptions: interruptionsRes.data || [],
-      interruptionTypes: interruptionTypesRes.data || [],
-      activityTypes: activityTypesRes.data || [],
-      operationalActivities: operationalActivitiesRes.data || [],
-      projectRequests: projectRequestsRes.data || [],
-      users: usersRes.data || [],
-      ganttTasks: ganttTasksRes.data || []
-    };
-
-    console.log(`FETCH APP STATE COMPLETED IN ${Date.now() - start}ms: Found ${state.projects.length} projects, ${state.users.length} users`);
-
-    let activityTypes: ActivityType[] = (activityTypesRes.data || []).map((t: any) => ({
+    activityTypes = (activityTypesRes.data || []).map((t: any) => ({
       id: t.id,
       name: t.name,
       isActive: t.is_active
     }));
 
-    // Seed default activity types if empty
     if (activityTypes.length === 0) {
       console.log("SEEDING DEFAULT ACTIVITY TYPES...");
-      const defaultTypes = DEFAULT_ACTIVITY_TYPES.map(name => ({
-        name,
-        is_active: true
-      }));
-      
-      const { data: seededData, error: seedError } = await supabase
-        .from('activity_types')
-        .insert(defaultTypes)
-        .select();
-
+      const defaultTypes = DEFAULT_ACTIVITY_TYPES.map(name => ({ name, is_active: true }));
+      const { data: seededData, error: seedError } = await supabase.from('activity_types').insert(defaultTypes).select();
       if (!seedError && seededData) {
-        activityTypes = seededData.map((t: any) => ({
-          id: t.id,
-          name: t.name,
-          isActive: t.is_active
-        }));
-      } else {
-        // Fallback to constants if seeding fails, so UI is not empty
-        activityTypes = DEFAULT_ACTIVITY_TYPES.map((name, index) => ({
-          id: `temp-${index}`,
-          name,
-          isActive: true
-        }));
+        activityTypes = seededData.map((t: any) => ({ id: t.id, name: t.name, isActive: t.is_active }));
       }
     }
 
-    const projects: ProjectSession[] = (projectsRes.data || []).map((p: any) => ({
-      id: p.id,
-      ns: p.ns,
-      clientName: p.client_name,
-      flooringType: p.flooring_type,
-      projectCode: p.project_code,
-      chassisNumber: p.chassis_number,
-      type: p.type as ProjectType,
-      implementType: p.implement_type as ImplementType,
-      startTime: p.start_time,
-      endTime: p.end_time,
-      totalActiveSeconds: p.total_active_seconds || 0,
-      interruptionSeconds: p.interruption_seconds || 0,
-      totalSeconds: p.total_seconds || 0,
-      productiveCost: p.productive_cost || 0,
-      interruptionCost: p.interruption_cost || 0,
-      totalCost: p.total_cost || 0,
-      pauses: parseSafeJson(p.pauses),
-      variations: parseSafeJson(p.variations),
-      status: p.status as 'COMPLETED' | 'IN_PROGRESS',
-      notes: p.notes,
-      userId: p.user_id,
-      estimatedSeconds: p.estimated_seconds || 0,
-      isOvertime: p.is_overtime,
-      lastActiveAt: p.updated_at
-    }));
+    try {
+      projects = (projectsRes.data || []).map((p: any) => ({
+        id: p.id,
+        name: p.client_name || p.project_code || p.ns || 'Sem Nome',
+        ns: p.ns,
+        clientName: p.client_name,
+        flooringType: p.flooring_type,
+        projectCode: p.project_code,
+        chassisNumber: p.chassis_number,
+        type: p.type as ProjectType,
+        implementType: p.implement_type as ImplementType,
+        startTime: p.start_time,
+        endTime: p.end_time,
+        totalActiveSeconds: p.total_active_seconds || 0,
+        interruptionSeconds: p.interruption_seconds || 0,
+        totalSeconds: p.total_seconds || 0,
+        productiveCost: p.productive_cost || 0,
+        interruptionCost: p.interruption_cost || 0,
+        totalCost: p.total_cost || 0,
+        pauses: parseSafeJson(p.pauses),
+        variations: parseSafeJson(p.variations),
+        status: p.status as 'COMPLETED' | 'IN_PROGRESS',
+        notes: p.notes,
+        userId: p.user_id,
+        estimatedSeconds: p.estimated_seconds || 0,
+        isOvertime: p.is_overtime,
+        lastActiveAt: p.updated_at
+      }));
+    } catch (e) { console.error("Projects mapping error:", e); }
 
-    const issues: IssueRecord[] = (issuesRes.data || []).map((i: any) => ({
-      id: i.id,
-      projectNs: i.project_ns,
-      type: i.type,
-      description: i.description,
-      date: i.date,
-      reportedBy: i.reported_by
-    }));
+    try {
+      issues = (issuesRes.data || []).map((i: any) => ({
+        id: i.id, projectNs: i.project_ns, type: i.type, description: i.description, date: i.date, reportedBy: i.reported_by
+      }));
+    } catch (e) { console.error("Issues mapping error:", e); }
 
-    const innovations: InnovationRecord[] = (innovationsRes.data || []).map((inv: any) => ({
-      id: inv.id,
-      title: inv.title,
-      description: inv.description,
-      type: inv.type,
-      
-      // Handle potential nulls from DB using defaults
-      calculationType: inv.calculation_type as CalculationType || CalculationType.RECURRING_MONTHLY,
-      unitSavings: parseSafeNumber(inv.unit_savings),
-      quantity: parseSafeNumber(inv.quantity),
-      totalAnnualSavings: parseSafeNumber(inv.total_annual_savings),
-      investmentCost: parseSafeNumber(inv.investment_cost),
+    try {
+      innovations = (innovationsRes.data || []).map((inv: any) => ({
+        id: inv.id, title: inv.title, description: inv.description, type: inv.type,
+        calculationType: inv.calculation_type as CalculationType || CalculationType.RECURRING_MONTHLY,
+        unitSavings: parseSafeNumber(inv.unit_savings), quantity: parseSafeNumber(inv.quantity),
+        totalAnnualSavings: parseSafeNumber(inv.total_annual_savings), investmentCost: parseSafeNumber(inv.investment_cost),
+        status: inv.status, authorId: inv.author_id, createdAt: inv.created_at,
+        materials: parseSafeJson(inv.materials, []), machine: parseSafeJson(inv.machine, undefined),
+        productivityBefore: inv.productivity_before, productivityAfter: inv.productivity_after,
+        unitProductCost: inv.unit_product_cost, unitProductValue: inv.unit_product_value
+      }));
+    } catch (e) { console.error("Innovations mapping error:", e); }
 
-      status: inv.status,
-      authorId: inv.author_id,
-      createdAt: inv.created_at,
-      
-      // New fields
-      materials: parseSafeJson(inv.materials, []),
-      machine: parseSafeJson(inv.machine, undefined),
-      productivityBefore: inv.productivity_before,
-      productivityAfter: inv.productivity_after,
-      unitProductCost: inv.unit_product_cost,
-      unitProductValue: inv.unit_product_value
-    }));
+    try {
+      interruptions = (interruptionsRes.data || []).map((i: any) => ({
+        id: i.id, projectId: i.project_id, projectNs: i.project_ns, clientName: i.client_name,
+        designerId: i.designer_id, startTime: i.start_time, endTime: i.end_time,
+        problemType: i.problem_type, responsibleArea: i.responsible_area as InterruptionArea,
+        responsiblePerson: i.responsible_person, description: i.description,
+        status: i.status as InterruptionStatus, totalTimeSeconds: i.total_time_seconds, lastActiveAt: i.updated_at
+      }));
+    } catch (e) { console.error("Interruptions mapping error:", e); }
 
-    const interruptions: InterruptionRecord[] = (interruptionsRes.data || []).map((i: any) => ({
-      id: i.id,
-      projectId: i.project_id,
-      projectNs: i.project_ns,
-      clientName: i.client_name,
-      designerId: i.designer_id,
-      startTime: i.start_time,
-      endTime: i.end_time,
-      problemType: i.problem_type,
-      responsibleArea: i.responsible_area as InterruptionArea,
-      responsiblePerson: i.responsible_person,
-      description: i.description,
-      status: i.status as InterruptionStatus,
-      totalTimeSeconds: i.total_time_seconds,
-      lastActiveAt: i.updated_at
-    }));
+    interruptionTypes = (interruptionTypesRes.data || []).map((t: any) => ({ id: t.id, name: t.name, isActive: t.is_active }));
 
-    const interruptionTypes: InterruptionType[] = (interruptionTypesRes.data || []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      isActive: t.is_active
-    }));
+    try {
+      operationalActivities = (operationalActivitiesRes.data || []).map((a: any) => ({
+        id: a.id, userId: a.user_id, activityTypeId: a.activity_type_id, activityName: a.activity_name,
+        startTime: a.start_time, endTime: a.end_time, durationSeconds: a.duration_seconds,
+        notes: a.notes, projectId: a.project_id, isFlagged: a.is_flagged
+      }));
+    } catch (e) { console.error("OperationalActivities mapping error:", e); }
 
-    const operationalActivities: OperationalActivity[] = (operationalActivitiesRes.data || []).map((a: any) => ({
-      id: a.id,
-      userId: a.user_id,
-      activityTypeId: a.activity_type_id,
-      activityName: a.activity_name,
-      startTime: a.start_time,
-      endTime: a.end_time,
-      durationSeconds: a.duration_seconds,
-      notes: a.notes,
-      projectId: a.project_id,
-      isFlagged: a.is_flagged
-    }));
+    try {
+      projectRequests = (projectRequestsRes.data || []).map((r: any) => ({
+        id: r.id, clientName: r.client_name, ns: r.ns, productType: r.product_type,
+        dimension: r.dimension, flooring: r.flooring, setup: r.setup, chassisNumber: r.chassis_number,
+        status: r.status as ProjectRequestStatus, createdAt: r.created_at, createdBy: r.created_by,
+        assignedTo: r.assigned_to, needsBase: r.needs_base ?? true, needsBox: r.needs_box ?? true,
+        baseProjectId: r.base_project_id, boxProjectId: r.box_project_id,
+        managementEstimate: parseSafeNumber(r.management_estimate), designerEstimate: parseSafeNumber(r.designer_estimate)
+      }));
+    } catch (e) { console.error("ProjectRequests mapping error:", e); }
 
-    const projectRequests: ProjectRequest[] = (projectRequestsRes.data || []).map((r: any) => ({
-      id: r.id,
-      clientName: r.client_name,
-      ns: r.ns,
-      productType: r.product_type,
-      dimension: r.dimension,
-      flooring: r.flooring,
-      setup: r.setup,
-      chassisNumber: r.chassis_number,
-      status: r.status as ProjectRequestStatus,
-      createdAt: r.created_at,
-      createdBy: r.created_by,
-      assignedTo: r.assigned_to,
-      needsBase: r.needs_base ?? true,
-      needsBox: r.needs_box ?? true,
-      baseProjectId: r.base_project_id,
-      boxProjectId: r.box_project_id,
-      managementEstimate: parseSafeNumber(r.management_estimate),
-      designerEstimate: parseSafeNumber(r.designer_estimate)
-    }));
+    try {
+      users = (usersRes.data || []).map((u: any) => ({
+        id: u.id, username: u.username, password: u.password, name: u.name, surname: u.surname,
+        email: u.email, phone: u.phone, role: u.role, salary: Number(u.salary) || 0
+      })).sort((a, b) => a.name.localeCompare(b.name));
+    } catch (e) { console.error("Users mapping error:", e); }
 
-    const users: User[] = (usersRes.data || []).map((u: any) => ({
-      id: u.id,
-      username: u.username,
-      password: u.password,
-      name: u.name,
-      surname: u.surname,
-      email: u.email,
-      phone: u.phone,
-      role: u.role,
-      salary: Number(u.salary) || 0
-    })).sort((a, b) => a.name.localeCompare(b.name));
-
-    const ganttTasks: GanttTask[] = (ganttTasksRes.data || []).map((t: any) => ({
-      id: t.id,
-      title: t.title,
-      description: t.description,
-      parentId: t.parent_id,
-      startDate: t.start_date,
-      endDate: t.end_date,
-      color: t.color,
-      isMilestone: t.is_milestone,
-      assignedTo: Array.isArray(t.assigned_to) ? t.assigned_to : (typeof t.assigned_to === 'string' ? JSON.parse(t.assigned_to) : []),
-      progress: t.progress || 0,
-      attachments: Array.isArray(t.attachments) ? t.attachments : (typeof t.attachments === 'string' ? JSON.parse(t.attachments) : []),
-      createdAt: t.created_at,
-      updatedAt: t.updated_at,
-      workload: t.workload,
-      reports: t.reports,
-      order: t.order,
-      status: t.status || 'todo',
-      priority: t.priority || 'medium',
-      category: t.category,
-      dependencies: Array.isArray(t.dependencies) ? t.dependencies : (typeof t.dependencies === 'string' ? JSON.parse(t.dependencies) : [])
-    }));
+    try {
+      ganttTasks = (ganttTasksRes.data || []).map((t: any) => {
+        try {
+          return {
+            id: t.id,
+            title: t.title,
+            description: t.description,
+            parentId: t.parent_id || null, // Ensure null fallback
+            startDate: t.start_date,
+            endDate: t.end_date,
+            color: t.color,
+            isMilestone: t.is_milestone,
+            assignedTo: parseSafeJson(t.assigned_to, []),
+            progress: t.progress || 0,
+            attachments: parseSafeJson(t.attachments, []),
+            createdAt: t.created_at,
+            updatedAt: t.updated_at,
+            workload: t.workload,
+            reports: t.reports,
+            order: t.order,
+            status: t.status || 'todo',
+            priority: t.priority || 'medium',
+            category: t.category,
+            dependencies: parseSafeJson(t.dependencies, [])
+          };
+        } catch (e) {
+          console.error("Mapping error for task:", t.id, e);
+          return null;
+        }
+      }).filter(Boolean) as GanttTask[];
+      console.log(`FETCHED ${ganttTasks.length} GANTT TASKS`);
+    } catch (e) { console.error("GanttTasks mapping error:", e); }
 
     // Seed default gantt tasks if empty
     if (ganttTasks.length === 0) {
@@ -473,8 +402,20 @@ export const fetchAppState = async (): Promise<AppState> => {
 
     return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, settings };
   } catch (error) {
-    console.error("FAILED TO LOAD DATA FROM SUPABASE", error);
-    return { ...defaultState, users: [], ganttTasks: [] };
+    console.error("FAILED TO LOAD DATA FROM SUPABASE - RETURNING PARTIAL STATE", error);
+    return { 
+      projects: projects || [], 
+      issues: issues || [], 
+      innovations: innovations || [], 
+      interruptions: interruptions || [], 
+      interruptionTypes: interruptionTypes || [], 
+      activityTypes: activityTypes || [], 
+      operationalActivities: operationalActivities || [], 
+      projectRequests: projectRequests || [], 
+      users: users || [], 
+      ganttTasks: ganttTasks || [], 
+      settings: settings || { ...defaultState.settings } 
+    };
   }
 };
 
@@ -1673,6 +1614,7 @@ export const findDuplicateProjects = async (): Promise<{ success: boolean; dupli
     // Map manually to avoid fetchAppState overhead/limit
     const projects: ProjectSession[] = (projectsData || []).map((p: any) => ({
       id: p.id,
+      name: p.client_name || p.project_code || p.ns || 'Sem Nome',
       ns: p.ns,
       clientName: p.client_name,
       flooringType: p.flooring_type,
@@ -1960,9 +1902,25 @@ export const addGanttTask = async (task: GanttTask): Promise<AppState> => {
     if (task.category) payload.category = task.category;
 
     const { error } = await supabase.from('gantt_tasks').insert([payload]);
-
+    
     if (error) {
-      console.error("SUPABASE GANTT INSERT ERROR:", error);
+      console.error("SUPABASE GANTT INSERT ERROR (FULL):", error);
+      
+      if (error.message?.toLowerCase().includes('column') || error.message?.toLowerCase().includes('schema cache')) {
+         console.warn("Retrying GANTT add with minimal payload...");
+         const minimalPayload = {
+           id: task.id,
+           title: task.title,
+           start_date: task.startDate,
+           end_date: task.endDate,
+           status: task.status || 'todo',
+           "order": task.order || 0
+         };
+         const { error: retryError } = await supabase.from('gantt_tasks').insert([minimalPayload]);
+         if (retryError) throw retryError;
+         return fetchAppState();
+      }
+      
       throw error;
     }
     return fetchAppState();
@@ -2003,7 +1961,26 @@ export const updateGanttTask = async (task: GanttTask): Promise<AppState> => {
       .eq('id', task.id);
 
     if (error) {
-      console.error("SUPABASE GANTT UPDATE ERROR:", error);
+      console.error("SUPABASE GANTT UPDATE ERROR (FULL):", error);
+      
+      if (error.message?.toLowerCase().includes('column') || error.message?.toLowerCase().includes('schema cache')) {
+         console.warn("Retrying GANTT update with minimal payload...");
+         const minimalPayload = {
+           title: task.title,
+           start_date: task.startDate,
+           end_date: task.endDate,
+           status: task.status || 'todo',
+           "order": task.order
+         };
+         const { error: retryError } = await supabase
+           .from('gantt_tasks')
+           .update(minimalPayload)
+           .eq('id', task.id);
+           
+         if (retryError) throw retryError;
+         return fetchAppState();
+      }
+      
       throw error;
     }
     return fetchAppState();
