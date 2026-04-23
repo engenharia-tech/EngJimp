@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Folder, 
   Star, 
@@ -38,13 +38,24 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<NexusTab>('gantt');
   const [showProjectList, setShowProjectList] = useState(false);
-  const [selectedProject, setSelectedProject] = useState(state.projects[0]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(state.projects[0]?.id || null);
+
+  const selectedProject = useMemo(() => {
+    return state.projects.find(p => p.id === selectedProjectId) || state.projects[0];
+  }, [state.projects, selectedProjectId]);
+
+  // Update selected project if it was null but data arrived
+  useEffect(() => {
+    if (!selectedProjectId && state.projects.length > 0) {
+      setSelectedProjectId(state.projects[0].id);
+    }
+  }, [state.projects, selectedProjectId]);
 
   if (showProjectList) {
     return (
       <ProjectListView 
         state={state} 
-        onProjectClick={(p) => { setSelectedProject(p); setShowProjectList(false); }}
+        onProjectClick={(p) => { setSelectedProjectId(p.id); setShowProjectList(false); }}
         onCreateProject={() => {}} 
       />
     );
