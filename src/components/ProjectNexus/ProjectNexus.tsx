@@ -1,9 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  Folder, 
-  Star, 
-  ChevronDown, 
-  Clock, 
   Settings, 
   MoreHorizontal, 
   History,
@@ -13,9 +9,10 @@ import {
   Calendar as CalendarIcon,
   Users2,
   BarChart3,
-  LayoutList as GanttIcon
+  LayoutList as GanttIcon,
+  Plus
 } from 'lucide-react';
-import { AppState, GanttTask } from '../../types';
+import { AppState, GanttTask, GanttTaskStatus, TaskPriority } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { GanttView } from './GanttView';
 import { KanbanView } from './KanbanView';
@@ -23,8 +20,8 @@ import { ListView } from './ListView';
 import { CalendarView } from './CalendarView';
 import { WorkloadView } from './WorkloadView';
 import { PeopleView } from './PeopleView';
-import { ProjectListView } from './ProjectListView';
 import { DashboardView } from './DashboardView';
+import { addGanttTask } from '../../services/storageService';
 
 interface ProjectNexusProps {
   state: AppState;
@@ -32,67 +29,74 @@ interface ProjectNexusProps {
   onRefresh?: () => void;
 }
 
+const generateId = () => crypto.randomUUID();
+
 export type NexusTab = 'gantt' | 'kanban' | 'list' | 'calendar' | 'workload' | 'people' | 'dashboard';
 
 export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState, onRefresh }) => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<NexusTab>('gantt');
-  const [showProjectList, setShowProjectList] = useState(false);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(state.projects[0]?.id || null);
 
-  const selectedProject = useMemo(() => {
-    return state.projects.find(p => p.id === selectedProjectId) || state.projects[0];
-  }, [state.projects, selectedProjectId]);
+  const handleAddWorkspace = async () => {
+    const name = window.prompt("Nome do novo fluxo/projeto paralelo:");
+    if (!name) return;
 
-  // Update selected project if it was null but data arrived
-  useEffect(() => {
-    if (!selectedProjectId && state.projects.length > 0) {
-      setSelectedProjectId(state.projects[0].id);
+    const newTask: GanttTask = {
+      id: generateId(),
+      title: name,
+      parentId: null,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+      color: 'bg-blue-600',
+      isMilestone: false,
+      assignedTo: [],
+      progress: 0,
+      attachments: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      order: state.ganttTasks.length,
+      status: GanttTaskStatus.TODO,
+      priority: TaskPriority.MEDIUM,
+      dependencies: []
+    };
+
+    try {
+      const newState = await addGanttTask(newTask);
+      onUpdateState(newState);
+    } catch (error) {
+      console.error("Error adding workspace:", error);
+      alert("Erro ao criar fluxo. Verifique o banco de dados.");
     }
-  }, [state.projects, selectedProjectId]);
-
-  if (showProjectList) {
-    return (
-      <ProjectListView 
-        state={state} 
-        onProjectClick={(p) => { setSelectedProjectId(p.id); setShowProjectList(false); }}
-        onCreateProject={() => {}} 
-      />
-    );
-  }
+  };
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
-      {/* Top Breadcrumb / Header Matches Image 1 and context */}
-      <div className="px-4 py-2 border-b border-slate-200 flex items-center justify-between bg-white">
+      {/* Top Header - Independent from Projects */}
+      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-white shadow-sm">
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setShowProjectList(true)}
-            className="p-1.5 text-blue-600 hover:bg-slate-50 rounded transition-colors"
-          >
-            <ChevronDown size={24} className="rotate-90 stroke-[3]" />
-          </button>
-          <div className="p-1.5 bg-slate-100 rounded text-slate-600">
-            <Folder size={18} />
+          <div className="p-2 bg-blue-600 text-white rounded-lg shadow-blue-200 shadow-lg">
+            <GanttIcon size={20} />
           </div>
-          <h1 className="text-lg font-bold text-slate-800 tracking-tight">{selectedProject?.name || 'JIMP'}</h1>
-          <button className="p-1 hover:bg-slate-100 rounded text-slate-400">
-            <Star size={16} />
-          </button>
-          <div className="ml-4 flex items-center gap-2 bg-slate-100 px-2 py-1 rounded text-xs font-medium text-slate-600 cursor-pointer hover:bg-slate-200 transition-colors">
-            <span>Sem status</span>
-            <ChevronDown size={14} />
+          <div>
+            <h1 className="text-xl font-black text-slate-800 tracking-tight leading-none mb-1">Nexus Flow</h1>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Acompanhamento de Tarefas Paralelas</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <button className="px-3 py-1.5 border border-slate-300 rounded text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            Dono do projeto
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleAddWorkspace}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold transition-all shadow-md active:scale-95"
+          >
+            <Plus size={16} />
+            <span>NOVO FLUXO</span>
           </button>
+          
+          <div className="h-8 w-px bg-slate-200 mx-1" />
+          
           <div className="flex items-center gap-1">
-            <button onClick={onRefresh} className="p-2 hover:bg-slate-100 rounded text-slate-500" title="Atualizar dados"><History size={18} /></button>
-            <button onClick={() => setActiveTab('dashboard')} className="p-2 hover:bg-slate-100 rounded text-slate-500" title="Configurações"><Settings size={18} /></button>
-            <button className="p-2 hover:bg-slate-100 rounded text-slate-500"><MoreHorizontal size={18} /></button>
+            <button onClick={onRefresh} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors" title="Atualizar dados"><History size={18} /></button>
+            <button onClick={() => setActiveTab('dashboard')} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors" title="Configurações"><Settings size={18} /></button>
           </div>
         </div>
       </div>
@@ -147,13 +151,13 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
 
       {/* View Content */}
       <div className="flex-grow overflow-hidden relative">
-        {activeTab === 'gantt' && <GanttView state={state} onUpdateState={onUpdateState} />}
-        {activeTab === 'kanban' && <KanbanView state={state} onUpdateState={onUpdateState} />}
-        {activeTab === 'list' && <ListView state={state} onUpdateState={onUpdateState} />}
-        {activeTab === 'calendar' && <CalendarView state={state} onUpdateState={onUpdateState} />}
-        {activeTab === 'workload' && <WorkloadView state={state} onUpdateState={onUpdateState} />}
-        {activeTab === 'people' && <PeopleView state={state} onUpdateState={onUpdateState} />}
-        {activeTab === 'dashboard' && <DashboardView state={state} onUpdateState={onUpdateState} />}
+        {activeTab === 'gantt' && <GanttView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'kanban' && <KanbanView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'list' && <ListView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'calendar' && <CalendarView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'workload' && <WorkloadView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'people' && <PeopleView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'dashboard' && <DashboardView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
       </div>
     </div>
   );

@@ -54,6 +54,7 @@ import { ptBR } from 'date-fns/locale';
 import { AppState, GanttTask, User as AppUser, GanttTaskStatus, TaskPriority } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { addGanttTask, updateGanttTask, deleteGanttTask } from '../../services/storageService';
+import { useToast } from '../Toast';
 
 const generateId = () => {
   try {
@@ -84,6 +85,7 @@ const COLORS = [
 
 export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRefresh }) => {
   const { t, language } = useLanguage();
+  const { addToast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
@@ -106,10 +108,24 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   } | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
+  const hasAutoExpanded = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const scrollHeaderRef = useRef<HTMLDivElement>(null);
   const rowsAreaRef = useRef<HTMLDivElement>(null);
+
+  // Auto-expand all tasks on first load
+  useEffect(() => {
+    if (state.ganttTasks.length > 0 && !hasAutoExpanded.current) {
+      const allParentIds = new Set(
+        state.ganttTasks
+          .filter(t => state.ganttTasks.some(child => child.parentId === t.id))
+          .map(t => t.id)
+      );
+      setExpandedTasks(allParentIds);
+      hasAutoExpanded.current = true;
+    }
+  }, [state.ganttTasks]);
 
   // Auto-scroll to today on mount
   useEffect(() => {
@@ -315,11 +331,16 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   const handleSaveTask = async (task: GanttTask) => {
     try {
       const isNew = !state.ganttTasks.find(t => t.id === task.id);
+      setIsModalOpen(false); // Close early for better UX
       const newState = isNew ? await addGanttTask(task) : await updateGanttTask(task);
       onUpdateState(newState);
-      setIsModalOpen(false);
       setEditingTask(null);
-    } catch (error) { console.error(error); }
+      addToast(isNew ? "Tarefa adicionada com sucesso!" : "Tarefa atualizada!", "success");
+    } catch (error: any) { 
+      console.error(error); 
+      addToast("Erro ao salvar tarefa. Verifique se o bando de dados está atualizado (veja Gestão de Equipe).", "error");
+      setIsModalOpen(true); // Reopen on error
+    }
   };
 
   const getStatusColor = (status: GanttTaskStatus) => {
@@ -462,51 +483,51 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                     
                     <div className="flex items-center gap-2 flex-grow min-w-0">
                       {task.isMilestone ? <Milestone size={14} className="text-amber-500 flex-shrink-0" /> : null}
-                      {editingTitleId === task.id ? (
-                        <div className="flex items-center gap-1 flex-grow">
-                          <input 
-                            autoFocus
-                            value={editingTitleValue}
-                            onChange={e => setEditingTitleValue(e.target.value)}
-                            onBlur={(e) => {
-                              if (e.relatedTarget && (e.relatedTarget as HTMLElement).closest('.save-btn')) return;
-                              handleSaveTitle(task.id);
-                            }}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') handleSaveTitle(task.id);
-                              if (e.key === 'Escape') setEditingTitleId(null);
-                            }}
-                            className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 font-medium bg-blue-50 dark:bg-slate-800 border-b border-blue-400 dark:border-blue-600 outline-none w-full px-1"
-                          />
-                          <button onClick={() => handleSaveTitle(task.id)} className="save-btn p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 rounded transition-colors"><CheckCircle2 size={12} /></button>
-                        </div>
-                      ) : (
-                        <div 
-                          className="flex items-center gap-2 flex-grow min-w-0 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 rounded px-1 transition-colors group/title"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingTitleId(task.id);
-                            setEditingTitleValue(task.title);
+                    {editingTitleId === task.id ? (
+                      <div className="flex items-center gap-1 flex-grow">
+                        <input 
+                          autoFocus
+                          value={editingTitleValue}
+                          onChange={e => setEditingTitleValue(e.target.value)}
+                          onBlur={(e) => {
+                            if (e.relatedTarget && (e.relatedTarget as HTMLElement).closest('.save-btn')) return;
+                            handleSaveTitle(task.id);
                           }}
-                        >
-                          <span className={`${isMobile ? 'text-[11px]' : 'text-sm'} truncate ${isTopLevel ? 'font-bold text-slate-800 dark:text-slate-100' : 'font-medium text-slate-600 dark:text-slate-400'}`}>
-                            {task.title || 'Tarefa sem nome'}
-                          </span>
-                          <div className={`flex items-center gap-1 transition-opacity ${isMobile ? 'opacity-40' : 'opacity-0 group-hover/title:opacity-100'}`}>
-                            <PlusCircle 
-                              size={12} 
-                              className="text-blue-500 dark:text-blue-400 cursor-pointer" 
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
-                                if (!expandedTasks.has(task.id)) toggleExpand(task.id);
-                                setInlineAdding({ parentId: task.id, type: 'task' }); 
-                              }} 
-                            />
-                            {!isMobile && <Trash2 size={12} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400" onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }} />}
-                          </div>
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSaveTitle(task.id);
+                            if (e.key === 'Escape') setEditingTitleId(null);
+                          }}
+                          className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 font-medium bg-blue-50 dark:bg-slate-800 border-b border-blue-400 dark:border-blue-600 outline-none w-full px-1"
+                        />
+                        <button onClick={() => handleSaveTitle(task.id)} className="save-btn p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 rounded transition-colors"><CheckCircle2 size={12} /></button>
+                      </div>
+                    ) : (
+                      <div 
+                        className="flex items-center gap-2 flex-grow min-w-0 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 rounded px-1 transition-colors group/title"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingTitleId(task.id);
+                          setEditingTitleValue(task.title);
+                        }}
+                      >
+                        <span className={`${isMobile ? 'text-[11px]' : 'text-sm'} truncate ${isTopLevel ? 'font-black text-slate-900 dark:text-white' : 'font-bold text-slate-700 dark:text-slate-300'}`}>
+                          {task.title || 'Tarefa sem nome'}
+                        </span>
+                        <div className={`flex items-center gap-1 transition-opacity ${isMobile ? 'opacity-40' : 'opacity-0 group-hover/title:opacity-100'}`}>
+                          <button 
+                            className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded"
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              if (!expandedTasks.has(task.id)) toggleExpand(task.id);
+                              setInlineAdding({ parentId: task.id, type: 'task' }); 
+                            }}
+                          >
+                            <PlusCircle size={14} className="text-blue-600 dark:text-blue-400" />
+                          </button>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
+                  </div>
                     
                     {!isMobile && (
                       <>
