@@ -344,8 +344,8 @@ export const fetchAppState = async (): Promise<AppState> => {
     // Seed default gantt tasks if empty
     if (ganttTasks.length === 0) {
         console.log("SEEDING DEFAULT GANTT TASKS...");
-        const parentId = 'task-root-1';
-        const subId = 'task-sub-1';
+        const parentId = crypto.randomUUID();
+        const subId = crypto.randomUUID();
         
         const demoTasks: any[] = [
           {
@@ -377,7 +377,11 @@ export const fetchAppState = async (): Promise<AppState> => {
           }
         ];
         
-        await supabase.from('gantt_tasks').insert(demoTasks);
+        try {
+          await supabase.from('gantt_tasks').insert(demoTasks);
+        } catch (e) {
+          console.error("Gantt seeding error:", e);
+        }
         
         ganttTasks.push(...demoTasks.map(demoTask => ({
             id: demoTask.id,

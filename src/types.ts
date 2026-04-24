@@ -71,7 +71,7 @@ export enum CalculationType {
   ADD_EXPENSE = 'ADICIONAR GASTO'
 }
 
-export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'COORDENADOR' | 'PROCESSOS';
+export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'COORDENADOR' | 'PROCESSOS' | 'QUALIDADE';
 
 export interface User {
   id: string;

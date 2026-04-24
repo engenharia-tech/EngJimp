@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle } from 'lucide-react';
+import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts } from '../services/storageService';
 import { getWebhookUrl, saveWebhookUrl } from '../services/webhookService';
@@ -19,6 +19,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [showFixModal, setShowFixModal] = useState(false);
   
   // Webhook State
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -601,6 +602,156 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
                     >
                         {isRecalculating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Activity className="w-4 h-4 mr-2" />}
                         {t('recalculateAndSyncButton' as any) || 'Recalcular e Sincronizar Custos'}
+                    </button>
+                </div>
+
+                {/* COMPREHENSIVE SQL FIX - CRITICAL */}
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-900/30 md:col-span-2">
+                    <h4 className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center uppercase tracking-tighter">
+                        <Shield className="w-5 h-5 mr-2" />
+                        Deseja corrigir erros de Banco de Dados? (Correção TOTAL)
+                    </h4>
+                    <p className="text-sm text-red-600 dark:text-red-500/80 mb-4 font-medium">
+                        Se você está vendo erros como "innovations_type_check", "users_role_check" ou se não consegue adicionar tarefas no Diagrama de Gantt, use este botão para obter o script de correção abrangente.
+                    </p>
+                    <button 
+                        onClick={() => setShowFixModal(true)}
+                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-lg shadow-red-200 dark:shadow-none transition-all flex items-center gap-2"
+                    >
+                        <Database className="w-5 h-5" />
+                        OBTER SCRIPT DE CORREÇÃO TOTAL
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* SQL FIX MODAL */}
+      {showFixModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm shadow-2xl">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh]">
+                <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-red-600 text-white shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <Database className="w-6 h-6" />
+                        <h3 className="text-lg font-bold uppercase tracking-tight">Script de Correção Total</h3>
+                    </div>
+                    <button onClick={() => setShowFixModal(false)} className="p-1.5 hover:bg-white/20 rounded-full transition-colors">
+                        <X size={20} />
+                    </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto space-y-4">
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-400 p-4 text-sm text-amber-800 dark:text-amber-300 rounded-r-lg">
+                        <p className="font-bold mb-1 uppercase tracking-wide">Como aplicar:</p>
+                        <ol className="list-decimal pl-5 space-y-1">
+                            <li>Copie o código SQL abaixo.</li>
+                            <li>Vá para o <strong>SQL Editor</strong> de seu painel Supabase.</li>
+                            <li>Cole o código e clique em <strong>RUN</strong>.</li>
+                        </ol>
+                    </div>
+                    
+                    <div className="relative group">
+                        <button 
+                            onClick={() => {
+                                const sqlCode = document.getElementById('sql-code-display')?.innerText;
+                                if (sqlCode) {
+                                  navigator.clipboard.writeText(sqlCode);
+                                  addToast("Script copiado com sucesso!", "success");
+                                }
+                            }}
+                            className="absolute right-4 top-4 p-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 text-[10px] font-bold z-10"
+                        >
+                            <Copy size={14} /> COPIAR SCRIPT
+                        </button>
+                        <div 
+                            id="sql-code-display"
+                            className="bg-slate-950 text-emerald-400 p-6 rounded-xl font-mono text-[11px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 h-96 select-all shadow-inner custom-scrollbar"
+                        >
+{`-- CORREÇÃO TOTAL DO BANCO DE DADOS (VERSÃO COMPLETA 2026)
+-- Execute este script no SQL Editor do seu Supabase (https://supabase.com/dashboard/project/_/sql)
+
+-- 1. DROPS PREVENTIVOS
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_type_check;
+
+-- 2. Atualizar Cargos Permitidos
+ALTER TABLE public.users ADD CONSTRAINT users_role_check 
+CHECK (role IN ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR'));
+
+-- 3. Garantir que as colunas necessárias existem na tabela de projetos
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS client_name text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS project_code text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS flooring_type text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS implement_type text;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS estimated_seconds integer;
+
+-- 4. Tabela de Inovações (Garantir colunas novas)
+ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS productivity_before numeric DEFAULT 0;
+ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS productivity_after numeric DEFAULT 0;
+ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS unit_product_cost numeric DEFAULT 0;
+ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS unit_product_value numeric DEFAULT 0;
+
+-- 5. NORMALIZAÇÃO DE DADOS AGRESSIVA (Limpa antes de travar a porta)
+UPDATE public.innovations SET type = 'NOVO PROJETO' WHERE UPPER(type) IN ('NEW PROJECT', 'NEW_PROJECT', 'NOVO_PROJETO');
+UPDATE public.innovations SET type = 'MELHORIA DE PRODUTO' WHERE UPPER(type) IN ('PRODUCT IMPROVEMENT', 'PRODUCT_IMPROVEMENT', 'MELHORIA_DE_PRODUTO');
+UPDATE public.innovations SET type = 'OTIMIZAÇÃO DE PROCESSOS' WHERE UPPER(type) IN ('PROCESS OPTIMIZATION', 'PROCESS_OPTIMIZATION', 'OTIMIZACAO_DE_PROCESSOS');
+
+-- Qualquer tipo remanescente que não bata vira 'MELHORIA DE PRODUTO' para evitar erro
+UPDATE public.innovations 
+SET type = 'MELHORIA DE PRODUTO' 
+WHERE type NOT IN ('NOVO PROJETO', 'MELHORIA DE PRODUTO', 'OTIMIZAÇÃO DE PROCESSOS', 'NEW_PROJECT', 'PRODUCT_IMPROVEMENT', 'PROCESS_OPTIMIZATION');
+
+-- 6. REATIVAR CONSTRAINT DE INOVAÇÕES
+ALTER TABLE public.innovations ADD CONSTRAINT innovations_type_check 
+CHECK (type IN ('NOVO PROJETO', 'MELHORIA DE PRODUTO', 'OTIMIZAÇÃO DE PROCESSOS', 'NEW_PROJECT', 'PRODUCT_IMPROVEMENT', 'PROCESS_OPTIMIZATION'));
+
+-- 7. Tabela de Gantt (Project Nexus)
+CREATE TABLE IF NOT EXISTS public.gantt_tasks (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title text NOT NULL,
+  description text,
+  parent_id uuid REFERENCES public.gantt_tasks(id) ON DELETE CASCADE,
+  start_date text NOT NULL,
+  end_date text NOT NULL,
+  color text,
+  is_milestone boolean DEFAULT false,
+  assigned_to jsonb DEFAULT '[]'::jsonb,
+  progress integer DEFAULT 0,
+  attachments jsonb DEFAULT '[]'::jsonb,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  workload jsonb DEFAULT '{}'::jsonb,
+  reports text,
+  "order" integer DEFAULT 0,
+  status text DEFAULT 'todo',
+  priority text DEFAULT 'medium',
+  category text,
+  dependencies jsonb DEFAULT '[]'::jsonb,
+  tenant_id uuid
+);
+
+-- Habilitar RLS para Gantt
+ALTER TABLE public.gantt_tasks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive Gantt Select" ON public.gantt_tasks;
+CREATE POLICY "Permissive Gantt Select" ON public.gantt_tasks FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Permissive Gantt All" ON public.gantt_tasks;
+CREATE POLICY "Permissive Gantt All" ON public.gantt_tasks FOR ALL USING (true);
+
+-- 8. Recarregar Schema
+NOTIFY pgrst, 'reload config';`}
+                        </div>
+                    </div>
+                    <p className="text-[10px] text-gray-500 italic mt-2">
+                        * Este script não apaga dados existentes, apenas adiciona permissões e colunas faltantes.
+                    </p>
+                </div>
+                
+                <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 flex justify-end">
+                    <button 
+                        onClick={() => setShowFixModal(false)}
+                        className="px-6 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-lg text-sm font-bold text-slate-700 dark:text-slate-200 transition-colors"
+                    >
+                        FECHAR
                     </button>
                 </div>
             </div>
