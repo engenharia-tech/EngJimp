@@ -347,13 +347,21 @@ export const fetchAppState = async (): Promise<AppState> => {
         const parentId = crypto.randomUUID();
         const subId = crypto.randomUUID();
         
+        const today = new Date();
+        const inOneWeek = new Date(today);
+        inOneWeek.setDate(today.getDate() + 7);
+        const inTwoWeeks = new Date(today);
+        inTwoWeeks.setDate(today.getDate() + 14);
+
+        const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
         const demoTasks: any[] = [
           {
             id: parentId,
-            title: 'Adição de material',
+            title: 'Addition of material',
             description: 'Fase inicial de aquisição e preparação de materiais.',
-            start_date: new Date().toISOString().split('T')[0],
-            end_date: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+            start_date: formatDate(today),
+            end_date: formatDate(inTwoWeeks),
             color: 'bg-indigo-600',
             is_milestone: false,
             assigned_to: users.length > 0 ? [users[0].id] : [],
@@ -364,10 +372,10 @@ export const fetchAppState = async (): Promise<AppState> => {
           {
             id: subId,
             parent_id: parentId,
-            title: 'Para-choque',
+            title: 'Bumper',
             description: 'Montagem e verificação do para-choque.',
-            start_date: new Date().toISOString().split('T')[0],
-            end_date: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+            start_date: formatDate(today),
+            end_date: formatDate(inOneWeek),
             color: 'bg-blue-500',
             is_milestone: false,
             assigned_to: users.length > 0 ? [users[0].id] : [],
