@@ -48,7 +48,9 @@ import {
   startOfMonth,
   isWeekend,
   addWeeks,
-  subWeeks
+  subWeeks,
+  parseISO,
+  isValid
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { AppState, GanttTask, User as AppUser, GanttTaskStatus, TaskPriority } from '../../types';
@@ -230,6 +232,12 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     };
   }, [interactingTask, zoomLevel, state, onUpdateState]);
 
+  const safeParseDate = (dateStr: string | undefined): Date => {
+    if (!dateStr) return new Date();
+    const d = parseISO(dateStr);
+    return isValid(d) ? d : new Date();
+  };
+
   const timelineInterval = useMemo(() => {
     const start = startOfMonth(subMonths(currentDate, 1));
     const end = addMonths(start, 6);
@@ -249,13 +257,13 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
         .filter(t => {
           // A task is a root task if its parentId is null, empty, or points to a non-existent task
           if (parentId === null) {
-            const isAtRoot = !t.parentId || t.parentId === "" || t.parentId === "null";
+            const isAtRoot = !t.parentId || t.parentId === "" || t.parentId === "null" || t.parentId === "undefined";
             if (isAtRoot) return true;
             // Also include orphaned tasks at root
             const parentExists = state.ganttTasks.some(p => p.id === t.parentId);
             return !parentExists;
           }
-          return t.parentId === parentId;
+          return t.parentId === parentId || (String(t.parentId) === String(parentId));
         })
         .sort((a, b) => (a.order || 0) - (b.order || 0))
         .map(t => ({
@@ -264,7 +272,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
         }));
     };
     const tree = buildTree(null);
-    console.log("BUILT GANTT TREE WITH", tree.length, "ROOT NODES");
+    console.log("BUILT GANTT TREE WITH", tree.length, "ROOT NODES", tree);
     return tree;
   }, [state.ganttTasks]);
 
@@ -543,49 +551,72 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                 </div>
 
                 {/* Right Side: Timeline Row */}
-                <div className="flex-grow relative overflow-hidden bg-white/50 dark:bg-slate-900/50 group-hover:bg-slate-100/30 dark:group-hover:bg-slate-800/20 transition-colors">
+                <div 
+                  className="relative flex-shrink-0 bg-white/50 dark:bg-slate-900/50 group-hover:bg-slate-100/30 dark:group-hover:bg-slate-800/20 transition-colors"
+                  style={{ width: `${days.length * zoomLevel}px` }}
+                >
                    {/* Summary Bar for parents */}
                   {hasChildren ? (
                     <div 
                       className="absolute h-1.5 top-4 z-10 pointer-events-none"
                       style={{
-                        left: `${differenceInDays(new Date(task.startDate), timelineInterval.start) * zoomLevel}px`,
-                        width: `${(differenceInDays(new Date(task.endDate), new Date(task.startDate)) + 1) * zoomLevel}px`
+                        left: `${differenceInDays(safeParseDate(task.startDate), timelineInterval.start) * zoomLevel}px`,
+                        width: `${Math.max(4, (differenceInDays(safeParseDate(task.endDate), safeParseDate(task.startDate)) + 1) * zoomLevel)}px`
                       }}
                     >
-                      <div className="absolute inset-0 bg-slate-800 dark:bg-slate-300 rounded-full" />
-                      <div className="absolute left-0 top-0 bottom-[-4px] w-1.5 bg-slate-800 dark:bg-slate-300 rounded-b-sm" />
-                      <div className="absolute right-0 top-0 bottom-[-4px] w-1.5 bg-slate-800 dark:bg-slate-300 rounded-b-sm" />
+                      <div className="absolute inset-0 bg-slate-900 dark:bg-slate-100 rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.2)]" />
+                      <div className="absolute left-0 top-0 bottom-[-4px] w-1.5 bg-slate-900 dark:bg-slate-100 rounded-b-sm" />
+                      <div className="absolute right-0 top-0 bottom-[-4px] w-1.5 bg-slate-900 dark:bg-slate-100 rounded-b-sm" />
                       {/* Name label for summary bars */}
-                      <span className="absolute left-0 bottom-full mb-1 text-[10px] font-bold text-slate-800 dark:text-slate-300 whitespace-nowrap">
+                      <span className="absolute left-0 bottom-full mb-1 text-[10px] font-black text-slate-900 dark:text-white whitespace-nowrap bg-white/80 dark:bg-slate-900/80 px-1 rounded">
                         {task.title}
                       </span>
                     </div>
                   ) : !task.isMilestone ? (
                     /* Regular Task Bar */
                     <div 
-                      className={`absolute h-6 top-2 rounded-sm flex items-center px-2 cursor-pointer transition-all ${task.color} shadow-sm group/bar z-10`}
+                      className={`absolute h-7 top-1.5 rounded-md flex items-center px-2 cursor-pointer transition-all ${task.color} shadow-[0_2px_4px_rgba(0,0,0,0.15)] group/bar z-10 border border-white/30`}
                       style={{
-                        left: `${differenceInDays(new Date(task.startDate), timelineInterval.start) * zoomLevel}px`,
-                        width: `${(differenceInDays(new Date(task.endDate), new Date(task.startDate)) + 1) * zoomLevel}px`
+                        left: `${differenceInDays(safeParseDate(task.startDate), timelineInterval.start) * zoomLevel}px`,
+                        width: `${Math.max(20, (differenceInDays(safeParseDate(task.endDate), safeParseDate(task.startDate)) + 1) * zoomLevel)}px`
                       }}
                       onMouseDown={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const x = e.clientX - rect.left;
-                        if (rect.width - x < 8) setInteractingTask({ id: task.id, type: 'resize', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate });
+                        if (rect.width - x < 12) setInteractingTask({ id: task.id, type: 'resize', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate });
                         else setInteractingTask({ id: task.id, type: 'drag', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate });
                         e.stopPropagation();
                       }}
                     >
-                      <span className="text-[10px] text-white font-bold truncate select-none shadow-black/20 text-shadow-sm">{task.title}</span>
-                      <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize" />
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] text-white font-black truncate select-none leading-none mb-0.5 tracking-tight shadow-slate-900/10 text-shadow-sm">{task.title}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[8px] text-white/90 font-bold leading-none tracking-tighter">
+                            {format(safeParseDate(task.startDate), 'dd/MM')}
+                          </span>
+                          <span className="text-[8px] text-white/50 leading-none">-</span>
+                          <span className="text-[8px] text-white/90 font-bold leading-none tracking-tighter">
+                            {format(safeParseDate(task.endDate), 'dd/MM')}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 rounded-r flex items-center justify-center opacity-0 group-hover/bar:opacity-100 transition-opacity">
+                        <div className="w-0.5 h-3 bg-white/50 rounded-full" />
+                      </div>
                     </div>
                   ) : (
                     /* Milestone */
                     <div 
-                      className="absolute w-3 h-3 top-3.5 bg-amber-500 rotate-45 border border-white dark:border-slate-800 shadow-sm cursor-pointer z-10"
-                      style={{ left: `${differenceInDays(new Date(task.startDate), timelineInterval.start) * zoomLevel}px`, transform: 'translateX(-50%) rotate(45deg)' }}
-                    />
+                      className="absolute w-5 h-5 top-2.5 bg-amber-500 rotate-45 border-2 border-white dark:border-slate-800 shadow-lg cursor-pointer z-10 hover:scale-125 transition-transform"
+                      style={{ left: `${differenceInDays(safeParseDate(task.startDate), timelineInterval.start) * zoomLevel}px`, transform: 'translateX(-50%) rotate(45deg)' }}
+                    >
+                      <div className="absolute inset-0 flex items-center justify-center -rotate-45">
+                        <Milestone size={10} className="text-white" />
+                      </div>
+                      <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 -rotate-45 text-[10px] font-black text-amber-600 dark:text-amber-400 whitespace-nowrap bg-white/80 dark:bg-slate-900/80 px-1 rounded">
+                        {task.title}
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
@@ -636,7 +667,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                             </button>
                          </div>
                        </div>
-                       <div className="flex-grow bg-white/30 dark:bg-slate-900/30 transition-colors" />
+                       <div className="flex-shrink-0 bg-white/30 dark:bg-slate-900/30 transition-colors" style={{ width: `${days.length * zoomLevel}px` }} />
                     </div>
                   )}
                 </>
@@ -890,9 +921,9 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                      if (!pred || taskVerticalIndexMap[pred.id] === undefined) return null;
                      const predIdx = taskVerticalIndexMap[pred.id];
                      const taskIdx = taskVerticalIndexMap[t.id];
-                     const x1 = (differenceInDays(new Date(pred.endDate), timelineInterval.start) + 1) * zoomLevel;
+                     const x1 = (differenceInDays(safeParseDate(pred.endDate), timelineInterval.start) + 1) * zoomLevel;
                      const y1 = predIdx * 40 + 20;
-                     const x2 = differenceInDays(new Date(t.startDate), timelineInterval.start) * zoomLevel;
+                     const x2 = differenceInDays(safeParseDate(t.startDate), timelineInterval.start) * zoomLevel;
                      const y2 = taskIdx * 40 + 20;
                      return (
                        <path 
@@ -931,13 +962,17 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                         </div>
                       </div>
                   </div>
-                  <div className="flex-grow bg-white/50 dark:bg-slate-900/30 transition-colors" />
+                  <div className="flex-shrink-0 bg-white/50 dark:bg-slate-900/30 transition-colors" style={{ width: `${days.length * zoomLevel}px` }} />
                 </div>
               )}
               
               {/* Bottom "Add" logic matches Image 2 */}
-              <div className="flex items-center h-10 px-8 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-[#0070e0] dark:text-blue-400 font-medium transition-colors group">
-                 <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-stretch h-10 border-b border-slate-100 dark:border-slate-800 transition-colors group">
+                <div 
+                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-white dark:bg-slate-900 transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 opacity-0 border-none' : 'opacity-100'}`} 
+                  style={{ paddingLeft: `12px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
+                >
+                  <div className="flex items-center gap-4 text-[11px] font-bold text-[#0070e0] dark:text-blue-400 opacity-60 hover:opacity-100 transition-opacity">
                     <button onClick={() => setInlineAdding({ parentId: null, type: 'task' })} className="flex items-center gap-1.5 hover:underline">
                       <Plus size={16} /> Adicionar uma tarefa
                     </button>
@@ -945,7 +980,9 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                     <button onClick={() => setInlineAdding({ parentId: null, type: 'milestone' })} className="hover:underline">
                       Adicionar um marco
                     </button>
-                 </div>
+                  </div>
+                </div>
+                <div className="flex-shrink-0 bg-white/50 dark:bg-slate-900/30 transition-colors" style={{ width: `${days.length * zoomLevel}px` }} />
               </div>
             </div>
           </div>
