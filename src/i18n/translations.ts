@@ -871,11 +871,7 @@ export const translations = {
     "topic": "Tópico",
     "subtopic": "Subtópico",
     "depreciationPerYear": "DEPRECIAÇÃO: {value}/ANO",
-    "depreciationYears": "ANOS DE DEPRECIAÇÃO",
-    "machineName": "NOME DA MÁQUINA",
-    "machineCost": "CUSTO MÁQUINA",
-    "machineSection": "MÁQUINA E DEPRECIAÇÃO",
-    "machineEquipment": "MÁQUINA / EQUIPAMENTO"
+    "depreciationYears": "ANOS DE DEPRECIAÇÃO"
   },
   "es-ES": {
     "monthlyViewNotice": "LA VISTA PREDETERMINADA ES PARA EL MES ACTUAL. PARA VER TODO EL HISTORIAL, BORRE O CAMBIE LOS FILTROS DE FECHA.",

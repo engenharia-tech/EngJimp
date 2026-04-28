@@ -928,9 +928,40 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       console.log("Triggering notifications...");
       sendTeamsNotification(finishedProject);
       
-      // Only send email if it hasn't been sent for this project in this session
-      if (!sentEmailProjectIds.includes(finishedProject.id)) {
-          console.log("Sending email notification for project:", finishedProject.ns);
+      // Determine if we should send email (only when ALL designers for this NS have finished)
+      let shouldSendEmail = false;
+      const projectsForThisNs = [
+        ...allProjects.filter(p => p.ns === finishedProject.ns && p.id !== finishedProject.id),
+        finishedProject
+      ];
+      
+      const noOthersInProgress = !projectsForThisNs.some(p => p.status === 'IN_PROGRESS');
+
+      // If linked request exists (already found at line 884 as linkedRequest), it MUST be fully completed (all parts)
+      if (linkedRequest) {
+          const isBase = linkedRequest.baseProjectId === finishedProject.id;
+          const otherPartNeeded = isBase ? linkedRequest.needsBox : linkedRequest.needsBase;
+          const otherPartId = isBase ? linkedRequest.boxProjectId : linkedRequest.baseProjectId;
+          
+          let otherPartFinished = !otherPartNeeded;
+          if (otherPartNeeded && otherPartId) {
+              const otherP = allProjects.find(p => p.id === otherPartId);
+              if (otherP && otherP.status === 'COMPLETED') otherPartFinished = true;
+          }
+          
+          if (otherPartFinished && noOthersInProgress) {
+              shouldSendEmail = true;
+          }
+      } else {
+          // No linked request, just check if all started sessions for this NS are done
+          if (noOthersInProgress) {
+              shouldSendEmail = true;
+          }
+      }
+      
+      // Only send email if it's entirely done and hasn't been sent for this project triggering it
+      if (shouldSendEmail && !sentEmailProjectIds.includes(finishedProject.id)) {
+          console.log("Entire NS finished. Sending final email notification for project:", finishedProject.ns);
           sendEmailNotification(finishedProject).then(() => {
               console.log("Email notification process finished.");
               setSentEmailProjectIds(prev => [...prev, finishedProject.id]);
@@ -938,7 +969,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
               console.error("Delayed email error:", err);
           });
       } else {
-          console.log("Email already sent for this project ID in this session.");
+          console.log("NS not yet fully finished or email already sent. Skipping email trigger.");
       }
       
       // 3. Trigger Excel Integration
@@ -1081,6 +1112,23 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       return;
     }
 
+    // Aggregate ALL sessions for this NS to show total time/cost
+    const sessions = [
+      ...allProjects.filter(p => p.ns === project.ns && p.id !== project.id),
+      project
+    ];
+
+    const totalActiveSeconds = sessions.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0);
+    const totalEstimatedSeconds = sessions.reduce((acc, p) => acc + (p.estimatedSeconds || 0), 0);
+    const totalCostValue = sessions.reduce((acc, p) => acc + (p.totalCost || 0), 0);
+    
+    const designers = sessions.map(p => {
+        const u = users.find(usr => usr.id === p.userId);
+        return u ? `${u.name} ${u.surname || ''}`.trim() : t('unidentified');
+    });
+    const designersStr = [...new Set(designers)].join(', ');
+    const allNotes = sessions.map(p => p.notes).filter(v => v && v.trim()).join('\n---\n');
+
     const now = new Date();
     const hour = now.getHours();
     let greeting = t('goodMorning');
@@ -1088,28 +1136,23 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     else if (hour >= 18 || hour < 5) greeting = t('goodNight');
 
     const lang = settings.language || 'pt-BR';
-    const hours = (project.totalActiveSeconds / 3600).toFixed(2);
-    const plannedHours = ((project.estimatedSeconds || 0) / 3600).toFixed(2);
-    const cost = (project.totalCost || 0).toLocaleString(lang, { style: 'currency', currency: 'BRL' });
+    const hours = (totalActiveSeconds / 3600).toFixed(2);
+    const plannedHours = (totalEstimatedSeconds / 3600).toFixed(2);
+    const cost = totalCostValue.toLocaleString(lang, { style: 'currency', currency: 'BRL' });
     
-    // Get interruptions for this project
-    const projectInterruptions = interruptions.filter(i => {
-      if (i.projectId) return i.projectId === project.id;
-      return i.projectNs === project.ns;
-    });
+    // Get interruptions for this project NS (aggregated)
+    const projectInterruptions = interruptions.filter(i => i.projectNs === project.ns && i.status === InterruptionStatus.RESOLVED);
     const interruptionCount = projectInterruptions.length;
     
     // Calculate interruption time and cost breakdown
     const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
     const hourlyRate = settings.hourlyCost || 0;
-    const interruptionCost = (interruptionSeconds / 3600) * hourlyRate;
-    const productiveCost = Math.max(0, (project.totalCost || 0) - interruptionCost);
+    const interruptionCostValue = (interruptionSeconds / 3600) * hourlyRate;
+    const productiveCostValue = Math.max(0, totalCostValue - interruptionCostValue);
 
     const interruptionReasons = projectInterruptions.map(i => 
       `- ${i.problemType}: ${i.description || t('noDescription')} (${formatTime(i.totalTimeSeconds)})`
     ).join('\n');
-
-    const designerName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : t('unidentified');
 
     const subject = t('projectConclusionSubject', { ns: project.ns, client: project.clientName || t('noClient') });
     const body = `${greeting},
@@ -1119,14 +1162,14 @@ ${t('informConclusion')}:
 ${t('ns')}: ${project.ns}
 ${t('client')}: ${project.clientName || t('notInformed')}
 ${t('projectCode')}: ${project.projectCode || t('notInformed')}
-${t('designer')}: ${designerName}
+${t('designer')}: ${designersStr}
 
 ${t('plannedTime')}: ${plannedHours} ${t('hours')}
 ${t('executedTime')}: ${hours} ${t('hours')}
 ${t('interruptionTime')}: ${formatTime(interruptionSeconds)}
 
-${t('productiveCost')}: ${productiveCost.toLocaleString(lang, { style: 'currency', currency: 'BRL' })}
-${t('interruptionCost')}: ${interruptionCost.toLocaleString(lang, { style: 'currency', currency: 'BRL' })}
+${t('productiveCost')}: ${productiveCostValue.toLocaleString(lang, { style: 'currency', currency: 'BRL' })}
+${t('interruptionCost')}: ${interruptionCostValue.toLocaleString(lang, { style: 'currency', currency: 'BRL' })}
 ${t('totalProjectCost')}: ${cost}
 
 ${t('interruptionCount')}: ${interruptionCount}
@@ -1134,7 +1177,8 @@ ${t('interruptionCount')}: ${interruptionCount}
 ${t('interruptionDetail')}:
 ${interruptionReasons || t('noInterruptions')}
 
-${t('notes')}: ${project.notes || t('none')}
+${t('notes')}: 
+${allNotes || t('none')}
 
 ${t('sincerely')}.
 JIMPNEXUS
