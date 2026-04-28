@@ -125,7 +125,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   useEffect(() => {
     if (isEditingActivity) {
       setEditStartTime(format(parseISO(isEditingActivity.startTime), 'HH:mm'));
-      setEditEndTime(format(parseISO(isEditingActivity.endTime), 'HH:mm'));
+      setEditEndTime(isEditingActivity.endTime ? format(parseISO(isEditingActivity.endTime), 'HH:mm') : format(new Date(), 'HH:mm'));
     } else if (isEditingGap) {
       setEditStartTime(format(parseISO(isEditingGap.start), 'HH:mm'));
       setEditEndTime(format(parseISO(isEditingGap.end), 'HH:mm'));
@@ -645,17 +645,17 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6'];
 
-  const updateTimeInISO = (isoString: string, timeStr: string) => {
+  const updateTimeInISO = (isoString: string | undefined, timeStr: string) => {
     try {
-      const date = parseISO(isoString);
+      const date = isoString ? parseISO(isoString) : new Date();
       const [hours, minutes] = timeStr.split(':').map(Number);
-      if (isNaN(hours) || isNaN(minutes)) return isoString;
+      if (isNaN(hours) || isNaN(minutes)) return isoString || new Date().toISOString();
       
       const newDate = new Date(date);
       newDate.setHours(hours, minutes, 0, 0);
       return newDate.toISOString();
     } catch (e) {
-      return isoString;
+      return isoString || new Date().toISOString();
     }
   };
 
