@@ -202,6 +202,7 @@ export interface OperationalActivity {
   notes?: string;
   projectId?: string;
   isFlagged?: boolean;
+  isOvertime?: boolean;
 }
 
 export interface InterruptionRecord {

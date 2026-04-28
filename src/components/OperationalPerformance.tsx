@@ -91,6 +91,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'month' | 'year'>('day');
   const [selectedUserId, setSelectedUserId] = useState<string>(currentUser.id);
+  const [activeTab, setActiveTab] = useState<'tracker' | 'dashboard' | 'engineering' | 'management'>('tracker');
+
+  const canEditOthers = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role);
+  const canEditCurrent = selectedUserId === currentUser.id || (canEditOthers && selectedUserId !== 'ALL');
 
   // When tab is engineering, we might want to default to ALL if allowed
   useEffect(() => {
@@ -101,7 +105,6 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const [isAddingType, setIsAddingType] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
-  const [activeTab, setActiveTab] = useState<'tracker' | 'dashboard' | 'engineering' | 'management'>('tracker');
   const [isEditingGap, setIsEditingGap] = useState<{ start: string; end: string } | null>(null);
   const [isEditingActivity, setIsEditingActivity] = useState<OperationalActivity | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -111,9 +114,6 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
-
-  const canEditOthers = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role);
-  const canEditCurrent = selectedUserId === currentUser.id || (canEditOthers && selectedUserId !== 'ALL');
 
   // Sync edit times when modal opens
   useEffect(() => {
@@ -287,6 +287,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
     const items: any[] = [];
 
+    const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+
     const processItem = (id: string, type: 'activity' | 'project' | 'pause' | 'interruption', name: string, startTime: string, endTime: string | undefined, color: string) => {
       const start = parseISO(startTime);
       const end = endTime ? parseISO(endTime) : new Date();
@@ -310,9 +312,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
       // Further clip to work hours
       const workStart = new Date(selectedDate);
-      workStart.setHours(wsH, wsM, 0, 0);
+      workStart.setHours(isWeekend ? 0 : wsH, isWeekend ? 0 : wsM, 0, 0);
       const workEnd = new Date(selectedDate);
-      workEnd.setHours(weH, weM, 0, 0);
+      workEnd.setHours(isWeekend ? 23 : weH, isWeekend ? 59 : weM, 59, 999);
 
       const clippedStart = overlapStart < workStart ? workStart : overlapStart;
       const clippedEnd = overlapEnd > workEnd ? workEnd : overlapEnd;
@@ -517,18 +519,22 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     const [wsH, wsM] = (settings.workdayStart || "07:30").split(':').map(Number);
     const [weH, weM] = (settings.workdayEnd || "17:30").split(':').map(Number);
 
+    const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+
     const workStart = new Date(selectedDate);
-    workStart.setHours(wsH, wsM, 0, 0);
+    workStart.setHours(isWeekend ? 0 : wsH, isWeekend ? 0 : wsM, 0, 0);
     
     const workEnd = new Date(selectedDate);
-    workEnd.setHours(weH, weM, 0, 0);
+    workEnd.setHours(isWeekend ? 23 : weH, isWeekend ? 59 : weM, 59, 999);
 
     const foundGaps: { start: Date; end: Date }[] = [];
     let lastEnd = workStart;
 
     const now = new Date();
     const isToday = selectedDate.toDateString() === now.toDateString();
-    // Cap gaps at current time if it's today and workday hasn't ended
+    
+    // If it's a weekend, we still use work hours for the timeline visual window,
+    // but the gap meaning is different (Day off)
     const dayLimit = isToday ? (now < workEnd ? now : workEnd) : workEnd;
 
     timelineItems.forEach(item => {
@@ -739,7 +745,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           endTime: newEndTime,
           durationSeconds,
           notes: gapNotes,
-          isFlagged: gapIsFlagged
+          isFlagged: gapIsFlagged,
+          isOvertime: parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6
         });
         setIsEditingActivity(null);
         setSelectedActivityType('');
@@ -772,7 +779,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         endTime: newEndTime,
         durationSeconds,
         notes: gapNotes,
-        isFlagged: gapIsFlagged
+        isFlagged: gapIsFlagged,
+        isOvertime: parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6
       };
 
       try {
@@ -1106,8 +1114,25 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
                 {/* Combine and sort everything by start time */}
                 {[
-                  ...timelineItems.map(item => ({ ...item, isGap: false })),
-                  ...(viewMode === 'day' ? gaps.map(gap => ({ ...gap, isGap: true, name: t('blankGap'), type: 'gap' })) : [])
+                  ...timelineItems.map(item => {
+                    const isSatSun = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+                    let name = item.name;
+                    if (isSatSun && (item.type === 'pause' || item.type === 'gap')) {
+                      if (item.type === 'gap' || item.name.toUpperCase().includes('PAUSAR') || item.name.toUpperCase().includes('TROCA') || item.name.toUpperCase().includes('PAUSE')) {
+                        name = t('dayOff');
+                      }
+                    }
+                    return { ...item, name };
+                  }),
+                  ...(viewMode === 'day' ? gaps.map(gap => {
+                    const isSatSun = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+                    return { 
+                      ...gap, 
+                      isGap: true, 
+                      name: isSatSun ? t('dayOff') : t('blankGap'), 
+                      type: 'gap' 
+                    };
+                  }) : [])
                 ]
                 .sort((a, b) => a.start.getTime() - b.start.getTime())
                 .map((item, idx) => (
@@ -1133,33 +1158,51 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         ? canEditCurrent 
                           ? 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/20 border-dashed hover:border-amber-300 cursor-pointer'
                           : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 border-dashed opacity-60'
-                        : (item.type === 'pause' || item.type === 'interruption')
+                        : (item.type === 'pause' || item.type === 'interruption' || item.type === 'project')
                           ? canEditCurrent
-                            ? `hover:border-blue-300 cursor-pointer ${item.type === 'pause' ? 'bg-orange-50/50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-900/20' : 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20'}`
-                            : `${item.type === 'pause' ? 'bg-orange-50/50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-900/20' : 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20'}`
+                            ? `hover:border-blue-300 cursor-pointer ${item.type === 'pause' ? 'bg-orange-50/50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-900/20 shadow-sm' : item.type === 'project' ? 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/20 shadow-sm' : 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20 shadow-sm'}`
+                            : `${item.type === 'pause' ? 'bg-orange-50/50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-900/20' : item.type === 'project' ? 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/20' : 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20'}`
                         : canEditCurrent && item.type === 'activity'
-                          ? 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 hover:border-blue-300 cursor-pointer'
-                          : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800'
+                          ? 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 hover:border-blue-300 cursor-pointer shadow-sm'
+                          : 'bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-slate-800 shadow-sm'
                     }`}
                     onClick={() => {
                       if (!canEditCurrent) return;
                       
-                      if (item.isGap || item.type === 'interruption' || item.type === 'pause') {
+                      const startTimeStr = format(item.start, 'HH:mm');
+                      const endTimeStr = format(item.end, 'HH:mm');
+                      setEditStartTime(startTimeStr);
+                      setEditEndTime(endTimeStr);
+
+                      const originalId = item.id.replace(/-before$|-after$|-seg-\d+$/, '');
+
+                      if (item.type === 'activity') {
+                        const activity = activities.find(a => a.id === originalId);
+                        if (activity) {
+                          setIsEditingActivity(activity);
+                          setIsEditingGap(null);
+                          setSelectedActivityType(activity.activityTypeId);
+                          setGapNotes(activity.notes || '');
+                          setGapIsFlagged(activity.isFlagged || false);
+                        } else {
+                          // Fallback for safety
+                          setIsEditingGap({ 
+                            start: item.start.toISOString(), 
+                            end: item.end.toISOString() 
+                          });
+                          setIsEditingActivity(null);
+                          setSelectedActivityType('');
+                          setGapNotes(item.name || '');
+                        }
+                      } else if (item.isGap || item.type === 'interruption' || item.type === 'pause' || item.type === 'project') {
                         setIsEditingGap({ 
                           start: item.start.toISOString(), 
                           end: item.end.toISOString() 
                         });
+                        setIsEditingActivity(null);
                         setSelectedActivityType('');
-                        setGapNotes('');
+                        setGapNotes(item.name || '');
                         setGapIsFlagged(false);
-                      } else if (item.type === 'activity') {
-                        const activity = activities.find(a => a.id === item.id);
-                        if (activity) {
-                          setIsEditingActivity(activity);
-                          setSelectedActivityType(activity.activityTypeId);
-                          setGapNotes(activity.notes || '');
-                          setGapIsFlagged(activity.isFlagged || false);
-                        }
                       }
                     }}
                     >
@@ -1340,9 +1383,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
       {activeTab === 'engineering' && (
         <EngineeringDashboard 
-          projects={filteredProjects}
-          users={users.filter(u => u.role === 'PROJETISTA' || u.role === 'COORDENADOR')}
-          interruptions={filteredInterruptions}
+          projects={filteredProjects || []}
+          users={(users || []).filter(u => u?.role === 'PROJETISTA' || u?.role === 'COORDENADOR')}
+          interruptions={filteredInterruptions || []}
           theme={theme}
           t={t}
           viewMode={viewMode}
@@ -1697,13 +1740,13 @@ const EngineeringDashboard: React.FC<{
   selectedDate: Date;
 }> = ({ projects, users, interruptions, theme, t, viewMode, selectedDate }) => {
   const stats = useMemo(() => {
-    const drafters = users.filter(u => u.role === 'PROJETISTA');
+    const drafters = (users || []).filter(u => u?.role === 'PROJETISTA');
     const drafterCount = drafters.length || 1;
 
     // Filter projects for these users and period
-    const relevantProjects = projects; // Already filtered by parent
+    const relevantProjects = projects || [];
 
-    const totalActiveSeconds = relevantProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const totalActiveSeconds = relevantProjects.reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0);
     const totalHours = totalActiveSeconds / 3600;
     
     // Calculate per capita index
@@ -1712,33 +1755,33 @@ const EngineeringDashboard: React.FC<{
     // Average time by project type/part
     const typeGroups: Record<string, { total: number; count: number }> = {};
     relevantProjects.forEach(p => {
-      const type = p.implementType || p.type || t('notInformed');
+      const type = String(p?.implementType || p?.type || t('notInformed') || 'Não Informado');
       if (!typeGroups[type]) typeGroups[type] = { total: 0, count: 0 };
-      typeGroups[type].total += p.totalActiveSeconds;
+      typeGroups[type].total += (p?.totalActiveSeconds || 0);
       typeGroups[type].count += 1;
     });
 
     const averageByType = Object.entries(typeGroups).map(([name, g]) => ({
       name,
-      avgHours: Number((g.total / g.count / 3600).toFixed(2)),
+      avgHours: Number((g.total / (g.count || 1) / 3600).toFixed(2)),
       count: g.count
     })).sort((a, b) => b.avgHours - a.avgHours);
 
     // Overtime analysis
     const overtimeHours = relevantProjects
-      .filter(p => p.isOvertime)
-      .reduce((acc, p) => acc + p.totalActiveSeconds, 0) / 3600;
+      .filter(p => p?.isOvertime)
+      .reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0) / 3600;
 
     const normalHours = totalHours - overtimeHours;
 
     // Efficiency by user
-    const userStats = users.map(u => {
-      const uProjects = relevantProjects.filter(p => p.userId === u.id);
-      const uHours = uProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0) / 3600;
+    const userStats = (users || []).map(u => {
+      const uProjects = relevantProjects.filter(p => p?.userId === u?.id);
+      const uHours = uProjects.reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0) / 3600;
       const uCount = uProjects.length;
       return {
-        id: u.id,
-        name: u.name,
+        id: u?.id || crypto.randomUUID(),
+        name: u?.name || '---',
         hours: Number(uHours.toFixed(1)),
         count: uCount,
         efficiency: uCount > 0 ? Number((uHours / uCount).toFixed(2)) : 0
