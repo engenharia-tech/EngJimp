@@ -59,6 +59,7 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
   const [viewMode, setViewMode] = useState<'week' | 'month'>('month');
   const [zoomLevel, setZoomLevel] = useState(32); // px per day
   const [showOnlyMyTasks, setShowOnlyMyTasks] = useState(false);
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
 
   // Drag and drop state
   const [interactingTask, setInteractingTask] = useState<{
@@ -204,7 +205,7 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
   };
 
   const handleAddTask = (parentId: string | null = null) => {
-    const newTask: Partial<GanttTask> = {
+    const newTask: GanttTask = {
       id: crypto.randomUUID(),
       title: '',
       description: '',
@@ -220,9 +221,12 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
       updatedAt: new Date().toISOString(),
       workload: {},
       reports: '',
-      order: state.ganttTasks.length
+      order: state.ganttTasks.length,
+      status: 'todo' as any,
+      priority: 'medium' as any,
+      dependencies: []
     };
-    setEditingTask(newTask as GanttTask);
+    setEditingTask(newTask);
     setIsModalOpen(true);
   };
 
@@ -267,6 +271,7 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
       setEditingTask(null);
     } catch (error) {
       console.error(error);
+      alert("Erro ao salvar tarefa. Verifique o console para mais detalhes.");
     }
   };
 
@@ -327,14 +332,56 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
           {/* Right Area - Gantt Timeline Bar */}
           <div className="flex-grow relative h-10 overflow-hidden flex items-center min-w-max">
             {/* Grid Lines */}
-            <div className="absolute inset-0 flex">
-              {days.map((day, idx) => (
-                <div 
-                  key={idx} 
-                  className={`flex-shrink-0 border-r border-slate-100 h-full ${isWeekend(day) ? 'bg-slate-50/50' : ''} ${isSameDay(day, new Date()) ? 'bg-indigo-50/30' : ''}`}
-                  style={{ width: `${zoomLevel}px` }}
-                />
-              ))}
+            <div 
+              className="absolute inset-0 flex cursor-crosshair"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const daysOffset = Math.floor(x / zoomLevel);
+                const clickedDate = addDays(timelineInterval.start, daysOffset);
+                const startDateStr = format(clickedDate, 'yyyy-MM-dd');
+                
+                // Add a task starting on the clicked date
+                const newTask: GanttTask = {
+                  id: crypto.randomUUID(),
+                  title: '',
+                  description: '',
+                  parentId: task.id, // Adding as subtask of current row
+                  startDate: startDateStr,
+                  endDate: format(addDays(clickedDate, 1), 'yyyy-MM-dd'),
+                  color: COLORS[0],
+                  isMilestone: false,
+                  assignedTo: [],
+                  progress: 0,
+                  attachments: [],
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  workload: {},
+                  reports: '',
+                  order: state.ganttTasks.length,
+                  status: 'todo' as any,
+                  priority: 'medium' as any,
+                  dependencies: []
+                };
+                setEditingTask(newTask);
+                setIsModalOpen(true);
+                e.stopPropagation();
+              }}
+            >
+              {days.map((day, idx) => {
+                const isFirstDayOfMonth = day.getDate() === 1;
+                const isMonday = day.getDay() === 1;
+                return (
+                  <div 
+                    key={idx} 
+                    className={`flex-shrink-0 border-r h-full transition-colors
+                      ${isFirstDayOfMonth ? 'border-slate-400 z-10' : isMonday ? 'border-slate-300' : 'border-slate-100'}
+                      ${isWeekend(day) ? 'bg-slate-50/50' : idx % 2 === 0 ? 'bg-slate-50/20' : ''} 
+                      ${isSameDay(day, new Date()) ? 'bg-indigo-50/40' : ''}`}
+                    style={{ width: `${zoomLevel}px` }}
+                  />
+                );
+              })}
             </div>
 
             {/* Task Bar */}
@@ -484,89 +531,129 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
   return (
     <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50/50">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Lock className="text-indigo-600" size={24} />
-            {t('ganttNexus')}
-          </h2>
-          
-          <div className="flex items-center bg-slate-200 rounded-lg p-1">
+      {!isHeaderCollapsed && (
+        <motion.div 
+          initial={{ height: 'auto', opacity: 1 }}
+          animate={{ height: isHeaderCollapsed ? 0 : 'auto', opacity: isHeaderCollapsed ? 0 : 1 }}
+          className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50/50"
+        >
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Lock className="text-indigo-600" size={24} />
+              {t('ganttNexus')}
+            </h2>
+            
+            <div className="flex items-center bg-slate-200 rounded-lg p-1">
+              <button 
+                onClick={() => setViewMode('week')}
+                className={`px-3 py-1 text-sm rounded ${viewMode === 'week' ? 'bg-white shadow-sm font-medium' : 'text-slate-600 hover:bg-slate-300'}`}
+              >
+                {t('weekdays')}
+              </button>
+              <button 
+                onClick={() => setViewMode('month')}
+                className={`px-3 py-1 text-sm rounded ${viewMode === 'month' ? 'bg-white shadow-sm font-medium' : 'text-slate-600 hover:bg-slate-300'}`}
+              >
+                {t('thisMonth')}
+              </button>
+            </div>
+
             <button 
-              onClick={() => setViewMode('week')}
-              className={`px-3 py-1 text-sm rounded ${viewMode === 'week' ? 'bg-white shadow-sm font-medium' : 'text-slate-600 hover:bg-slate-300'}`}
+              onClick={() => setShowOnlyMyTasks(!showOnlyMyTasks)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border font-medium transition-all ${
+                showOnlyMyTasks 
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+              }`}
             >
-              {t('weekdays')}
-            </button>
-            <button 
-              onClick={() => setViewMode('month')}
-              className={`px-3 py-1 text-sm rounded ${viewMode === 'month' ? 'bg-white shadow-sm font-medium' : 'text-slate-600 hover:bg-slate-300'}`}
-            >
-              {t('thisMonth')}
+              <User size={14} />
+              {t('myTasks')}
             </button>
           </div>
 
-          <button 
-            onClick={() => setShowOnlyMyTasks(!showOnlyMyTasks)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border font-medium transition-all ${
-              showOnlyMyTasks 
-                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
-                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            <User size={14} />
-            {t('myTasks')}
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span className="text-slate-500 font-medium">{t('tasks')}:</span>
+                <span className="text-slate-900 font-bold">{state.ganttTasks.length}</span>
+              </div>
+              <div className="flex items-center gap-1.5 border-l border-slate-200 pl-4">
+                <Clock className="text-indigo-500" size={14} />
+                <span className="text-slate-500 font-medium">{t('investmentCost')}:</span>
+                <span className="text-slate-900 font-bold">
+                  {state.ganttTasks.reduce((acc, t) => {
+                    if (typeof t.workload === 'object' && t.workload !== null) {
+                      return acc + Object.values(t.workload).reduce((a: number, b) => a + (b as number), 0);
+                    }
+                    return acc + ((t.workload as number) || 0);
+                  }, 0)}h
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center bg-white border border-slate-300 rounded-lg shadow-sm">
+              <button 
+                onClick={() => setCurrentDate(viewMode === 'week' ? subWeeks(currentDate, 2) : subMonths(currentDate, 1))}
+                className="p-2 hover:bg-slate-100 text-slate-600"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="px-4 py-1 text-sm font-medium border-x border-slate-200">
+                {format(currentDate, viewMode === 'week' ? "MMM yyyy" : "MMMM yyyy", { locale: language === 'pt-BR' ? ptBR : undefined })}
+              </div>
+              <button 
+                onClick={() => setCurrentDate(viewMode === 'week' ? addWeeks(currentDate, 2) : addMonths(currentDate, 1))}
+                className="p-2 hover:bg-slate-100 text-slate-600"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <button 
+              onClick={() => handleAddTask(null)}
+              className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-100"
+            >
+              <Plus size={18} />
+              {t('addTask')}
+            </button>
+
+            <button 
+              onClick={() => setIsHeaderCollapsed(true)}
+              className="p-2 hover:bg-slate-200 rounded-lg text-slate-400 lg:hidden"
+              title={t('collapse')}
+            >
+              <ChevronDown className="rotate-180" size={18} />
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Collapse Toggle (Sticky label when collapsed) */}
+      {isHeaderCollapsed && (
+        <div className="bg-slate-100 border-b border-slate-200 px-4 py-1 flex items-center justify-between">
+           <div className="flex items-center gap-4">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('ganttNexus')}</h3>
+              <div className="text-[10px] bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-600">
+                {format(currentDate, "MMMM yyyy", { locale: language === 'pt-BR' ? ptBR : undefined })}
+              </div>
+           </div>
+           <div className="flex items-center gap-2">
+              <button 
+                onClick={() => handleAddTask(null)}
+                className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded"
+              >
+                <Plus size={16} />
+              </button>
+              <button 
+                onClick={() => setIsHeaderCollapsed(false)}
+                className="p-1.5 text-slate-400 hover:bg-slate-200 rounded"
+              >
+                <ChevronDown size={16} />
+              </button>
+           </div>
         </div>
-
-        <div className="flex items-center gap-3">
-          <div className="bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm flex items-center gap-4 text-xs">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span className="text-slate-500 font-medium">{t('tasks')}:</span>
-              <span className="text-slate-900 font-bold">{state.ganttTasks.length}</span>
-            </div>
-            <div className="flex items-center gap-1.5 border-l border-slate-200 pl-4">
-              <Clock className="text-indigo-500" size={14} />
-              <span className="text-slate-500 font-medium">{t('investmentCost')}:</span>
-              <span className="text-slate-900 font-bold">
-                {state.ganttTasks.reduce((acc, t) => {
-                  if (typeof t.workload === 'object' && t.workload !== null) {
-                    return acc + Object.values(t.workload).reduce((a: number, b) => a + (b as number), 0);
-                  }
-                  return acc + ((t.workload as number) || 0);
-                }, 0)}h
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center bg-white border border-slate-300 rounded-lg shadow-sm">
-            <button 
-              onClick={() => setCurrentDate(viewMode === 'week' ? subWeeks(currentDate, 2) : subMonths(currentDate, 1))}
-              className="p-2 hover:bg-slate-100 text-slate-600"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <div className="px-4 py-1 text-sm font-medium border-x border-slate-200">
-              {format(currentDate, viewMode === 'week' ? "MMM yyyy" : "MMMM yyyy", { locale: language === 'pt-BR' ? ptBR : undefined })}
-            </div>
-            <button 
-              onClick={() => setCurrentDate(viewMode === 'week' ? addWeeks(currentDate, 2) : addMonths(currentDate, 1))}
-              className="p-2 hover:bg-slate-100 text-slate-600"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-
-          <button 
-            onClick={() => handleAddTask(null)}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-100"
-          >
-            <Plus size={18} />
-            {t('addTask')}
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-grow overflow-auto relative">
@@ -621,32 +708,47 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
                 });
              })}
           </svg>
-          {/* Today Line */}
+      {/* Today Line */}
           <div 
-            className="absolute top-0 bottom-0 w-0.5 bg-rose-500 z-[15] shadow-[0_0_8px_rgba(244,63,94,0.5)] pointer-events-none"
+            className="absolute top-0 bottom-0 w-0.5 bg-rose-500 z-[15] shadow-[0_0_12px_rgba(244,63,94,0.7)] pointer-events-none"
             style={{
               left: `${todayLeft}px`
             }}
           >
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-rose-500 text-white text-[8px] font-black px-1 py-0.5 rounded-b uppercase tracking-tighter">
-              Today
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-b uppercase tracking-tighter shadow-lg">
+              {t('today')} ({format(new Date(), 'dd/MM')})
             </div>
           </div>
 
-          {rootTasks.length > 0 ? (
-            rootTasks.map(task => renderTaskRow(task))
-          ) : (
-            <div className="flex flex-col items-center justify-center p-20 text-slate-400 gap-4">
-              <Calendar size={48} className="opacity-20" />
-              <p>{t('noData')}</p>
-              <button 
-                onClick={() => handleAddTask(null)}
-                className="text-indigo-600 hover:underline font-medium"
-              >
-                + {t('addTask')}
-              </button>
-            </div>
-          )}
+          {/* Tasks Rows */}
+          <div 
+             className="flex flex-col min-w-max relative"
+             style={{ minHeight: '400px' }}
+             onClick={(e) => {
+               if (e.target === e.currentTarget) {
+                 handleAddTask(null);
+               }
+             }}
+          >
+            {rootTasks.length > 0 ? (
+              rootTasks.sort((a, b) => (a.order || 0) - (b.order || 0)).map(task => renderTaskRow(task))
+            ) : (
+              <div className="flex flex-col items-center justify-center p-20 text-slate-400 gap-4">
+                <Calendar size={48} className="opacity-20" />
+                <div className="text-center">
+                  <p className="text-lg font-medium">{t('noProjectsFound')}</p>
+                  <p className="text-sm opacity-60">Clique no botão "+ ADICIONAR TAREFA" ou em qualquer lugar do calendário para começar.</p>
+                </div>
+                <button 
+                  onClick={() => handleAddTask(null)}
+                  className="flex items-center gap-2 bg-indigo-50 text-indigo-600 px-6 py-3 rounded-xl border border-indigo-100 hover:bg-indigo-100 transition-all font-bold"
+                >
+                  <Plus size={20} />
+                  {t('addTask')}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -752,6 +854,35 @@ const GanttTaskModal: React.FC<ModalProps> = ({ isOpen, task, onClose, onSave, u
                   className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
+            </div>
+
+            {/* Category & Status */}
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Categoria</label>
+              <select 
+                value={formData.category || ''}
+                onChange={e => setFormData({ ...formData, category: e.target.value })}
+                className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                <option value="">Sem Categoria</option>
+                <option value="PROJETO">PROJETO</option>
+                <option value="FOLGA">FOLGA</option>
+                <option value="REUNIÃO">REUNIÃO</option>
+                <option value="VIAGEM">VIAGEM</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">{t('status')}</label>
+              <select 
+                value={formData.status}
+                onChange={e => setFormData({ ...formData, status: e.target.value as any })}
+                className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                <option value="todo">Pendente</option>
+                <option value="in_progress">Em Andamento</option>
+                <option value="done">Concluído</option>
+                <option value="closed">Cancelado</option>
+              </select>
             </div>
 
             {/* Color & Milestone */}

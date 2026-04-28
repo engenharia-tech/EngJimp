@@ -708,6 +708,9 @@ const AppContent: React.FC = () => {
   const handleNavClick = (id: any) => {
     setActiveTab(id);
     setIsMobileMenuOpen(false);
+    if (id === 'gantt' || id === 'nexus') {
+      setIsSidebarCollapsed(true);
+    }
   };
 
   if (!currentUser) {
@@ -1041,7 +1044,12 @@ const AppContent: React.FC = () => {
           )}
 
           {activeTab === 'gantt' && (
-            <ProjectNexus state={data} onUpdateState={(newData) => setData(newData)} onRefresh={handleRefresh} />
+            <ProjectNexus 
+              state={data} 
+              onUpdateState={(newData) => setData(newData)} 
+              onRefresh={handleRefresh} 
+              onOpenSettings={() => setActiveTab('settings')}
+            />
           )}
 
           {activeTab === 'reports' && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
@@ -1053,7 +1061,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'settings' && ['GESTOR', 'CEO'].includes(currentUser.role) && (
+          {activeTab === 'settings' && (['GESTOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
             <Settings 
               settings={effectiveSettings}
               users={data.users}
@@ -1061,7 +1069,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'seo' && ['GESTOR', 'CEO'].includes(currentUser.role) && (
+          {activeTab === 'seo' && (['GESTOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
             <SEOManager 
               data={data.seoData}
               currentUser={currentUser}
@@ -1069,7 +1077,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'team' && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
+          {activeTab === 'team' && (['GESTOR', 'COORDENADOR'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
              <div className="space-y-6">
                 <div className="mb-6">
                   <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('team').toUpperCase()}</h2>

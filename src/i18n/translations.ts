@@ -868,6 +868,7 @@ export const translations = {
     "workload": "Carga de Trabalho",
     "timeAllocation": "Alocação de Tempo",
     "attachments": "Anexos",
+    "today": "Hoje",
     "topic": "Tópico",
     "subtopic": "Subtópico",
     "depreciationPerYear": "DEPRECIAÇÃO: {value}/ANO",
@@ -1729,7 +1730,8 @@ export const translations = {
     "timeRestrictions": "Restricciones de Tiempo",
     "workload": "Carga de Trabajo",
     "timeAllocation": "Asignación de Tiempo",
-    "attachments": "Anexos",
+    "attachments": "Adjuntos",
+    "today": "Hoy",
     "topic": "Tema",
     "subtopic": "Subtema"
   },
@@ -2590,6 +2592,7 @@ export const translations = {
     "workload": "Workload",
     "timeAllocation": "Time Allocation",
     "attachments": "Attachments",
+    "today": "Today",
     "topic": "Topic",
     "subtopic": "Subtopic"
   }

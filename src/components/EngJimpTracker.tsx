@@ -930,31 +930,25 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       
       // Determine if we should send email (only when ALL designers for this NS have finished)
       let shouldSendEmail = false;
-      const projectsForThisNs = [
-        ...allProjects.filter(p => p.ns === finishedProject.ns && p.id !== finishedProject.id),
-        finishedProject
-      ];
       
-      const noOthersInProgress = !projectsForThisNs.some(p => p.status === 'IN_PROGRESS');
-
-      // If linked request exists (already found at line 884 as linkedRequest), it MUST be fully completed (all parts)
       if (linkedRequest) {
-          const isBase = linkedRequest.baseProjectId === finishedProject.id;
-          const otherPartNeeded = isBase ? linkedRequest.needsBox : linkedRequest.needsBase;
-          const otherPartId = isBase ? linkedRequest.boxProjectId : linkedRequest.baseProjectId;
+          // If it's a split project (Base + Box), check if both are finished
+          const baseFinished = !linkedRequest.needsBase || (linkedRequest.baseProjectId && allProjects.find(p => p.id === linkedRequest.baseProjectId)?.status === 'COMPLETED');
+          const boxFinished = !linkedRequest.needsBox || (linkedRequest.boxProjectId && allProjects.find(p => p.id === linkedRequest.boxProjectId)?.status === 'COMPLETED');
           
-          let otherPartFinished = !otherPartNeeded;
-          if (otherPartNeeded && otherPartId) {
-              const otherP = allProjects.find(p => p.id === otherPartId);
-              if (otherP && otherP.status === 'COMPLETED') otherPartFinished = true;
-          }
-          
-          if (otherPartFinished && noOthersInProgress) {
+          // Also check if ANY other sessions for this NS are still in progress
+          const NS_Sessions = allProjects.filter(p => p.ns === finishedProject.ns);
+          const anyInProgress = NS_Sessions.some(p => p.status === 'IN_PROGRESS' && p.id !== finishedProject.id);
+
+          if (baseFinished && boxFinished && !anyInProgress) {
               shouldSendEmail = true;
           }
       } else {
-          // No linked request, just check if all started sessions for this NS are done
-          if (noOthersInProgress) {
+          // No linked request (single project), just check if any other sessions for this NS are done
+          const NS_Sessions = allProjects.filter(p => p.ns === finishedProject.ns);
+          const anyOthersActive = NS_Sessions.some(p => p.status === 'IN_PROGRESS' && p.id !== finishedProject.id);
+          
+          if (!anyOthersActive) {
               shouldSendEmail = true;
           }
       }

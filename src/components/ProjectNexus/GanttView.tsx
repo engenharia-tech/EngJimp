@@ -80,9 +80,16 @@ interface GanttViewProps {
 }
 
 const COLORS = [
-  'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 
-  'bg-indigo-500', 'bg-cyan-500', 'bg-violet-500', 'bg-fuchsia-500',
-  'bg-slate-500', 'bg-orange-500'
+  '#3b82f6', // Azul
+  '#10b981', // Esmeralda
+  '#f59e0b', // Âmbar
+  '#ef4444', // Vermelho
+  '#6366f1', // Índigo
+  '#06b6d4', // Ciano
+  '#8b5cf6', // Violeta
+  '#d946ef', // Fúcsia
+  '#64748b', // Ardósia
+  '#f97316'  // Laranja
 ];
 
 export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRefresh }) => {
@@ -96,10 +103,12 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   const [zoomLevel, setZoomLevel] = useState(32); // px per day
   const [searchTerm, setSearchTerm] = useState('');
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, taskId: string } | null>(null);
+  const [showColorOptions, setShowColorOptions] = useState(false);
   const [inlineAdding, setInlineAdding] = useState<{ parentId: string | null, type: 'task' | 'milestone' } | null>(null);
   const [inlineTitle, setInlineTitle] = useState('');
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [editingTitleValue, setEditingTitleValue] = useState('');
+  const [statusPickerOpenId, setStatusPickerOpenId] = useState<string | null>(null);
 
   const [interactingTask, setInteractingTask] = useState<{
     id: string;
@@ -348,6 +357,28 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     const width = Math.max(duration * zoomLevel, 30);
     const hasChildren = state.ganttTasks.some(t => t.parentId === task.id);
     const isLevelZero = task.parentId === null;
+    const isDone = task.status === GanttTaskStatus.DONE;
+    // Sanitize color: if it's not a hex, use a default or map from old classes
+    const getSafeColor = (color: string | undefined) => {
+      if (!color) return '#3b82f6';
+      if (color.startsWith('#')) return color;
+      
+      // Fallback for old Tailwind classes
+      if (color.includes('blue')) return '#3b82f6';
+      if (color.includes('emerald') || color.includes('green')) return '#10b981';
+      if (color.includes('amber') || color.includes('yellow')) return '#f59e0b';
+      if (color.includes('rose') || color.includes('red')) return '#ef4444';
+      if (color.includes('indigo')) return '#6366f1';
+      if (color.includes('cyan')) return '#06b6d4';
+      if (color.includes('violet') || color.includes('purple')) return '#8b5cf6';
+      if (color.includes('fuchsia') || color.includes('pink')) return '#d946ef';
+      if (color.includes('slate') || color.includes('gray')) return '#64748b';
+      if (color.includes('orange')) return '#f97316';
+      
+      return '#3b82f6';
+    };
+    
+    const taskColor = getSafeColor(task.color);
 
     if (task.isMilestone) {
       return (
@@ -355,41 +386,78 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
           className="absolute h-full flex items-center justify-center group z-10"
           style={{ left: `${left}px`, width: `${zoomLevel}px` }}
         >
-          <div className="w-4 h-4 bg-amber-500 rotate-45 transform border-2 border-white dark:border-slate-900 shadow-sm" />
-          <div className="absolute left-full ml-2 opacity-0 group-hover:opacity-100 bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded whitespace-nowrap z-50 pointer-events-none uppercase font-bold tracking-tighter">
-            {task.title}
+          <div 
+            className="w-4 h-4 rotate-45 transform border-2 border-white dark:border-slate-900 shadow-lg transition-transform group-hover:scale-125" 
+            style={{ backgroundColor: taskColor }}
+          />
+          <div className="absolute top-0 left-full ml-3 opacity-0 group-hover:opacity-100 bg-slate-900 text-white text-[10px] px-2 py-1 rounded shadow-xl whitespace-nowrap z-50 pointer-events-none font-black transition-all">
+             {task.title || 'Marco'}
           </div>
         </div>
       );
     }
 
     if (hasChildren || isLevelZero) {
+      const parentColor = task.color && task.color.startsWith('#') ? task.color : (isLevelZero ? '#0f172a' : '#475569');
       return (
         <div 
           className="absolute h-6 top-1.5 flex flex-col pointer-events-none z-10"
           style={{ left: `${left}px`, width: `${width}px` }}
         >
-          <div className={`h-1.5 w-full ${isLevelZero ? 'bg-slate-900 dark:bg-slate-200' : 'bg-slate-400 dark:bg-slate-500'} rounded-t-sm`} />
-          <div className="flex justify-between w-full h-full">
-            <div className={`w-0.5 h-full ${isLevelZero ? 'bg-slate-900 dark:bg-slate-200' : 'bg-slate-400 dark:bg-slate-500'}`} />
-            <div className={`w-0.5 h-full ${isLevelZero ? 'bg-slate-900 dark:bg-slate-200' : 'bg-slate-400 dark:bg-slate-500'}`} />
+          <div className="h-1.5 w-full rounded-t-sm shadow-sm opacity-90" style={{ backgroundColor: parentColor }} />
+          <div className="flex justify-between w-full h-full px-0">
+            <div className="w-0.5 h-full opacity-40" style={{ backgroundColor: parentColor }} />
+            <div className="w-0.5 h-full opacity-40" style={{ backgroundColor: parentColor }} />
           </div>
         </div>
       );
     }
 
     return (
-      <div 
+      <motion.div 
+        initial={{ opacity: 0, scaleX: 0.8 }}
+        animate={{ opacity: 1, scaleX: 1 }}
         onMouseDown={(e) => { e.stopPropagation(); setInteractingTask({ id: task.id, type: 'drag', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate }); }}
-        className={`absolute h-6 top-2 rounded shadow-sm border border-black/10 flex items-center px-2 cursor-grab active:cursor-grabbing hover:brightness-110 transition-all ${task.color || 'bg-blue-500'} group/bar z-10`}
-        style={{ left: `${left}px`, width: `${width}px` }}
+        className="absolute h-7 top-1.5 rounded-md shadow-md border flex items-center px-3 cursor-grab active:cursor-grabbing hover:brightness-110 transition-all group/bar z-10 overflow-hidden border-black/10"
+        style={{ 
+          left: `${left}px`, 
+          width: `${width}px`,
+          backgroundColor: isDone ? '#f1f5f9' : taskColor,
+        }}
       >
-        <span className="text-[9px] font-bold text-white truncate pointer-events-none">{task.progress}%</span>
+        {/* Progress Overlay */}
+        <div 
+          className="absolute inset-y-0 left-0 transition-all duration-700 bg-black/15 pointer-events-none" 
+          style={{ width: `${task.progress}%` }} 
+        />
+        
+        <div className="relative z-10 flex items-center justify-between w-full min-w-0 gap-2">
+          <span className={`text-[9px] font-black truncate drop-shadow-md ${isDone ? 'text-slate-500' : 'text-white'}`}>
+            {task.title}
+          </span>
+          <span className={`text-[10px] font-black drop-shadow-md shrink-0 ${isDone ? 'text-slate-400' : 'text-white'}`}>
+            {task.progress}%
+          </span>
+        </div>
+        
         <div 
           onMouseDown={(e) => { e.stopPropagation(); setInteractingTask({ id: task.id, type: 'resize', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate }); }}
-          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize group-hover/bar:bg-white/20 transition-colors" 
+          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize group-hover/bar:bg-white/10 transition-colors" 
         />
-      </div>
+
+        {/* Floating Tooltip */}
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 border border-slate-700 text-white rounded-xl opacity-0 group-hover/bar:opacity-100 transition-all scale-75 group-hover/bar:scale-100 pointer-events-none whitespace-nowrap z-50 shadow-2xl">
+           <div className="flex items-center gap-2 mb-1">
+             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: taskColor }} />
+             <div className="font-black uppercase tracking-widest text-[8px] opacity-50">{task.status}</div>
+           </div>
+           <div className="font-black text-xs">{task.title || 'Sem título'}</div>
+           <div className="text-[9px] font-bold opacity-60 mt-1 flex items-center gap-1">
+             <Clock size={10} />
+             {format(start, 'dd/MM')} — {format(end, 'dd/MM')}
+           </div>
+        </div>
+      </motion.div>
     );
   };
 
@@ -407,7 +475,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       parentId: parentId,
       startDate: format(new Date(), 'yyyy-MM-dd'),
       endDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
-      color: COLORS[0],
+      color: COLORS[state.ganttTasks.length % COLORS.length],
       isMilestone: false,
       assignedTo: [],
       progress: 0,
@@ -527,7 +595,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       parentId: currentAdding.parentId || null,
       startDate: format(new Date(), 'yyyy-MM-dd'),
       endDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
-      color: currentAdding.type === 'milestone' ? 'bg-amber-500' : 'bg-blue-500',
+      color: currentAdding.type === 'milestone' ? '#f59e0b' : COLORS[state.ganttTasks.length % COLORS.length],
       isMilestone: currentAdding.type === 'milestone',
       assignedTo: [],
       progress: 0,
@@ -572,10 +640,10 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               <div className={`flex h-10 border-b border-slate-100 dark:border-slate-800 items-stretch hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group ${isTopLevel ? 'bg-white dark:bg-slate-900' : ''}`}>
                 {/* Left Side: Task Info */}
                 <div 
-                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-inherit group-hover:bg-slate-50 dark:group-hover:bg-slate-800 shadow-[4px_0_4px_-4px_rgba(0,0,0,0.1)] transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 border-r-0 opacity-0' : ''}`}
+                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 bg-inherit group-hover:bg-slate-50 dark:group-hover:bg-slate-800 shadow-[4px_0_4px_-4px_rgba(0,0,0,0.1)] transition-all duration-300 ${isSidebarVisible ? 'overflow-visible' : 'overflow-hidden opacity-0'} ${statusPickerOpenId === task.id ? 'z-50' : 'z-10'} ${!isSidebarVisible ? 'w-0 border-r-0' : ''}`}
                   style={{ paddingLeft: `${depth * (isMobile ? 12 : 20) + 8}px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
                 >
-                  <div className="flex items-center gap-2 w-full">
+                  <div className="flex items-center gap-2 w-full overflow-visible">
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 w-8 font-mono">{rowNumber}</span>
                     <button 
                       onClick={() => toggleExpand(task.id)}
@@ -584,10 +652,10 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                       {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
                     
-                    <div className="flex items-center gap-2 flex-grow min-w-0">
+                    <div className="flex items-center gap-2 flex-grow min-w-0 overflow-visible">
                       {task.isMilestone ? <Milestone size={14} className="text-amber-500 flex-shrink-0" /> : null}
                     {editingTitleId === task.id ? (
-                      <div className="flex items-center gap-1 flex-grow">
+                      <div className="flex items-center gap-1 flex-grow overflow-visible">
                         <input 
                           autoFocus
                           value={editingTitleValue}
@@ -635,7 +703,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                     {!isMobile && (
                       <>
                         <AssigneePicker assignedTo={task.assignedTo || []} users={state.users} onUpdate={(uids) => handleUpdateField(task.id, 'assignedTo', uids)} />
-                        <StatusPicker status={task.status} onUpdate={(s) => handleUpdateField(task.id, 'status', s)} />
+                        <StatusPicker 
+                          status={task.status} 
+                          onUpdate={(s) => handleUpdateField(task.id, 'status', s)} 
+                          onOpenChange={(open) => setStatusPickerOpenId(open ? task.id : null)}
+                        />
                       </>
                     )}
                     
@@ -713,15 +785,22 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-900 select-none transition-colors duration-300">
+    <div className="flex flex-col h-full bg-white dark:bg-black select-none transition-colors duration-300">
       {/* Toolbar as seen in Image 1 */}
-      <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shadow-sm z-30 transition-colors overflow-hidden">
+      <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black flex items-center justify-between shadow-sm z-30 transition-colors overflow-hidden">
         <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar max-w-[60%] sm:max-w-none">
           <div className="flex items-center gap-1 group">
              <button 
               onClick={() => {
                 if (rowsAreaRef.current) {
-                  rowsAreaRef.current.scrollTo({ left: todayLeft - 200, behavior: 'smooth' });
+                  const today = new Date();
+                  setCurrentDate(today);
+                  setTimeout(() => {
+                    if (rowsAreaRef.current) {
+                      const newTodayLeft = differenceInDays(today, startOfMonth(subMonths(today, 1))) * zoomLevel;
+                      rowsAreaRef.current.scrollTo({ left: newTodayLeft - 200, behavior: 'smooth' });
+                    }
+                  }, 100);
                 }
               }}
               className="p-1.5 rounded text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors flex items-center gap-1"
@@ -729,6 +808,24 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                 <Target size={18} />
                 <span className="text-[10px] font-bold uppercase hidden md:inline">Hoje</span>
              </button>
+
+             <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 ml-1">
+               <button 
+                onClick={() => setCurrentDate(subMonths(currentDate, 1))}
+                className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded text-slate-500 transition-all"
+               >
+                 <ChevronLeft size={14} />
+               </button>
+               <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 px-2 min-w-24 text-center whitespace-nowrap">
+                 {format(currentDate, 'MMMM yyyy', { locale: language === 'pt-BR' ? ptBR : undefined }).toUpperCase()}
+               </span>
+               <button 
+                onClick={() => setCurrentDate(addMonths(currentDate, 1))}
+                className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded text-slate-500 transition-all"
+               >
+                 <ChevronRight size={14} />
+               </button>
+             </div>
           </div>
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1 flex-shrink-0" />
           <ToolbarButton 
@@ -804,12 +901,30 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
           {!isMobile && (
             <div className="flex items-center gap-2 ml-2">
               <div className="w-24 h-5 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center px-1 relative">
-                <div className="absolute left-[20%] w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600" />
-                <div className="absolute left-[40%] w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600" />
-                <div className="absolute left-[60%] w-3 h-3 rounded-full bg-blue-500 border-2 border-white dark:border-slate-800 shadow-sm" />
-                <div className="absolute left-[80%] w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600" />
+                <button 
+                  onClick={() => setZoomLevel(16)}
+                  className={`absolute left-[20%] w-2 h-2 rounded-full transition-all ${zoomLevel === 16 ? 'bg-blue-500 scale-125 z-10 shadow-sm' : 'bg-slate-400 dark:bg-slate-600 hover:bg-slate-500'}`} 
+                  title="Meses"
+                />
+                <button 
+                  onClick={() => setZoomLevel(32)}
+                  className={`absolute left-[45%] w-2 h-2 rounded-full transition-all ${zoomLevel === 32 ? 'bg-blue-500 scale-125 z-10 shadow-sm' : 'bg-slate-400 dark:bg-slate-600 hover:bg-slate-500'}`}
+                  title="Dias"
+                />
+                <button 
+                  onClick={() => setZoomLevel(48)}
+                  className={`absolute left-[70%] w-2 h-2 rounded-full transition-all ${zoomLevel === 48 ? 'bg-blue-500 scale-125 z-10 shadow-sm' : 'bg-slate-400 dark:bg-slate-600 hover:bg-slate-500'}`}
+                  title="Semanas"
+                />
+                <button 
+                  onClick={() => setZoomLevel(64)}
+                  className={`absolute left-[90%] w-2 h-2 rounded-full transition-all ${zoomLevel === 64 ? 'bg-blue-500 scale-125 z-10 shadow-sm' : 'bg-slate-400 dark:bg-slate-600 hover:bg-slate-500'}`}
+                  title="Detalhado"
+                />
               </div>
-              <span className="text-[10px] font-bold text-slate-400">Dias</span>
+              <span className="text-[10px] font-bold text-slate-400">
+                {zoomLevel === 16 ? 'Meses' : zoomLevel === 32 ? 'Dias' : zoomLevel === 48 ? 'Semanas' : 'Foco'}
+              </span>
             </div>
           )}
 
@@ -857,8 +972,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
             />
           </div>
           
-          <div className="flex-grow overflow-hidden relative" ref={scrollHeaderRef}>
-            <div className="flex border-b border-slate-200 h-6 bg-white min-w-max">
+            <div className="flex-grow overflow-hidden relative" ref={scrollHeaderRef}>
+            <div className="flex border-b border-slate-200 dark:border-slate-800 h-6 bg-white dark:bg-slate-900 min-w-max transition-colors">
                 {/* Dynamically calculate month breaks */}
                 {(() => {
                   const months: any[] = [];
@@ -882,7 +997,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                   return months.map((m, i) => (
                     <div 
                       key={i} 
-                      className={`h-full border-r border-slate-200 dark:border-slate-800 flex items-center px-4 text-[10px] font-black tracking-widest transition-colors ${i % 2 === 0 ? 'text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900' : 'text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20'}`}
+                      className={`h-full border-r border-slate-300 dark:border-slate-700 flex items-center px-4 text-[10px] font-black tracking-widest transition-colors ${i % 2 === 0 ? 'text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800' : 'text-blue-600 dark:text-blue-400 bg-blue-100/30 dark:bg-blue-900/40'}`}
                       style={{ width: `${m.days * zoomLevel}px` }}
                     >
                       {m.label}
@@ -894,13 +1009,13 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               {days.map((day, i) => (
                 <div 
                   key={i} 
-                  className={`flex-shrink-0 border-r border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center transition-colors ${isSameDay(day, new Date()) ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800' : isWeekend(day) ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''}`}
+                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center transition-colors ${isSameDay(day, new Date()) ? 'bg-rose-100 dark:bg-rose-900/50 border-rose-300 dark:border-rose-600 z-10 scale-y-105 shadow-sm' : isWeekend(day) ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
                   style={{ width: `${zoomLevel}px` }}
                 >
-                  <span className={`text-[8px] font-bold ${isSameDay(day, new Date()) ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                  <span className={`text-[8px] font-black ${isSameDay(day, new Date()) ? 'text-rose-700 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`}>
                     {format(day, 'd')}
                   </span>
-                  <span className={`text-[9px] font-black uppercase ${isSameDay(day, new Date()) ? 'text-rose-600 dark:text-rose-400' : 'text-slate-300 dark:text-slate-600'}`}>
+                  <span className={`text-[9px] font-black uppercase ${isSameDay(day, new Date()) ? 'text-rose-700 dark:text-rose-300' : 'text-slate-400 dark:text-slate-600'}`}>
                     {format(day, 'EEE', { locale: language === 'pt-BR' ? ptBR : undefined }).substring(0, 1)}
                   </span>
                 </div>
@@ -912,6 +1027,44 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
         {/* Rows (Scrolling area) */}
         <div className="flex-grow overflow-auto no-scrollbar" onScroll={handleScroll} ref={rowsAreaRef}>
           <div className="relative min-w-max">
+            {/* Grid Background Lines for Tasks */}
+            <div className="absolute inset-0 flex pointer-events-none z-0">
+              {/* Sidebar Spacer */}
+              {isSidebarVisible && (
+                <div style={{ width: `${sidebarWidth}px` }} className="flex-shrink-0 border-r-2 border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40" />
+              )}
+              {days.map((day, i) => (
+                <div 
+                  key={i} 
+                  className={`flex-shrink-0 border-r transition-colors ${
+                    isSameDay(day, new Date()) 
+                      ? 'bg-rose-50/40 dark:bg-rose-900/20 border-rose-200/50 dark:border-rose-700/30' 
+                      : isWeekend(day) 
+                        ? 'bg-slate-100/40 dark:bg-slate-800/20 border-slate-200/30 dark:border-slate-700/20' 
+                        : i % 2 === 0 
+                          ? 'bg-slate-50/30 dark:bg-slate-900/50 border-slate-100/50 dark:border-slate-800/10' 
+                          : 'border-slate-100/30 dark:border-slate-800/5'
+                  } ${day.getDate() === 1 ? 'border-slate-300 dark:border-slate-600 border-r-2' : ''}`}
+                  style={{ width: `${zoomLevel}px` }}
+                />
+              ))}
+            </div>
+            {/* Today Line (Indicator of current day) */}
+            <div 
+              className="absolute top-0 bottom-0 pointer-events-none z-[15]"
+              style={{ left: isSidebarVisible ? `${sidebarWidth}px` : '0px', width: `${days.length * zoomLevel}px` }}
+            >
+              <div 
+                className="absolute top-0 bottom-0 w-0.5 bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
+                style={{ left: `${todayLeft}px` }}
+              >
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-rose-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-lg flex items-center gap-1 border border-white/20 whitespace-nowrap">
+                  <Target size={8} className="animate-pulse" />
+                  HOJE
+                </div>
+              </div>
+            </div>
+
             {/* Empty State */}
             {state.ganttTasks.length === 0 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center p-20 text-slate-400 bg-white/50 dark:bg-slate-900/50 z-20">
@@ -926,21 +1079,10 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                 </button>
               </div>
             )}
-            {/* Today Line */}
-            <div 
-              className="absolute top-0 bottom-0 w-px bg-rose-400 dark:bg-rose-500/50 z-10 pointer-events-none"
-              style={{ left: `${todayLeft}px` }} 
-            >
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-t tracking-tighter uppercase shadow-sm">
-                Hoje
-              </div>
-            </div>
-
-             {/* SVG Dependency Lines */}
              <svg 
                 className="absolute top-0 z-0 pointer-events-none" 
                 style={{ 
-                  left: '0px', 
+                  left: isSidebarVisible ? `${sidebarWidth}px` : '0px', 
                   width: `${days.length * zoomLevel}px`, 
                   height: `${flattenedTasks.length * 40}px` 
                 }}
@@ -1041,7 +1183,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       <AnimatePresence>
         {contextMenu && (
           <>
-            <div className="fixed inset-0 z-[110]" onClick={() => setContextMenu(null)} />
+            <div className="fixed inset-0 z-[110]" onClick={() => { setContextMenu(null); setShowColorOptions(false); }} />
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
               className="fixed z-[120] bg-white dark:bg-slate-900 rounded shadow-xl border border-slate-200 dark:border-slate-800 py-2 w-64 text-slate-700 dark:text-slate-200 transition-colors"
@@ -1065,7 +1207,35 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               <ContextItem icon={<Clock size={16} />} label="Configurações de cópia" />
               <div className="h-px bg-slate-100 dark:bg-slate-800 my-1" />
               <ContextItem icon={<CheckCircle2 size={16} />} label="Selecionar" />
-              <ContextItem icon={<div className="w-4 h-4 bg-blue-500 rounded" />} label="Escolher a cor de tarefa" />
+              {showColorOptions ? (
+                <div className="px-4 py-2 grid grid-cols-5 gap-2 bg-slate-50 dark:bg-slate-800/50 rounded-b mt-1 border-t border-slate-100 dark:border-slate-800">
+                  {COLORS.map(c => (
+                    <button 
+                      key={c}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const task = state.ganttTasks.find(t => t.id === contextMenu.taskId);
+                        if (task) {
+                          const newState = await updateGanttTask({ ...task, color: c });
+                          onUpdateState(newState);
+                          addToast('Cor atualizada com sucesso!', 'success');
+                        }
+                        setContextMenu(null);
+                        setShowColorOptions(false);
+                      }}
+                      className="w-8 h-8 rounded-full border border-white dark:border-slate-700 hover:scale-110 active:scale-95 transition-all shadow-sm"
+                      style={{ backgroundColor: c }}
+                      title="Clique para aplicar esta cor"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <ContextItem 
+                  icon={<div className="w-4 h-4 rounded shadow-sm" style={{ backgroundColor: state.ganttTasks.find(t => t.id === contextMenu.taskId)?.color || '#3b82f6' }} />} 
+                  label="Escolher a cor de tarefa" 
+                  onClick={(e: any) => { e.stopPropagation(); setShowColorOptions(true); }}
+                />
+              )}
               <div className="h-px bg-slate-100 dark:bg-slate-800 my-1" />
               <ContextItem icon={<Trash2 size={16} className="text-rose-500" />} label="Excluir" className="text-rose-500" onClick={async () => {
                 try {
@@ -1128,17 +1298,26 @@ const SidebarButton = ({ icon, label, onClick, active, className = "" }: any) =>
   </button>
 );
 
-const StatusPicker = ({ status, onUpdate }: { status: GanttTaskStatus, onUpdate: (s: GanttTaskStatus) => void }) => {
+const StatusPicker = ({ status, onUpdate, onOpenChange }: { status: GanttTaskStatus, onUpdate: (s: GanttTaskStatus) => void, onOpenChange?: (open: boolean) => void }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        onOpenChange?.(false);
+      }
     };
     if (isOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
+  }, [isOpen, onOpenChange]);
+
+  const toggle = () => {
+    const next = !isOpen;
+    setIsOpen(next);
+    onOpenChange?.(next);
+  };
 
   const options = [
     { id: GanttTaskStatus.TODO, label: 'Aberto', color: 'bg-slate-400' },
@@ -1152,30 +1331,30 @@ const StatusPicker = ({ status, onUpdate }: { status: GanttTaskStatus, onUpdate:
   return (
     <div className="relative w-24 flex-shrink-0" ref={containerRef} style={{ zIndex: isOpen ? 100 : 1 }}>
       <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors"
+        onClick={toggle}
+        className="w-full flex items-center justify-between px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <div className={`w-1.5 h-1.5 rounded-full ${current.color}`} />
-          <span className="text-[10px] font-bold text-slate-600 truncate">{current.label}</span>
+          <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 truncate">{current.label}</span>
         </div>
-        <ChevronDown size={10} className="text-slate-400" />
+        <ChevronDown size={10} className="text-slate-400 dark:text-slate-500" />
       </button>
 
       <AnimatePresence>
         {isOpen && (
           <motion.div 
             initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-            className="absolute top-full left-0 mt-1 w-32 bg-white rounded shadow-xl border border-slate-200 py-1 z-50 overflow-hidden"
+            className="absolute top-full left-0 mt-1 w-32 bg-white dark:bg-slate-900 rounded shadow-xl border border-slate-200 dark:border-slate-800 py-1 z-50 overflow-hidden"
           >
             {options.map(opt => (
               <button 
                 key={opt.id}
-                onClick={() => { onUpdate(opt.id); setIsOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors transition-all"
+                onClick={() => { onUpdate(opt.id); setIsOpen(false); onOpenChange?.(false); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors transition-all"
               >
                 <div className={`w-2 h-2 rounded-full ${opt.color}`} />
-                <span className="text-[10px] font-semibold text-slate-600">{opt.label}</span>
+                <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">{opt.label}</span>
               </button>
             ))}
           </motion.div>
@@ -1472,8 +1651,21 @@ const FieldTypeItem = ({ icon, label, active = false }: any) => (
   </div>
 );
 
-const TaskEditorModal = ({ isOpen, task, onClose, onSave, users, tasks }: any) => {
+export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users, tasks }: any) => {
   const [formData, setFormData] = useState<GanttTask>(task);
+
+  const COLORS = [
+    '#3b82f6', // Azul
+    '#10b981', // Esmeralda
+    '#f59e0b', // Âmbar
+    '#ef4444', // Vermelho
+    '#6366f1', // Índigo
+    '#06b6d4', // Ciano
+    '#8b5cf6', // Violeta
+    '#d946ef', // Fúcsia
+    '#64748b', // Ardósia
+    '#f97316'  // Laranja
+  ];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4">
@@ -1545,10 +1737,31 @@ const TaskEditorModal = ({ isOpen, task, onClose, onSave, users, tasks }: any) =
                ))}
             </div>
           </div>
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Cor da Tarefa</label>
+            <div className="flex flex-wrap gap-2">
+               {COLORS.map(c => (
+                 <button 
+                  key={c}
+                  onClick={() => setFormData({...formData, color: c})}
+                  className={`w-6 h-6 rounded-full border-2 transition-all ${formData.color === c ? 'border-slate-900 scale-125 shadow-md' : 'border-transparent hover:scale-110'}`}
+                  style={{ backgroundColor: c }}
+                 />
+               ))}
+            </div>
+          </div>
         </div>
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
-           <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
-           <button onClick={() => onSave(formData)} className="px-6 py-2 bg-blue-600 text-white rounded text-xs font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all">Salvar Alterações</button>
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between gap-2">
+           <button 
+             onClick={() => onDelete?.(formData.id)} 
+             className="px-4 py-2 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-2"
+           >
+             <Trash2 size={14} /> Excluir
+           </button>
+           <div className="flex gap-2">
+             <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
+             <button onClick={() => onSave(formData)} className="px-6 py-2 bg-blue-600 text-white rounded text-xs font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all">Salvar Alterações</button>
+           </div>
         </div>
       </motion.div>
     </div>

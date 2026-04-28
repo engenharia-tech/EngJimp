@@ -77,7 +77,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
   }, [state.users, tasks]);
 
   return (
-    <div className="h-full bg-slate-50 overflow-y-auto p-6 space-y-6 select-none font-sans">
+    <div className="h-full bg-slate-50 dark:bg-black overflow-y-auto p-6 space-y-6 select-none font-sans">
       {/* Top Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard 
@@ -85,7 +85,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
            value={stats.total} 
            icon={<Activity size={20} />} 
            color="text-blue-600" 
-           bg="bg-blue-50"
+           bg="bg-blue-50 dark:bg-blue-900/20"
            trend="+12% este mês"
         />
         <StatCard 
@@ -93,7 +93,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
            value={stats.done} 
            icon={<CheckCircle2 size={20} />} 
            color="text-emerald-600" 
-           bg="bg-emerald-50"
+           bg="bg-emerald-50 dark:bg-emerald-900/20"
            trend="85% de taxa"
         />
         <StatCard 
@@ -101,7 +101,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
            value={stats.inProgress} 
            icon={<Clock size={20} />} 
            color="text-amber-600" 
-           bg="bg-amber-50"
+           bg="bg-amber-50 dark:bg-amber-900/20"
            trend="Ativo agora"
         />
         <StatCard 
@@ -109,16 +109,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
            value={stats.overdue} 
            icon={<AlertCircle size={20} />} 
            color="text-rose-600" 
-           bg="bg-rose-50"
+           bg="bg-rose-50 dark:bg-rose-900/20"
            trend="Atenção necessária"
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Status Distribution */}
-        <div className="lg:col-span-1 bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <div className="lg:col-span-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Distribuição de Status</h3>
+              <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-tight">Distribuição de Status</h3>
               <PieChartIcon size={18} className="text-slate-400" />
            </div>
            <div className="h-64">
@@ -138,7 +138,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: '#1e293b', color: '#fff' }} 
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -148,29 +148,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
                 <div key={item.name} className="flex items-center justify-between">
                    <div className="flex items-center gap-2">
                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                     <span className="text-xs font-medium text-slate-600">{item.name}</span>
+                     <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{item.name}</span>
                    </div>
-                   <span className="text-xs font-bold text-slate-800">{item.value}</span>
+                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.value}</span>
                 </div>
               ))}
            </div>
         </div>
 
         {/* Workload by User */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Carga por Usuário</h3>
+              <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-tight">Carga por Usuário</h3>
               <Users2 size={18} className="text-slate-400" />
            </div>
            <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={workloadData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" opacity={0.1} />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} />
                   <Tooltip 
-                    cursor={{ fill: '#f8fafc' }}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
+                    cursor={{ fill: '#f8fafc', opacity: 0.05 }}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: '#1e293b', color: '#fff' }} 
                   />
                   <Bar dataKey="tasks" fill="#4f46e5" radius={[4, 4, 0, 0]} barSize={40} />
                 </BarChart>
@@ -181,16 +181,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
          {/* Priority Card */}
-         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight mb-6">Prioridade das Tarefas</h3>
+         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-tight mb-6">Prioridade das Tarefas</h3>
             <div className="space-y-4">
                {priorityData.map(item => (
                  <div key={item.name} className="flex flex-col gap-1.5">
                     <div className="flex justify-between items-center text-xs">
-                       <span className="font-bold text-slate-600">{item.name}</span>
-                       <span className="font-black text-slate-800">{item.value} ({Math.round((item.value / stats.total) * 100 || 0)}%)</span>
+                       <span className="font-bold text-slate-600 dark:text-slate-400">{item.name}</span>
+                       <span className="font-black text-slate-800 dark:text-slate-200">{item.value} ({Math.round((item.value / stats.total) * 100 || 0)}%)</span>
                     </div>
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                        <div 
                          className="h-full rounded-full transition-all duration-500" 
                          style={{ width: `${(item.value / stats.total) * 100}%`, backgroundColor: item.color }} 
@@ -202,8 +202,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
          </div>
 
          {/* Project Pulse (Activity) */}
-         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 overflow-hidden">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight mb-6">Pulso do Projeto</h3>
+         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 overflow-hidden">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-tight mb-6">Pulso do Projeto</h3>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={[
@@ -222,7 +222,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} />
-                  <Tooltip />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '8px', border: 'none', backgroundColor: '#1e293b', color: '#fff' }}
+                  />
                   <Area type="monotone" dataKey="activity" stroke="#4f46e5" fillOpacity={1} fill="url(#colorActivity)" strokeWidth={3} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -234,18 +236,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
 };
 
 const StatCard = ({ label, value, icon, color, bg, trend }: any) => (
-  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
+  <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-3">
     <div className="flex items-center justify-between">
        <div className={`${bg} ${color} p-2.5 rounded-lg`}>
           {icon}
        </div>
-       <button className="text-slate-300 hover:text-slate-500 transition-colors"><MoreVertical size={16} /></button>
+       <button className="text-slate-300 dark:text-slate-600 hover:text-slate-500 transition-colors"><MoreVertical size={16} /></button>
     </div>
     <div>
-       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none block mb-1">{label}</span>
-       <h4 className="text-2xl font-black text-slate-800 tracking-tight">{value}</h4>
+       <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none block mb-1">{label}</span>
+       <h4 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">{value}</h4>
     </div>
-    <div className="pt-2 border-t border-slate-50 flex items-center gap-1 text-[10px] font-bold text-emerald-500">
+    <div className="pt-2 border-t border-slate-50 dark:border-slate-800 flex items-center gap-1 text-[10px] font-bold text-emerald-500">
        <TrendingUp size={12} />
        <span>{trend}</span>
     </div>
