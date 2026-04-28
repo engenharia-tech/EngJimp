@@ -24,6 +24,7 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
   const [inlineAdding, setInlineAdding] = React.useState<boolean>(false);
   const [newTitle, setNewTitle] = React.useState('');
   const [menuTaskId, setMenuTaskId] = React.useState<string | null>(null);
+  const [statusPickerOpenId, setStatusPickerOpenId] = React.useState<string | null>(null);
 
   const safeFormat = (dateStr: string, formatStr: string) => {
     try {
@@ -42,7 +43,7 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
       title: newTitle,
       startDate: format(new Date(), 'yyyy-MM-dd'),
       endDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
-      color: 'bg-blue-600',
+      color: '#3b82f6',
       isMilestone: false,
       assignedTo: [],
       progress: 0,
@@ -92,9 +93,9 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
   };
 
   return (
-    <div className="h-full bg-white flex flex-col overflow-hidden">
+    <div className="h-full bg-white dark:bg-black flex flex-col overflow-hidden">
       {/* List Toolbar */}
-      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-white">
+      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-black">
         <div className="flex items-center gap-2">
            <button 
             onClick={() => setInlineAdding(true)}
@@ -102,25 +103,25 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
            >
              <Plus size={16} /> Adicionar
            </button>
-           <button className="p-2 hover:bg-slate-100 rounded text-slate-500 transition-colors">
+           <button className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 transition-colors">
               <ChevronDown size={18} />
            </button>
         </div>
 
         <div className="flex items-center gap-6">
-           <div className="flex items-center gap-2 text-slate-500 hover:text-slate-700 cursor-pointer transition-colors">
+           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors">
               <Group size={16} />
               <span className="text-xs font-bold">Campos</span>
            </div>
-           <div className="flex items-center gap-2 text-slate-500 hover:text-slate-700 cursor-pointer transition-colors">
+           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors">
               <Filter size={16} />
               <span className="text-xs font-bold">Filtro</span>
            </div>
-           <div className="flex items-center gap-2 text-slate-500 hover:text-slate-700 cursor-pointer transition-colors">
+           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors">
               <Download size={16} />
               <span className="text-xs font-bold">Exportar</span>
            </div>
-           <div className="flex items-center gap-2 text-slate-500 hover:text-slate-700 cursor-pointer transition-colors border border-slate-300 rounded px-2 py-1">
+           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors border border-slate-300 dark:border-slate-700 rounded px-2 py-1">
               <span className="text-xs font-bold">Visualização</span>
               <ChevronDown size={14} />
            </div>
@@ -128,10 +129,10 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
       </div>
 
       {/* Table Content */}
-      <div className="flex-grow overflow-auto">
+      <div className="flex-grow overflow-auto lg:overflow-visible">
         <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 bg-slate-50 z-10">
-            <tr className="border-b border-slate-200 text-slate-500 uppercase text-[10px] font-black tracking-widest bg-slate-50">
+          <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 z-10">
+            <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-black tracking-widest bg-slate-50 dark:bg-slate-900">
               <th className="px-6 py-3 font-black">#</th>
               <th className="px-6 py-3 font-black">Nome de tarefa</th>
               <th className="px-6 py-3 font-black">Data de início</th>
@@ -141,7 +142,7 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
               <th className="px-4 py-3 w-10"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 font-medium">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium bg-white dark:bg-black">
             {inlineAdding && (
               <tr className="bg-blue-50/30">
                 <td className="px-6 py-3 text-xs text-slate-400">*</td>
@@ -166,46 +167,51 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
               </tr>
             )}
             {state.ganttTasks.map((task, idx) => (
-              <tr key={task.id} className="hover:bg-slate-50/80 transition-colors group">
-                <td className="px-6 py-3 text-xs text-slate-400">{idx + 1}</td>
-                <td className="px-6 py-3 text-sm text-slate-700 font-bold">{task.title}</td>
-                <td className="px-6 py-3 text-sm text-slate-600">
+              <tr key={task.id} className={`hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group bg-white dark:bg-black relative ${statusPickerOpenId === task.id ? 'z-50' : 'z-1'}`}>
+                <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-600">{idx + 1}</td>
+                <td className="px-6 py-3 text-sm text-slate-700 dark:text-slate-100 font-bold">{task.title}</td>
+                <td className="px-6 py-3 text-sm text-slate-600 dark:text-slate-400">
                   {safeFormat(task.startDate, 'dd/MM/yyyy')}
                 </td>
                 <td className="px-6 py-3">
-                  <div className="flex items-center -space-x-1">
+                  <div className="flex items-center -space-x-2">
                     {task.assignedTo.length > 0 ? task.assignedTo.map(uid => {
                       const u = state.users.find(usr => usr.id === uid);
                       return (
-                        <div key={uid} className="w-6 h-6 rounded-full bg-slate-100 border border-white flex items-center justify-center text-[10px] font-black text-slate-600 uppercase" title={u?.name || uid}>
+                        <div key={uid} className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border border-white dark:border-slate-700 flex items-center justify-center text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase" title={u?.name || uid}>
                           {(u?.name || uid).charAt(0)}
                         </div>
                       )
-                    }) : <div className="text-slate-300 text-[10px]">Não atribuído</div>}
+                    }) : <div className="text-slate-300 dark:text-slate-700 text-[10px]">Não atribuído</div>}
                   </div>
                 </td>
                 <td className="px-6 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${getStatusColor(task.status)}`} />
-                    <span className="text-xs text-slate-600 font-bold">{getStatusLabel(task.status)}</span>
-                  </div>
+                  <StatusPicker 
+                    status={task.status} 
+                    onUpdate={async (s) => {
+                      const updatedTask = { ...task, status: s, updatedAt: new Date().toISOString() };
+                      const newState = await updateGanttTask(updatedTask);
+                      onUpdateState(newState);
+                    }}
+                    onOpenChange={(open) => setStatusPickerOpenId(open ? task.id : null)}
+                  />
                 </td>
-                <td className="px-6 py-3 text-sm text-slate-700 text-right font-mono">
+                <td className="px-6 py-3 text-sm text-slate-700 dark:text-slate-300 text-right font-mono">
                   {Object.values(task.workload || {}).reduce((a: any, b: any) => (a as number) + (b as number), 0)}
                 </td>
                 <td className="px-4 py-3 relative">
                    <button 
                     onClick={() => setMenuTaskId(menuTaskId === task.id ? null : task.id)}
-                    className="p-1 hover:bg-slate-100 rounded text-slate-300 hover:text-slate-600 transition-colors"
+                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-300 dark:text-slate-700 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
                    >
                       <MoreVertical size={16} />
                    </button>
                    {menuTaskId === task.id && (
-                     <div className="absolute right-full mr-2 top-0 bg-white border border-slate-200 rounded shadow-xl z-50 w-32 py-1 overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <button className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50 border-b border-slate-100">EDITAR</button>
+                     <div className="absolute right-full mr-2 top-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded shadow-xl z-50 w-32 py-1 overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <button className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800">EDITAR</button>
                         <button 
                           onClick={() => handleDelete(task.id)}
-                          className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-red-600 hover:bg-slate-50"
+                          className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-red-600 hover:bg-slate-50 dark:hover:bg-slate-800"
                         >
                           EXCLUIR
                         </button>
@@ -218,15 +224,15 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
         </table>
 
         {/* Footer Add buttons */}
-        <div className="p-6 border-t border-slate-100 flex items-center gap-4">
+        <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex items-center gap-4 bg-white dark:bg-black">
            <button 
             onClick={() => setInlineAdding(true)}
-            className="flex items-center gap-2 text-blue-600 font-bold text-xs hover:underline"
+            className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold text-xs hover:underline"
            >
               <Plus size={14} /> Adicionar uma tarefa
            </button>
-           <div className="w-px h-4 bg-slate-200" />
-           <button className="flex items-center gap-2 text-blue-600 font-bold text-xs hover:underline">
+           <div className="w-px h-4 bg-slate-200 dark:bg-slate-800" />
+           <button className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold text-xs hover:underline">
               Adicionar um marco
            </button>
         </div>
@@ -235,6 +241,67 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
   );
 };
 
-const ChevronDown = ({ size }: { size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+const StatusPicker = ({ status, onUpdate, onOpenChange }: { status: GanttTaskStatus, onUpdate: (s: GanttTaskStatus) => void, onOpenChange?: (open: boolean) => void }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        onOpenChange?.(false);
+      }
+    };
+    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen, onOpenChange]);
+
+  const toggle = () => {
+    const next = !isOpen;
+    setIsOpen(next);
+    onOpenChange?.(next);
+  };
+
+  const options = [
+    { id: GanttTaskStatus.TODO, label: 'Aberto', color: 'bg-slate-400' },
+    { id: GanttTaskStatus.IN_PROGRESS, label: 'Em projeto', color: 'bg-amber-400' },
+    { id: GanttTaskStatus.DONE, label: 'Feito', color: 'bg-cyan-400' },
+    { id: GanttTaskStatus.CLOSED, label: 'Fechado', color: 'bg-emerald-400' },
+  ];
+
+  const current = options.find(o => o.id === status) || options[0];
+
+  return (
+    <div className="relative w-24 flex-shrink-0" ref={containerRef} style={{ zIndex: isOpen ? 100 : 1 }}>
+      <button 
+        onClick={toggle}
+        className="w-full flex items-center justify-between px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className={`w-1.5 h-1.5 rounded-full ${current.color}`} />
+          <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 truncate">{current.label}</span>
+        </div>
+        <ChevronDown size={10} className="text-slate-400 dark:text-slate-500" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 w-32 bg-white dark:bg-slate-900 rounded shadow-xl border border-slate-200 dark:border-slate-800 py-1 z-50 overflow-hidden">
+          {options.map(opt => (
+            <button 
+              key={opt.id}
+              onClick={() => { onUpdate(opt.id); setIsOpen(false); onOpenChange?.(false); }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <div className={`w-2 h-2 rounded-full ${opt.color}`} />
+              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ChevronDown = ({ size, className = "" }: { size: number, className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m6 9 6 6 6-6"/></svg>
 );

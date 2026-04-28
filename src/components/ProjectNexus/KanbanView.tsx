@@ -25,7 +25,9 @@ import {
   useSensors,
   DragStartEvent,
   DragOverEvent,
-  DragEndEvent
+  DragEndEvent,
+  useDroppable,
+  defaultDropAnimationSideEffects
 } from '@dnd-kit/core';
 import { 
   arrayMove, 
@@ -43,6 +45,8 @@ import { updateGanttTask, addGanttTask } from '../../services/storageService';
 interface KanbanViewProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
+  onRefresh?: () => void;
+  onEditTask?: (task: GanttTask) => void;
 }
 
 const STATUS_COLUMNS = [
@@ -52,7 +56,7 @@ const STATUS_COLUMNS = [
   { id: GanttTaskStatus.CLOSED, label: 'FECHADO', color: 'bg-emerald-100 text-emerald-600' }
 ];
 
-export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState }) => {
+export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState, onEditTask, onRefresh }) => {
   const [activeTask, setActiveTask] = React.useState<GanttTask | null>(null);
   const [inlineAdding, setInlineAdding] = React.useState<GanttTaskStatus | null>(null);
   const [newTitle, setNewTitle] = React.useState('');
@@ -75,7 +79,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState }) 
       title: newTitle,
       startDate: format(new Date(), 'yyyy-MM-dd'),
       endDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
-      color: 'bg-blue-500',
+      color: '#3b82f6',
       isMilestone: false,
       assignedTo: [],
       progress: 0,
@@ -94,6 +98,26 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState }) 
     } catch (error) { console.error(error); }
   };
 
+  const findContainer = (id: string | null) => {
+    if (!id) return null;
+    
+    // 1. Check if ID is a column ID
+    if (STATUS_COLUMNS.some(c => c.id === id)) return id as GanttTaskStatus;
+    
+    // 2. Check if ID is a task ID
+    const task = state.ganttTasks.find(t => t.id === id);
+    if (task) return task.status;
+
+    // 3. Fallbacks for labels or other common ID variations
+    const lowerId = id.toLowerCase();
+    if (lowerId === 'em projeto' || lowerId === 'em_projeto' || lowerId === 'in_progress') return GanttTaskStatus.IN_PROGRESS;
+    if (lowerId === 'feito' || lowerId === 'concluido' || lowerId === 'done') return GanttTaskStatus.DONE;
+    if (lowerId === 'aberto' || lowerId === 'todo') return GanttTaskStatus.TODO;
+    if (lowerId === 'fechado' || lowerId === 'closed') return GanttTaskStatus.CLOSED;
+
+    return null;
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     const task = state.ganttTasks.find(t => t.id === active.id);
@@ -104,60 +128,67 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState }) 
     const { active, over } = event;
     if (!over) return;
 
-    const activeId = active.id;
-    const overId = over.id;
+    const activeId = active.id as string;
+    const overId = over.id as string;
 
-    if (activeId === overId) return;
+    const activeContainer = findContainer(activeId);
+    const overContainer = findContainer(overId);
 
-    // Find if we are hovering over a column or a task
-    const isOverColumn = STATUS_COLUMNS.some(c => c.id === overId);
-    
-    if (isOverColumn) {
-       const task = state.ganttTasks.find(t => t.id === activeId);
-       if (task && task.status !== overId) {
-          moveTask(task.id, overId as GanttTaskStatus);
-       }
+    if (!activeContainer || !overContainer || activeContainer === overContainer) {
+      return;
     }
+
+    // Move task between containers visually
+    const updatedTasks = state.ganttTasks.map(t => 
+      t.id === activeId ? { ...t, status: overContainer } : t
+    );
+    onUpdateState({ ...state, ganttTasks: updatedTasks });
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
-    if (!over) return;
+    
+    if (!over) {
+      // Revert if dropped outside
+      onRefresh?.();
+      return;
+    }
 
-    const activeId = active.id;
-    const overId = over.id;
+    const activeId = active.id as string;
+    const overId = over.id as string;
 
     const task = state.ganttTasks.find(t => t.id === activeId);
     if (!task) return;
 
-    const overColumn = STATUS_COLUMNS.find(c => c.id === overId);
-    const overTask = state.ganttTasks.find(t => t.id === overId);
+    const newStatus = findContainer(overId);
+    if (!newStatus) return;
+
+    // Final update and persistence
+    const updatedTask = { 
+      ...task, 
+      status: newStatus, 
+      updatedAt: new Date().toISOString() 
+    } as GanttTask;
+
+    const activeIndex = state.ganttTasks.findIndex(t => t.id === activeId);
+    const overIndex = state.ganttTasks.findIndex(t => t.id === overId);
     
-    const newStatus = overColumn 
-      ? (overId as GanttTaskStatus) 
-      : (overTask ? overTask.status : (state.ganttTasks.find(t => t.id === overId)?.status as GanttTaskStatus));
-
-    if (task.status !== newStatus) {
-       // Optimistic update
-       const updatedTask = { ...task, status: newStatus, updatedAt: new Date().toISOString() };
-       const optimisticTasks = state.ganttTasks.map(t => t.id === activeId ? updatedTask : t);
-       onUpdateState({ ...state, ganttTasks: optimisticTasks });
-
-       try {
-         const newState = await updateGanttTask(updatedTask);
-         onUpdateState(newState);
-       } catch (error) {
-         console.error(error);
-         // Rollback on error
-         onUpdateState(state);
-       }
+    let updatedTasks = [...state.ganttTasks];
+    if (activeIndex !== overIndex && overIndex !== -1) {
+       updatedTasks = arrayMove(updatedTasks, activeIndex, overIndex);
     }
-  };
+    
+    // Apply final status
+    updatedTasks = updatedTasks.map(t => t.id === activeId ? updatedTask : t);
+    onUpdateState({ ...state, ganttTasks: updatedTasks });
 
-  const moveTask = (taskId: string, newStatus: GanttTaskStatus) => {
-     // Optimistic local update before server call if needed, 
-     // but here we just rely on handleDragEnd for the final persistence
+    try {
+      await updateGanttTask(updatedTask);
+    } catch (error) {
+      console.error("Failed to persist task update:", error);
+      onRefresh?.();
+    }
   };
 
   return (
@@ -168,7 +199,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState }) 
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="h-full bg-[#f8fafc] overflow-x-auto p-6 flex gap-6 select-none">
+      <div className="h-full bg-[#f8fafc] dark:bg-slate-950 overflow-x-auto p-6 flex gap-6 select-none">
         {STATUS_COLUMNS.map(col => {
           const columnTasks = state.ganttTasks.filter(t => t.status === col.id);
           
@@ -184,6 +215,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState }) 
               onSaveAdd={() => handleAddTask(col.id)}
               onCancelAdd={() => setInlineAdding(null)}
               users={state.users}
+              onEditTask={onEditTask}
             />
           );
         })}
@@ -198,9 +230,13 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState }) 
   );
 };
 
-const KanbanColumn = ({ column, tasks, onAddInline, isAdding, newTitle, setNewTitle, onSaveAdd, onCancelAdd, users }: any) => {
+const KanbanColumn = ({ column, tasks, onAddInline, isAdding, newTitle, setNewTitle, onSaveAdd, onCancelAdd, users, onEditTask }: any) => {
+  const { setNodeRef } = useDroppable({
+    id: column.id,
+  });
+
   return (
-    <div className="flex-shrink-0 w-80 flex flex-col gap-4">
+    <div ref={setNodeRef} className="flex-shrink-0 w-80 flex flex-col gap-4">
       {/* Column Header */}
       <div className="flex items-center justify-between px-2">
         <div className="flex items-center gap-3">
@@ -221,9 +257,9 @@ const KanbanColumn = ({ column, tasks, onAddInline, isAdding, newTitle, setNewTi
         items={tasks.map((t: any) => t.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="flex-grow space-y-4 overflow-y-auto no-scrollbar min-h-[100px]">
+        <div className="flex-grow space-y-4 overflow-y-auto no-scrollbar min-h-[400px] bg-slate-50/50 dark:bg-slate-900/50 rounded-xl p-2 border border-transparent hover:border-slate-200 dark:hover:border-slate-800 transition-colors pb-32">
           {isAdding && (
-            <div className="bg-white rounded-lg border-2 border-blue-400 p-4 shadow-md transition-all">
+            <div className="bg-white dark:bg-slate-800 rounded-lg border-2 border-blue-400 p-4 shadow-md transition-all">
               <input 
                 autoFocus
                 value={newTitle}
@@ -233,17 +269,17 @@ const KanbanColumn = ({ column, tasks, onAddInline, isAdding, newTitle, setNewTi
                   if (e.key === 'Escape') onCancelAdd();
                 }}
                 placeholder="Nome da tarefa..."
-                className="w-full text-sm font-bold text-slate-700 outline-none mb-3"
+                className="w-full text-sm font-bold text-slate-700 dark:text-white bg-transparent outline-none mb-3"
               />
               <div className="flex justify-end gap-2">
-                <button onClick={onCancelAdd} className="px-3 py-1 text-[10px] font-bold text-slate-400 hover:text-slate-600 uppercase">Cancelar</button>
+                <button onClick={onCancelAdd} className="px-3 py-1 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase">Cancelar</button>
                 <button onClick={onSaveAdd} className="px-3 py-1 bg-blue-600 text-white rounded text-[10px] font-bold uppercase shadow-sm">Adicionar</button>
               </div>
             </div>
           )}
 
           {tasks.map((task: any) => (
-            <KanbanCard key={task.id} task={task} users={users} />
+            <KanbanCard key={task.id} task={task} users={users} onEdit={() => onEditTask?.(task)} />
           ))}
           
           <button 
@@ -258,7 +294,7 @@ const KanbanColumn = ({ column, tasks, onAddInline, isAdding, newTitle, setNewTi
   );
 };
 
-const KanbanCard = ({ task, users, isOverlay = false }: { task: GanttTask, users: any[], isOverlay?: boolean, key?: any }) => {
+const KanbanCard = ({ task, users, onEdit, isOverlay = false }: { task: GanttTask, users: any[], onEdit?: () => void, isOverlay?: boolean, key?: any }) => {
   const {
     attributes,
     listeners,
@@ -299,20 +335,26 @@ const KanbanCard = ({ task, users, isOverlay = false }: { task: GanttTask, users
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-lg transition-all group relative cursor-grab active:cursor-grabbing border-b-4 ${isOverlay ? 'shadow-2xl ring-2 ring-blue-500 rotate-2' : ''}`}
+      onClick={(e) => {
+        if (!isDragging && onEdit) {
+          e.stopPropagation();
+          onEdit();
+        }
+      }}
+      className={`bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm hover:shadow-lg transition-all group relative cursor-grab active:cursor-grabbing border-b-4 ${isOverlay ? 'shadow-2xl ring-2 ring-blue-500 rotate-2' : ''}`}
       style={{ ...style, borderBottomColor: task.color || '#3b82f6' }}
     >
       {/* Category and more icon */}
       <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-50 text-[9px] font-black uppercase tracking-widest text-slate-400 border border-slate-100">
-          <Tag size={10} className="text-slate-300" />
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700">
+          <Tag size={10} className="text-slate-300 dark:text-slate-600" />
           {task.category || 'Nexus'}
         </div>
-        <MoreVertical size={14} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <MoreVertical size={14} className="text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
 
       {/* Title */}
-      <h4 className="text-sm font-bold text-slate-800 leading-snug mb-4 group-hover:text-blue-600 transition-colors">
+      <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-snug mb-4 group-hover:text-blue-600 transition-colors">
         {task.title}
       </h4>
 

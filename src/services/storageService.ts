@@ -2002,9 +2002,13 @@ export const updateGanttTask = async (task: GanttTask): Promise<AppState> => {
   }
 };
 
-export const deleteGanttTask = async (id: string): Promise<AppState> => {
+export const deleteGanttTask = async (taskId: string): Promise<AppState> => {
   try {
-    const { error } = await supabase.from('gantt_tasks').delete().eq('id', id);
+    const { error } = await supabase
+      .from('gantt_tasks')
+      .delete()
+      .eq('id', taskId);
+
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
@@ -2012,3 +2016,4 @@ export const deleteGanttTask = async (id: string): Promise<AppState> => {
     throw error;
   }
 };
+

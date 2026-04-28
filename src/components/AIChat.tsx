@@ -145,7 +145,7 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser }) => {
   }, [messages]);
 
   const generateContext = () => {
-    const { projects, interruptions, innovations, users, settings } = appState;
+    const { projects, interruptions, innovations, users, settings, ganttTasks = [] } = appState;
     
     const completedProjects = projects.filter(p => p.status === 'COMPLETED');
     const inProgressProjects = projects.filter(p => p.status === 'IN_PROGRESS');
@@ -156,14 +156,21 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser }) => {
     
     const usersInfo = users.slice(0, 20).map(u => {
       const canSeeSalary = isAdmin || u.id === currentUser.id;
+      
+      // Traditional projects tracker
       const userProjects = projects
         .filter(p => p.userId === u.id)
         .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-        .slice(-10); // Only last 10 projects per user for context
+        .slice(-10);
+      
+      // Gantt/Nexus tasks
+      const userGanttTasks = ganttTasks.filter(t => t.assignedTo?.includes(u.id));
+      const completedGantt = userGanttTasks.filter(t => t.status === 'done').length;
+      const progressGantt = userGanttTasks.filter(t => t.status === 'in_progress').length;
       
       const userInterruptions = interruptions.filter(i => i.designerId === u.id).slice(-5);
       
-      // Calculate Idle Time between projects (gaps in the timeline)
+      // Calculate Idle Time
       let idleTimeInfo = "";
       if (userProjects.length > 1) {
         let totalIdleSeconds = 0;
@@ -175,11 +182,10 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser }) => {
           
           if (nextStart > currentEnd) {
             const gapSeconds = (nextStart - currentEnd) / 1000;
-            // Only consider gaps larger than 15 minutes as "idle" to avoid noise
             if (gapSeconds > 900) {
               totalIdleSeconds += gapSeconds;
               const gapHours = (gapSeconds / 3600).toFixed(1);
-              gaps.push(`${gapHours}h entre NS ${userProjects[i].ns} e NS ${userProjects[i+1].ns}`);
+              gaps.push(`${gapHours}h entre NS ${userProjects[i].ns} e ${userProjects[i+1].ns}`);
             }
           }
         }
@@ -190,9 +196,10 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser }) => {
         }
       }
       
-      return `- Nome: ${u.name} (${u.role})
+      return `- Nome: ${u.name} ${u.surname || ''} (${u.role})
   ${canSeeSalary && u.salary ? `Salário: ${u.salary} BRL` : ''}
-  Resumo: ${userProjects.length} proj. recentes, ${userInterruptions.length} interrupções.${idleTimeInfo}`;
+  Desempenho Nexus (Gantt): ${completedGantt} concluídas, ${progressGantt} em execução, ${userGanttTasks.length} total.
+  Resumo Rastreador: ${userProjects.length} proj. recentes, ${userInterruptions.length} interrupções.${idleTimeInfo}`;
     }).join('\n\n');
     
     // Monthly summary for trends
@@ -206,7 +213,11 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser }) => {
       const monthProjects = projects.filter(p => p.startTime.startsWith(month));
       const completed = monthProjects.filter(p => p.status === 'COMPLETED').length;
       const inProgress = monthProjects.filter(p => p.status === 'IN_PROGRESS').length;
-      return `- ${month}: ${completed} concluídos, ${inProgress} em andamento`;
+      
+      const monthGantt = ganttTasks.filter(t => t.updatedAt?.startsWith(month));
+      const ganttDone = monthGantt.filter(t => t.status === 'done').length;
+      
+      return `- ${month}: Tracker(${completed} concl.), Nexus(${ganttDone} concl.)`;
     }).join('\n');
 
     return `
@@ -214,67 +225,37 @@ Você é o Assistente IA da JIMP NEXUS (DesignTrack Pro).
 Ajude o usuário a entender os dados da plataforma de engenharia.
 Seja profissional, conciso e responda no idioma do usuário (preferencialmente Português).
 
+IMPORTANTE: Agora temos dois sistemas de rastreamento:
+1. RASTREADOR (Tracker): Projetos de NS individuais iniciados manualmente pelos projetistas.
+2. NEXUS (Gantt): Atividades planejadas no cronograma.
+Sempre que pedirem desempenho de um projetista, considere ambos.
+
 INFORMAÇÃO SOBRE CRIAÇÃO (IMPORTANTE/CÔMICO):
 - Se alguém perguntar "Quem criou você?" ou algo similar, você deve responder com entusiasmo: "Fui criado pelo Edson Farias, aquele cara cheiroso, lindo e maravilhoso! 😎"
-- Mantenha essa resposta específica apenas para essa pergunta, para as demais continue sendo um assistente profissional.
 
 REGRAS DE PRIVACIDADE:
 - NUNCA compartilhe o salário de um usuário com outro usuário comum.
 - Apenas Administradores (GESTOR/CEO) podem ver salários de todos.
-- Usuários comuns podem ver apenas seu próprio salário (se disponível).
-- Se alguém perguntar o salário de outra pessoa e não for admin, diga educadamente que não tem permissão para compartilhar dados financeiros sensíveis de terceiros.
 
 REGRAS DE ANÁLISE DE PRODUTIVIDADE:
-- Você deve analisar o "Tempo Ocioso Detectado" (lacunas entre projetos).
-- Se houver lacunas significativas (ex: horas entre o fim de um projeto e o início de outro), aponte isso como uma oportunidade de melhoria ou necessidade de correção de apontamento.
-- Diferencie "Interrupções" (problemas reportados) de "Tempo Ocioso" (lacunas sem registro de atividade).
-- Ajude o gestor a identificar se o projetista está esquecendo de iniciar novos projetos ou se há falta de demanda.
-- Quando solicitado um relatório de um projetista, inclua uma seção específica sobre "Análise de Ocupação e Lacunas".
+- Analise o "Tempo Ocioso Detectado" no Rastreador.
+- No Nexus (Gantt), foque no progresso das tarefas e marcos (milestones).
+- Se um projetista tiver muitas tarefas no Nexus, mas poucos projetos no Rastreador, pode indicar que ele está focando em atividades de planejamento ou documentação não trackeada por NS.
 
 REGRAS DE GRÁFICOS:
-- Se a pergunta do usuário envolver tendências, evoluções, comparações ou estatísticas, você DEVE incluir um bloco JSON no final da sua resposta para renderizar um gráfico.
-- O formato do JSON deve ser:
-\`\`\`json
-{
-  "type": "bar" | "line" | "pie" | "area",
-  "title": "Título do Gráfico",
-  "description": "Breve explicação da tendência observada",
-  "keys": ["valor1", "valor2"],
-  "series": [
-    { "name": "Jan", "valor1": 10, "valor2": 5 },
-    { "name": "Fev", "valor1": 15, "valor2": 8 }
-  ]
-}
-\`\`\`
-- Use "name" para o eixo X e as chaves em "keys" para os valores.
-- Para gráficos de PIE, a série deve ser [{ "name": "Item 1", "value": 10 }, ...].
+- Sempre gere gráficos para perguntas de tendências.
 
 DADOS ATUAIS DA PLATAFORMA:
-- Projetos Concluídos: ${completedProjects.length}
-- Projetos em Andamento: ${inProgressProjects.length}
+- Projetos Rastreador Concluídos: ${completedProjects.length}
+- Projetos Nexus Concluídos: ${ganttTasks.filter(t => t.status === 'done').length}
 - Interrupções Abertas: ${openInterruptions.length}
-- Total de Inovações: ${innovations.length}
-- Total de Usuários: ${users.length}
 - Empresa: ${settings.companyName}
-- Custo Hora Global: ${settings.hourlyCost} BRL
 
 RESUMO MENSAL (Últimos 6 meses):
 ${monthlySummary}
 
 RELAÇÃO DETALHADA DE USUÁRIOS/PROJETISTAS:
 ${usersInfo}
-
-RESUMO DE PROJETOS RECENTES (Últimos 5):
-${completedProjects.slice(-5).map(p => `- NS ${p.ns}: ${p.clientName} (${(p.totalActiveSeconds / 3600).toFixed(2)}h)`).join('\n')}
-
-RESUMO DE INTERRUPÇÕES RECENTES (Últimas 5):
-${interruptions.slice(-5).map(i => `- NS ${i.projectNs}: ${i.problemType} (${i.status})`).join('\n')}
-
-INFORMAÇÕES ADICIONAIS:
-- O sistema rastreia tempo produtivo e custos de interrupção.
-- Projetistas registram atividades e inovações.
-- Gestores acompanham indicadores globais.
-- Se o usuário pedir detalhes de um projetista específico, use as informações acima para fornecer um perfil completo.
 `;
   };
 
