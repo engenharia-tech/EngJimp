@@ -1016,6 +1016,8 @@ const AppContent: React.FC = () => {
               onAddActivityType={onAddActivityType}
               onUpdateActivityType={onUpdateActivityType}
               onDeleteActivityType={onDeleteActivityType}
+              onUpdateProject={handleProjectUpdate}
+              onUpdateInterruption={onUpdateInterruption}
               settings={data.settings}
               onUpdateSettings={handleUpdateSettings}
               onRefresh={handleRefresh}

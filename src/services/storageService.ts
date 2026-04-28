@@ -286,7 +286,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       operationalActivities = (operationalActivitiesRes.data || []).map((a: any) => ({
         id: a.id, userId: a.user_id, activityTypeId: a.activity_type_id, activityName: a.activity_name,
         startTime: a.start_time, endTime: a.end_time, durationSeconds: a.duration_seconds,
-        notes: a.notes, projectId: a.project_id, isFlagged: a.is_flagged
+        notes: a.notes, projectId: a.project_id, isFlagged: a.is_flagged, isOvertime: a.is_overtime
       }));
     } catch (e) { console.error("OperationalActivities mapping error:", e); }
 

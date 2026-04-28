@@ -63,6 +63,8 @@ interface OperationalPerformanceProps {
   onAddActivityType: (type: ActivityType) => Promise<void>;
   onUpdateActivityType: (type: ActivityType) => Promise<void>;
   onDeleteActivityType: (id: string) => Promise<void>;
+  onUpdateProject: (project: ProjectSession) => Promise<void>;
+  onUpdateInterruption: (interruption: InterruptionRecord) => Promise<void>;
   settings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -82,6 +84,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   onAddActivityType,
   onUpdateActivityType,
   onDeleteActivityType,
+  onUpdateProject,
+  onUpdateInterruption,
   settings,
   onUpdateSettings,
   onRefresh
@@ -110,7 +114,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [selectedActivityType, setSelectedActivityType] = useState('');
   const [gapNotes, setGapNotes] = useState('');
+  const [gapName, setGapName] = useState('');
   const [gapIsFlagged, setGapIsFlagged] = useState(false);
+  const [selectedTimelineItem, setSelectedTimelineItem] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
@@ -245,9 +251,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           isSeedingRef.current = true;
           try {
             const startTime = new Date(selectedDate);
-            startTime.setHours(8, 0, 0, 0);
+            startTime.setHours(0, 0, 0, 0);
             const endTime = new Date(selectedDate);
-            endTime.setHours(18, 0, 0, 0);
+            endTime.setHours(23, 59, 59, 999);
 
             const newActivity: OperationalActivity = {
               id: crypto.randomUUID(),
@@ -705,6 +711,55 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     }
   };
 
+  const handleDeleteTimelineItem = async (item: any) => {
+    try {
+      setIsSaving(true);
+      const originalId = item.id.replace(/-before$|-after$|-seg-\d+$/, '');
+
+      if (item.type === 'activity') {
+        await onDeleteActivity(originalId);
+      } else if (item.type === 'interruption') {
+        // Find the interruption
+        const interruption = interruptions.find(i => i.id === originalId);
+        if (interruption) {
+          await onUpdateInterruption({
+            ...interruption,
+            status: 'COMPLETED' as any, // Or actually delete if possible, but usually we just finish it or remove project link
+            projectId: undefined,
+            projectNs: undefined
+          });
+          // If we want to fully remove it from timeline we might need a separate delete function
+        }
+      } else if (item.type === 'pause') {
+        // Find the project and remove the pause
+        // ID format: `${p.id}-pause-${idx}`
+        const match = item.id.match(/^(.+)-pause-(\d+)$/);
+        if (match) {
+          const projectId = match[1];
+          const pauseIdx = parseInt(match[2]);
+          const project = projects.find(p => p.id === projectId);
+          if (project && project.pauses) {
+            const newPauses = [...project.pauses];
+            newPauses.splice(pauseIdx, 1);
+            await onUpdateProject({
+              ...project,
+              pauses: newPauses
+            });
+          }
+        }
+      }
+      
+      setIsEditingActivity(null);
+      setIsEditingGap(null);
+      setIsConfirmingDelete(false);
+      addToast(t('saved') || 'Atualizado com sucesso!', 'success');
+    } catch (error) {
+      console.error("Error deleting timeline item:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSaveActivity = async () => {
     if ((!isEditingGap && !isEditingActivity) || !selectedActivityType) return;
 
@@ -740,7 +795,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         await onUpdateActivity({
           ...isEditingActivity,
           activityTypeId: type.id,
-          activityName: type.name,
+          activityName: gapName || type.name,
           startTime: newStartTime,
           endTime: newEndTime,
           durationSeconds,
@@ -750,9 +805,11 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         });
         setIsEditingActivity(null);
         setSelectedActivityType('');
+        setGapName('');
         setGapNotes('');
         setGapIsFlagged(false);
         addToast(t('saved') || 'Gravado com sucesso!', 'success');
+        if (onRefresh) await onRefresh();
       } catch (error) {
         // Error handled in App.tsx
       } finally {
@@ -774,7 +831,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         id: crypto.randomUUID(),
         userId: currentUser.id,
         activityTypeId: type.id,
-        activityName: type.name,
+        activityName: gapName || type.name,
         startTime: newStartTime,
         endTime: newEndTime,
         durationSeconds,
@@ -785,11 +842,45 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
       try {
         await onAddActivity(newActivity);
+
+        // CLEANUP: If filling a pause, remove it from the project
+        if (selectedTimelineItem && selectedTimelineItem.type === 'pause') {
+          const match = selectedTimelineItem.id.match(/^(.+)-pause-(\d+)$/);
+          if (match) {
+            const projectId = match[1];
+            const pauseIdx = parseInt(match[2]);
+            const project = projects.find(p => p.id === projectId);
+            if (project && project.pauses) {
+              const newPauses = [...project.pauses];
+              newPauses.splice(pauseIdx, 1);
+              await onUpdateProject({
+                ...project,
+                pauses: newPauses
+              });
+            }
+          }
+        } else if (selectedTimelineItem && selectedTimelineItem.type === 'interruption') {
+          // If filling an interruption, we could complete it
+          const interruptionId = selectedTimelineItem.id.replace(/-before$|-after$/, '');
+          const interruption = interruptions.find(i => i.id === interruptionId);
+          if (interruption) {
+            await onUpdateInterruption({
+              ...interruption,
+              status: 'COMPLETED' as any,
+              projectId: undefined,
+              projectNs: undefined
+            });
+          }
+        }
+
         setIsEditingGap(null);
+        setSelectedTimelineItem(null);
         setSelectedActivityType('');
+        setGapName('');
         setGapNotes('');
         setGapIsFlagged(false);
         addToast(t('saved') || 'Gravado com sucesso!', 'success');
+        if (onRefresh) await onRefresh();
       } catch (error) {
         // Error handled in App.tsx
       } finally {
@@ -1169,12 +1260,13 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                     onClick={() => {
                       if (!canEditCurrent) return;
                       
+                      setSelectedTimelineItem(item);
                       const startTimeStr = format(item.start, 'HH:mm');
                       const endTimeStr = format(item.end, 'HH:mm');
                       setEditStartTime(startTimeStr);
                       setEditEndTime(endTimeStr);
 
-                      const originalId = item.id.replace(/-before$|-after$|-seg-\d+$/, '');
+                      const originalId = (item.id || '').replace(/-before$|-after$|-seg-\d+$/, '');
 
                       if (item.type === 'activity') {
                         const activity = activities.find(a => a.id === originalId);
@@ -1182,6 +1274,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                           setIsEditingActivity(activity);
                           setIsEditingGap(null);
                           setSelectedActivityType(activity.activityTypeId);
+                          setGapName(activity.activityName);
                           setGapNotes(activity.notes || '');
                           setGapIsFlagged(activity.isFlagged || false);
                         } else {
@@ -1192,6 +1285,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                           });
                           setIsEditingActivity(null);
                           setSelectedActivityType('');
+                          setGapName('');
                           setGapNotes(item.name || '');
                         }
                       } else if (item.isGap || item.type === 'interruption' || item.type === 'pause' || item.type === 'project') {
@@ -1201,18 +1295,19 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         });
                         setIsEditingActivity(null);
                         setSelectedActivityType('');
+                        setGapName(item.name || '');
                         setGapNotes(item.name || '');
                         setGapIsFlagged(false);
                       }
                     }}
                     >
-                      {/* Direct Delete Button for activities */}
-                      {!item.isGap && item.type === 'activity' && canEditCurrent && (
+                      {/* Direct Delete Button */}
+                      {!item.isGap && canEditCurrent && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             if (window.confirm(t('confirmDeletion'))) {
-                              handleDeleteActivity(item.id);
+                              handleDeleteTimelineItem(item);
                             }
                           }}
                           className="absolute -right-2 -top-2 p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full opacity-0 group-hover/item:opacity-100 transition-all hover:scale-110 shadow-sm z-20"
@@ -1543,6 +1638,17 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
               </div>
 
               <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">{t('activityName') || 'Nome da Atividade'}</label>
+                <input
+                  type="text"
+                  value={gapName}
+                  onChange={(e) => setGapName(e.target.value)}
+                  className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none uppercase font-bold text-blue-600 dark:text-blue-400"
+                  placeholder={t('notesPlaceholder')}
+                />
+              </div>
+
+              <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-bold text-gray-400 uppercase">{t('activityType')}</label>
                   <button 
@@ -1555,7 +1661,11 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                 </div>
                 <select
                   value={selectedActivityType}
-                  onChange={(e) => setSelectedActivityType(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedActivityType(e.target.value);
+                    const type = activityTypes.find(t => t.id === e.target.value);
+                    if (type && !gapName) setGapName(type.name);
+                  }}
                   className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 dark:text-white font-medium"
                 >
                   <option value="">{t('selectType')}</option>
