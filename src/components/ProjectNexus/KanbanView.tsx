@@ -131,9 +131,12 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState }) 
     const task = state.ganttTasks.find(t => t.id === activeId);
     if (!task) return;
 
-    const newStatus = STATUS_COLUMNS.find(c => c.id === overId) 
-      ? (overId as GanttTaskStatus)
-      : (state.ganttTasks.find(t => t.id === overId)?.status as GanttTaskStatus);
+    const overColumn = STATUS_COLUMNS.find(c => c.id === overId);
+    const overTask = state.ganttTasks.find(t => t.id === overId);
+    
+    const newStatus = overColumn 
+      ? (overId as GanttTaskStatus) 
+      : (overTask ? overTask.status : (state.ganttTasks.find(t => t.id === overId)?.status as GanttTaskStatus));
 
     if (task.status !== newStatus) {
        // Optimistic update

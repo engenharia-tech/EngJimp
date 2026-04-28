@@ -290,6 +290,47 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     return getVisible(rootTasks);
   }, [rootTasks, expandedTasks]);
 
+  const handleExportCSV = () => {
+    const headers = ['ID', 'Titulo', 'Inicio', 'Fim', 'Estado', 'Prioridade', 'Progresso', 'Responsaveis'];
+    const rows = state.ganttTasks.map(t => {
+      const assignees = t.assignedTo.map(uid => {
+        const u = state.users.find(usr => usr.id === uid);
+        return u ? u.name : uid;
+      }).join('; ');
+      
+      return [
+        t.id,
+        `"${t.title.replace(/"/g, '""')}"`,
+        t.startDate,
+        t.endDate,
+        t.status,
+        t.priority,
+        t.progress + '%',
+        `"${assignees.replace(/"/g, '""')}"`
+      ];
+    });
+    
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers, ...rows].map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `gantt_nexus_${format(new Date(), 'yyyyMMdd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast("Gantt exportado com sucesso", "success");
+  };
+
+  const handleRefreshData = async () => {
+    try {
+      await onRefresh();
+      addToast("Dados atualizados", "success");
+    } catch(e) {
+      addToast("Erro ao atualizar", "error");
+    }
+  };
+
   const taskVerticalIndexMap = useMemo(() => {
     const map: Record<string, number> = {};
     flattenedTasks.forEach((t, i) => {
@@ -297,6 +338,60 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     });
     return map;
   }, [flattenedTasks]);
+
+  const renderTaskBar = (task: GanttTask) => {
+    const start = safeParseDate(task.startDate);
+    const end = safeParseDate(task.endDate);
+    const dayOffset = differenceInDays(start, timelineInterval.start);
+    const duration = differenceInDays(end, start) + 1;
+    const left = dayOffset * zoomLevel;
+    const width = Math.max(duration * zoomLevel, 30);
+    const hasChildren = state.ganttTasks.some(t => t.parentId === task.id);
+    const isLevelZero = task.parentId === null;
+
+    if (task.isMilestone) {
+      return (
+        <div 
+          className="absolute h-full flex items-center justify-center group z-10"
+          style={{ left: `${left}px`, width: `${zoomLevel}px` }}
+        >
+          <div className="w-4 h-4 bg-amber-500 rotate-45 transform border-2 border-white dark:border-slate-900 shadow-sm" />
+          <div className="absolute left-full ml-2 opacity-0 group-hover:opacity-100 bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded whitespace-nowrap z-50 pointer-events-none uppercase font-bold tracking-tighter">
+            {task.title}
+          </div>
+        </div>
+      );
+    }
+
+    if (hasChildren || isLevelZero) {
+      return (
+        <div 
+          className="absolute h-6 top-1.5 flex flex-col pointer-events-none z-10"
+          style={{ left: `${left}px`, width: `${width}px` }}
+        >
+          <div className={`h-1.5 w-full ${isLevelZero ? 'bg-slate-900 dark:bg-slate-200' : 'bg-slate-400 dark:bg-slate-500'} rounded-t-sm`} />
+          <div className="flex justify-between w-full h-full">
+            <div className={`w-0.5 h-full ${isLevelZero ? 'bg-slate-900 dark:bg-slate-200' : 'bg-slate-400 dark:bg-slate-500'}`} />
+            <div className={`w-0.5 h-full ${isLevelZero ? 'bg-slate-900 dark:bg-slate-200' : 'bg-slate-400 dark:bg-slate-500'}`} />
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div 
+        onMouseDown={(e) => { e.stopPropagation(); setInteractingTask({ id: task.id, type: 'drag', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate }); }}
+        className={`absolute h-6 top-2 rounded shadow-sm border border-black/10 flex items-center px-2 cursor-grab active:cursor-grabbing hover:brightness-110 transition-all ${task.color || 'bg-blue-500'} group/bar z-10`}
+        style={{ left: `${left}px`, width: `${width}px` }}
+      >
+        <span className="text-[9px] font-bold text-white truncate pointer-events-none">{task.progress}%</span>
+        <div 
+          onMouseDown={(e) => { e.stopPropagation(); setInteractingTask({ id: task.id, type: 'resize', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate }); }}
+          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize group-hover/bar:bg-white/20 transition-colors" 
+        />
+      </div>
+    );
+  };
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedTasks);
@@ -555,69 +650,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                   className="relative flex-shrink-0 bg-white/50 dark:bg-slate-900/50 group-hover:bg-slate-100/30 dark:group-hover:bg-slate-800/20 transition-colors"
                   style={{ width: `${days.length * zoomLevel}px` }}
                 >
-                   {/* Summary Bar for parents */}
-                  {hasChildren ? (
-                    <div 
-                      className="absolute h-1.5 top-4 z-10 pointer-events-none"
-                      style={{
-                        left: `${differenceInDays(safeParseDate(task.startDate), timelineInterval.start) * zoomLevel}px`,
-                        width: `${Math.max(4, (differenceInDays(safeParseDate(task.endDate), safeParseDate(task.startDate)) + 1) * zoomLevel)}px`
-                      }}
-                    >
-                      <div className="absolute inset-0 bg-slate-900 dark:bg-slate-100 rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.2)]" />
-                      <div className="absolute left-0 top-0 bottom-[-4px] w-1.5 bg-slate-900 dark:bg-slate-100 rounded-b-sm" />
-                      <div className="absolute right-0 top-0 bottom-[-4px] w-1.5 bg-slate-900 dark:bg-slate-100 rounded-b-sm" />
-                      {/* Name label for summary bars */}
-                      <span className="absolute left-0 bottom-full mb-1 text-[10px] font-black text-slate-900 dark:text-white whitespace-nowrap bg-white/80 dark:bg-slate-900/80 px-1 rounded">
-                        {task.title}
-                      </span>
-                    </div>
-                  ) : !task.isMilestone ? (
-                    /* Regular Task Bar */
-                    <div 
-                      className={`absolute h-7 top-1.5 rounded-md flex items-center px-2 cursor-pointer transition-all ${task.color} shadow-[0_2px_4px_rgba(0,0,0,0.15)] group/bar z-10 border border-white/30`}
-                      style={{
-                        left: `${differenceInDays(safeParseDate(task.startDate), timelineInterval.start) * zoomLevel}px`,
-                        width: `${Math.max(20, (differenceInDays(safeParseDate(task.endDate), safeParseDate(task.startDate)) + 1) * zoomLevel)}px`
-                      }}
-                      onMouseDown={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const x = e.clientX - rect.left;
-                        if (rect.width - x < 12) setInteractingTask({ id: task.id, type: 'resize', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate });
-                        else setInteractingTask({ id: task.id, type: 'drag', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate });
-                        e.stopPropagation();
-                      }}
-                    >
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] text-white font-black truncate select-none leading-none mb-0.5 tracking-tight shadow-slate-900/10 text-shadow-sm">{task.title}</span>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[8px] text-white/90 font-bold leading-none tracking-tighter">
-                            {format(safeParseDate(task.startDate), 'dd/MM')}
-                          </span>
-                          <span className="text-[8px] text-white/50 leading-none">-</span>
-                          <span className="text-[8px] text-white/90 font-bold leading-none tracking-tighter">
-                            {format(safeParseDate(task.endDate), 'dd/MM')}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 rounded-r flex items-center justify-center opacity-0 group-hover/bar:opacity-100 transition-opacity">
-                        <div className="w-0.5 h-3 bg-white/50 rounded-full" />
-                      </div>
-                    </div>
-                  ) : (
-                    /* Milestone */
-                    <div 
-                      className="absolute w-5 h-5 top-2.5 bg-amber-500 rotate-45 border-2 border-white dark:border-slate-800 shadow-lg cursor-pointer z-10 hover:scale-125 transition-transform"
-                      style={{ left: `${differenceInDays(safeParseDate(task.startDate), timelineInterval.start) * zoomLevel}px`, transform: 'translateX(-50%) rotate(45deg)' }}
-                    >
-                      <div className="absolute inset-0 flex items-center justify-center -rotate-45">
-                        <Milestone size={10} className="text-white" />
-                      </div>
-                      <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 -rotate-45 text-[10px] font-black text-amber-600 dark:text-amber-400 whitespace-nowrap bg-white/80 dark:bg-slate-900/80 px-1 rounded">
-                        {task.title}
-                      </span>
-                    </div>
-                  )}
+                  {renderTaskBar(task)}
                 </div>
               </div>
 
@@ -700,7 +733,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1 flex-shrink-0" />
           <ToolbarButton 
             icon={<History size={16} />} 
-            onClick={onRefresh} 
+            onClick={handleRefreshData} 
             title="Atualizar dados"
             className="flex"
           />
@@ -782,7 +815,10 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
 
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
 
-          <button className="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors">
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors"
+          >
             <Download size={14} />
             Exportar
           </button>
@@ -1151,6 +1187,8 @@ const StatusPicker = ({ status, onUpdate }: { status: GanttTaskStatus, onUpdate:
 
 const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[], users: AppUser[], onUpdate: (uids: string[]) => void }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [addingName, setAddingName] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1161,7 +1199,16 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  const assignedUsers = assignedTo.map(id => users.find(u => u.id === id)).filter(Boolean);
+  const assignedUsers = assignedTo.map(id => {
+    const u = users.find(usr => usr.id === id);
+    if (u) return { id: u.id, name: u.name, type: 'user' };
+    return { id, name: id, type: 'custom' };
+  });
+
+  const filteredUsers = users.filter(u => 
+    u.name.toLowerCase().includes(search.toLowerCase()) || 
+    u.email?.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="relative mr-4 flex-shrink-0" ref={containerRef} style={{ zIndex: isOpen ? 100 : 1 }}>
@@ -1171,9 +1218,13 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
       >
         {assignedUsers.length > 0 ? (
           <>
-            {assignedUsers.slice(0, 2).map((u: any) => (
-              <div key={u.id} className="w-6 h-6 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-600 overflow-hidden">
-                 {u.name.charAt(0)}
+            {assignedUsers.slice(0, 2).map((u) => (
+              <div 
+                key={u.id} 
+                className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold overflow-hidden shadow-sm ${u.type === 'user' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-600'}`}
+                title={u.name}
+              >
+                 {u.name.charAt(0).toUpperCase()}
               </div>
             ))}
             {assignedUsers.length > 2 && (
@@ -1187,7 +1238,6 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
             <UserIcon size={12} />
           </div>
         )}
-        <Plus size={10} className="ml-1 text-slate-300 opacity-0 group-hover:opacity-100" />
       </button>
 
       <AnimatePresence>
@@ -1198,10 +1248,28 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
           >
             <div className="px-3 pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
               <Search size={12} className="text-slate-400" />
-              <input type="text" placeholder="Buscar..." className="w-full text-[10px] outline-none bg-transparent text-slate-700 dark:text-slate-200" />
+              <input 
+                type="text" 
+                placeholder="Buscar ou adicionar nome..." 
+                className="w-full text-[10px] outline-none bg-transparent text-slate-700 dark:text-slate-200" 
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && search.trim()) {
+                    if (!assignedTo.includes(search.trim())) {
+                      onUpdate([...assignedTo, search.trim()]);
+                      setSearch('');
+                    }
+                  }
+                }}
+              />
             </div>
+            
             <div className="max-h-48 overflow-y-auto py-1">
-              {users.map(u => (
+              {filteredUsers.length > 0 && (
+                <div className="px-3 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Colaboradores</div>
+              )}
+              {filteredUsers.map(u => (
                 <button 
                   key={u.id}
                   onClick={() => {
@@ -1212,13 +1280,49 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-[10px] font-bold text-indigo-600 dark:text-indigo-400 flex-shrink-0 overflow-hidden">
-                       {u.name.charAt(0)}
+                       {u.name.charAt(0).toUpperCase()}
                     </div>
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{u.name}</span>
                   </div>
                   {assignedTo.includes(u.id) && <CheckCircle2 size={14} className="text-blue-500" />}
                 </button>
               ))}
+
+              {search.trim() && !users.find(u => u.name.toLowerCase() === search.toLowerCase()) && (
+                <button 
+                  onClick={() => {
+                    onUpdate([...assignedTo, search.trim()]);
+                    setSearch('');
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 transition-colors border-t border-slate-100 dark:border-slate-800 mt-1"
+                >
+                  <Plus size={14} />
+                  <span className="text-xs font-bold truncate">Adicionar "{search}"</span>
+                </button>
+              )}
+              
+              {/* Custom Names already added */}
+              {assignedUsers.filter(au => au.type === 'custom').length > 0 && (
+                <>
+                  <div className="px-3 py-1 mt-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-t border-slate-50 dark:border-slate-800">Outros atribuídos</div>
+                  {assignedUsers.filter(au => au.type === 'custom').map(au => (
+                    <div key={au.id} className="w-full flex items-center justify-between px-3 py-1.5 group">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-600 flex-shrink-0 uppercase">
+                          {au.name.charAt(0)}
+                        </div>
+                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{au.name}</span>
+                      </div>
+                      <button 
+                        onClick={() => onUpdate(assignedTo.filter(id => id !== au.id))}
+                        className="text-slate-300 hover:text-red-500 transition-colors"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           </motion.div>
         )}
