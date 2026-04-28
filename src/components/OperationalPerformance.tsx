@@ -17,6 +17,9 @@ import {
   RefreshCw,
   Flag,
   UserCog,
+  User as UserIcon,
+  TrendingUp,
+  Layers,
   Mail,
   Save
 } from 'lucide-react';
@@ -87,11 +90,18 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const { addToast } = useToast();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'month' | 'year'>('day');
-  const [selectedUserId, setSelectedUserId] = useState(currentUser.id);
+  const [selectedUserId, setSelectedUserId] = useState<string>(currentUser.id);
+
+  // When tab is engineering, we might want to default to ALL if allowed
+  useEffect(() => {
+    if (activeTab === 'engineering' && canEditOthers && !selectedUserId) {
+      setSelectedUserId('ALL');
+    }
+  }, [activeTab, canEditOthers]);
 
   const [isAddingType, setIsAddingType] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
-  const [activeTab, setActiveTab] = useState<'tracker' | 'dashboard' | 'management'>('tracker');
+  const [activeTab, setActiveTab] = useState<'tracker' | 'dashboard' | 'engineering' | 'management'>('tracker');
   const [isEditingGap, setIsEditingGap] = useState<{ start: string; end: string } | null>(null);
   const [isEditingActivity, setIsEditingActivity] = useState<OperationalActivity | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -101,6 +111,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
+
+  const canEditOthers = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role);
+  const canEditCurrent = selectedUserId === currentUser.id || (canEditOthers && selectedUserId !== 'ALL');
 
   // Sync edit times when modal opens
   useEffect(() => {
@@ -134,9 +147,6 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     }
   }, [language]);
 
-  const canEditOthers = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role);
-  const canEditCurrent = selectedUserId === currentUser.id || canEditOthers;
-
   const filteredUsers = useMemo(() => {
     const nonProcessUsers = users.filter(u => u.role !== 'PROCESSOS');
     if (canEditOthers) return nonProcessUsers;
@@ -147,7 +157,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     return activities.filter(a => {
       const activityStart = parseISO(a.startTime);
       const activityEnd = a.endTime ? parseISO(a.endTime) : new Date();
-      const isUser = a.userId === selectedUserId;
+      const isUser = selectedUserId === 'ALL' ? true : a.userId === selectedUserId;
       if (!isUser) return false;
 
       if (viewMode === 'day') {
@@ -169,7 +179,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     return projects.filter(p => {
       const projectStart = parseISO(p.startTime);
       const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
-      const isUser = p.userId === selectedUserId;
+      const isUser = selectedUserId === 'ALL' ? true : p.userId === selectedUserId;
       if (!isUser) return false;
 
       if (viewMode === 'day') {
@@ -189,7 +199,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     return (interruptions || []).filter(i => {
       const start = parseISO(i.startTime);
       const end = i.endTime ? parseISO(i.endTime) : new Date();
-      const isUser = i.designerId === selectedUserId;
+      const isUser = selectedUserId === 'ALL' ? true : i.designerId === selectedUserId;
       if (!isUser) return false;
 
       if (viewMode === 'day') {
@@ -859,6 +869,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                 onChange={(e) => setSelectedUserId(e.target.value)}
                 className="bg-transparent border-none text-sm font-medium focus:ring-0 outline-none min-w-[150px]"
               >
+                {canEditOthers && (
+                  <option value="ALL">EQUIPE COMPLETA</option>
+                )}
                 {filteredUsers.map(u => (
                   <option key={u.id} value={u.id}>{u.name} ({t(u.role.toLowerCase() as any)})</option>
                 ))}
@@ -892,17 +905,30 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
             <span className="hidden sm:inline">{t('dashboard').toUpperCase()}</span>
           </button>
           {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
-            <button
-              onClick={() => setActiveTab('management')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                activeTab === 'management' 
-                  ? 'bg-blue-600 text-white shadow-md' 
-                  : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700'
-              }`}
-            >
-              <SettingsIcon size={18} />
-              <span className="hidden sm:inline">{t('management').toUpperCase()}</span>
-            </button>
+            <>
+              <button
+                onClick={() => setActiveTab('engineering')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                  activeTab === 'engineering' 
+                    ? 'bg-blue-600 text-white shadow-md' 
+                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <Activity size={18} />
+                <span className="hidden sm:inline">ENGENHARIA</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('management')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                  activeTab === 'management' 
+                    ? 'bg-blue-600 text-white shadow-md' 
+                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <SettingsIcon size={18} />
+                <span className="hidden sm:inline">{t('management').toUpperCase()}</span>
+              </button>
+            </>
           )}
         </div>
 
@@ -1312,6 +1338,18 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       </div>
       )}
 
+      {activeTab === 'engineering' && (
+        <EngineeringDashboard 
+          projects={filteredProjects}
+          users={users.filter(u => u.role === 'PROJETISTA' || u.role === 'COORDENADOR')}
+          interruptions={filteredInterruptions}
+          theme={theme}
+          t={t}
+          viewMode={viewMode}
+          selectedDate={selectedDate}
+        />
+      )}
+
       {activeTab === 'management' && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
           <div className="flex items-center justify-between mb-6">
@@ -1646,5 +1684,221 @@ const Timer: React.FC<{ startTime: string }> = ({ startTime }) => {
     <span>
       {h.toString().padStart(2, '0')}:{m.toString().padStart(2, '0')}:{s.toString().padStart(2, '0')}
     </span>
+  );
+};
+
+const EngineeringDashboard: React.FC<{
+  projects: ProjectSession[];
+  users: User[];
+  interruptions: InterruptionRecord[];
+  theme: 'light' | 'dark';
+  t: any;
+  viewMode: 'day' | 'month' | 'year';
+  selectedDate: Date;
+}> = ({ projects, users, interruptions, theme, t, viewMode, selectedDate }) => {
+  const stats = useMemo(() => {
+    const drafters = users.filter(u => u.role === 'PROJETISTA');
+    const drafterCount = drafters.length || 1;
+
+    // Filter projects for these users and period
+    const relevantProjects = projects; // Already filtered by parent
+
+    const totalActiveSeconds = relevantProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const totalHours = totalActiveSeconds / 3600;
+    
+    // Calculate per capita index
+    const indexPerCapita = totalHours / drafterCount;
+
+    // Average time by project type/part
+    const typeGroups: Record<string, { total: number; count: number }> = {};
+    relevantProjects.forEach(p => {
+      const type = p.implementType || p.type || t('notInformed');
+      if (!typeGroups[type]) typeGroups[type] = { total: 0, count: 0 };
+      typeGroups[type].total += p.totalActiveSeconds;
+      typeGroups[type].count += 1;
+    });
+
+    const averageByType = Object.entries(typeGroups).map(([name, g]) => ({
+      name,
+      avgHours: Number((g.total / g.count / 3600).toFixed(2)),
+      count: g.count
+    })).sort((a, b) => b.avgHours - a.avgHours);
+
+    // Overtime analysis
+    const overtimeHours = relevantProjects
+      .filter(p => p.isOvertime)
+      .reduce((acc, p) => acc + p.totalActiveSeconds, 0) / 3600;
+
+    const normalHours = totalHours - overtimeHours;
+
+    // Efficiency by user
+    const userStats = users.map(u => {
+      const uProjects = relevantProjects.filter(p => p.userId === u.id);
+      const uHours = uProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0) / 3600;
+      const uCount = uProjects.length;
+      return {
+        id: u.id,
+        name: u.name,
+        hours: Number(uHours.toFixed(1)),
+        count: uCount,
+        efficiency: uCount > 0 ? Number((uHours / uCount).toFixed(2)) : 0
+      };
+    }).sort((a, b) => b.hours - a.hours);
+
+    return {
+      totalHours: Number(totalHours.toFixed(1)),
+      indexPerCapita: Number(indexPerCapita.toFixed(2)),
+      overtimeHours: Number(overtimeHours.toFixed(1)),
+      normalHours: Number(normalHours.toFixed(1)),
+      averageByType,
+      userStats,
+      drafterCount
+    };
+  }, [projects, users, t]);
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
+              <TrendingUp size={20} />
+            </div>
+            <p className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-tight">Índice Per Capita</p>
+          </div>
+          <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            {stats.indexPerCapita}h
+          </p>
+          <p className="text-xs text-gray-400 mt-1 uppercase">Média p/ Projetista ({stats.drafterCount})</p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg text-purple-600 dark:text-purple-400">
+              <Clock size={20} />
+            </div>
+            <p className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-tight">Total Projetado</p>
+          </div>
+          <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            {stats.totalHours}h
+          </p>
+          <p className="text-xs text-gray-400 mt-1 uppercase">Horas Líquidas</p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400">
+              <AlertCircle size={20} />
+            </div>
+            <p className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-tight">Horas Extras</p>
+          </div>
+          <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            {stats.overtimeHours}h
+          </p>
+          <p className="text-xs text-gray-400 mt-1 uppercase">Fora do Expediente</p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400">
+              <BarChart3 size={20} />
+            </div>
+            <p className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-tight">Expediente Normal</p>
+          </div>
+          <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            {stats.normalHours}h
+          </p>
+          <p className="text-xs text-gray-400 mt-1 uppercase">Horas Contratuais</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Performance by Category */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+          <h3 className={`text-lg font-bold mb-6 flex items-center gap-2 uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            <Layers className="text-blue-500" size={20} />
+            Média por Tipo de Implementação
+          </h3>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.averageByType} layout="vertical">
+                <XAxis type="number" hide />
+                <YAxis 
+                  dataKey="name" 
+                  type="category" 
+                  width={100}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 'bold' }}
+                />
+                <Tooltip 
+                  cursor={{ fill: 'transparent' }}
+                  contentStyle={{ 
+                    backgroundColor: theme === 'dark' ? '#1e293b' : '#fff',
+                    borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
+                    borderRadius: '12px'
+                  }}
+                />
+                <Bar dataKey="avgHours" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20}>
+                  {stats.averageByType.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* User Efficiency Table */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+          <h3 className={`text-lg font-bold mb-6 flex items-center gap-2 uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+            <UserIcon className="text-blue-500" size={20} />
+            Ranking de Produtividade (Projeto)
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-slate-700">
+                  <th className="text-left py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Projetista</th>
+                  <th className="text-center py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Horas</th>
+                  <th className="text-center py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Projetos</th>
+                  <th className="text-right py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Eficiência</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
+                {stats.userStats.map((user, idx) => (
+                  <tr key={user.id} className="group hover:bg-gray-50 dark:hover:bg-slate-900/50 transition-colors">
+                    <td className="py-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
+                          idx === 0 ? 'bg-amber-100 text-amber-600' :
+                          idx === 1 ? 'bg-gray-100 text-gray-600' :
+                          idx === 2 ? 'bg-orange-100 text-orange-600' :
+                          'bg-blue-50 text-blue-600 dark:bg-slate-700 dark:text-slate-300'
+                        }`}>
+                          {idx + 1}
+                        </div>
+                        <span className={`text-sm font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                          {user.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="text-center py-4 font-mono font-bold text-blue-600 dark:text-blue-400">{user.hours}h</td>
+                    <td className="text-center py-4 font-bold text-gray-600 dark:text-slate-300">{user.count}</td>
+                    <td className="text-right py-4">
+                      <span className="bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded text-xs font-bold font-mono">
+                        {user.efficiency}h/prj
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

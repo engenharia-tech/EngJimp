@@ -868,7 +868,13 @@ export const translations = {
     "timeAllocation": "Alocação de Tempo",
     "attachments": "Anexos",
     "topic": "Tópico",
-    "subtopic": "Subtópico"
+    "subtopic": "Subtópico",
+    "depreciationPerYear": "DEPRECIAÇÃO: {value}/ANO",
+    "depreciationYears": "ANOS DE DEPRECIAÇÃO",
+    "machineName": "NOME DA MÁQUINA",
+    "machineCost": "CUSTO MÁQUINA",
+    "machineSection": "MÁQUINA E DEPRECIAÇÃO",
+    "machineEquipment": "MÁQUINA / EQUIPAMENTO"
   },
   "es-ES": {
     "monthlyViewNotice": "LA VISTA PREDETERMINADA ES PARA EL MES ACTUAL. PARA VER TODO EL HISTORIAL, BORRE O CAMBIE LOS FILTROS DE FECHA.",

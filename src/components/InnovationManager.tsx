@@ -59,6 +59,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [macCost, setMacCost] = useState('');
   const [macDepYears, setMacDepYears] = useState('');
 
+  const safeParse = (val: any): number => {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    if (!val) return 0;
+    const str = val.toString().replace(',', '.').replace(/[^\d.-]/g, '');
+    const parsed = parseFloat(str);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   const canManage = ['GESTOR', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
   const canDelete = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
 
@@ -183,8 +191,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
   // Preview Calculation for Form
   const previewAnnualSavings = useMemo(() => {
-    const unit = parseFloat(unitSavings) || 0;
-    const qty = parseFloat(quantity) || 0;
+    const unit = safeParse(unitSavings);
+    const qty = safeParse(quantity);
     
     let base = 0;
     if (calculationType === CalculationType.ONE_TIME) {
@@ -197,21 +205,20 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
     // Material Impact
     const materialImpact = materials.reduce((acc, m) => {
-        const mCost = m.cost * (calculationType === CalculationType.ONE_TIME ? 1 : qty);
+        const mCost = (m.cost || 0) * (calculationType === CalculationType.ONE_TIME ? 1 : qty);
         if (m.type === 'REMOVE') return acc + mCost;
         return acc - mCost;
     }, 0);
 
     // Machine Impact (Depreciation is annual)
-    const machineImpact = machine ? -machine.annualDepreciation : 0;
+    const machineImpact = machine ? -(safeParse(machine.annualDepreciation)) : 0;
 
     // Productivity Impact
     let productivityImpact = 0;
-    const hourlyCost = settings?.hourlyCost || 0;
-    const prodBefore = parseFloat(productivityBefore);
-    const prodAfter = parseFloat(productivityAfter);
-    const prodCost = parseFloat(unitProductCost) || 0;
-    const prodValue = parseFloat(unitProductValue) || 0;
+    const prodBefore = safeParse(productivityBefore);
+    const prodAfter = safeParse(productivityAfter);
+    const prodCost = safeParse(unitProductCost);
+    const prodValue = safeParse(unitProductValue);
 
     if (prodBefore > 0 && prodAfter > 0 && qty > 0) {
         // Labor Saving per unit = (Time Before - Time After) * Hourly Cost
@@ -228,7 +235,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         productivityImpact = prodValue > 0 ? profitFromExtraUnits : laborSaving;
     }
 
-    return base + materialImpact + machineImpact + productivityImpact;
+    const total = base + materialImpact + machineImpact + productivityImpact;
+    return isNaN(total) ? 0 : total;
   }, [unitSavings, quantity, calculationType, materials, machine, productivityBefore, productivityAfter, unitProductCost, unitProductValue, settings]);
 
   const addMaterial = () => {
@@ -236,7 +244,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     const newMat: InnovationMaterial = {
         id: crypto.randomUUID(),
         name: matName.trim(),
-        cost: parseFloat(matCost) || 0,
+        cost: safeParse(matCost),
         type: matType
     };
     setMaterials([...materials, newMat]);
@@ -253,13 +261,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setMachine(null);
         return;
     }
-    const cost = parseFloat(macCost) || 0;
-    const years = parseFloat(macDepYears) || 1;
+    const cost = safeParse(macCost);
+    const years = safeParse(macDepYears);
+    const validYears = years > 0 ? years : 1;
     setMachine({
         name: macName,
         cost,
-        depreciationYears: years,
-        annualDepreciation: cost / years
+        depreciationYears: validYears,
+        annualDepreciation: cost / validYears
     });
   };
 
@@ -267,11 +276,11 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     e.preventDefault();
     
     const total = previewAnnualSavings;
-    const invest = parseFloat(investmentCost) || 0;
-    const prodBefore = parseFloat(productivityBefore) || undefined;
-    const prodAfter = parseFloat(productivityAfter) || undefined;
-    const prodCost = parseFloat(unitProductCost) || undefined;
-    const prodValue = parseFloat(unitProductValue) || undefined;
+    const invest = safeParse(investmentCost);
+    const prodBefore = productivityBefore ? safeParse(productivityBefore) : undefined;
+    const prodAfter = productivityAfter ? safeParse(productivityAfter) : undefined;
+    const prodCost = unitProductCost ? safeParse(unitProductCost) : undefined;
+    const prodValue = unitProductValue ? safeParse(unitProductValue) : undefined;
 
     if (editingInnovation) {
         const updatedRecord: InnovationRecord = {
@@ -280,8 +289,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             description,
             type,
             calculationType,
-            unitSavings: parseFloat(unitSavings) || 0,
-            quantity: calculationType === CalculationType.ONE_TIME ? 1 : (parseFloat(quantity) || 0),
+            unitSavings: safeParse(unitSavings),
+            quantity: calculationType === CalculationType.ONE_TIME ? 1 : safeParse(quantity),
             totalAnnualSavings: total,
             investmentCost: invest,
             materials,
@@ -301,8 +310,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             type,
             
             calculationType,
-            unitSavings: parseFloat(unitSavings) || 0,
-            quantity: calculationType === CalculationType.ONE_TIME ? 1 : (parseFloat(quantity) || 0),
+            unitSavings: safeParse(unitSavings),
+            quantity: calculationType === CalculationType.ONE_TIME ? 1 : safeParse(quantity),
             totalAnnualSavings: total,
             investmentCost: invest,
             materials,
@@ -681,7 +690,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 <div className="flex items-center gap-4">
                                     <div className="text-right">
                                         <div className="font-mono font-bold dark:text-slate-200">
-                                            {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost * (calculationType === CalculationType.ONE_TIME || calculationType === CalculationType.ADD_EXPENSE ? 1 : (parseFloat(quantity) || 0)))}
+                                            {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost * (calculationType === CalculationType.ONE_TIME || calculationType === CalculationType.ADD_EXPENSE ? 1 : (safeParse(quantity))))}
                                         </div>
                                         {calculationType !== CalculationType.ONE_TIME && calculationType !== CalculationType.ADD_EXPENSE && (
                                             <div className="text-[10px] text-gray-400 dark:text-slate-500">
@@ -806,28 +815,28 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         </div>
                     </div>
                     <div className="md:col-span-4">
-                        {parseFloat(productivityBefore) > 0 && parseFloat(productivityAfter) > 0 && (
+                        {safeParse(productivityBefore) > 0 && safeParse(productivityAfter) > 0 && (
                             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg flex flex-wrap gap-8 items-center">
                                 <div>
                                     <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase">{t('productivityGain')}</div>
                                     <div className="text-2xl font-black text-blue-700 dark:text-blue-300">
-                                        +{((parseFloat(productivityAfter) - parseFloat(productivityBefore)) / parseFloat(productivityBefore) * 100).toFixed(1)}%
+                                        +{((safeParse(productivityAfter) - safeParse(productivityBefore)) / safeParse(productivityBefore) * 100).toFixed(1)}%
                                     </div>
                                 </div>
                                 
-                                {parseFloat(unitProductValue) > 0 && parseFloat(unitProductCost) > 0 && (
+                                {safeParse(unitProductValue) > 0 && safeParse(unitProductCost) > 0 && (
                                     <div className="border-l border-blue-200 dark:border-blue-800 pl-8">
                                         <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase">{t('profitFromCapacity')}</div>
                                         <div className="text-2xl font-black text-emerald-600">
-                                            {formatCurrency(parseFloat(quantity) * (parseFloat(productivityAfter) / parseFloat(productivityBefore) - 1) * (parseFloat(unitProductValue) - parseFloat(unitProductCost)))}
+                                            {formatCurrency(safeParse(quantity) * (safeParse(productivityAfter) / safeParse(productivityBefore) - 1) * (safeParse(unitProductValue) - safeParse(unitProductCost)))}
                                         </div>
                                         <div className="text-[10px] text-gray-400">
-                                            ({(parseFloat(quantity) * (parseFloat(productivityAfter) / parseFloat(productivityBefore) - 1)).toFixed(0)} {t('extraUnits')} / {t('year')})
+                                            ({(safeParse(quantity) * (safeParse(productivityAfter) / safeParse(productivityBefore) - 1)).toFixed(0)} {t('extraUnits')} / {t('year')})
                                         </div>
                                     </div>
                                 )}
 
-                                {parseFloat(unitProductCost) > 0 && (
+                                {safeParse(unitProductCost) > 0 && (
                                     <div className="border-l border-blue-200 dark:border-blue-800 pl-8 grid grid-cols-2 gap-x-8 gap-y-1">
                                         <div className="col-span-2 mb-1">
                                             <div className="text-[10px] text-gray-400 uppercase font-bold">{t('costPerUnit')}</div>
@@ -835,13 +844,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                         <div>
                                             <div className="text-[10px] text-gray-400 uppercase">{t('current')}</div>
                                             <div className="text-xs font-bold text-gray-600 dark:text-slate-400">
-                                                {formatCurrency(((settings?.hourlyCost || 0) / parseFloat(productivityBefore)) + parseFloat(unitProductCost))}
+                                                {formatCurrency(((settings?.hourlyCost || 0) / safeParse(productivityBefore)) + safeParse(unitProductCost))}
                                             </div>
                                         </div>
                                         <div>
                                             <div className="text-[10px] text-blue-600 dark:text-blue-400 uppercase">{t('improved')}</div>
                                             <div className="text-xs font-bold text-blue-700 dark:text-blue-300">
-                                                {formatCurrency(((settings?.hourlyCost || 0) / parseFloat(productivityAfter)) + parseFloat(unitProductCost))}
+                                                {formatCurrency(((settings?.hourlyCost || 0) / safeParse(productivityAfter)) + safeParse(unitProductCost))}
                                             </div>
                                         </div>
                                     </div>

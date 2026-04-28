@@ -150,6 +150,21 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const elapsedSecondsRef = useRef<number>(0);
   const onUpdateRef = useRef(onUpdate);
 
+  // Auto-detect overtime based on clock when not in a project
+  useEffect(() => {
+    if (!activeProject && settings) {
+      const now = new Date();
+      const isNowWorking = isWorkingHour(now, settings, false);
+      if (!isNowWorking) {
+        setIsOvertime(true);
+        setPickIsOvertime(true);
+      } else {
+        setIsOvertime(false);
+        setPickIsOvertime(false);
+      }
+    }
+  }, [settings, activeProject, isVisible]);
+
   useEffect(() => {
     onUpdateRef.current = onUpdate;
   }, [onUpdate]);

@@ -11,17 +11,29 @@ import {
   Group
 } from 'lucide-react';
 import { AppState, GanttTask, GanttTaskStatus, TaskPriority } from '../../types';
-import { format, addDays } from 'date-fns';
-import { addGanttTask } from '../../services/storageService';
+import { format, addDays, isValid } from 'date-fns';
+import { addGanttTask, updateGanttTask, deleteGanttTask } from '../../services/storageService';
 
 interface ListViewProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
+  onRefresh?: () => void;
 }
 
-export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState }) => {
+export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefresh }) => {
   const [inlineAdding, setInlineAdding] = React.useState<boolean>(false);
   const [newTitle, setNewTitle] = React.useState('');
+  const [menuTaskId, setMenuTaskId] = React.useState<string | null>(null);
+
+  const safeFormat = (dateStr: string, formatStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      if (!isValid(d)) return '--/--/----';
+      return format(d, formatStr);
+    } catch(e) {
+      return '--/--/----';
+    }
+  };
 
   const handleAddTask = async () => {
     if (!newTitle.trim()) return;
@@ -30,7 +42,7 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState }) => {
       title: newTitle,
       startDate: format(new Date(), 'yyyy-MM-dd'),
       endDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
-      color: 'bg-blue-500',
+      color: 'bg-blue-600',
       isMilestone: false,
       assignedTo: [],
       progress: 0,
@@ -39,20 +51,30 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState }) => {
       attachments: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      order: state.ganttTasks.length
+      order: state.ganttTasks.length,
+      dependencies: []
     };
     try {
       const newState = await addGanttTask(newTask);
       onUpdateState(newState);
       setInlineAdding(false);
       setNewTitle('');
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error(error); alert("Erro ao salvar tarefa."); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Excluir esta tarefa?")) return;
+    try {
+      const newState = await deleteGanttTask(id);
+      onUpdateState(newState);
+      setMenuTaskId(null);
+    } catch (error) { console.error(error); alert("Erro ao excluir."); }
   };
 
   const getStatusLabel = (status: GanttTaskStatus) => {
     switch (status) {
       case GanttTaskStatus.TODO: return 'Aberto';
-      case GanttTaskStatus.IN_PROGRESS: return 'Em progresso';
+      case GanttTaskStatus.IN_PROGRESS: return 'Em projeto';
       case GanttTaskStatus.DONE: return 'Feito';
       case GanttTaskStatus.CLOSED: return 'Fechado';
       default: return status;
@@ -148,21 +170,18 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState }) => {
                 <td className="px-6 py-3 text-xs text-slate-400">{idx + 1}</td>
                 <td className="px-6 py-3 text-sm text-slate-700 font-bold">{task.title}</td>
                 <td className="px-6 py-3 text-sm text-slate-600">
-                  {format(new Date(task.startDate), 'dd/MM/yyyy')}
+                  {safeFormat(task.startDate, 'dd/MM/yyyy')}
                 </td>
                 <td className="px-6 py-3">
-                  <div className="flex items-center gap-2">
-                    {task.assignedTo.map(uid => {
+                  <div className="flex items-center -space-x-1">
+                    {task.assignedTo.length > 0 ? task.assignedTo.map(uid => {
                       const u = state.users.find(usr => usr.id === uid);
                       return (
-                        <div key={uid} className="flex items-center gap-2 text-xs text-slate-600 font-bold">
-                           <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] text-slate-700 border border-white uppercase">
-                             {u?.name.charAt(0)}
-                           </div>
-                           <span className="truncate max-w-[100px]">{u?.name}</span>
+                        <div key={uid} className="w-6 h-6 rounded-full bg-slate-100 border border-white flex items-center justify-center text-[10px] font-black text-slate-600 uppercase" title={u?.name || uid}>
+                          {(u?.name || uid).charAt(0)}
                         </div>
                       )
-                    })}
+                    }) : <div className="text-slate-300 text-[10px]">Não atribuído</div>}
                   </div>
                 </td>
                 <td className="px-6 py-3">
@@ -174,10 +193,24 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState }) => {
                 <td className="px-6 py-3 text-sm text-slate-700 text-right font-mono">
                   {Object.values(task.workload || {}).reduce((a: any, b: any) => (a as number) + (b as number), 0)}
                 </td>
-                <td className="px-4 py-3">
-                   <button className="p-1 hover:bg-slate-100 rounded text-slate-300 hover:text-slate-600">
+                <td className="px-4 py-3 relative">
+                   <button 
+                    onClick={() => setMenuTaskId(menuTaskId === task.id ? null : task.id)}
+                    className="p-1 hover:bg-slate-100 rounded text-slate-300 hover:text-slate-600 transition-colors"
+                   >
                       <MoreVertical size={16} />
                    </button>
+                   {menuTaskId === task.id && (
+                     <div className="absolute right-full mr-2 top-0 bg-white border border-slate-200 rounded shadow-xl z-50 w-32 py-1 overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <button className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50 border-b border-slate-100">EDITAR</button>
+                        <button 
+                          onClick={() => handleDelete(task.id)}
+                          className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-red-600 hover:bg-slate-50"
+                        >
+                          EXCLUIR
+                        </button>
+                     </div>
+                   )}
                 </td>
               </tr>
             ))}
