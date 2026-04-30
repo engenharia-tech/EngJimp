@@ -11,15 +11,14 @@ export const IMPLEMENT_TYPES = [
   ImplementType.BASE,
   ImplementType.BASE_AND_BOX,
   ImplementType.CAIXA_CARGA,
-  ImplementType.CARGA_SECA,
+  ImplementType.CARGA_SECA_SC,
+  ImplementType.CARGA_SECA_SR,
   ImplementType.COMPONENTES,
-  ImplementType.FURGAO,
+  ImplementType.FURGAO_SC,
+  ImplementType.FURGAO_SR,
   ImplementType.GRANELEIRO,
-  ImplementType.OUTROS,
-  ImplementType.SIDER,
-  ImplementType.SOBRECHASSI,
-  ImplementType.SOBRE_CHASSI_FURGAO,
-  ImplementType.SOBRE_CHASSI_LONADO
+  ImplementType.SIDER_SC,
+  ImplementType.SIDER_SR
 ].sort();
 
 export const FLOORING_TYPES = [
@@ -101,19 +100,15 @@ export const SUSPENSION_TYPES = [
 ].sort();
 
 export const PRODUCT_CATEGORIES = [
-  'Furgão três eixos',
-  'Furgão dois eixos',
-  'Saider',
-  'Subchassi',
-  'Graneleiro',
-  'Basculante',
-  'Carga Seca',
-  'Componentes',
-  'Sobre chassi furgão',
-  'SR Furgão MEC 3E',
-  'SR Furgão MEC 2E',
-  'SR Sider MEC 3E',
-  'Outros'
+  'BASCULANTE',
+  'CARGA SECA SC',
+  'CARGA SECA SR',
+  'COMPONENTES',
+  'FURGÃO SC',
+  'FURGÃO SR',
+  'GRANELEIRO',
+  'SIDER SC',
+  'SIDER SR'
 ].sort();
 
 export const STORAGE_KEY = 'design_track_pro_data';

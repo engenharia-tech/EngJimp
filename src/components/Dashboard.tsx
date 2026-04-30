@@ -925,7 +925,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   };
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'NS', 'Codigo', 'Bastidor', 'Tipo', 'Implemento', 'Inicio', 'Fim', 'Tempo Total(s)', 'Status', 'Notas'];
+    const headers = ['ID', 'NS', 'Codigo', 'Número de Chassi', 'Tipo', 'Implemento', 'Inicio', 'Fim', 'Tempo Total(s)', 'Status', 'Notas'];
     const rows = filteredProjects.map(p => [
       p.id,
       p.ns,
