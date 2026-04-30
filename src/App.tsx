@@ -20,6 +20,7 @@ import { Settings } from './components/Settings';
 import { OperationalPerformance } from './components/OperationalPerformance';
 import { Login } from './components/Login';
 import { 
+  supabase,
   fetchAppState, 
   addProject, 
   updateProject, 
@@ -237,7 +238,61 @@ const AppContent: React.FC = () => {
       }
     };
     load();
-  }, [currentUser]); 
+
+    // Setup Real-time Subscriptions
+    const projectSub = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'projects' },
+        async () => {
+          console.log('[Realtime] Projects changed, fetching latest...');
+          const appData = await fetchAppState();
+          setData(appData);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'project_requests' },
+        async () => {
+          console.log('[Realtime] Project Requests changed, fetching latest...');
+          const appData = await fetchAppState();
+          setData(appData);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'interruptions' },
+        async () => {
+          console.log('[Realtime] Interruptions changed, fetching latest...');
+          const appData = await fetchAppState();
+          setData(appData);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        async () => {
+          console.log('[Realtime] Users changed, fetching latest...');
+          const appData = await fetchAppState();
+          setData(appData);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gantt_tasks' },
+        async () => {
+          console.log('[Realtime] Gantt Tasks changed, fetching latest...');
+          const appData = await fetchAppState();
+          setData(appData);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(projectSub);
+    };
+  }, [currentUser, t, addToast]); 
 
   // Automatic Alerts for Open Interruptions (Module 10)
   useEffect(() => {
@@ -943,6 +998,7 @@ const AppContent: React.FC = () => {
               isVisible={activeTab === 'tracker'}
               onNavigateBack={() => setActiveTab('tracker')}
               currentUser={currentUser}
+              users={data.users}
             />
           </div>
 

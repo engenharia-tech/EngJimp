@@ -1,6 +1,14 @@
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
+-- Settings Table
+create table if not exists public.settings (
+  key text primary key,
+  value text,
+  tenant_id uuid,
+  created_at timestamptz default now()
+);
+
 -- Users Table
 create table if not exists public.users (
   id uuid primary key default uuid_generate_v4(),
@@ -16,14 +24,6 @@ create table if not exists public.users (
   created_at timestamptz default now()
 );
 
--- Settings Table
-create table if not exists public.settings (
-  key text primary key,
-  value text,
-  tenant_id uuid,
-  created_at timestamptz default now()
-);
-
 -- Projects Table
 create table if not exists public.projects (
   id uuid primary key default uuid_generate_v4(),
@@ -31,6 +31,7 @@ create table if not exists public.projects (
   client_name text,
   flooring_type text,
   project_code text,
+  chassis_number text,
   type text not null,
   implement_type text,
   start_time timestamptz not null,
@@ -81,6 +82,10 @@ create table if not exists public.innovations (
   author_id uuid references public.users(id),
   materials jsonb default '[]'::jsonb,
   machine jsonb default '{}'::jsonb,
+  productivity_before numeric,
+  productivity_after numeric,
+  unit_product_cost numeric,
+  unit_product_value numeric,
   tenant_id uuid,
   created_at timestamptz default now()
 );
@@ -139,6 +144,54 @@ create table if not exists public.operational_activities (
   created_at timestamptz default now()
 );
 
+-- Project Requests Table
+create table if not exists public.project_requests (
+  id uuid primary key default uuid_generate_v4(),
+  client_name text not null,
+  ns text not null,
+  product_type text,
+  dimension text,
+  flooring text,
+  setup text,
+  chassis_number text,
+  status text not null,
+  created_by uuid references public.users(id),
+  assigned_to uuid references public.users(id),
+  needs_base boolean default true,
+  needs_box boolean default true,
+  base_project_id uuid references public.projects(id),
+  box_project_id uuid references public.projects(id),
+  management_estimate numeric default 0,
+  designer_estimate numeric default 0,
+  tenant_id uuid,
+  created_at timestamptz default now()
+);
+
+-- Gantt Tasks Table
+create table if not exists public.gantt_tasks (
+  id uuid primary key default uuid_generate_v4(),
+  title text not null,
+  description text,
+  parent_id uuid references public.gantt_tasks(id),
+  start_date text not null,
+  end_date text not null,
+  color text,
+  is_milestone boolean default false,
+  assigned_to jsonb default '[]'::jsonb,
+  progress integer default 0,
+  attachments jsonb default '[]'::jsonb,
+  workload jsonb default '{}'::jsonb,
+  reports text,
+  "order" integer default 0,
+  status text default 'todo',
+  priority text default 'medium',
+  category text,
+  dependencies jsonb default '[]'::jsonb,
+  tenant_id uuid,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
 -- Enable Row Level Security (RLS)
 alter table public.users enable row level security;
 alter table public.settings enable row level security;
@@ -149,6 +202,8 @@ alter table public.interruption_types enable row level security;
 alter table public.interruptions enable row level security;
 alter table public.activity_types enable row level security;
 alter table public.operational_activities enable row level security;
+alter table public.project_requests enable row level security;
+alter table public.gantt_tasks enable row level security;
 
 -- Tenant Helper Function
 -- NOTE: This function depends on auth.uid(), which is only available if using Supabase Auth.
@@ -237,6 +292,29 @@ DROP POLICY IF EXISTS "Permissive delete for operational_activities" ON public.o
 CREATE POLICY "Users can view all operational activities" ON public.operational_activities FOR SELECT USING (true);
 CREATE POLICY "Users can insert their own activities" ON public.operational_activities FOR INSERT WITH CHECK (user_id::text = current_setting('app.user_id', true));
 CREATE POLICY "Users can update their own activities" ON public.operational_activities FOR UPDATE USING (user_id::text = current_setting('app.user_id', true));
+
+-- Project Requests
+DROP POLICY IF EXISTS "Permissive select for project_requests" ON public.project_requests;
+DROP POLICY IF EXISTS "Permissive insert for project_requests" ON public.project_requests;
+DROP POLICY IF EXISTS "Permissive update for project_requests" ON public.project_requests;
+DROP POLICY IF EXISTS "Permissive delete for project_requests" ON public.project_requests;
+CREATE POLICY "Users can view all project requests" ON public.project_requests FOR SELECT USING (true);
+CREATE POLICY "Users can manage project requests" ON public.project_requests FOR ALL USING (true) WITH CHECK (true);
+
+-- Gantt Tasks
+DROP POLICY IF EXISTS "Permissive select for gantt_tasks" ON public.gantt_tasks;
+DROP POLICY IF EXISTS "Permissive insert for gantt_tasks" ON public.gantt_tasks;
+DROP POLICY IF EXISTS "Permissive update for gantt_tasks" ON public.gantt_tasks;
+DROP POLICY IF EXISTS "Permissive delete for gantt_tasks" ON public.gantt_tasks;
+CREATE POLICY "Users can view all gantt tasks" ON public.gantt_tasks FOR SELECT USING (true);
+CREATE POLICY "Users can manage gantt tasks" ON public.gantt_tasks FOR ALL USING (true) WITH CHECK (true);
+
+-- Settings
+DROP POLICY IF EXISTS "Permissive select for settings" ON public.settings;
+DROP POLICY IF EXISTS "Permissive insert for settings" ON public.settings;
+DROP POLICY IF EXISTS "Permissive update for settings" ON public.settings;
+CREATE POLICY "Users can view settings" ON public.settings FOR SELECT USING (true);
+CREATE POLICY "Users can manage settings" ON public.settings FOR ALL USING (true) WITH CHECK (true);
 
 -- Reload PostgREST cache
 NOTIFY pgrst, 'reload config';
