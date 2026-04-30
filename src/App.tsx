@@ -1083,7 +1083,7 @@ const AppContent: React.FC = () => {
                   <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('team').toUpperCase()}</h2>
                   <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('teamManagementDesc').toUpperCase()}</p>
                 </div>
-                <UserManagement currentUser={currentUser} />
+                <UserManagement currentUser={currentUser} onUsersChange={handleRefresh} />
              </div>
           )}
 
