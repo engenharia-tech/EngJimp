@@ -27,6 +27,7 @@ interface EngJimpTrackerProps {
   isVisible: boolean;
   onNavigateBack: () => void;
   currentUser: User | null;
+  users: User[];
 }
 
 export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({ 
@@ -44,14 +45,56 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   onDeleteProjectRequest,
   isVisible, 
   onNavigateBack, 
-  currentUser 
+  currentUser,
+  users
 }) => {
   const [activeProject, setActiveProject] = useState<ProjectSession | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [users, setUsers] = useState<User[]>([]);
   const [selectedProjectDetails, setSelectedProjectDetails] = useState<ProjectSession | null>(null);
-  const { addToast } = useToast();
   const { t } = useLanguage();
+  const { addToast } = useToast();
+
+  const getProjectLiveSeconds = (p: ProjectSession) => {
+    if (p.status !== 'IN_PROGRESS') return p.totalActiveSeconds;
+
+    const start = new Date(p.startTime);
+    const now = new Date();
+    
+    // Total working seconds from start to now
+    const totalWorkingSeconds = calcActiveSeconds(start, now, settings, p.isOvertime);
+
+    // Subtract working seconds spent in pauses
+    let totalPauseWorkingSeconds = 0;
+    if (p.pauses) {
+      p.pauses.forEach(pause => {
+        if (pause.durationSeconds > 0) {
+          const pStart = new Date(pause.timestamp);
+          const pEnd = new Date(pStart.getTime() + pause.durationSeconds * 1000);
+          totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, p.isOvertime);
+        } else if (pause.durationSeconds === -1) {
+          const pStart = new Date(pause.timestamp);
+          totalPauseWorkingSeconds += calcActiveSeconds(pStart, now, settings, p.isOvertime);
+        }
+      });
+    }
+
+    // Subtract associated interruptions
+    const projectInterruptionSeconds = (interruptions || [])
+      .filter(i => (i.projectId === p.id || i.projectNs === p.ns))
+      .reduce((acc, i) => {
+        const iStart = new Date(i.startTime);
+        const iEnd = i.endTime ? new Date(i.endTime) : now;
+        const effectiveStart = iStart > start ? iStart : start;
+        const effectiveEnd = iEnd < now ? iEnd : now;
+        
+        if (effectiveStart < effectiveEnd) {
+          return acc + calcActiveSeconds(effectiveStart, effectiveEnd, settings, p.isOvertime);
+        }
+        return acc;
+      }, 0);
+
+    return Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds - projectInterruptionSeconds);
+  };
 
   // NS Queue Form Data
   const [showNSForm, setShowNSForm] = useState(false);
@@ -92,7 +135,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     const related = allProjects.filter(p => p.ns === ns.trim());
     if (related.length === 0) return null;
 
-    const totalSeconds = related.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0);
+    const totalSeconds = related.reduce((acc, p) => acc + getProjectLiveSeconds(p), 0);
     const contributors = new Set(related.map(p => p.userId)).size;
     
     return {
@@ -180,16 +223,10 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       // Basic status filter
       if (request.status === ProjectRequestStatus.COMPLETED || request.status === ProjectRequestStatus.CANCELLED) return false;
       
-      // Availability filter (only show if not both parts are in progress/done)
-      const baseInProgress = request.needsBase && request.baseProjectId;
-      const boxInProgress = request.needsBox && request.boxProjectId;
-      
-      let isAvailable = true;
-      if (request.needsBase && request.needsBox) isAvailable = !(baseInProgress && boxInProgress);
-      else if (request.needsBase) isAvailable = !baseInProgress;
-      else if (request.needsBox) isAvailable = !boxInProgress;
-      
-      if (!isAvailable) return false;
+      // Availability filter: show if there's at least one part (Base or Box) that still needs to be started
+      const basePending = request.needsBase && !request.baseProjectId;
+      const boxPending = request.needsBox && !request.boxProjectId;
+      if (!basePending && !boxPending) return false;
 
       // Search filter
       if (!nsSearch.trim()) return true;
@@ -225,68 +262,18 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   ].includes(implementType);
 
   useEffect(() => {
-    fetchUsers().then(list => {
-      const sorted = [...list].sort((a, b) => a.name.localeCompare(b.name));
-      setUsers(sorted);
-    });
-  }, []);
-
-  useEffect(() => {
     const updateTimer = () => {
       if (!activeProject) {
         setElapsedSeconds(0);
         return;
       }
 
-      // Check if currently paused (has an open pause at the end)
-      const lastPause = activeProject.pauses.length > 0 ? activeProject.pauses[activeProject.pauses.length - 1] : null;
-      const isCurrentlyPaused = lastPause && lastPause.durationSeconds === -1;
-
-      const start = new Date(activeProject.startTime);
-      const now = new Date();
-      
-      // For the VISUAL timer, we'll show the actual elapsed working time
-      // to give the user feedback that it's running.
-      const totalWorkingSeconds = calcActiveSeconds(start, now, settings, activeProject.isOvertime);
-
-      // Calculate Total Working Time consumed by CLOSED pauses
-      let totalPauseWorkingSeconds = 0;
-      activeProject.pauses.forEach(p => {
-          if (p.durationSeconds > 0) {
-              const pStart = new Date(p.timestamp);
-              const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
-              totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, activeProject.isOvertime);
-          } else if (p.durationSeconds === -1) {
-              // If currently paused, subtract working time from pause start to now
-              const pStart = new Date(p.timestamp);
-              totalPauseWorkingSeconds += calcActiveSeconds(pStart, now, settings, activeProject.isOvertime);
-          }
-      });
-
-      // Also subtract interruption time linked to this project
-      const projectInterruptionSeconds = interruptions
-        .filter(i => (i.projectId === activeProject.id || i.projectNs === activeProject.ns))
-        .reduce((acc, i) => {
-          const iStart = new Date(i.startTime);
-          const iEnd = i.endTime ? new Date(i.endTime) : now;
-          // Only count the part of the interruption that falls within the project's working session (from start to now)
-          const effectiveStart = iStart > start ? iStart : start;
-          const effectiveEnd = iEnd < now ? iEnd : now;
-          
-          if (effectiveStart < effectiveEnd) {
-            return acc + calcActiveSeconds(effectiveStart, effectiveEnd, settings, activeProject.isOvertime);
-          }
-          return acc;
-        }, 0);
-
-      const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds - projectInterruptionSeconds);
-      
-      // If netSeconds is 0 but the project is NOT paused and we are within working hours,
-      // it might be a calculation delay. Let's ensure it shows at least 1 if it just started.
+      const netSeconds = getProjectLiveSeconds(activeProject);
       setElapsedSeconds(netSeconds);
+      elapsedSecondsRef.current = netSeconds;
     };
 
-    if (activeProject && !showPauseModal) {
+    if (activeProject && !showPauseModal && !showPickModal && !showFinishModal) {
       updateTimer(); // Initial call
       timerRef.current = setInterval(updateTimer, 1000);
       
@@ -315,7 +302,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [activeProject, showPauseModal, settings, interruptions]);
+  }, [activeProject, showPauseModal, showPickModal, showFinishModal, settings, interruptions]);
 
 
   const handleStartNew = async () => {
@@ -343,8 +330,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
       const projectId = crypto.randomUUID();
 
-      // If we have a selected request or the NS matches a pending request, update it
-      const matchingRequest = selectedRequest || projectRequests.find(r => r.ns === ns.trim() && r.status === ProjectRequestStatus.PENDING);
+      // If we have a selected request or the NS matches a pending/in-progress request, update it
+      const nsToMatch = ns.trim().toLowerCase();
+      const matchingRequest = selectedRequest || projectRequests.find(r => 
+        r.ns.toLowerCase() === nsToMatch && 
+        (r.status === ProjectRequestStatus.PENDING || r.status === ProjectRequestStatus.IN_PROGRESS)
+      );
 
       if (matchingRequest) {
         const isBase = implementType === ImplementType.BASE;
@@ -359,11 +350,11 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
         if (isBoth || (!isBase && !isBox)) {
           // Se for "Ambos" ou um tipo unificado (Furgão, Sider, etc), preenchemos os IDs das partes necessárias
-          if (updatedRequest.needsBase) updatedRequest.baseProjectId = projectId;
-          if (updatedRequest.needsBox) updatedRequest.boxProjectId = projectId;
-        } else if (isBase) {
+          if (updatedRequest.needsBase && !updatedRequest.baseProjectId) updatedRequest.baseProjectId = projectId;
+          if (updatedRequest.needsBox && !updatedRequest.boxProjectId) updatedRequest.boxProjectId = projectId;
+        } else if (isBase && !updatedRequest.baseProjectId) {
           updatedRequest.baseProjectId = projectId;
-        } else if (isBox) {
+        } else if (isBox && !updatedRequest.boxProjectId) {
           updatedRequest.boxProjectId = projectId;
         }
 
@@ -490,24 +481,24 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           projectToActivate = p;
         }
       } else if (pickPart === 'BOTH') {
-        const p1 = await startProject(ImplementType.BASE);
-        if (p1) {
-          currentRequest.baseProjectId = p1.id;
-          projectToActivate = p1; // Ativamos a base primeiro
-        }
-        
-        const p2 = await startProject(ImplementType.CAIXA_CARGA);
-        if (p2) {
-          currentRequest.boxProjectId = p2.id;
-          // O segundo projeto fica na lista de pendentes para ser retomado depois
+        const p = await startProject(ImplementType.BASE_AND_BOX);
+        if (p) {
+          currentRequest.baseProjectId = p.id;
+          currentRequest.boxProjectId = p.id;
+          projectToActivate = p;
         }
       }
 
-      // Atualiza a estimativa do projetista no pedido (uma única vez)
+      // Update designer estimate in the request (once)
       currentRequest.designerEstimate = (currentRequest.designerEstimate || 0) + (estSec / 3600);
       currentRequest.status = ProjectRequestStatus.IN_PROGRESS;
       
-      await onUpdateProjectRequest(currentRequest);
+      // Attempt to update NS, but don't block starting the project if it fails
+      try {
+        await onUpdateProjectRequest(currentRequest);
+      } catch (nsError) {
+        console.warn("NS request link failed during start, but continuing:", nsError);
+      }
 
       if (projectToActivate) {
         // AUTO-PAUSE previous active project if any
@@ -636,7 +627,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const handleResumeFromList = async (project: ProjectSession) => {
     if (isSaving) return;
 
-    // Check Working Hours - Warn but don't block, so they can toggle overtime if needed
+    // Check Working Hours - Warn but don't block
     if (!isWorkingHour(new Date(), settings, project.isOvertime)) {
       addToast(t('outsideWorkingHoursNoOvertime'), 'warning');
     }
@@ -658,45 +649,19 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         });
       }
 
-      // MELHORIA 1: Pausar tempo fora do expediente
-      // Se o projeto estava IN_PROGRESS e o app foi fechado, calculamos o tempo produtivo desde o último save
-      let updatedProject = { ...project };
-      const now = new Date();
+      // Calculate current live state before resuming
+      const liveSeconds = getProjectLiveSeconds(project);
+      let updatedProject = { 
+        ...project, 
+        totalActiveSeconds: liveSeconds 
+      };
       
-      if (project.lastActiveAt) {
-        const lastActive = new Date(project.lastActiveAt);
-        let productiveSecondsSinceLastSave = calcActiveSeconds(lastActive, now, settings, project.isOvertime);
-        
-        // Find interruptions that happened between lastActive and now
-        const projectHistoryInterruptions = interruptions.filter(i => {
-           const iStart = new Date(i.startTime);
-           // NS fallback for older or pending projects
-           const matchesProject = (i.projectId && i.projectId === project.id) || (i.projectNs === project.ns);
-           return matchesProject && iStart >= lastActive;
-        });
-
-        const overlapInterruptionSeconds = projectHistoryInterruptions.reduce((acc, i) => {
-          const iStart = new Date(i.startTime);
-          const iEnd = i.endTime ? new Date(i.endTime) : now;
-          // Calculate active seconds specifically for this interruption period
-          return acc + calcActiveSeconds(iStart, iEnd, settings, project.isOvertime);
-        }, 0);
-
-        productiveSecondsSinceLastSave = Math.max(0, productiveSecondsSinceLastSave - overlapInterruptionSeconds);
-        
-        // Se passou tempo produtivo desde o último save, adicionamos ao total
-        if (productiveSecondsSinceLastSave > 0) {
-          updatedProject.totalActiveSeconds += productiveSecondsSinceLastSave;
-          console.log(`Resuming project ${project.ns}: adding ${productiveSecondsSinceLastSave}s of productive time since last save (after subtracting interruptions).`);
-        }
-      }
+      const now = new Date();
 
       // Logic to close open pause if needed
       const lastPauseIndex = updatedProject.pauses.length - 1;
       if (lastPauseIndex >= 0 && updatedProject.pauses[lastPauseIndex].durationSeconds === -1) {
         const pauseStart = new Date(updatedProject.pauses[lastPauseIndex].timestamp);
-        
-        // Calculate productive duration for the pause record
         const pauseDuration = calcActiveSeconds(pauseStart, now, settings, updatedProject.isOvertime);
 
         const updatedPauses = [...updatedProject.pauses];
@@ -707,7 +672,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
         updatedProject = { ...updatedProject, pauses: updatedPauses };
         
-        // Check if there's an open interruption for this project and close it
+        // Check for open interruption
         const openInterruption = interruptions.find(i => 
             i.projectNs === updatedProject.ns && 
             i.status === InterruptionStatus.OPEN && 
@@ -726,15 +691,10 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
             };
             onUpdateInterruption(updatedInterruption);
         }
-
-        onUpdate(updatedProject);
-        setActiveProject(updatedProject);
-      } else {
-        // Se não estava pausado, mas estava IN_PROGRESS, o tempo continuou contando
-        // Já atualizamos o totalActiveSeconds acima se havia lastActiveAt
-        onUpdate(updatedProject);
-        setActiveProject(updatedProject);
-      }
+      } 
+      
+      onUpdate(updatedProject);
+      setActiveProject(updatedProject);
       setLastHeartbeat(Date.now());
     } catch (error) {
       console.error("Error resuming project:", error);
@@ -744,7 +704,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     }
   };
 
-  const handlePauseProject = () => setShowPauseModal(true);
+  const pauseModalOpenTimeRef = useRef<string | null>(null);
+
+  const handlePauseProject = () => {
+    pauseModalOpenTimeRef.current = new Date().toISOString();
+    setShowPauseModal(true);
+  };
 
   const confirmPauseAndExit = async () => {
     if (!activeProject || isSaving) return;
@@ -760,9 +725,11 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
     setIsSaving(true);
     try {
+      const pauseStartTimestamp = pauseModalOpenTimeRef.current || new Date().toISOString();
+      
       const newPause: PauseRecord = {
         reason: pauseReason || 'Pausa',
-        timestamp: new Date().toISOString(),
+        timestamp: pauseStartTimestamp,
         durationSeconds: -1 // Flag for "Open/Ongoing" pause
       };
 
@@ -835,6 +802,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     setIsFinalizing(true);
     
     try {
+      const isPausedLocally = activeProject.pauses && activeProject.pauses.length > 0 && activeProject.pauses[activeProject.pauses.length - 1].durationSeconds === -1;
+      
       // Final Calculation using Working Hours
       const start = new Date(activeProject.startTime);
       const now = new Date();
@@ -848,9 +817,17 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           if (p.durationSeconds > 0) {
               const pStart = new Date(p.timestamp);
               const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
-              totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, activeProject.isOvertime);
+              totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, !!activeProject.isOvertime);
           }
       });
+
+      // NOVO: Se o projeto estiver pausado agora, subtraímos também o tempo da pausa atual
+      if (isPausedLocally && activeProject.pauses.length > 0) {
+          const lastPause = activeProject.pauses[activeProject.pauses.length - 1];
+          const lastPauseDate = new Date(lastPause.timestamp);
+          const currentPauseWorkingSeconds = calcActiveSeconds(lastPauseDate, now, settings, !!activeProject.isOvertime);
+          totalPauseWorkingSeconds += currentPauseWorkingSeconds;
+      }
 
       const estimatedSeconds = (parseInt(estHours) || 0) * 3600 + (parseInt(estMinutes) || 0) * 60;
 
@@ -886,9 +863,23 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       };
 
       // Update Project Request status if linked
-      const linkedRequest = projectRequests.find(r => r.baseProjectId === activeProject.id || r.boxProjectId === activeProject.id);
+      const nsToMatch = activeProject.ns.trim().toLowerCase();
+      const linkedRequest = projectRequests.find(r => 
+        r.baseProjectId === activeProject.id || 
+        r.boxProjectId === activeProject.id ||
+        (r.ns.toLowerCase() === nsToMatch && r.status === ProjectRequestStatus.IN_PROGRESS)
+      );
+      
       if (linkedRequest) {
         const updatedRequest = { ...linkedRequest };
+        
+        // Ensure the IDs are set if they were missing for some reason
+        if (activeProject.implementType === ImplementType.BASE || activeProject.implementType === ImplementType.BASE_AND_BOX) {
+          if (!updatedRequest.baseProjectId) updatedRequest.baseProjectId = activeProject.id;
+        }
+        if (activeProject.implementType === ImplementType.CAIXA_CARGA || activeProject.implementType === ImplementType.BASE_AND_BOX) {
+          if (!updatedRequest.boxProjectId) updatedRequest.boxProjectId = activeProject.id;
+        }
         
         // Verificamos se todas as partes necessárias estão agora concluídas
         const baseNeeded = updatedRequest.needsBase;
@@ -918,24 +909,39 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           }
         }
 
+        // SE for um tipo unificado (Furgão, etc), consideramos as duas partes concluídas
+        const unifiedTypes = [
+          ImplementType.FURGAO_SC, ImplementType.FURGAO_SR, 
+          ImplementType.SIDER_SC, ImplementType.SIDER_SR,
+          ImplementType.GRANELEIRO, ImplementType.BASCULANTE,
+          ImplementType.CARGA_SECA_SC, ImplementType.CARGA_SECA_SR,
+          ImplementType.BASE_AND_BOX
+        ];
+        if (unifiedTypes.includes(activeProject.implementType)) {
+          baseDone = true;
+          boxDone = true;
+        }
+
         if (baseDone && boxDone) {
           updatedRequest.status = ProjectRequestStatus.COMPLETED;
         }
         
-        await onUpdateProjectRequest(updatedRequest);
+        // Ensure NS update doesn't block project finalization
+        try {
+          await onUpdateProjectRequest(updatedRequest);
+        } catch (nsUpdateError) {
+          console.error("Failed to update NS Request status, but continuing project finalization:", nsUpdateError);
+          // Show a warning but don't stop the flow
+          addToast(t('nsUpdateWarning') || 'Aviso: Projeto finalizado, mas houve um erro ao atualizar o pedido na fila.', 'warning');
+        }
       }
 
       // 1. Update DB
       console.log("Finalizing project in DB:", finishedProject.ns, finishedProject);
-      try {
-        await onUpdate(finishedProject);
-      } catch (dbError) {
-        console.error("Database update failed in confirmFinish:", dbError);
-        throw dbError; // Propagate to outer try/catch
-      }
+      await onUpdate(finishedProject);
       console.log("Project updated successfully in DB.");
       
-      // Close modal and clear active project immediately after DB success
+      // Close modal and clear active project
       setActiveProject(null);
       setShowFinishModal(false);
       
@@ -1132,7 +1138,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       project
     ];
 
-    const totalActiveSeconds = sessions.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0);
+    const totalActiveSeconds = sessions.reduce((acc, p) => acc + getProjectLiveSeconds(p), 0);
     const totalEstimatedSeconds = sessions.reduce((acc, p) => acc + (p.estimatedSeconds || 0), 0);
     const totalCostValue = sessions.reduce((acc, p) => acc + (p.totalCost || 0), 0);
     
@@ -1492,7 +1498,7 @@ JIMPNEXUS
                           <span className="font-bold text-blue-600 dark:text-blue-400">{t('estProjAbbr')}: {(request.designerEstimate || 0).toFixed(1)}h</span>
                         </div>
                         <span className="font-bold text-green-600 dark:text-green-400 col-span-2">
-                          {t('effectiveTime')}: {(allProjects.filter(p => p.ns === request.ns).reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600).toFixed(1)}h
+                          {t('effectiveTime')}: {(allProjects.filter(p => p.ns === request.ns).reduce((acc, p) => acc + getProjectLiveSeconds(p), 0) / 3600).toFixed(1)}h
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-2">
@@ -2044,7 +2050,7 @@ JIMPNEXUS
                         <div className="bg-green-50 dark:bg-green-900/10 p-3 rounded-lg border border-green-100 dark:border-green-900/30">
                             <span className="text-[10px] text-green-800 dark:text-green-300 uppercase font-bold block">{t('effectiveTime')}</span>
                             <span className="text-lg font-bold text-green-900 dark:text-green-200">
-                                {(selectedProjectDetails.totalActiveSeconds / 3600).toFixed(1)}H
+                                {(getProjectLiveSeconds(selectedProjectDetails) / 3600).toFixed(1)}H
                             </span>
                         </div>
                     </div>

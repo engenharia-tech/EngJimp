@@ -8,9 +8,6 @@ export const PROJECT_TYPES = [
 
 export const IMPLEMENT_TYPES = [
   ImplementType.BASCULANTE,
-  ImplementType.BASE,
-  ImplementType.BASE_AND_BOX,
-  ImplementType.CAIXA_CARGA,
   ImplementType.CARGA_SECA_SC,
   ImplementType.CARGA_SECA_SR,
   ImplementType.COMPONENTES,
@@ -18,8 +15,9 @@ export const IMPLEMENT_TYPES = [
   ImplementType.FURGAO_SR,
   ImplementType.GRANELEIRO,
   ImplementType.SIDER_SC,
-  ImplementType.SIDER_SR
-].sort();
+  ImplementType.SIDER_SR,
+  ImplementType.OUTROS
+];
 
 export const FLOORING_TYPES = [
   'M/F 20MM',
@@ -108,7 +106,8 @@ export const PRODUCT_CATEGORIES = [
   'FURGÃO SR',
   'GRANELEIRO',
   'SIDER SC',
-  'SIDER SR'
-].sort();
+  'SIDER SR',
+  'OUTROS'
+];
 
 export const STORAGE_KEY = 'design_track_pro_data';
