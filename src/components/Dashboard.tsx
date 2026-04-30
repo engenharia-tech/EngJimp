@@ -58,7 +58,7 @@ const MultiSelect: React.FC<{
           onClick={() => setIsOpen(!isOpen)}
           className={`flex items-center justify-between w-full md:w-48 px-3 py-2 border rounded-lg text-sm text-left transition-all duration-200 ${
             isOpen 
-              ? 'border-blue-500 ring-2 ring-blue-500/10 bg-white dark:bg-slate-900' 
+              ? 'border-blue-500 ring-2 ring-blue-500/10 bg-white dark:bg-black' 
               : 'border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-black hover:border-gray-300 dark:hover:border-slate-600'
           }`}
         >
@@ -70,8 +70,8 @@ const MultiSelect: React.FC<{
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-2 w-64 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl p-2 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200">
-          <div className="flex items-center justify-between p-2 border-b border-gray-100 dark:border-slate-800 mb-2 sticky top-0 bg-white dark:bg-slate-900 z-10">
+        <div className="absolute z-50 mt-2 w-64 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl p-2 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between p-2 border-b border-gray-100 dark:border-slate-800 mb-2 sticky top-0 bg-white dark:bg-black z-10">
             <button 
               onClick={() => onChange([])}
               className="text-[10px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 uppercase tracking-tight"
@@ -93,7 +93,7 @@ const MultiSelect: React.FC<{
                     type="checkbox"
                     checked={selected.includes(option)}
                     onChange={() => toggleOption(option)}
-                    className="peer w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 bg-white dark:bg-slate-800 transition-all"
+                    className="peer w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 bg-white dark:bg-black transition-all"
                   />
                 </div>
                 <span className={`text-xs transition-colors truncate ${
@@ -145,7 +145,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [selectedSuspensions, setSelectedSuspensions] = useState<string[]>([]);
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
 
-  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report']);
+  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report']);
 
   // Helper to normalize strings for comparison (remove accents and uppercase)
   const normalize = (str: string) => 
@@ -1108,7 +1108,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               <Sparkles className="w-3 h-3" />
               {t('clearFilters') || 'Limpar Filtros'}
             </button>
-            <div className="h-3 w-px bg-gray-200 dark:bg-slate-800" />
+            <div className="h-3 w-px bg-gray-200 dark:bg-black" />
             <span className="text-[10px] font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider">
               {filteredProjects.length} {t('results') || 'Resultados'}
             </span>
@@ -1165,7 +1165,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('detailedReport')}</span>
           </label>
-          {currentUser.role === 'GESTOR' && (
+          {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
             <>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input 
@@ -1184,6 +1184,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('stopAnalysis')}</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  checked={visibleSections.includes('interruption_report')} 
+                  onChange={() => setVisibleSections(prev => prev.includes('interruption_report') ? prev.filter(s => s !== 'interruption_report') : [...prev, 'interruption_report'])}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('interruptionReport')}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input 
@@ -1208,7 +1217,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 <p className="text-[9px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('avgTime')} {stat.type}</p>
                 <p className="text-sm sm:text-xl font-black text-black dark:text-white">{formatDuration(stat.avgSeconds)}</p>
               </div>
-              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-blue-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-blue-50 dark:bg-black rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
                 <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
@@ -1220,13 +1229,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 <p className="text-[9px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalHours')}</p>
                 <p className="text-sm sm:text-xl font-black text-indigo-800 dark:text-indigo-300">{totalHours}h</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <div className="flex-1 h-1 sm:h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className="flex-1 h-1 sm:h-1.5 bg-gray-100 dark:bg-black rounded-full overflow-hidden">
                     <div className="h-full bg-indigo-500" style={{ width: `${goalProgress}%` }}></div>
                   </div>
                   <span className="text-[8px] sm:text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{goalProgress}%</span>
                 </div>
               </div>
-              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-indigo-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-indigo-50 dark:bg-black rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
                 <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
@@ -1238,7 +1247,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 <p className="text-[9px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('annualSavings')}</p>
                 <p className="text-sm sm:text-xl font-black text-emerald-800 dark:text-emerald-300">{formatCurrency(totalSavings)}</p>
               </div>
-              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-emerald-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-emerald-50 dark:bg-black rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
                 <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
@@ -1262,7 +1271,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               <p className="text-sm sm:text-xl font-black text-red-800 dark:text-red-300">{formatCurrency(costData.interruption)}</p>
               <p className="text-[8px] sm:text-[10px] text-red-500 font-medium mt-0.5 sm:mt-1">{t('totalTime')}: {formatDuration(costData.totalInterruptionSeconds)}</p>
             </div>
-            <div className="h-7 w-7 sm:h-8 sm:w-8 bg-red-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 flex-shrink-0">
+            <div className="h-7 w-7 sm:h-8 sm:w-8 bg-red-50 dark:bg-black rounded-full flex items-center justify-center text-red-600 dark:text-red-400 flex-shrink-0">
               <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
@@ -1408,12 +1417,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                    {/* Mobile List / Desktop Table */}
                    <div className="md:hidden space-y-3 mb-6">
                         {rankingStats.length === 0 ? (
-                            <div className="p-8 text-center bg-gray-50 dark:bg-slate-900 rounded-xl text-gray-500 dark:text-slate-400 italic text-sm">
+                            <div className="p-8 text-center bg-gray-50 dark:bg-black rounded-xl text-gray-500 dark:text-slate-400 italic text-sm">
                                 {t('noProjects')}
                             </div>
                         ) : (
                             rankingStats.map((stat, index) => (
-                                <div key={index} className="bg-gray-50 dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
+                                <div key={index} className="bg-gray-50 dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-800">
                                     <div className="flex items-center justify-between mb-3 border-b border-gray-100 dark:border-slate-800 pb-2">
                                         <div className="flex items-center">
                                             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
@@ -1681,13 +1690,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             {/* Mobile Cards / Desktop Table */}
             <div className="md:hidden space-y-4">
               {detailedProductReport.slice(0, 10).map((item, idx) => (
-                <div key={idx} className="bg-gray-50 dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
+                <div key={idx} className="bg-gray-50 dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-800">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">{item.ns}</span>
                     <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
                       item.status === ProjectRequestStatus.COMPLETED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                       item.status === ProjectRequestStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                      'bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-400'
+                      'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-400'
                     }`}>
                       {item.status}
                     </span>
@@ -1763,6 +1772,93 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 {t('showingRecentNs', { count: 20 })}
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Interruption Report Section */}
+      {visibleSections.includes('interruption_report') && (
+        <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-500 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
+              <PauseCircle className="w-5 h-5 mr-2 text-red-500" />
+              {t('interruptionReport')}
+            </h3>
+            <button 
+              onClick={() => {
+                const headers = [
+                  t('nsHeader'), 
+                  t('clientHeader'), 
+                  t('designerCol'), 
+                  t('reason'), 
+                  t('area'), 
+                  t('start'), 
+                  t('totalTime'), 
+                  t('estimatedCost')
+                ];
+                const rows = filteredInterruptions.map(i => [
+                  i.projectNs,
+                  i.clientName,
+                  usersMap[i.designerId] || i.designerId,
+                  i.problemType,
+                  t(i.responsibleArea.toLowerCase() as any),
+                  i.startTime,
+                  formatDuration(i.totalTimeSeconds),
+                  formatCurrency(i.totalTimeSeconds * costPerSecond)
+                ]);
+                const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", `relatorio_interrupcoes_custos_${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+              className="flex items-center text-xs font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
+            >
+              <Download className="w-4 h-4 mr-1" />
+              {t('exportReport')}
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-slate-800">
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('nsHeader')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('client')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('designerCol')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('reason')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('area')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('totalTime')}</th>
+                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('estimatedCost')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInterruptions.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-10 text-center text-gray-400 dark:text-slate-500 italic text-sm">
+                      {t('noInterruptions')}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredInterruptions.map((item, idx) => (
+                    <tr key={idx} className="border-b border-gray-50 dark:border-slate-900 hover:bg-gray-50/50 dark:hover:bg-slate-900/50 transition-colors">
+                      <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{item.projectNs}</td>
+                      <td className="py-3 px-4 text-xs font-medium text-gray-800 dark:text-white truncate max-w-[150px]">{item.clientName}</td>
+                      <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{usersMap[item.designerId] || item.designerId}</td>
+                      <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300 truncate max-w-[200px]" title={item.problemType}>{item.problemType}</td>
+                      <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{t(item.responsibleArea.toLowerCase() as any)}</td>
+                      <td className="py-3 px-4 text-xs font-mono text-gray-700 dark:text-slate-200">{formatDuration(item.totalTimeSeconds)}</td>
+                      <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{formatCurrency(item.totalTimeSeconds * costPerSecond)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

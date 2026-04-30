@@ -8,7 +8,8 @@ import {
   Filter,
   Download,
   LayoutGrid,
-  Group
+  Group,
+  AlignLeft
 } from 'lucide-react';
 import { AppState, GanttTask, GanttTaskStatus, TaskPriority } from '../../types';
 import { format, addDays, isValid } from 'date-fns';
@@ -18,9 +19,10 @@ interface ListViewProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
   onRefresh?: () => void;
+  onEditTask?: (task: GanttTask) => void;
 }
 
-export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefresh }) => {
+export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefresh, onEditTask }) => {
   const [inlineAdding, setInlineAdding] = React.useState<boolean>(false);
   const [newTitle, setNewTitle] = React.useState('');
   const [menuTaskId, setMenuTaskId] = React.useState<string | null>(null);
@@ -167,9 +169,20 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
               </tr>
             )}
             {state.ganttTasks.map((task, idx) => (
-              <tr key={task.id} className={`hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group bg-white dark:bg-black relative ${statusPickerOpenId === task.id ? 'z-50' : 'z-1'}`}>
+              <tr 
+                key={task.id} 
+                className={`hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group bg-white dark:bg-black relative cursor-pointer ${(statusPickerOpenId === task.id || menuTaskId === task.id) ? 'z-[100]' : 'z-1'}`}
+                onClick={() => onEditTask?.(task)}
+              >
                 <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-600">{idx + 1}</td>
-                <td className="px-6 py-3 text-sm text-slate-700 dark:text-slate-100 font-bold">{task.title}</td>
+                <td className="px-6 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-700 dark:text-slate-100 font-bold">{task.title}</span>
+                    {task.reports && (
+                      <AlignLeft size={12} className="text-blue-500 flex-shrink-0" title="Possui anotações" />
+                    )}
+                  </div>
+                </td>
                 <td className="px-6 py-3 text-sm text-slate-600 dark:text-slate-400">
                   {safeFormat(task.startDate, 'dd/MM/yyyy')}
                 </td>
@@ -186,29 +199,45 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
                   </div>
                 </td>
                 <td className="px-6 py-3">
-                  <StatusPicker 
-                    status={task.status} 
-                    onUpdate={async (s) => {
-                      const updatedTask = { ...task, status: s, updatedAt: new Date().toISOString() };
-                      const newState = await updateGanttTask(updatedTask);
-                      onUpdateState(newState);
-                    }}
-                    onOpenChange={(open) => setStatusPickerOpenId(open ? task.id : null)}
-                  />
+                  <div 
+                    onClick={(e) => e.stopPropagation()}
+                    className="relative"
+                  >
+                    <StatusPicker 
+                      status={task.status} 
+                      onUpdate={async (s) => {
+                        const updatedTask = { ...task, status: s, updatedAt: new Date().toISOString() };
+                        const newState = await updateGanttTask(updatedTask);
+                        onUpdateState(newState);
+                      }}
+                      onOpenChange={(open) => setStatusPickerOpenId(open ? task.id : null)}
+                    />
+                  </div>
                 </td>
                 <td className="px-6 py-3 text-sm text-slate-700 dark:text-slate-300 text-right font-mono">
                   {Object.values(task.workload || {}).reduce((a: any, b: any) => (a as number) + (b as number), 0)}
                 </td>
                 <td className="px-4 py-3 relative">
                    <button 
-                    onClick={() => setMenuTaskId(menuTaskId === task.id ? null : task.id)}
+                    onClick={(e) => { 
+                      e.stopPropagation();
+                      setMenuTaskId(menuTaskId === task.id ? null : task.id);
+                    }}
                     className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-300 dark:text-slate-700 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
                    >
                       <MoreVertical size={16} />
                    </button>
                    {menuTaskId === task.id && (
-                     <div className="absolute right-full mr-2 top-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded shadow-xl z-50 w-32 py-1 overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <button className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800">EDITAR</button>
+                     <div 
+                       onClick={(e) => e.stopPropagation()}
+                       className="absolute right-full mr-2 top-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded shadow-xl z-50 w-32 py-1 overflow-hidden animate-in fade-in zoom-in duration-200"
+                     >
+                        <button 
+                          onClick={() => { onEditTask?.(task); setMenuTaskId(null); }}
+                          className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800"
+                        >
+                          EDITAR
+                        </button>
                         <button 
                           onClick={() => handleDelete(task.id)}
                           className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-red-600 hover:bg-slate-50 dark:hover:bg-slate-800"
