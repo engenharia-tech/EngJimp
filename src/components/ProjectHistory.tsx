@@ -548,17 +548,18 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   const getTranslatedImplement = (type: string) => {
     switch (type) {
       case ImplementType.BASE: return t('base');
-      case ImplementType.FURGAO: return t('furgao');
-      case ImplementType.SIDER: return t('sider');
+      case ImplementType.FURGAO_SC: return 'FURGÃO SC';
+      case ImplementType.FURGAO_SR: return 'FURGÃO SR';
+      case ImplementType.SIDER_SC: return 'SIDER SC';
+      case ImplementType.SIDER_SR: return 'SIDER SR';
       case ImplementType.CAIXA_CARGA: return t('caixaCarga');
       case ImplementType.BASCULANTE: return t('basculante');
       case ImplementType.SOBRECHASSI: return t('sobrechassi');
       case ImplementType.GRANELEIRO: return t('graneleiro');
-      case ImplementType.CARGA_SECA: return t('cargaSeca');
+      case ImplementType.CARGA_SECA_SC: return 'CARGA SECA SC';
+      case ImplementType.CARGA_SECA_SR: return 'CARGA SECA SR';
       case ImplementType.COMPONENTES: return t('componentes');
       case ImplementType.OUTROS: return t('outros');
-      case ImplementType.SOBRE_CHASSI_FURGAO: return t('sobreChassiFurgao');
-      case ImplementType.SOBRE_CHASSI_LONADO: return t('sobreChassiLonado');
       default: return type;
     }
   };
@@ -1528,10 +1529,14 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
                     {[
                         ImplementType.BASE, 
-                        ImplementType.FURGAO, 
-                        ImplementType.SIDER,
-                        ImplementType.SOBRE_CHASSI_FURGAO,
-                        ImplementType.SOBRE_CHASSI_LONADO
+                        ImplementType.FURGAO_SC, 
+                        ImplementType.FURGAO_SR, 
+                        ImplementType.SIDER_SC,
+                        ImplementType.SIDER_SR,
+                        ImplementType.GRANELEIRO,
+                        ImplementType.BASCULANTE,
+                        ImplementType.CARGA_SECA_SC,
+                        ImplementType.CARGA_SECA_SR
                     ].includes(editForm.implementType) && (
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700 dark:text-slate-300">{t('flooringType')}</label>

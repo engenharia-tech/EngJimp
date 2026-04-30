@@ -214,10 +214,14 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   // Helper to check if flooring field should show
   const shouldShowFlooring = [
     ImplementType.BASE, 
-    ImplementType.FURGAO, 
-    ImplementType.SIDER,
-    ImplementType.SOBRE_CHASSI_FURGAO,
-    ImplementType.SOBRE_CHASSI_LONADO
+    ImplementType.FURGAO_SC, 
+    ImplementType.FURGAO_SR, 
+    ImplementType.SIDER_SC,
+    ImplementType.SIDER_SR,
+    ImplementType.GRANELEIRO,
+    ImplementType.BASCULANTE,
+    ImplementType.CARGA_SECA_SC,
+    ImplementType.CARGA_SECA_SR
   ].includes(implementType);
 
   useEffect(() => {
@@ -353,9 +357,10 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           assignedTo: currentUser?.id || '',
         };
 
-        if (isBoth) {
-          updatedRequest.baseProjectId = projectId;
-          updatedRequest.boxProjectId = projectId;
+        if (isBoth || (!isBase && !isBox)) {
+          // Se for "Ambos" ou um tipo unificado (Furgão, Sider, etc), preenchemos os IDs das partes necessárias
+          if (updatedRequest.needsBase) updatedRequest.baseProjectId = projectId;
+          if (updatedRequest.needsBox) updatedRequest.boxProjectId = projectId;
         } else if (isBase) {
           updatedRequest.baseProjectId = projectId;
         } else if (isBox) {
@@ -883,27 +888,37 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       // Update Project Request status if linked
       const linkedRequest = projectRequests.find(r => r.baseProjectId === activeProject.id || r.boxProjectId === activeProject.id);
       if (linkedRequest) {
-        const isBase = linkedRequest.baseProjectId === activeProject.id;
-        const isBox = linkedRequest.boxProjectId === activeProject.id;
-        
         const updatedRequest = { ...linkedRequest };
         
-        const currentIsBase = activeProject.implementType === ImplementType.BASE;
+        // Verificamos se todas as partes necessárias estão agora concluídas
+        const baseNeeded = updatedRequest.needsBase;
+        const boxNeeded = updatedRequest.needsBox;
         
-        // Check if the OTHER part is already completed
-        // We need to look at the projects list to see if the other projectId is COMPLETED
-        const otherProjectId = currentIsBase ? updatedRequest.boxProjectId : updatedRequest.baseProjectId;
-        const otherNeeded = currentIsBase ? updatedRequest.needsBox : updatedRequest.needsBase;
+        let baseDone = !baseNeeded;
+        if (baseNeeded) {
+          // Se este projeto que estamos finalizando é a Base do pedido
+          if (updatedRequest.baseProjectId === activeProject.id) {
+            baseDone = true;
+          } else if (updatedRequest.baseProjectId) {
+            // Se for outro projeto, verificamos se já está COMPLETED na lista global
+            const p = allProjects.find(px => px.id === updatedRequest.baseProjectId);
+            if (p && p.status === 'COMPLETED') baseDone = true;
+          }
+        }
         
-        let otherDone = !otherNeeded;
-        if (otherNeeded && otherProjectId) {
-          const otherProject = allProjects.find(p => p.id === otherProjectId);
-          if (otherProject && otherProject.status === 'COMPLETED') {
-            otherDone = true;
+        let boxDone = !boxNeeded;
+        if (boxNeeded) {
+          // Se este projeto que estamos finalizando é a Caixa do pedido
+          if (updatedRequest.boxProjectId === activeProject.id) {
+            boxDone = true;
+          } else if (updatedRequest.boxProjectId) {
+            // Se for outro projeto, verificamos se já está COMPLETED na lista global
+            const p = allProjects.find(px => px.id === updatedRequest.boxProjectId);
+            if (p && p.status === 'COMPLETED') boxDone = true;
           }
         }
 
-        if (otherDone) {
+        if (baseDone && boxDone) {
           updatedRequest.status = ProjectRequestStatus.COMPLETED;
         }
         
@@ -933,8 +948,13 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       
       if (linkedRequest) {
           // If it's a split project (Base + Box), check if both are finished
-          const baseFinished = !linkedRequest.needsBase || (linkedRequest.baseProjectId && allProjects.find(p => p.id === linkedRequest.baseProjectId)?.status === 'COMPLETED');
-          const boxFinished = !linkedRequest.needsBox || (linkedRequest.boxProjectId && allProjects.find(p => p.id === linkedRequest.boxProjectId)?.status === 'COMPLETED');
+          const baseFinished = !linkedRequest.needsBase || 
+                               linkedRequest.baseProjectId === finishedProject.id || 
+                               (linkedRequest.baseProjectId && allProjects.find(p => p.id === linkedRequest.baseProjectId)?.status === 'COMPLETED');
+                               
+          const boxFinished = !linkedRequest.needsBox || 
+                              linkedRequest.boxProjectId === finishedProject.id || 
+                              (linkedRequest.boxProjectId && allProjects.find(p => p.id === linkedRequest.boxProjectId)?.status === 'COMPLETED');
           
           // Also check if ANY other sessions for this NS are still in progress
           const NS_Sessions = allProjects.filter(p => p.ns === finishedProject.ns);

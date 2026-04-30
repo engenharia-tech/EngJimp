@@ -1492,13 +1492,20 @@ export const seedFebruaryData = async (): Promise<{ success: boolean; count: num
 
     const mapImplement = (pr: string): ImplementType => {
       const p = pr.toLowerCase();
-      if (p.includes('sobrechassi') || p.includes('sobre chassi')) return ImplementType.SOBRECHASSI;
+      if (p.includes('basculante')) return ImplementType.BASCULANTE;
+      if (p.includes('componentes')) return ImplementType.COMPONENTES;
+      if (p.includes('graneleiro')) return ImplementType.GRANELEIRO;
+      if (p.includes('carga seca')) {
+        return p.includes('sc') ? ImplementType.CARGA_SECA_SC : ImplementType.CARGA_SECA_SR;
+      }
+      if (p.includes('sider')) {
+        return p.includes('sc') ? ImplementType.SIDER_SC : ImplementType.SIDER_SR;
+      }
+      if (p.includes('furgão')) {
+        return p.includes('sc') ? ImplementType.FURGAO_SC : ImplementType.FURGAO_SR;
+      }
       if (p.includes('caixa de carga')) return ImplementType.CAIXA_CARGA;
       if (p.includes('base')) return ImplementType.BASE;
-      if (p.includes('graneleiro')) return ImplementType.GRANELEIRO;
-      if (p.includes('carga seca')) return ImplementType.CARGA_SECA;
-      if (p.includes('sider')) return ImplementType.SIDER;
-      if (p.includes('furgão')) return ImplementType.FURGAO;
       return ImplementType.OUTROS;
     };
 
