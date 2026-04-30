@@ -3,6 +3,8 @@ import {
   Plus, 
   MoreHorizontal, 
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   User, 
   User as UserIcon,
   Calendar,
@@ -13,7 +15,8 @@ import {
   MoreVertical,
   Clock,
   ChevronDown,
-  Tag
+  Tag,
+  AlignLeft
 } from 'lucide-react';
 import { 
   DndContext, 
@@ -60,6 +63,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState, on
   const [activeTask, setActiveTask] = React.useState<GanttTask | null>(null);
   const [inlineAdding, setInlineAdding] = React.useState<GanttTaskStatus | null>(null);
   const [newTitle, setNewTitle] = React.useState('');
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -199,8 +203,27 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState, on
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="h-full bg-[#f8fafc] dark:bg-slate-950 overflow-x-auto p-6 flex gap-6 select-none">
-        {STATUS_COLUMNS.map(col => {
+      <div className="relative h-full">
+        {/* Floating Navigation Controls */}
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 z-[60] pointer-events-none">
+          <button 
+            onClick={() => scrollContainerRef.current?.scrollBy({ left: -400, behavior: 'smooth' })}
+            className="p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur shadow-2xl rounded-full border border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto"
+            title="Rolar para esquerda"
+          >
+            <ChevronLeft size={24} />
+          </button>
+          <button 
+            onClick={() => scrollContainerRef.current?.scrollBy({ left: 400, behavior: 'smooth' })}
+            className="p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur shadow-2xl rounded-full border border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto"
+            title="Rolar para direita"
+          >
+            <ChevronRight size={24} />
+          </button>
+        </div>
+
+        <div ref={scrollContainerRef} className="h-full bg-[#f8fafc] dark:bg-slate-950 overflow-x-auto p-6 flex gap-6 select-none no-scrollbar">
+          {STATUS_COLUMNS.map(col => {
           const columnTasks = state.ganttTasks.filter(t => t.status === col.id);
           
           return (
@@ -220,6 +243,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState, on
           );
         })}
       </div>
+    </div>
 
       <DragOverlay>
         {activeTask ? (
@@ -350,7 +374,14 @@ const KanbanCard = ({ task, users, onEdit, isOverlay = false }: { task: GanttTas
           <Tag size={10} className="text-slate-300 dark:text-slate-600" />
           {task.category || 'Nexus'}
         </div>
-        <MoreVertical size={14} className="text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="flex items-center gap-1">
+          {task.reports && (
+            <div className="p-1 text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded" title="Possui anotações">
+              <AlignLeft size={10} className="stroke-[3]" />
+            </div>
+          )}
+          <MoreVertical size={14} className="text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
       </div>
 
       {/* Title */}

@@ -203,7 +203,7 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
       <div className="flex-grow overflow-hidden relative">
         {activeTab === 'gantt' && <GanttView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
         {activeTab === 'kanban' && <KanbanView state={state} onUpdateState={onUpdateState} onEditTask={handleEditTask} onRefresh={onRefresh} />}
-        {activeTab === 'list' && <ListView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'list' && <ListView state={state} onUpdateState={onUpdateState} onEditTask={handleEditTask} onRefresh={onRefresh} />}
         {activeTab === 'calendar' && <CalendarView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
         {activeTab === 'workload' && <WorkloadView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
         {activeTab === 'people' && <PeopleView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}

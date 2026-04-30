@@ -124,7 +124,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   // Sync edit times when modal opens
   useEffect(() => {
     if (isEditingActivity) {
-      setEditStartTime(format(parseISO(isEditingActivity.startTime), 'HH:mm'));
+      setEditStartTime(isEditingActivity.startTime ? format(parseISO(isEditingActivity.startTime), 'HH:mm') : format(new Date(), 'HH:mm'));
       setEditEndTime(isEditingActivity.endTime ? format(parseISO(isEditingActivity.endTime), 'HH:mm') : format(new Date(), 'HH:mm'));
     } else if (isEditingGap) {
       setEditStartTime(format(parseISO(isEditingGap.start), 'HH:mm'));
@@ -1032,7 +1032,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         </div>
 
       {/* View Mode & Date Selector - Common for all tabs */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="bg-white dark:bg-black rounded-2xl p-4 shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex p-1 bg-gray-100 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 w-full sm:w-auto">
           <button
             onClick={() => setViewMode('day')}
@@ -1420,7 +1420,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+          <div className="bg-white dark:bg-black rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
             <h3 className={`text-lg font-bold mb-6 uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
               {t('timeDistribution')}
             </h3>
@@ -1453,7 +1453,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+          <div className="bg-white dark:bg-black rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
             <h3 className={`text-lg font-bold mb-6 uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
               {t('summaryByActivity')}
             </h3>
@@ -1489,7 +1489,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       )}
 
       {activeTab === 'management' && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+        <div className="bg-white dark:bg-black rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
           <div className="flex items-center justify-between mb-6">
             <h3 className={`text-lg font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
               {t('activityManagement')}
@@ -1537,7 +1537,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       {/* Modals */}
       {isSaving && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-4 border border-gray-200 dark:border-slate-700 animate-in zoom-in duration-200">
+          <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-4 border border-gray-200 dark:border-slate-700 animate-in zoom-in duration-200">
             <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
             <p className="font-bold text-gray-800 dark:text-white uppercase tracking-wider">
               {t('saving') || 'Gravando...'}

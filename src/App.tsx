@@ -844,7 +844,7 @@ const AppContent: React.FC = () => {
             <LanguageSwitcher language={language} setLanguage={setLanguage} />
             <button 
                 onClick={toggleTheme}
-                className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-slate-900 border border-slate-700' : 'bg-gray-100 border border-gray-200'} transition-colors text-gray-600 dark:text-slate-300`}
+                className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700' : 'bg-gray-100 border border-gray-200'} transition-colors text-gray-600 dark:text-slate-300`}
             >
               {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>

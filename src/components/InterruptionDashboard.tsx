@@ -112,7 +112,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
         </div>
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {areaStats.map((stat) => (
-            <div key={stat.area} className="p-4 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-100 dark:border-slate-800">
+            <div key={stat.area} className="p-4 bg-gray-50 dark:bg-black rounded-xl border border-gray-100 dark:border-slate-800">
               <div className="flex justify-between items-start mb-2">
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t(stat.area.toLowerCase())}</span>
                 <span className="text-xs font-bold text-red-600 dark:text-red-400">{formatDuration(stat.totalLostTime)}</span>

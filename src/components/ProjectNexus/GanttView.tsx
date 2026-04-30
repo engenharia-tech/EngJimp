@@ -118,6 +118,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     originalEndDate: string;
   } | null>(null);
 
+  // Panning state
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStartX, setPanStartX] = useState(0);
+  const [panScrollLeft, setPanScrollLeft] = useState(0);
+
   const [isSaving, setIsSaving] = useState(false);
   const hasAutoExpanded = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -240,6 +245,42 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [interactingTask, zoomLevel, state, onUpdateState]);
+
+  // Panning Effect
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isPanning || !rowsAreaRef.current) return;
+      const dx = e.clientX - panStartX;
+      rowsAreaRef.current.scrollLeft = panScrollLeft - dx;
+    };
+
+    const handleMouseUp = () => {
+      setIsPanning(false);
+      if (containerRef.current) containerRef.current.classList.remove('cursor-grabbing');
+    };
+
+    if (isPanning) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isPanning, panStartX, panScrollLeft]);
+
+  const handlePanStart = (e: React.MouseEvent) => {
+    // Only primary button, and not on task bars or buttons
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('.task-bar') || target.closest('button') || target.closest('input')) return;
+
+    setIsPanning(true);
+    setPanStartX(e.clientX);
+    setPanScrollLeft(rowsAreaRef.current?.scrollLeft || 0);
+    if (containerRef.current) containerRef.current.classList.add('cursor-grabbing');
+  };
 
   const safeParseDate = (dateStr: string | undefined): Date => {
     if (!dateStr) return new Date();
@@ -418,7 +459,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
         initial={{ opacity: 0, scaleX: 0.8 }}
         animate={{ opacity: 1, scaleX: 1 }}
         onMouseDown={(e) => { e.stopPropagation(); setInteractingTask({ id: task.id, type: 'drag', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate }); }}
-        className="absolute h-7 top-1.5 rounded-md shadow-md border flex items-center px-3 cursor-grab active:cursor-grabbing hover:brightness-110 transition-all group/bar z-10 overflow-hidden border-black/10"
+        className="task-bar absolute h-7 top-1.5 rounded-md shadow-md border flex items-center px-3 cursor-grab active:cursor-grabbing hover:brightness-110 transition-all group/bar z-10 overflow-hidden border-black/10"
         style={{ 
           left: `${left}px`, 
           width: `${width}px`,
@@ -452,6 +493,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
              <div className="font-black uppercase tracking-widest text-[8px] opacity-50">{task.status}</div>
            </div>
            <div className="font-black text-xs">{task.title || 'Sem título'}</div>
+           {task.reports && (
+             <div className="text-[8px] italic text-blue-300 mt-1 max-w-[150px] truncate">
+               "{task.reports}"
+             </div>
+           )}
            <div className="text-[9px] font-bold opacity-60 mt-1 flex items-center gap-1">
              <Clock size={10} />
              {format(start, 'dd/MM')} — {format(end, 'dd/MM')}
@@ -1025,7 +1071,29 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
         </div>
 
         {/* Rows (Scrolling area) */}
-        <div className="flex-grow overflow-auto no-scrollbar" onScroll={handleScroll} ref={rowsAreaRef}>
+        <div 
+          className={`flex-grow overflow-auto custom-scrollbar ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`} 
+          onScroll={handleScroll} 
+          onMouseDown={handlePanStart}
+          ref={rowsAreaRef}
+        >
+          {/* Floating Navigation Controls */}
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 z-[60] pointer-events-none">
+            <button 
+              onClick={() => rowsAreaRef.current?.scrollBy({ left: -400, behavior: 'smooth' })}
+              className="p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur shadow-2xl rounded-full border border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto"
+              title="Rolar para esquerda"
+            >
+              <ChevronLeft size={24} />
+            </button>
+            <button 
+              onClick={() => rowsAreaRef.current?.scrollBy({ left: 400, behavior: 'smooth' })}
+              className="p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur shadow-2xl rounded-full border border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto"
+              title="Rolar para direita"
+            >
+              <ChevronRight size={24} />
+            </button>
+          </div>
           <div className="relative min-w-max">
             {/* Grid Background Lines for Tasks */}
             <div className="absolute inset-0 flex pointer-events-none z-0">
@@ -1736,6 +1804,15 @@ export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users
                  </button>
                ))}
             </div>
+          </div>
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Anotações Detalhadas</label>
+            <textarea 
+              value={formData.reports || ''} 
+              onChange={e => setFormData({...formData, reports: e.target.value})}
+              placeholder="Descreva os detalhes da tarefa, anotações, impedimentos ou observações importantes..."
+              className="w-full px-3 py-2 bg-slate-100 rounded border-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 outline-none transition-all min-h-[100px] text-sm resize-none"
+            />
           </div>
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Cor da Tarefa</label>
