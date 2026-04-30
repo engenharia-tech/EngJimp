@@ -171,8 +171,9 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
             {state.ganttTasks.map((task, idx) => (
               <tr 
                 key={task.id} 
-                className={`hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group bg-white dark:bg-black relative cursor-pointer ${(statusPickerOpenId === task.id || menuTaskId === task.id) ? 'z-[100]' : 'z-1'}`}
+                className={`hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group bg-white dark:bg-black relative cursor-pointer ${(statusPickerOpenId === task.id || menuTaskId === task.id) ? 'z-[50]' : 'z-0'}`}
                 onClick={() => onEditTask?.(task)}
+                style={{ zIndex: (statusPickerOpenId === task.id || menuTaskId === task.id) ? 50 : (idx === state.ganttTasks.length - 1 ? 1 : 0) }}
               >
                 <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-600">{idx + 1}</td>
                 <td className="px-6 py-3">

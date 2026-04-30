@@ -8,9 +8,10 @@ import { useLanguage } from '../i18n/LanguageContext';
 
 interface UserManagementProps {
     currentUser: User;
+    onUsersChange?: () => void;
 }
 
-export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) => {
+export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onUsersChange }) => {
   const { addToast } = useToast();
   const { t } = useLanguage();
   const [users, setUsers] = useState<User[]>([]);
@@ -96,6 +97,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
     if (result.success) {
       addToast(editingUserId ? t('userUpdatedSuccess', { name }) : t('userCreatedSuccess', { name }), 'success');
       await loadList(); // Refresh list
+      onUsersChange?.(); // Refresh global app state
       resetForm();
     } else {
       console.error("Register error:", result.message);
@@ -128,6 +130,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser }) =
         if (result.success) {
           addToast(`Usuário ${user.name} excluído com sucesso!`, 'success');
           await loadList();
+          onUsersChange?.(); // Refresh global app state
         } else {
           if (result.message?.includes('violates foreign key') || result.message?.includes('constraint')) {
              addToast('ERRO DE VÍNCULO: Não é possível excluir pois existem projetos vinculados. Use o botão "Correção TOTAL" abaixo para corrigir.', 'error');
