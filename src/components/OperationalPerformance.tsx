@@ -380,21 +380,6 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       // Collect all exclusions (pauses and interruptions)
       const exclusions: { start: Date, end: Date, type: 'pause' | 'interruption', name: string, id: string }[] = [];
       
-      if (p.pauses) {
-        p.pauses.forEach((pause, idx) => {
-          const pStart = parseISO(pause.timestamp);
-          // Handle -1 duration (active pause)
-          const pEnd = pause.durationSeconds === -1 ? new Date() : addSeconds(pStart, pause.durationSeconds);
-          exclusions.push({ 
-            start: pStart, 
-            end: pEnd, 
-            type: 'pause', 
-            name: `${t('pause')}: ${pause.reason}`,
-            id: `${p.id}-pause-${idx}`
-          });
-        });
-      }
-      
       const projectStart = parseISO(p.startTime);
       // For ongoing projects, use lastActiveAt (heartbeat) if available to avoid gaps filling when app was closed
       let projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
@@ -407,9 +392,25 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         }
       }
 
+      if (p.pauses) {
+        p.pauses.forEach((pause, idx) => {
+          const pStart = parseISO(pause.timestamp);
+          // Handle -1 duration (active pause) - Cap it with projectEnd
+          const pEnd = pause.durationSeconds === -1 ? projectEnd : addSeconds(pStart, pause.durationSeconds);
+          exclusions.push({ 
+            start: pStart, 
+            end: pEnd, 
+            type: 'pause', 
+            name: `${t('pause')}: ${pause.reason}`,
+            id: `${p.id}-pause-${idx}`
+          });
+        });
+      }
+      
       projectInterruptions.forEach(i => {
         const iStart = parseISO(i.startTime);
-        const iEnd = i.endTime ? parseISO(i.endTime) : new Date();
+        // Cap interruption end by project end if it's still open
+        const iEnd = i.endTime ? parseISO(i.endTime) : projectEnd;
         
         // Only include interruption if it actually overlaps with this project session
         if (iStart < projectEnd && iEnd > projectStart) {

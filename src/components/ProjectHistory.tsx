@@ -42,8 +42,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   const [recalculateProgress, setRecalculateProgress] = useState({ current: 0, total: 0 });
 
   // Sorting State
-  const [sortKey, setSortKey] = useState<string>('clientName');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [sortKey, setSortKey] = useState<string>('startTime');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Duplicate Management State
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
@@ -125,8 +125,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       if (startDate || endDate) {
         const pStart = new Date(p.startTime).getTime();
         const pEnd = p.endTime ? new Date(p.endTime).getTime() : Date.now();
-        const start = startDate ? new Date(startDate).setHours(0, 0, 0, 0) : 0;
-        const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
+        const start = startDate ? new Date(startDate + 'T00:00:00').getTime() : 0;
+        const end = endDate ? new Date(endDate + 'T23:59:59').getTime() : Infinity;
         matchDate = pStart <= end && pEnd >= start;
       }
 
