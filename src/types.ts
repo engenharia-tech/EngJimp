@@ -373,6 +373,7 @@ export interface AppState {
   projectRequests: ProjectRequest[];
   ganttTasks: GanttTask[]; // New field
   auditLogs: AuditLog[]; // New field
+  engineeringPerformanceTab?: boolean; // Auxiliary flag
   users: User[];
   settings: AppSettings;
   seoData?: SEOData;
