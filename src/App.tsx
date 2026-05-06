@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { NexusChat } from './nexus/NexusChat';
 import { Dashboard } from './components/Dashboard';
@@ -19,6 +19,7 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { Settings } from './components/Settings';
 import { OperationalPerformance } from './components/OperationalPerformance';
 import { AuditHistory } from './components/AuditHistory';
+import { EngineeringPerformance } from './components/EngineeringPerformance';
 import { Login } from './components/Login';
 import { 
   supabase,
@@ -147,7 +148,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'nexus' | 'gantt' | 'audit'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'nexus' | 'gantt' | 'audit' | 'engineering_performance'>('dashboard');
   const [data, setData] = useState<AppState>({ 
     projects: [], 
     issues: [], 
@@ -352,6 +353,11 @@ const AppContent: React.FC = () => {
   const canSeeInnovations = useMemo(() => {
       if (!currentUser) return false;
       return ['GESTOR', 'CEO', 'PROJETISTA', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
+  }, [currentUser]);
+
+  const canSeeEngineeringPerformance = useMemo(() => {
+    if (!currentUser) return false;
+    return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(currentUser.role);
   }, [currentUser]);
 
   const canSeeAudit = useMemo(() => {
@@ -934,6 +940,10 @@ const AppContent: React.FC = () => {
             </>
           )}
 
+          {canSeeEngineeringPerformance && (
+            <NavItem id="engineering_performance" labelKey="engineeringPerformance" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
+          )}
+
           {canSeeAudit && (
             <NavItem id="audit" labelKey="auditLog" icon={History} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
@@ -1172,6 +1182,19 @@ const AppContent: React.FC = () => {
             <AuditHistory 
               logs={data.auditLogs} 
               theme={theme} 
+            />
+          )}
+
+          {activeTab === 'engineering_performance' && canSeeEngineeringPerformance && currentUser && (
+            <EngineeringPerformance 
+                projects={data.projects}
+                activities={data.operationalActivities}
+                interruptions={data.interruptions}
+                users={data.users}
+                settings={data.settings}
+                theme={theme}
+                t={t}
+                currentUser={currentUser}
             />
           )}
 

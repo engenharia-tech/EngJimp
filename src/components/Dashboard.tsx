@@ -1219,7 +1219,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       </div>
 
       {/* Engineering Performance Compliance Section */}
-      {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && visibleSections.includes('engineering_compliance') && (
+      {['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(currentUser.role) && visibleSections.includes('engineering_compliance') && (
         <EngineeringPerformance 
           projects={data.projects}
           activities={data.operationalActivities}
@@ -1230,6 +1230,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           t={t}
           startDate={startDate}
           endDate={endDate}
+          currentUser={currentUser}
         />
       )}
 

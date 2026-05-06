@@ -42,6 +42,11 @@ import {
   addSeconds,
   isWithinInterval,
   subDays,
+  subMonths,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
   eachDayOfInterval
 } from 'date-fns';
 
@@ -55,6 +60,7 @@ interface EngineeringPerformanceProps {
   t: (key: string) => string;
   startDate?: string;
   endDate?: string;
+  currentUser: User;
 }
 
 export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
@@ -66,21 +72,46 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
   theme,
   t,
   startDate,
-  endDate
+  endDate,
+  currentUser
 }) => {
   const [selectedDesignerId, setSelectedDesignerId] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'macro' | 'individual'>('macro');
+  const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | 'currentMonth' | 'lastMonth' | 'year'>('7d');
 
   const dateRange = useMemo(() => {
-    return {
-      start: startDate ? parseISO(startDate) : subDays(new Date(), 7),
-      end: endDate ? parseISO(endDate) : new Date()
-    };
-  }, [startDate, endDate]);
+    const now = new Date();
+    
+    switch (selectedPeriod) {
+      case '7d':
+        return { start: subDays(now, 7), end: now };
+      case '30d':
+        return { start: subDays(now, 30), end: now };
+      case 'currentMonth':
+        return { start: startOfMonth(now), end: endOfMonth(now) };
+      case 'lastMonth': {
+        const last = subMonths(now, 1);
+        return { start: startOfMonth(last), end: endOfMonth(last) };
+      }
+      case 'year':
+        return { start: startOfYear(now), end: endOfYear(now) };
+      default:
+        return {
+          start: startDate ? parseISO(startDate) : subDays(now, 7),
+          end: endDate ? parseISO(endDate) : now
+        };
+    }
+  }, [startDate, endDate, selectedPeriod]);
 
-  const designers = useMemo(() => 
-    users.filter(u => ['PROJETISTA', 'COORDENADOR'].includes(u.role)), 
-  [users]);
+  const designers = useMemo(() => {
+    return users.filter(u => {
+      // Only show GESTOR role if the current user viewing IS a GESTOR
+      if (u.role === 'GESTOR') {
+        return currentUser.role === 'GESTOR';
+      }
+      return ['PROJETISTA', 'COORDENADOR'].includes(u.role);
+    });
+  }, [users, currentUser]);
 
   const calculateComplianceData = useMemo(() => {
     const workdayStartStr = settings.workdayStart || "07:30";
@@ -264,6 +295,20 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <div className="flex bg-gray-100 dark:bg-slate-900 p-1 rounded-xl">
+            <select
+              value={selectedPeriod}
+              onChange={(e) => setSelectedPeriod(e.target.value as any)}
+              className="px-3 py-1.5 bg-transparent border-none text-xs font-bold focus:ring-0 outline-none cursor-pointer text-gray-600 dark:text-slate-300"
+            >
+              <option value="7d">{t('last7Days')}</option>
+              <option value="30d">{t('last30Days')}</option>
+              <option value="currentMonth">{t('currentMonth')}</option>
+              <option value="lastMonth">{t('lastMonth')}</option>
+              <option value="year">{t('currentYear')}</option>
+            </select>
+          </div>
+
           <div className="flex bg-gray-100 dark:bg-slate-900 p-1 rounded-xl">
             <button
               onClick={() => setViewMode('macro')}
@@ -503,6 +548,7 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
                         axisLine={false} 
                         tickLine={false} 
                         tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                        minTickGap={30}
                       />
                       <YAxis 
                         axisLine={false} 
@@ -539,6 +585,7 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
                           axisLine={false} 
                           tickLine={false} 
                           tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                          minTickGap={30}
                         />
                         <YAxis 
                           axisLine={false} 
