@@ -974,18 +974,30 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       }
 
       // 1. Update DB
-      console.log("Finalizing project in DB:", finishedProject.ns, finishedProject);
-      await onUpdate(finishedProject);
-      console.log("Project updated successfully in DB.");
-      addToast(t('projectFinishedSuccess') || 'Projeto concluído com sucesso!', 'success');
-      
-      // Close modal and clear active project
-      setActiveProject(null);
-      setShowFinishModal(false);
+      try {
+        console.log("Finalizing project in DB:", finishedProject.ns);
+        await onUpdate(finishedProject);
+        addToast(t('projectFinishedSuccess') || 'Projeto concluído com sucesso!', 'success');
+        
+        // Immediate UI Cleanup
+        setActiveProject(null);
+        setShowFinishModal(false);
+        setElapsedSeconds(0);
+        setIsFinalizing(false);
+      } catch (dbError) {
+        console.error("DB Update failed for project finalization", dbError);
+        addToast(t('errorFinishingProject') || 'Erro ao salvar finalização no banco.', 'error');
+        setIsFinalizing(false);
+        return; // Don't proceed to notifications if DB failed
+      }
       
       // 2. Send Notifications (in background, don't block UI)
-      console.log("Triggering notifications...");
-      sendTeamsNotification(finishedProject);
+      try {
+        console.log("Triggering notifications...");
+        sendTeamsNotification(finishedProject);
+      } catch (notifError) {
+        console.warn("Notification error (non-blocking):", notifError);
+      }
       
       // Determine if we should send email (only when ALL designers for this NS have finished)
       let shouldSendEmail = false;

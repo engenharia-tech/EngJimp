@@ -183,7 +183,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [data.projects, filterNs, filterType, startDate, endDate, filterSuspicious, sortKey, sortDirection, usersMap]);
+  }, [data.projects, filterNs, filterType, filterStatus, startDate, endDate, filterSuspicious, sortKey, sortDirection, usersMap]);
 
   const handleOpenEdit = (project: ProjectSession) => {
       setEditingProject(project);

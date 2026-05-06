@@ -64,7 +64,14 @@ const defaultState: AppState = {
 const parseSafeNumber = (val: any): number => {
   if (val === null || val === undefined || val === '') return 0;
   if (typeof val === 'number') return val;
-  const cleaned = String(val).replace(/\./g, '').replace(',', '.');
+  
+  let str = String(val).trim();
+  // If it has a comma, it's likely European/pt-BR format (e.g. 1.234,56)
+  if (str.includes(',')) {
+    str = str.replace(/\./g, '').replace(',', '.');
+  }
+  
+  const cleaned = str.replace(/[^\d.-]/g, '');
   const num = parseFloat(cleaned);
   return isNaN(num) ? 0 : num;
 };
@@ -258,16 +265,36 @@ export const fetchAppState = async (): Promise<AppState> => {
     } catch (e) { console.error("Issues mapping error:", e); }
 
     try {
-      innovations = (innovationsRes.data || []).map((inv: any) => ({
-        id: inv.id, title: inv.title, description: inv.description, type: inv.type,
-        calculationType: inv.calculation_type as CalculationType || CalculationType.RECURRING_MONTHLY,
-        unitSavings: parseSafeNumber(inv.unit_savings), quantity: parseSafeNumber(inv.quantity),
-        totalAnnualSavings: parseSafeNumber(inv.total_annual_savings), investmentCost: parseSafeNumber(inv.investment_cost),
-        status: inv.status, authorId: inv.author_id, createdAt: inv.created_at,
-        materials: parseSafeJson(inv.materials, []), machine: parseSafeJson(inv.machine, undefined),
-        productivityBefore: inv.productivity_before, productivityAfter: inv.productivity_after,
-        unitProductCost: inv.unit_product_cost, unitProductValue: inv.unit_product_value
-      }));
+      innovations = (innovationsRes.data || []).map((inv: any) => {
+        const rawMachine = parseSafeJson(inv.machine, undefined);
+        const machine = rawMachine ? {
+            name: rawMachine.name || '',
+            cost: parseSafeNumber(rawMachine.cost),
+            depreciationYears: parseSafeNumber(rawMachine.depreciationYears) || 1,
+            annualDepreciation: parseSafeNumber(rawMachine.annualDepreciation)
+        } : undefined;
+
+        return {
+          id: inv.id, 
+          title: inv.title, 
+          description: inv.description, 
+          type: inv.type,
+          calculationType: inv.calculation_type as CalculationType || CalculationType.RECURRING_MONTHLY,
+          unitSavings: parseSafeNumber(inv.unit_savings), 
+          quantity: parseSafeNumber(inv.quantity),
+          totalAnnualSavings: parseSafeNumber(inv.total_annual_savings), 
+          investmentCost: parseSafeNumber(inv.investment_cost),
+          status: inv.status, 
+          authorId: inv.author_id, 
+          createdAt: inv.created_at,
+          materials: parseSafeJson(inv.materials, []), 
+          machine,
+          productivityBefore: parseSafeNumber(inv.productivity_before), 
+          productivityAfter: parseSafeNumber(inv.productivity_after),
+          unitProductCost: parseSafeNumber(inv.unit_product_cost), 
+          unitProductValue: parseSafeNumber(inv.unit_product_value)
+        };
+      });
     } catch (e) { console.error("Innovations mapping error:", e); }
 
     try {
