@@ -288,8 +288,18 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
     const [wsH, wsM] = workdayStartStr.split(':').map(Number);
     const [weH, weM] = workdayEndStr.split(':').map(Number);
-    const [lsH, lsM] = lunchStartStr.split(':').map(Number);
-    const [leH, leM] = lunchEndStr.split(':').map(Number);
+    
+    let lsH = 0, lsM = 0, leH = 0, leM = 0;
+    // Special override for May 4th, 2026 as requested by user
+    if (selectedDate.getFullYear() === 2026 && selectedDate.getMonth() === 4 && selectedDate.getDate() === 4) {
+      lsH = 12; lsM = 30;
+      leH = 13; leM = 30;
+    } else {
+      const [sh, sm] = lunchStartStr.split(':').map(Number);
+      const [eh, em] = lunchEndStr.split(':').map(Number);
+      lsH = sh; lsM = sm;
+      leH = eh; leM = em;
+    }
 
     const items: any[] = [];
 

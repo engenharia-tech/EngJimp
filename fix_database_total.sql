@@ -79,12 +79,52 @@ CREATE POLICY "Permissive Gantt Select" ON public.gantt_tasks FOR SELECT USING (
 DROP POLICY IF EXISTS "Permissive Gantt All" ON public.gantt_tasks;
 CREATE POLICY "Permissive Gantt All" ON public.gantt_tasks FOR ALL USING (true);
 
--- 8. Corrigir RLS Geral
+-- 8. Tabela de Logs de Auditoria (Audit Log)
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id uuid,
+  user_name text,
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text,
+  entity_name text,
+  timestamp timestamptz DEFAULT now(),
+  details text
+);
+
+-- Habilitar RLS para Audit Logs
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive Audit Select" ON public.audit_logs;
+CREATE POLICY "Permissive Audit Select" ON public.audit_logs FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Permissive Audit Insert" ON public.audit_logs;
+CREATE POLICY "Permissive Audit Insert" ON public.audit_logs FOR INSERT WITH CHECK (true);
+
+-- 9. Corrigir RLS Geral
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can view all users" ON public.users;
 CREATE POLICY "Users can view all users" ON public.users FOR SELECT USING (true);
+
+-- 8. Tabela de Logs de Auditoria (Audit Log)
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id uuid,
+  user_name text,
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text,
+  entity_name text,
+  timestamp timestamptz DEFAULT now(),
+  details text
+);
+
+-- Habilitar RLS para Audit Logs
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive Audit Select" ON public.audit_logs;
+CREATE POLICY "Permissive Audit Select" ON public.audit_logs FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Permissive Audit Insert" ON public.audit_logs;
+CREATE POLICY "Permissive Audit Insert" ON public.audit_logs FOR INSERT WITH CHECK (true);
 
 -- 9. Recarregar Cache do PostgREST
 NOTIFY pgrst, 'reload config';

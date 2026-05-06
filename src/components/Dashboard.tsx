@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings } from '../types';
+import { EngineeringPerformance } from './EngineeringPerformance';
 import { analyzePerformance } from '../services/geminiService';
 import { fetchUsers } from '../services/storageService';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -145,7 +146,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [selectedSuspensions, setSelectedSuspensions] = useState<string[]>([]);
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
 
-  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report']);
+  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance']);
 
   // Helper to normalize strings for comparison (remove accents and uppercase)
   const normalize = (str: string) => 
@@ -1203,10 +1204,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 />
                 <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('teamReleases')}</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  checked={visibleSections.includes('engineering_compliance')} 
+                  onChange={() => setVisibleSections(prev => prev.includes('engineering_compliance') ? prev.filter(s => s !== 'engineering_compliance') : [...prev, 'engineering_compliance'])}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('engineeringPerformance')}</span>
+              </label>
             </>
           )}
         </div>
       </div>
+
+      {/* Engineering Performance Compliance Section */}
+      {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && visibleSections.includes('engineering_compliance') && (
+        <EngineeringPerformance 
+          projects={data.projects}
+          activities={data.operationalActivities}
+          interruptions={data.interruptions}
+          users={availableDesigners}
+          settings={settings}
+          theme={theme}
+          t={t}
+          startDate={startDate}
+          endDate={endDate}
+        />
+      )}
 
       {/* KPI Section */}
       {visibleSections.includes('kpi') && (

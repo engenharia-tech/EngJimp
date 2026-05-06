@@ -53,8 +53,17 @@ export function calcActiveSeconds(from: Date | string, to: Date | string, settin
         if (!isOvertime) {
           const lStart = new Date(current);
           const lEnd = new Date(current);
-          lStart.setHours(lunchHS, lunchMS, 0, 0);
-          lEnd.setHours(lunchHE, lunchME, 0, 0);
+          
+          // Special override for May 4th, 2026 as requested by user
+          const isMay4th2026 = current.getFullYear() === 2026 && current.getMonth() === 4 && current.getDate() === 4;
+          
+          if (isMay4th2026) {
+            lStart.setHours(12, 30, 0, 0);
+            lEnd.setHours(13, 30, 0, 0);
+          } else {
+            lStart.setHours(lunchHS, lunchMS, 0, 0);
+            lEnd.setHours(lunchHE, lunchME, 0, 0);
+          }
 
           const lunchOverlapStart = Math.max(overlapStart, lStart.getTime());
           const lunchOverlapEnd = Math.min(overlapEnd, lEnd.getTime());
@@ -96,8 +105,19 @@ export function isWorkingHour(date: Date, settings: AppSettings, isOvertime: boo
 
   const [startH, startM] = workdayStartStr.split(':').map(Number);
   const [endH, endM] = workdayEndStr.split(':').map(Number);
-  const [lStartH, lStartM] = lunchStartStr.split(':').map(Number);
-  const [lEndH, lEndM] = lunchEndStr.split(':').map(Number);
+
+  let lStartH = 0, lStartM = 0, lEndH = 0, lEndM = 0;
+  
+  // Special override for May 4th, 2026 as requested by user
+  if (date.getFullYear() === 2026 && date.getMonth() === 4 && date.getDate() === 4) {
+    lStartH = 12; lStartM = 30;
+    lEndH = 13; lEndM = 30;
+  } else {
+    const [lsH, lsM] = lunchStartStr.split(':').map(Number);
+    const [leH, leM] = lunchEndStr.split(':').map(Number);
+    lStartH = lsH; lStartM = lsM;
+    lEndH = leH; lEndM = leM;
+  }
 
   const startTotSeconds = (startH * 60 + startM) * 60;
   const endTotSeconds = (endH * 60 + endM) * 60;
