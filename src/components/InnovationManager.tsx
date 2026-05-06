@@ -59,11 +59,55 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [macCost, setMacCost] = useState('');
   const [macDepYears, setMacDepYears] = useState('');
 
+  // Normalization helper for legacy/mismatched enum values from DB
+  const normalizeEnumValue = <T extends string>(val: any, enumObj: any): T => {
+    if (!val) return Object.values(enumObj)[0] as T;
+    const values = Object.values(enumObj);
+    if (values.includes(val)) return val as T;
+    
+    // Explicit mappings for common legacy strings
+    const explicitMap: Record<string, string> = {
+        'NOVO PROJETO': 'NEW_PROJECT',
+        'MELHORIA DE PRODUTO': 'PRODUCT_IMPROVEMENT',
+        'OTIMIZAÇÃO DE PROCESSOS': 'PROCESS_OPTIMIZATION',
+        'POR UNIDADE PRODUZIDA': 'PER_UNIT',
+        'RECORRENTE (MENSUAL)': 'RECURRING_MONTHLY',
+        'VALOR ÚNICO / FIXO': 'ONE_TIME',
+        'ADICIONAR GASTO': 'ADD_EXPENSE'
+    };
+
+    if (explicitMap[val]) {
+        const target = explicitMap[val];
+        if (Object.keys(enumObj).includes(target)) return enumObj[target] as T;
+        if (Object.values(enumObj).includes(target)) return target as T;
+    }
+
+    const keys = Object.keys(enumObj);
+    if (keys.includes(val)) return enumObj[val] as T;
+    
+    const smashed = val.toString().toUpperCase().replace(/_/g, '').replace(/ /g, '');
+    const found = keys.find(k => k.toUpperCase().replace(/_/g, '') === smashed);
+    if (found) return enumObj[found] as T;
+    
+    return values[0] as T;
+  };
+
   const safeParse = (val: any): number => {
+    if (val === null || val === undefined || val === '') return 0;
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
-    if (!val) return 0;
-    const str = val.toString().replace(',', '.').replace(/[^\d.-]/g, '');
-    const parsed = parseFloat(str);
+    
+    let str = val.toString().trim();
+    
+    // If it has a comma, it's likely European/pt-BR format (e.g. 1.234,56)
+    if (str.includes(',')) {
+      // Remove all thousand separator dots, then replace comma with decimal dot
+      str = str.replace(/\./g, '').replace(',', '.');
+    }
+    
+    // Remove any remaining non-numeric characters except minus and decimal dot
+    const cleaned = str.replace(/[^\d.-]/g, '');
+    
+    const parsed = parseFloat(cleaned);
     return isNaN(parsed) ? 0 : parsed;
   };
 
@@ -72,19 +116,40 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
   useEffect(() => {
     if (editingInnovation) {
-        setTitle(editingInnovation.title);
-        setDescription(editingInnovation.description);
-        setType(editingInnovation.type);
-        setCalculationType(editingInnovation.calculationType);
-        setUnitSavings(editingInnovation.unitSavings.toString());
-        setQuantity(editingInnovation.quantity.toString());
-        setInvestmentCost((editingInnovation.investmentCost || 0).toString());
+        setTitle(editingInnovation.title || '');
+        setDescription(editingInnovation.description || '');
+        setType(normalizeEnumValue<InnovationType>(editingInnovation.type, InnovationType));
+        setCalculationType(normalizeEnumValue<CalculationType>(editingInnovation.calculationType, CalculationType));
+        
+        const uSavings = editingInnovation.unitSavings ?? 0;
+        const qty = editingInnovation.quantity ?? 1;
+        const iCost = editingInnovation.investmentCost ?? 0;
+        const pBefore = editingInnovation.productivityBefore ?? 0;
+        const pAfter = editingInnovation.productivityAfter ?? 0;
+        const upCost = editingInnovation.unitProductCost ?? 0;
+        const upValue = editingInnovation.unitProductValue ?? 0;
+
+        setUnitSavings(uSavings.toString());
+        setQuantity(qty.toString());
+        setInvestmentCost(iCost.toString());
         setMaterials(editingInnovation.materials || []);
         setMachine(editingInnovation.machine || null);
-        setProductivityBefore(editingInnovation.productivityBefore?.toString() || '');
-        setProductivityAfter(editingInnovation.productivityAfter?.toString() || '');
-        setUnitProductCost(editingInnovation.unitProductCost?.toString() || '');
-        setUnitProductValue(editingInnovation.unitProductValue?.toString() || '');
+        setProductivityBefore(pBefore.toString());
+        setProductivityAfter(pAfter.toString());
+        setUnitProductCost(upCost.toString());
+        setUnitProductValue(upValue.toString());
+        
+        // Populate machine details for calculation form
+        if (editingInnovation.machine) {
+            setMacName(editingInnovation.machine.name || '');
+            setMacCost(editingInnovation.machine.cost?.toString() || '');
+            setMacDepYears(editingInnovation.machine.depreciationYears?.toString() || '');
+        } else {
+            setMacName('');
+            setMacCost('');
+            setMacDepYears('');
+        }
+        
         setShowForm(true);
     } else {
         setTitle('');
@@ -96,6 +161,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setInvestmentCost('');
         setMaterials([]);
         setMachine(null);
+        setMacName('');
+        setMacCost('');
+        setMacDepYears('');
         setProductivityBefore('');
         setProductivityAfter('');
         setUnitProductCost('');
@@ -192,7 +260,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   // Preview Calculation for Form
   const previewAnnualSavings = useMemo(() => {
     const unit = safeParse(unitSavings);
-    const qty = safeParse(quantity);
+    let qty = safeParse(quantity);
+
+    // If it's recurring monthly and no quantity is set, assume 12 months/year
+    if (calculationType === CalculationType.RECURRING_MONTHLY && qty === 0) {
+        qty = 12;
+    }
     
     let base = 0;
     if (calculationType === CalculationType.ONE_TIME) {
@@ -256,16 +329,20 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     setMaterials(materials.filter(m => m.id !== id));
   };
 
-  const updateMachine = () => {
-    if (!macName || !macCost || !macDepYears) {
+  const updateMachine = (nameOverride?: string, costOverride?: string, yearsOverride?: string) => {
+    const finalName = nameOverride !== undefined ? nameOverride : macName;
+    const finalCost = costOverride !== undefined ? costOverride : macCost;
+    const finalYears = yearsOverride !== undefined ? yearsOverride : macDepYears;
+
+    if (!finalName || !finalCost || !finalYears) {
         setMachine(null);
         return;
     }
-    const cost = safeParse(macCost);
-    const years = safeParse(macDepYears);
+    const cost = safeParse(finalCost);
+    const years = safeParse(finalYears);
     const validYears = years > 0 ? years : 1;
     setMachine({
-        name: macName,
+        name: finalName,
         cost,
         depreciationYears: validYears,
         annualDepreciation: cost / validYears
@@ -335,6 +412,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const { language } = useLanguage();
 
   const formatCurrency = (val: number) => {
+    if (val === null || val === undefined || isNaN(val)) return 'R$ 0,00';
     return new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(val);
   };
 
@@ -356,8 +434,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
       }
   }
 
-  const getInnovationTypeLabel = (type: InnovationType) => {
-    switch (type) {
+  const getInnovationTypeLabel = (type: string) => {
+    const tNorm = normalizeEnumValue<InnovationType>(type, InnovationType);
+    switch (tNorm) {
       case InnovationType.PRODUCT_IMPROVEMENT: return t('productImprovement');
       case InnovationType.PROCESS_OPTIMIZATION: return t('processOptimization');
       case InnovationType.NEW_PROJECT: return t('newProject');
@@ -722,9 +801,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             value={macName}
                             onChange={e => {
                                 setMacName(e.target.value);
-                                // Update machine object on change
+                                updateMachine(e.target.value, macCost, macDepYears);
                             }}
-                            onBlur={updateMachine}
                             className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
                         />
                     </div>
@@ -735,8 +813,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 type="number" 
                                 placeholder={t('machineCost')}
                                 value={macCost}
-                                onChange={e => setMacCost(e.target.value)}
-                                onBlur={updateMachine}
+                                onChange={e => {
+                                    setMacCost(e.target.value);
+                                    updateMachine(macName, e.target.value, macDepYears);
+                                }}
                                 className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
                             />
                         </div>
@@ -746,15 +826,17 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             type="number" 
                             placeholder={t('depreciationYears')}
                             value={macDepYears}
-                            onChange={e => setMacDepYears(e.target.value)}
-                            onBlur={updateMachine}
+                            onChange={e => {
+                                setMacDepYears(e.target.value);
+                                updateMachine(macName, macCost, e.target.value);
+                            }}
                             className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
                         />
                     </div>
                     <div className="md:col-span-1 flex items-center">
                         {machine && (
                             <div className="text-xs text-blue-600 dark:text-blue-400 font-bold">
-                                {t('depreciationPerYear', { value: formatCurrency(machine.annualDepreciation) })}
+                                {t('depreciationPerYear', { value: formatCurrency(machine?.annualDepreciation || 0) })}
                             </div>
                         )}
                     </div>
