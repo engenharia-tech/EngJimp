@@ -18,6 +18,7 @@ import { SEOManager } from './components/SEOManager';
 import { UserProfileModal } from './components/UserProfileModal';
 import { Settings } from './components/Settings';
 import { OperationalPerformance } from './components/OperationalPerformance';
+import { AuditHistory } from './components/AuditHistory';
 import { Login } from './components/Login';
 import { 
   supabase,
@@ -41,7 +42,8 @@ import {
   addProjectRequest,
   updateProjectRequest,
   deleteProjectRequest,
-  seedFebruaryData
+  seedFebruaryData,
+  addAuditLog
 } from './services/storageService';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
@@ -145,7 +147,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'nexus' | 'gantt'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'nexus' | 'gantt' | 'audit'>('dashboard');
   const [data, setData] = useState<AppState>({ 
     projects: [], 
     issues: [], 
@@ -351,6 +353,11 @@ const AppContent: React.FC = () => {
       if (!currentUser) return false;
       return ['GESTOR', 'CEO', 'PROJETISTA', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
   }, [currentUser]);
+
+  const canSeeAudit = useMemo(() => {
+    if (!currentUser) return false;
+    return ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
+  }, [currentUser]);
   
   // Who can see Dashboard? (Everyone)
   // Who can see Team? (Manager, Coordinator)
@@ -399,6 +406,18 @@ const AppContent: React.FC = () => {
       const updatedData = await addProject(projectWithUser);
       setData(updatedData);
       addToast(t('projectCreatedSuccess'), 'success');
+      
+      // Audit Log
+      addAuditLog({
+          userId: currentUser?.id,
+          userName: currentUser?.name,
+          action: 'CREATE',
+          entityType: 'PROJECT',
+          entityId: project.id,
+          entityName: project.ns || project.name,
+          details: `Projeto ${project.ns} criado por ${currentUser?.name}`
+      });
+
       return updatedData;
     } catch (e: any) {
       console.error("Project creation failed:", e);
@@ -485,6 +504,19 @@ const AppContent: React.FC = () => {
       const projectToDelete = data.projects.find(p => p.id === id);
       const updatedData = await deleteProject(id, projectToDelete?.ns);
       
+      // Audit Log
+      if (projectToDelete) {
+          addAuditLog({
+              userId: currentUser?.id,
+              userName: currentUser?.name,
+              action: 'DELETE',
+              entityType: 'PROJECT',
+              entityId: projectToDelete.id,
+              entityName: projectToDelete.ns || projectToDelete.name,
+              details: `Projeto ${projectToDelete.ns} excluído por ${currentUser?.name}`
+          });
+      }
+
       // Optimistic update if fetchAppState is slow
       setData(prev => ({
           ...prev,
@@ -519,6 +551,17 @@ const AppContent: React.FC = () => {
       const updatedData = await addInnovation(innovation);
       setData(updatedData);
       addToast(t('innovationRegisteredSuccess'), 'success');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser?.id,
+          userName: currentUser?.name,
+          action: 'CREATE',
+          entityType: 'INNOVATION',
+          entityId: innovation.id,
+          entityName: innovation.title,
+          details: `Inovação "${innovation.title}" criada por ${currentUser?.name}`
+      });
     } catch (e: any) {
       console.error(e);
       if (e.message?.includes('violates check constraint') || e.message?.includes('innovations_type_check')) {
@@ -582,6 +625,7 @@ const AppContent: React.FC = () => {
     }
     
     // Confirmation is now handled by the UI component (InnovationManager)
+    const innovationToDelete = data.innovations.find(i => i.id === id);
     setIsLoading(true);
     try {
       // Optimistic update
@@ -593,6 +637,19 @@ const AppContent: React.FC = () => {
       const updatedData = await deleteInnovation(id);
       setData(updatedData);
       addToast(t('innovationDeletedSuccess'), 'success');
+
+      // Audit Log
+      if (innovationToDelete) {
+          addAuditLog({
+              userId: currentUser?.id,
+              userName: currentUser?.name,
+              action: 'DELETE',
+              entityType: 'INNOVATION',
+              entityId: innovationToDelete.id,
+              entityName: innovationToDelete.title,
+              details: `Inovação "${innovationToDelete.title}" excluída por ${currentUser?.name}`
+          });
+      }
     } catch (e: any) {
       console.error("Failed to delete innovation:", e);
       addToast(t('errorDeletingInnovation', { error: e.message }), 'error');
@@ -638,6 +695,17 @@ const AppContent: React.FC = () => {
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+        addAuditLog({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action: 'LOGOUT',
+            entityType: 'USER',
+            entityId: currentUser.id,
+            entityName: currentUser.username,
+            details: `Usuário ${currentUser.username} (P: ${currentUser.name}) fez logout.`
+        });
+    }
     setCurrentUser(null);
     // Reset to tracker but effective login will handle redirection
     setActiveTab('tracker');
@@ -768,8 +836,21 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    addAuditLog({
+        userId: user.id,
+        userName: user.name,
+        action: 'LOGIN',
+        entityType: 'USER',
+        entityId: user.id,
+        entityName: user.username,
+        details: `Usuário ${user.username} (P: ${user.name}) fez login.`
+    });
+  };
+
   if (!currentUser) {
-    return <Login onLogin={setCurrentUser} />;
+    return <Login onLogin={handleLogin} />;
   }
 
   const COMPANY_LOGO_URL = data.settings.logoUrl || logoImg;
@@ -851,6 +932,10 @@ const AppContent: React.FC = () => {
               <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
               <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
             </>
+          )}
+
+          {canSeeAudit && (
+            <NavItem id="audit" labelKey="auditLog" icon={History} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
           
           {canSeeInnovations && (
@@ -1080,6 +1165,13 @@ const AppContent: React.FC = () => {
               settings={data.settings}
               onUpdateSettings={handleUpdateSettings}
               onRefresh={handleRefresh}
+            />
+          )}
+
+          {activeTab === 'audit' && canSeeAudit && (
+            <AuditHistory 
+              logs={data.auditLogs} 
+              theme={theme} 
             />
           )}
 

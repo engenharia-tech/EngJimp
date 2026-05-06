@@ -348,6 +348,20 @@ export interface GanttTask {
   category?: string;
 }
 
+export type AuditAction = 'CREATE' | 'DELETE' | 'UPDATE' | 'LOGIN' | 'LOGOUT';
+
+export interface AuditLog {
+  id: string;
+  userId: string;
+  userName: string;
+  action: AuditAction;
+  entityType: string;
+  entityId: string;
+  entityName: string;
+  timestamp: string; // ISO string
+  details?: string;
+}
+
 export interface AppState {
   projects: ProjectSession[];
   issues: IssueRecord[];
@@ -358,6 +372,7 @@ export interface AppState {
   operationalActivities: OperationalActivity[];
   projectRequests: ProjectRequest[];
   ganttTasks: GanttTask[]; // New field
+  auditLogs: AuditLog[]; // New field
   users: User[];
   settings: AppSettings;
   seoData?: SEOData;

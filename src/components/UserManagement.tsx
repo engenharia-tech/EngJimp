@@ -744,6 +744,26 @@ CREATE TABLE IF NOT EXISTS public.gantt_tasks (
   tenant_id uuid
 );
 
+-- 8. Tabela de Logs de Auditoria (Audit Log)
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id uuid,
+  user_name text,
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text,
+  entity_name text,
+  timestamp timestamptz DEFAULT now(),
+  details text
+);
+
+-- Habilitar RLS para Audit Logs
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive Audit Select" ON public.audit_logs;
+CREATE POLICY "Permissive Audit Select" ON public.audit_logs FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Permissive Audit Insert" ON public.audit_logs;
+CREATE POLICY "Permissive Audit Insert" ON public.audit_logs FOR INSERT WITH CHECK (true);
+
 -- Habilitar RLS para Gantt
 ALTER TABLE public.gantt_tasks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Permissive Gantt Select" ON public.gantt_tasks;

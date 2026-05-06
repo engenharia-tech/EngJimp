@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus, InnovationType, GanttTask } from '../types';
+import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus, InnovationType, GanttTask, AuditLog } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 
@@ -43,6 +43,7 @@ const defaultState: AppState = {
   activityTypes: [],
   operationalActivities: [],
   projectRequests: [],
+  auditLogs: [],
   users: [],
   ganttTasks: [],
   settings: { 
@@ -181,6 +182,7 @@ export const fetchAppState = async (): Promise<AppState> => {
   let projectRequests: ProjectRequest[] = [];
   let users: User[] = [];
   let ganttTasks: GanttTask[] = [];
+  let auditLogs: AuditLog[] = [];
   let settings: AppSettings = { ...defaultState.settings };
 
   try {
@@ -197,6 +199,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       supabase.from('project_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('users').select('*'),
       supabase.from('gantt_tasks').select('*').order('order', { ascending: true }),
+      supabase.from('audit_logs').select('*').order('timestamp', { ascending: false }).limit(500),
       fetchSettings()
     ];
 
@@ -211,7 +214,8 @@ export const fetchAppState = async (): Promise<AppState> => {
     const projectRequestsRes = results[7] as any;
     const usersRes = results[8] as any;
     const ganttTasksRes = results[9] as any;
-    settings = results[10] as AppSettings;
+    const auditLogsRes = results[10] as any;
+    settings = results[11] as AppSettings;
 
     activityTypes = (activityTypesRes.data || []).map((t: any) => ({
       id: t.id,
@@ -439,7 +443,21 @@ export const fetchAppState = async (): Promise<AppState> => {
         })));
     }
 
-    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, settings };
+    try {
+      auditLogs = (auditLogsRes.data || []).map((l: any) => ({
+        id: l.id,
+        userId: l.user_id,
+        userName: l.user_name,
+        action: l.action,
+        entityType: l.entity_type,
+        entityId: l.entity_id,
+        entityName: l.entity_name,
+        timestamp: l.timestamp,
+        details: l.details
+      }));
+    } catch (e) { console.error("AuditLogs mapping error:", e); }
+
+    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, auditLogs, settings };
   } catch (error) {
     console.error("FAILED TO LOAD DATA FROM SUPABASE - RETURNING PARTIAL STATE", error);
     return { 
@@ -453,6 +471,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       projectRequests: projectRequests || [], 
       users: users || [], 
       ganttTasks: ganttTasks || [], 
+      auditLogs: auditLogs || [],
       settings: settings || { ...defaultState.settings } 
     };
   }
@@ -2033,6 +2052,28 @@ export const updateGanttTask = async (task: GanttTask): Promise<AppState> => {
   } catch (error) {
     console.error("FAILED TO UPDATE GANTT TASK", error);
     throw error;
+  }
+};
+
+export const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Promise<void> => {
+  try {
+    const { error } = await supabase.from('audit_logs').insert([{
+      user_id: log.userId,
+      user_name: log.userName,
+      action: log.action,
+      entity_type: log.entityType,
+      entity_id: log.entityId,
+      entity_name: log.entityName,
+      details: log.details,
+      timestamp: new Date().toISOString()
+    }]);
+
+    if (error) {
+      console.warn("Audit Log insert error:", error);
+      // We don't throw here to avoid interrupting the main flow
+    }
+  } catch (e) {
+    console.error("Audit log exception:", e);
   }
 };
 
