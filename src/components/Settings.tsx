@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Settings as SettingsIcon, Save, Mail, Server, Shield, User as UserIcon, DollarSign, Globe, Send, CheckCircle2, AlertCircle, Eye, EyeOff, Clock } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Mail, Server, Shield, User as UserIcon, DollarSign, Globe, Send, CheckCircle2, AlertCircle, Eye, EyeOff, Clock, Database, Activity, HardDrive } from 'lucide-react';
 import { AppSettings, User } from '../types';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
-import { recalculateAllInterruptionTimes, recalculateAllProjectTimes } from '../services/storageService';
+import { recalculateAllInterruptionTimes, recalculateAllProjectTimes, getDatabaseStats } from '../services/storageService';
 
 interface SettingsProps {
   settings: AppSettings;
@@ -18,8 +18,23 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [dbStats, setDbStats] = useState<{
+    totalRecords: number;
+    limit: number;
+    usage: number;
+    isHealthy: boolean;
+    counts: any;
+  } | null>(null);
   const { addToast } = useToast();
   const { t } = useLanguage();
+
+  useEffect(() => {
+    const fetchDbStats = async () => {
+      const stats = await getDatabaseStats();
+      if (stats) setDbStats(stats);
+    };
+    fetchDbStats();
+  }, []);
 
   const calculatedRate = useMemo(() => {
     const relevantUsers = users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
@@ -407,6 +422,87 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
               <p className="text-xs text-gray-500 dark:text-slate-400 italic">
                 {t('footerContactInfo')}
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Database Health Section */}
+        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+          <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
+            <Database className="w-5 h-5 mr-2 text-indigo-500" />
+            {t('databaseLimit')}
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2 space-y-4">
+              <div className="flex justify-between items-end">
+                <div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-slate-400">{t('databaseUsage')}</p>
+                  <p className="text-2xl font-black text-black dark:text-white">
+                    {dbStats?.usage.toFixed(2) || '0.00'}%
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-500 dark:text-slate-400">{t('totalRecords')}</p>
+                  <p className="text-xl font-bold text-black dark:text-white">
+                    {dbStats?.totalRecords.toLocaleString() || '0'} / {dbStats?.limit.toLocaleString() || '100.000'}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="h-4 w-full bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden border border-gray-200 dark:border-slate-700">
+                <div 
+                  className={`h-full transition-all duration-1000 ${
+                    (dbStats?.usage || 0) > 90 ? 'bg-red-500' : (dbStats?.usage || 0) > 70 ? 'bg-amber-500' : 'bg-indigo-500'
+                  }`}
+                  style={{ width: `${Math.min(100, dbStats?.usage || 0)}%` }}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-800">
+                {dbStats?.isHealthy ? (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <p className="text-xs text-indigo-700 dark:text-indigo-300 font-bold uppercase tracking-wide">
+                      {t('databaseHealthy')}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    <p className="text-xs text-amber-700 dark:text-amber-300 font-bold uppercase tracking-wide">
+                      {t('databaseWarning')}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-xl border border-gray-100 dark:border-slate-800 space-y-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{t('details')}</p>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 dark:text-slate-400 flex items-center">
+                    <HardDrive className="w-3 h-3 mr-1.5" />
+                    {t('projects')}
+                  </span>
+                  <span className="font-bold text-black dark:text-white">{dbStats?.counts.projects || 0}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 dark:text-slate-400 flex items-center">
+                    <Activity className="w-3 h-3 mr-1.5" />
+                    {t('interruptions')}
+                  </span>
+                  <span className="font-bold text-black dark:text-white">{dbStats?.counts.interruptions || 0}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 dark:text-slate-400 flex items-center">
+                    <Server className="w-3 h-3 mr-1.5" />
+                    {t('auditLog')}
+                  </span>
+                  <span className="font-bold text-black dark:text-white">{dbStats?.counts.audit || 0}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

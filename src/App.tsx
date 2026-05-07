@@ -163,8 +163,8 @@ const AppContent: React.FC = () => {
       interruptionEmailTemplate: '',
       companyName: 'JIMP NEXUS',
       language: 'pt-BR',
-      workdayStart: '07:42',
-      workdayEnd: '17:33',
+      workdayStart: '07:30',
+      workdayEnd: '17:30',
       lunchStart: '12:00',
       lunchEnd: '13:00',
       workdays: [1, 2, 3, 4, 5]
@@ -478,6 +478,17 @@ const AppContent: React.FC = () => {
           } else {
                addToast(t('projectUpdatedSuccess'), 'success');
           }
+
+          // Audit Log
+          addAuditLog({
+              userId: currentUser?.id,
+              userName: currentUser?.name,
+              action: 'UPDATE',
+              entityType: 'PROJECT',
+              entityId: project.id,
+              entityName: project.ns,
+              details: `Projeto NS ${project.ns} atualizado por ${currentUser?.name}. Status: ${project.status}`
+          });
         }
     } catch (e) {
         console.error(`Erro ao atualizar projeto ${project.ns} (isHeartbeat=${isHeartbeat}):`, e);
@@ -593,6 +604,18 @@ const AppContent: React.FC = () => {
         const updatedData = await updateInnovationStatus(id, status);
         setData(updatedData);
         addToast(t('innovationStatusUpdated'), 'success');
+
+        // Audit Log
+        const innovation = data.innovations.find(i => i.id === id);
+        addAuditLog({
+            userId: currentUser?.id,
+            userName: currentUser?.name,
+            action: 'UPDATE',
+            entityType: 'INNOVATION',
+            entityId: id,
+            entityName: innovation?.title || 'Innovation',
+            details: `Status da inovação "${innovation?.title || id}" alterado para ${status} por ${currentUser?.name}`
+        });
     } catch(e) {
         addToast(t('errorUpdatingStatus'), 'error');
     } finally {
@@ -611,6 +634,17 @@ const AppContent: React.FC = () => {
         const updatedData = await updateInnovation(innovation);
         setData(updatedData);
         addToast(t('innovationUpdatedSuccess'), 'success');
+
+        // Audit Log
+        addAuditLog({
+            userId: currentUser?.id,
+            userName: currentUser?.name,
+            action: 'UPDATE',
+            entityType: 'INNOVATION',
+            entityId: innovation.id,
+            entityName: innovation.title,
+            details: `Inovação "${innovation.title}" editada por ${currentUser?.name}`
+        });
     } catch (e: any) {
         console.error(e);
         if (e.message?.includes('violates check constraint') || e.message?.includes('innovations_type_check')) {
@@ -675,6 +709,17 @@ const AppContent: React.FC = () => {
     try {
       const updatedData = await addInterruption(interruption);
       setData(updatedData);
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser?.id,
+          userName: currentUser?.name,
+          action: 'CREATE',
+          entityType: 'INTERRUPTION',
+          entityId: interruption.id,
+          entityName: interruption.projectNs || interruption.problemType,
+          details: `Interrupção no projeto ${interruption.projectNs} registrada por ${currentUser?.name}`
+      });
     } catch (e) {
       addToast(t('errorRegisteringInterruption'), 'error');
     }
@@ -728,6 +773,17 @@ const AppContent: React.FC = () => {
       const updatedData = await updateSettings(newSettings);
       setData(updatedData);
       addToast(t('settingsSavedSuccess'), 'success');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser?.id,
+          userName: currentUser?.name,
+          action: 'UPDATE',
+          entityType: 'SETTINGS',
+          entityId: 'global_settings',
+          entityName: 'Configurações',
+          details: `Configurações globais do sistema atualizadas por ${currentUser?.name}`
+      });
     } catch (error) {
       addToast(t('errorSavingSettings'), 'error');
     }
@@ -738,6 +794,17 @@ const AppContent: React.FC = () => {
       const updatedData = await addOperationalActivity(activity);
       setData(updatedData);
       addToast(t('activityRegisteredSuccess'), 'success');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser?.id,
+          userName: currentUser?.name,
+          action: 'CREATE',
+          entityType: 'OPERATIONAL_ACTIVITY',
+          entityId: activity.id,
+          entityName: activity.activityName,
+          details: `Atividade operacional "${activity.activityName}" iniciada por ${currentUser?.name}`
+      });
     } catch (e: any) {
       console.error("Failed to add activity:", e);
       addToast(t('errorRegisteringActivity'), 'error');
@@ -759,9 +826,23 @@ const AppContent: React.FC = () => {
 
   const onDeleteOperationalActivity = async (id: string) => {
     try {
+      const activityToDelete = data.operationalActivities.find(a => a.id === id);
       const updatedData = await deleteOperationalActivity(id);
       setData(updatedData);
       addToast(t('activityDeletedSuccess'), 'success');
+
+      // Audit Log
+      if (activityToDelete) {
+          addAuditLog({
+              userId: currentUser?.id,
+              userName: currentUser?.name,
+              action: 'DELETE',
+              entityType: 'OPERATIONAL_ACTIVITY',
+              entityId: id,
+              entityName: activityToDelete.activityName,
+              details: `Atividade operacional "${activityToDelete.activityName}" excluída por ${currentUser?.name}`
+          });
+      }
     } catch (e: any) {
       console.error("Failed to delete activity:", e);
       addToast(t('errorDeletingActivity', { error: e.message || '' }), 'error');
@@ -773,8 +854,20 @@ const AppContent: React.FC = () => {
     try {
       const updatedData = await addActivityType(type);
       setData(updatedData);
+      addToast(t('typeRegistered' as any) || 'Tipo registrado!', 'success');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser?.id,
+          userName: currentUser?.name,
+          action: 'CREATE',
+          entityType: 'ACTIVITY_TYPE',
+          entityId: type.id,
+          entityName: type.name,
+          details: `Novo tipo de atividade "${type.name}" criado por ${currentUser?.name}`
+      });
     } catch (e) {
-      addToast('Error adding activity type', 'error');
+      addToast(t('errorRegisteringType' as any) || 'Erro ao registrar tipo', 'error');
     }
   };
 
@@ -782,17 +875,44 @@ const AppContent: React.FC = () => {
     try {
       const updatedData = await updateActivityType(type);
       setData(updatedData);
+      addToast(t('typeUpdated' as any) || 'Tipo atualizado!', 'success');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser?.id,
+          userName: currentUser?.name,
+          action: 'UPDATE',
+          entityType: 'ACTIVITY_TYPE',
+          entityId: type.id,
+          entityName: type.name,
+          details: `Tipo de atividade "${type.name}" atualizado por ${currentUser?.name}`
+      });
     } catch (e) {
-      addToast('Error updating activity type', 'error');
+      addToast(t('errorUpdatingType' as any) || 'Erro ao atualizar tipo', 'error');
     }
   };
 
   const onDeleteActivityType = async (id: string) => {
     try {
+      const typeToDelete = data.activityTypes.find(t => t.id === id);
       const updatedData = await deleteActivityType(id);
       setData(updatedData);
+      addToast(t('typeDeleted' as any) || 'Tipo excluído!', 'success');
+
+      // Audit Log
+      if (typeToDelete) {
+          addAuditLog({
+              userId: currentUser?.id,
+              userName: currentUser?.name,
+              action: 'DELETE',
+              entityType: 'ACTIVITY_TYPE',
+              entityId: id,
+              entityName: typeToDelete.name,
+              details: `Tipo de atividade "${typeToDelete.name}" excluído por ${currentUser?.name}`
+          });
+      }
     } catch (e) {
-      addToast('Error deleting activity type', 'error');
+      addToast(t('errorDeletingType' as any) || 'Erro ao excluir tipo', 'error');
     }
   };
 
@@ -801,6 +921,17 @@ const AppContent: React.FC = () => {
       const updatedData = await addProjectRequest(request);
       setData(updatedData);
       addToast(t('nsRegisteredSuccess'), 'success');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser?.id,
+          userName: currentUser?.name,
+          action: 'CREATE',
+          entityType: 'PROJECT_REQUEST',
+          entityId: request.id,
+          entityName: request.ns,
+          details: `Pedido de NS ${request.ns} criado por ${currentUser?.name}`
+      });
     } catch (e: any) {
       console.error("onAddProjectRequest error:", e);
       const detail = e.message || (typeof e === 'string' ? e : "");
@@ -826,9 +957,23 @@ const AppContent: React.FC = () => {
 
   const onDeleteProjectRequest = async (id: string) => {
     try {
+      const requestToDelete = data.projectRequests.find(r => r.id === id);
       const updatedData = await deleteProjectRequest(id);
       setData(updatedData);
       addToast(t('nsDeletedSuccess'), 'success');
+
+      // Audit Log
+      if (requestToDelete) {
+          addAuditLog({
+              userId: currentUser?.id,
+              userName: currentUser?.name,
+              action: 'DELETE',
+              entityType: 'PROJECT_REQUEST',
+              entityId: id,
+              entityName: requestToDelete.ns,
+              details: `Pedido de NS ${requestToDelete.ns} excluído por ${currentUser?.name}`
+          });
+      }
     } catch (e) {
       addToast(t('errorDeletingNS'), 'error');
     }
@@ -1220,6 +1365,7 @@ const AppContent: React.FC = () => {
               onUpdateState={(newData) => setData(newData)} 
               onRefresh={handleRefresh} 
               onOpenSettings={() => setActiveTab('settings')}
+              currentUser={currentUser}
             />
           )}
 

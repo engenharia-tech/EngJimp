@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy } from 'lucide-react';
 import { User, UserRole } from '../types';
-import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts } from '../services/storageService';
+import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts, addAuditLog } from '../services/storageService';
 import { getWebhookUrl, saveWebhookUrl } from '../services/webhookService';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -96,6 +96,18 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     
     if (result.success) {
       addToast(editingUserId ? t('userUpdatedSuccess', { name }) : t('userCreatedSuccess', { name }), 'success');
+      
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: editingUserId ? 'UPDATE' : 'CREATE',
+          entityType: 'USER',
+          entityId: userPayload.id,
+          entityName: userPayload.username,
+          details: `Usuário ${userPayload.username} (${userPayload.name}) ${editingUserId ? 'editado' : 'criado'} por ${currentUser.name}`
+      });
+
       await loadList(); // Refresh list
       onUsersChange?.(); // Refresh global app state
       resetForm();
@@ -129,6 +141,18 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
         
         if (result.success) {
           addToast(`Usuário ${user.name} excluído com sucesso!`, 'success');
+
+          // Audit Log
+          addAuditLog({
+              userId: currentUser.id,
+              userName: currentUser.name,
+              action: 'DELETE',
+              entityType: 'USER',
+              entityId: user.id,
+              entityName: user.username,
+              details: `Usuário ${user.username} (${user.name}) excluído por ${currentUser.name}`
+          });
+
           await loadList();
           onUsersChange?.(); // Refresh global app state
         } else {
@@ -597,7 +621,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                             setIsRecalculating(true);
                             const res = await recalculateAllProjectCosts();
                             setIsRecalculating(false);
-                            if(res.success) addToast(res.message, "success");
+                            if(res.success) {
+                                addToast(res.message, "success");
+                                // Audit Log
+                                addAuditLog({
+                                    userId: currentUser.id,
+                                    userName: currentUser.name,
+                                    action: 'UPDATE',
+                                    entityType: 'SYSTEM',
+                                    entityId: 'recalculate_costs',
+                                    entityName: 'Recalcular Custos',
+                                    details: `Recálculo total de custos de projetos executado por ${currentUser.name}. Resultado: ${res.message}`
+                                });
+                            }
                             else addToast(t('error') + ": " + res.message, "error");
                         }}
                         disabled={isRecalculating}
@@ -868,6 +904,18 @@ NOTIFY pgrst, 'reload config';`}
                                         if (res.success) {
                                             // Pop-up requested by user
                                             window.alert(t('projectDeletedSuccess' as any) || "PROJETO EXCLUÍDO COM SUCESSO!");
+                                            
+                                            // Audit Log
+                                            addAuditLog({
+                                                userId: currentUser.id,
+                                                userName: currentUser.name,
+                                                action: 'DELETE',
+                                                entityType: 'PROJECT',
+                                                entityId: group.discard.id,
+                                                entityName: group.discard.ns,
+                                                details: `Duplicata do projeto ${group.discard.ns} removida por ${currentUser.name}`
+                                            });
+
                                             // Update UI instantly without reload
                                             setDuplicateGroups(prev => prev.filter(g => g.discard.id !== group.discard.id));
                                         } else {

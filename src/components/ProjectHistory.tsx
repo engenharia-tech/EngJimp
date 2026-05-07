@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Filter, Calendar, Search, Clock, Hash, User as UserIcon, Truck, Trash2, Layers, Box, Eye, X, FileCheck, FileX, AlertTriangle, Edit, Timer, RefreshCw, AlertCircle, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, Plus } from 'lucide-react';
 import { AppState, ProjectType, User, VariationRecord, ProjectSession, ImplementType, PauseRecord, InterruptionRecord, InterruptionStatus, InterruptionArea } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
-import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, DuplicateGroup } from '../services/storageService';
+import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, DuplicateGroup, addAuditLog } from '../services/storageService';
 import { useToast } from './Toast';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -287,6 +287,17 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
         addToast(t('recalculateSuccess', { count: updatedCount }), "success");
         
+        // Audit Log
+        addAuditLog({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action: 'UPDATE',
+            entityType: 'SYSTEM',
+            entityId: 'recalculate_history',
+            entityName: 'Recálculo de Histórico',
+            details: `Recálculo de horas de histórico executado por ${currentUser.name}. ${updatedCount} projetos atualizados.`
+        });
+
         // Force refresh by reloading page as it's the cleanest way to sync everything
         setTimeout(() => {
             window.location.reload();
@@ -495,6 +506,18 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         }
 
         addToast(t('saveSuccess'), 'success');
+        
+        // Audit Log for Interruption changes
+        addAuditLog({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action: 'UPDATE',
+            entityType: 'PROJECT',
+            entityId: editingProject.id,
+            entityName: editingProject.ns,
+            details: `Edição detalhada do projeto ${editingProject.ns} por ${currentUser.name}, incluindo atualizações de tempos e interrupções.`
+        });
+
         setEditingProject(null);
       } catch (error) {
         console.error(t('failedToSaveProject'), error);

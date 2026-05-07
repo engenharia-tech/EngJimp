@@ -150,7 +150,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
             {t('stopsByDesigner')}
           </h3>
           <span className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">
-            {t('totalDesigners').replace('{count}', designerStats.length.toString())}
+            {t('totalDesigners', { count: designerStats.length })}
           </span>
         </div>
         
@@ -170,7 +170,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
                     {stat.name}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-slate-400">
-                    {t('stopsRecorded').replace('{count}', stat.totalInterruptions.toString())}
+                    {t('stopsRecorded', { count: stat.totalInterruptions })}
                   </p>
                 </div>
               </div>
@@ -267,9 +267,10 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
               <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
                 <Info className="w-5 h-5 text-blue-600 mt-0.5" />
                 <p className="text-sm text-blue-800 dark:text-blue-200">
-                  {t('designerImpactSummary')
-                    .replace('{projects}', selectedDesignerData.projectIds.size.toString())
-                    .replace('{time}', formatDuration(selectedDesignerData.totalLostTime))}
+                  {t('designerImpactSummary', { 
+                    projects: selectedDesignerData.projectIds.size, 
+                    time: formatDuration(selectedDesignerData.totalLostTime) 
+                  })}
                 </p>
               </div>
               <button 
