@@ -165,7 +165,11 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         // Add projects
         userProjects.forEach(p => {
           const start = parseISO(p.startTime);
-          const end = p.endTime ? parseISO(p.endTime) : new Date();
+          // If activity is open, use min(now, workEnd) to avoid counting 24h
+          const now = new Date();
+          const effectiveNow = now > workEnd ? workEnd : now;
+          const end = p.endTime ? parseISO(p.endTime) : (dayStart < startOfDay(now) ? workEnd : effectiveNow);
+          
           if (start < dayEnd && end > dayStart) {
             events.push({ 
               start: start < workStart ? workStart : start, 
@@ -178,7 +182,10 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         // Add operational activities
         userActivities.forEach(a => {
           const start = parseISO(a.startTime);
-          const end = a.endTime ? parseISO(a.endTime) : new Date();
+          const now = new Date();
+          const effectiveNow = now > workEnd ? workEnd : now;
+          const end = a.endTime ? parseISO(a.endTime) : (dayStart < startOfDay(now) ? workEnd : effectiveNow);
+
           if (start < dayEnd && end > dayStart) {
             events.push({ 
               start: start < workStart ? workStart : start, 
@@ -191,7 +198,10 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         // Add interruptions
         userInterruptions.forEach(i => {
           const start = parseISO(i.startTime);
-          const end = i.endTime ? parseISO(i.endTime) : new Date();
+          const now = new Date();
+          const effectiveNow = now > workEnd ? workEnd : now;
+          const end = i.endTime ? parseISO(i.endTime) : (dayStart < startOfDay(now) ? workEnd : effectiveNow);
+
           if (start < dayEnd && end > dayStart) {
             events.push({ 
               start: start < workStart ? workStart : start, 
