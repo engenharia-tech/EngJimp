@@ -16,7 +16,8 @@ import { INTERRUPTION_AREAS } from '../constants';
 import { useLanguage } from '../i18n/LanguageContext';
 import { 
   addInterruption, updateInterruption, deleteInterruption,
-  addInterruptionType, updateInterruptionType, deleteInterruptionType
+  addInterruptionType, updateInterruptionType, deleteInterruptionType,
+  addAuditLog
 } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 
@@ -229,6 +230,17 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         const newState = await updateInterruption(updated);
         onUpdate(newState);
         addToast(t('interruptionUpdated'), 'success');
+
+        // Audit Log
+        addAuditLog({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action: 'UPDATE',
+            entityType: 'INTERRUPTION',
+            entityId: updated.id,
+            entityName: updated.projectNs,
+            details: `Interrupção no projeto ${updated.projectNs} editada por ${currentUser.name}`
+        });
       } else {
         const newItem: InterruptionRecord = {
           id: crypto.randomUUID(),
@@ -252,6 +264,17 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         onUpdate(newState);
         addToast(status === InterruptionStatus.OPEN ? t('interruptionRegistered') : t('interruptionSaved'), 'success');
 
+        // Audit Log
+        addAuditLog({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action: 'CREATE',
+            entityType: 'INTERRUPTION',
+            entityId: newItem.id,
+            entityName: newItem.projectNs,
+            details: `Interrupção no projeto ${newItem.projectNs} registrada por ${currentUser.name}`
+        });
+
         // Trigger email notification if configured
         if (data.settings.interruptionEmailTo) {
           try {
@@ -262,7 +285,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  subject: t('newInterruptionAlert').replace('{ns}', ns),
+                  subject: t('newInterruptionAlert', { ns }),
                   body: emailBody.replace(/\n/g, '<br>'),
                   to: data.settings.interruptionEmailTo
                 })
@@ -318,9 +341,23 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   const handleDelete = async (id: string) => {
     if (!window.confirm(t('confirmDeleteInterruption'))) return;
     try {
+      const interruptionToDelete = data.interruptions.find(i => i.id === id);
       const newState = await deleteInterruption(id);
       onUpdate(newState);
       addToast(t('recordDeleted'), 'success');
+
+      // Audit Log
+      if (interruptionToDelete) {
+          addAuditLog({
+              userId: currentUser.id,
+              userName: currentUser.name,
+              action: 'DELETE',
+              entityType: 'INTERRUPTION',
+              entityId: id,
+              entityName: interruptionToDelete.projectNs,
+              details: `Interrupção no projeto ${interruptionToDelete.projectNs} excluída por ${currentUser.name}`
+          });
+      }
     } catch (err) {
       addToast(t('deleteError'), 'error');
     }
@@ -337,6 +374,17 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       onUpdate(newState);
       setNewTypeName('');
       addToast(t('problemTypeAdded'), 'success');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'CREATE',
+          entityType: 'INTERRUPTION_TYPE',
+          entityId: newTypeName.trim(),
+          entityName: newTypeName.trim(),
+          details: `Novo tipo de interrupção "${newTypeName.trim()}" criado por ${currentUser.name}`
+      });
     } catch (err) {
       addToast(t('addTypeError'), 'error');
     }
@@ -431,7 +479,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       XLSX.writeFile(wb, `${t('interruptionFilename')}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
     
-    addToast(t('exportingAs').replace('{format}', format), 'info');
+    addToast(t('exportingAs', { format }), 'info');
   };
 
   return (

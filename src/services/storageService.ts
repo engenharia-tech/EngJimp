@@ -481,23 +481,25 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
   try {
     console.log("UPDATING SETTINGS WITH:", settings);
     // Update LocalStorage first for immediate feedback
-    localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
-    if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
-    if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
+    localStorage.setItem('hourly_cost', (settings.hourlyCost || 150).toString());
+    if (settings.logoUrl !== undefined) localStorage.setItem('logo_url', settings.logoUrl || '');
+    if (settings.companyName !== undefined) localStorage.setItem('company_name', settings.companyName || 'JIMP NEXUS');
     if (settings.emailTo !== undefined) localStorage.setItem('email_to', settings.emailTo || '');
-    localStorage.setItem('use_automatic_cost', String(settings.useAutomaticCost || false));
-    localStorage.setItem('interruption_email_to', settings.interruptionEmailTo || '');
-    localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate || '');
-    if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
-    if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
-    if (settings.workdays) localStorage.setItem('workdays', JSON.stringify(settings.workdays));
+    if (settings.useAutomaticCost !== undefined) localStorage.setItem('use_automatic_cost', String(settings.useAutomaticCost || false));
+    if (settings.interruptionEmailTo !== undefined) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo || '');
+    if (settings.interruptionEmailTemplate !== undefined) localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate || '');
+    if (settings.workdayStart !== undefined) localStorage.setItem('workday_start', settings.workdayStart || '07:30');
+    if (settings.workdayEnd !== undefined) localStorage.setItem('workday_end', settings.workdayEnd || '17:30');
+    if (settings.workdays !== undefined) localStorage.setItem('workdays', JSON.stringify(settings.workdays || [1,2,3,4,5]));
+    if (settings.lunchStart !== undefined) localStorage.setItem('lunch_start', settings.lunchStart || '12:00');
+    if (settings.lunchEnd !== undefined) localStorage.setItem('lunch_end', settings.lunchEnd || '13:00');
+    if (settings.language !== undefined) localStorage.setItem('language', settings.language || 'pt-BR');
 
-    const updates = [
-      { key: 'hourly_cost', value: settings.hourlyCost.toString() }
-    ];
+    const updates: { key: string, value: string }[] = [];
 
-    if (settings.logoUrl !== undefined) updates.push({ key: 'logo_url', value: settings.logoUrl });
-    if (settings.companyName !== undefined) updates.push({ key: 'company_name', value: settings.companyName });
+    if (settings.hourlyCost !== undefined) updates.push({ key: 'hourly_cost', value: settings.hourlyCost.toString() });
+    if (settings.logoUrl !== undefined) updates.push({ key: 'logo_url', value: settings.logoUrl || '' });
+    if (settings.companyName !== undefined) updates.push({ key: 'company_name', value: settings.companyName || '' });
     if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo || '' });
     if (settings.useAutomaticCost !== undefined) updates.push({ key: 'use_automatic_cost', value: String(settings.useAutomaticCost) });
     if (settings.interruptionEmailTo !== undefined) updates.push({ key: 'interruption_email_to', value: settings.interruptionEmailTo || '' });
@@ -511,14 +513,17 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
 
     console.log("SUPABASE UPDATES PAYLOAD:", updates);
 
-    const { error } = await supabase
-      .from('settings')
-      .upsert(updates, { onConflict: 'key' });
-    
-    if (error) {
-      console.error("SUPABASE SETTINGS UPDATE ERROR:", error);
-      throw error;
+    if (updates.length > 0) {
+      const { error } = await supabase
+        .from('settings')
+        .upsert(updates, { onConflict: 'key' });
+      
+      if (error) {
+        console.error("SUPABASE SETTINGS UPDATE ERROR:", error);
+        throw error;
+      }
     }
+    
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO UPDATE SETTINGS IN SUPABASE", error);
@@ -2089,6 +2094,38 @@ export const deleteGanttTask = async (taskId: string): Promise<AppState> => {
   } catch (error) {
     console.error("FAILED TO DELETE GANTT TASK", error);
     throw error;
+  }
+};
+
+export const getDatabaseStats = async () => {
+  try {
+    const { count: projectCount } = await supabase.from('projects').select('*', { count: 'exact', head: true });
+    const { count: interruptionCount } = await supabase.from('interruptions').select('*', { count: 'exact', head: true });
+    const { count: activityCount } = await supabase.from('operational_activities').select('*', { count: 'exact', head: true });
+    const { count: innovationCount } = await supabase.from('innovations').select('*', { count: 'exact', head: true });
+    const { count: auditCount } = await supabase.from('audit_logs').select('*', { count: 'exact', head: true });
+
+    const total = (projectCount || 0) + (interruptionCount || 0) + (activityCount || 0) + (innovationCount || 0) + (auditCount || 0);
+    
+    // Default limit
+    const limit = 100000; 
+
+    return {
+      totalRecords: total,
+      limit,
+      usage: (total / limit) * 100,
+      isHealthy: total < limit * 0.9,
+      counts: {
+        projects: projectCount || 0,
+        interruptions: interruptionCount || 0,
+        activities: activityCount || 0,
+        innovations: innovationCount || 0,
+        audit: auditCount || 0
+      }
+    };
+  } catch (error) {
+    console.error("Error fetching DB stats:", error);
+    return null;
   }
 };
 

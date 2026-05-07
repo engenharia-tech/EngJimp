@@ -22,20 +22,22 @@ import { CalendarView } from './CalendarView';
 import { WorkloadView } from './WorkloadView';
 import { PeopleView } from './PeopleView';
 import { DashboardView } from './DashboardView';
-import { addGanttTask, updateGanttTask, deleteGanttTask } from '../../services/storageService';
+import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog } from '../../services/storageService';
+import { User } from '../../types';
 
 interface ProjectNexusProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
   onRefresh?: () => void;
   onOpenSettings?: () => void;
+  currentUser: User;
 }
 
 const generateId = () => crypto.randomUUID();
 
 export type NexusTab = 'gantt' | 'kanban' | 'list' | 'calendar' | 'workload' | 'people' | 'dashboard';
 
-export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState, onRefresh, onOpenSettings }) => {
+export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState, onRefresh, onOpenSettings, currentUser }) => {
   const { t } = useLanguage();
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<NexusTab>('gantt');
@@ -56,6 +58,18 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
       setIsModalOpen(false);
       const newState = await deleteGanttTask(taskId);
       onUpdateState(newState);
+      
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'DELETE',
+          entityType: 'GANTT_TASK',
+          entityId: taskId,
+          entityName: editingTask?.title || taskId,
+          details: `Tarefa de Gantt "${editingTask?.title || taskId}" excluída por ${currentUser.name}`
+      });
+
       setEditingTask(null);
       addToast("Tarefa removida com sucesso!", "success");
     } catch (error) {
@@ -70,6 +84,18 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
       setIsModalOpen(false);
       const newState = isNew ? await addGanttTask(task) : await updateGanttTask(task);
       onUpdateState(newState);
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: isNew ? 'CREATE' : 'UPDATE',
+          entityType: 'GANTT_TASK',
+          entityId: task.id,
+          entityName: task.title,
+          details: `Tarefa de Gantt "${task.title}" ${isNew ? 'criada' : 'editada'} por ${currentUser.name}`
+      });
+
       setEditingTask(null);
       addToast(isNew ? "Fluxo criado com sucesso!" : "Tarefa atualizada!", "success");
     } catch (error) {
