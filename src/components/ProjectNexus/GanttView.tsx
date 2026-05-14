@@ -55,8 +55,9 @@ import {
 import { ptBR } from 'date-fns/locale';
 import { AppState, GanttTask, User as AppUser, GanttTaskStatus, TaskPriority } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { addGanttTask, updateGanttTask, deleteGanttTask } from '../../services/storageService';
+import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog } from '../../services/storageService';
 import { useToast } from '../Toast';
+import { User } from '../../types';
 
 const generateId = () => {
   try {
@@ -77,6 +78,7 @@ interface GanttViewProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
   onRefresh?: () => void;
+  currentUser: User;
 }
 
 const COLORS = [
@@ -92,7 +94,7 @@ const COLORS = [
   '#f97316'  // Laranja
 ];
 
-export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRefresh }) => {
+export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRefresh, currentUser }) => {
   const { t, language } = useLanguage();
   const { addToast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -194,8 +196,6 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     }
   };
 
-  const currentUser = state.users.find(u => u.username === localStorage.getItem('nexus_user'));
-
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!interactingTask || !containerRef.current) return;
@@ -228,6 +228,17 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       if (task) {
         try { 
           await updateGanttTask(task); 
+
+          // Audit Log for movement
+          addAuditLog({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action: 'UPDATE',
+            entityType: 'GANTT_TASK',
+            entityId: task.id,
+            entityName: task.title,
+            details: `Tarefa "${task.title}" movida/redimensionada no Gantt por ${currentUser.name}`
+          });
         } catch (error) { 
           console.error("Gantt drag/resize sync error:", error);
           alert("Erro ao sincronizar movimento: " + (error instanceof Error ? error.message : "Desconhecido"));
@@ -553,6 +564,17 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       onUpdateState(newState);
       setEditingTask(null);
       addToast(isNew ? "Tarefa adicionada com sucesso!" : "Tarefa atualizada!", "success");
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: isNew ? 'CREATE' : 'UPDATE',
+          entityType: 'GANTT_TASK',
+          entityId: task.id,
+          entityName: task.title,
+          details: `Tarefa de Gantt "${task.title}" ${isNew ? 'criada' : 'atualizada'} via modal por ${currentUser.name}`
+      });
     } catch (error: any) { 
       console.error(error); 
       addToast("Erro ao salvar tarefa. Verifique se o bando de dados está atualizado (veja Gestão de Equipe).", "error");
@@ -595,6 +617,17 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     try {
       const newState = await updateGanttTask(updatedTask);
       onUpdateState(newState);
+
+      // Audit Log for field update
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'UPDATE',
+          entityType: 'GANTT_TASK',
+          entityId: taskId,
+          entityName: task.title,
+          details: `Campo "${field}" da tarefa de Gantt "${task.title}" atualizado para "${value}" por ${currentUser.name}`
+      });
     } catch (error) { 
       console.error("Gantt update field error:", error);
       alert("Erro ao sincronizar alteração. " + (error instanceof Error ? error.message : "Verifique sua conexão."));
@@ -620,8 +653,22 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   const handleDeleteTask = async (taskId: string) => {
     if (!window.confirm("Tem certeza que deseja excluir esta tarefa?")) return;
     try {
+      const taskToDelete = state.ganttTasks.find(t => t.id === taskId);
       const newState = await deleteGanttTask(taskId);
       onUpdateState(newState);
+
+      // Audit Log
+      if (taskToDelete) {
+          addAuditLog({
+              userId: currentUser.id,
+              userName: currentUser.name,
+              action: 'DELETE',
+              entityType: 'GANTT_TASK',
+              entityId: taskId,
+              entityName: taskToDelete.title,
+              details: `Tarefa de Gantt "${taskToDelete.title}" excluída por ${currentUser.name}`
+          });
+      }
     } catch (error) {
       console.error(error);
       alert("Erro ao excluir tarefa.");
@@ -661,6 +708,17 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     try {
       const newState = await addGanttTask(newTask);
       onUpdateState(newState);
+
+      // Audit Log for inline creation
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'CREATE',
+          entityType: 'GANTT_TASK',
+          entityId: newTask.id,
+          entityName: newTask.title,
+          details: `Tarefa de Gantt "${newTask.title}" criada (Inline) por ${currentUser.name}`
+      });
     } catch (error) { 
       console.error("Save error:", error);
       alert("Erro ao salvar tarefa: " + (error instanceof Error ? error.message : "Erro desconhecido"));

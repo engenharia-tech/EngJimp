@@ -23,14 +23,16 @@ import {
 } from 'date-fns';
 import { AppState, GanttTask, GanttTaskStatus, TaskPriority } from '../../types';
 import { ptBR } from 'date-fns/locale';
-import { addGanttTask } from '../../services/storageService';
+import { addGanttTask, addAuditLog } from '../../services/storageService';
+import { User } from '../../types';
 
 interface CalendarViewProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
+  currentUser: User;
 }
 
-export const CalendarView: React.FC<CalendarViewProps> = ({ state, onUpdateState }) => {
+export const CalendarView: React.FC<CalendarViewProps> = ({ state, onUpdateState, currentUser }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [isAdding, setIsAdding] = useState<Date | null>(null);
   const [newTitle, setNewTitle] = useState('');
@@ -58,6 +60,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ state, onUpdateState
       onUpdateState(newState);
       setIsAdding(null);
       setNewTitle('');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'CREATE',
+          entityType: 'GANTT_TASK',
+          entityId: newTask.id,
+          entityName: newTask.title,
+          details: `Tarefa de Gantt "${newTask.title}" criada (Calendário) por ${currentUser.name}`
+      });
     } catch (error) { console.error(error); }
   };
 

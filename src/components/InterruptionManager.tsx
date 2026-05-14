@@ -397,6 +397,17 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         isActive: !type.isActive
       });
       onUpdate(newState);
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'UPDATE',
+          entityType: 'INTERRUPTION_TYPE',
+          entityId: type.id,
+          entityName: type.name,
+          details: `Status do tipo de interrupção "${type.name}" alterado para ${!type.isActive ? 'Ativo' : 'Inativo'} por ${currentUser.name}`
+      });
     } catch (err) {
       addToast(t('updateStatusError'), 'error');
     }
@@ -952,6 +963,17 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                             const newState = await deleteInterruptionType(t.id);
                             onUpdate(newState);
                             addToast(t('categoryDeleted'), 'success');
+
+                            // Audit Log
+                            addAuditLog({
+                                userId: currentUser.id,
+                                userName: currentUser.name,
+                                action: 'DELETE',
+                                entityType: 'INTERRUPTION_TYPE',
+                                entityId: t.id,
+                                entityName: t.name,
+                                details: `Tipo de interrupção "${t.name}" excluído por ${currentUser.name}`
+                            });
                           }
                         }}
                         className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"

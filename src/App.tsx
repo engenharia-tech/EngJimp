@@ -1383,6 +1383,7 @@ const AppContent: React.FC = () => {
               settings={effectiveSettings}
               users={data.users}
               onUpdate={handleUpdateSettings}
+              currentUser={currentUser}
             />
           )}
 

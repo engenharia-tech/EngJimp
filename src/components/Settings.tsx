@@ -3,15 +3,16 @@ import { Settings as SettingsIcon, Save, Mail, Server, Shield, User as UserIcon,
 import { AppSettings, User } from '../types';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
-import { recalculateAllInterruptionTimes, recalculateAllProjectTimes, getDatabaseStats } from '../services/storageService';
+import { recalculateAllInterruptionTimes, recalculateAllProjectTimes, getDatabaseStats, addAuditLog } from '../services/storageService';
 
 interface SettingsProps {
   settings: AppSettings;
   users: User[];
   onUpdate: (settings: AppSettings) => void;
+  currentUser: User;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate }) => {
+export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, currentUser }) => {
   const [formData, setFormData] = useState<AppSettings>({ ...settings });
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -113,6 +114,17 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
       
       if (resInt.success && resProj.success) {
         addToast(t('recalculationSuccess'), 'success');
+        
+        // Audit Log
+        addAuditLog({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action: 'ADMIN_RECALCULATE',
+            entityType: 'SETTINGS',
+            entityId: 'SYSTEM',
+            entityName: 'Recálculo Geral',
+            details: `Recálculo geral de tempos de projetos e interrupções executado por ${currentUser.name}`
+        });
       } else {
         addToast(t('recalculationPartialSuccess'), 'warning');
       }
@@ -500,7 +512,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate })
                     <Server className="w-3 h-3 mr-1.5" />
                     {t('auditLog')}
                   </span>
-                  <span className="font-bold text-black dark:text-white">{dbStats?.counts.audit || 0}</span>
+                  <span className="font-bold text-black dark:text-white">{dbStats?.counts.audit_logs || 0}</span>
                 </div>
               </div>
             </div>

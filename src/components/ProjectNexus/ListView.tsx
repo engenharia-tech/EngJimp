@@ -13,16 +13,18 @@ import {
 } from 'lucide-react';
 import { AppState, GanttTask, GanttTaskStatus, TaskPriority } from '../../types';
 import { format, addDays, isValid } from 'date-fns';
-import { addGanttTask, updateGanttTask, deleteGanttTask } from '../../services/storageService';
+import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog } from '../../services/storageService';
+import { User } from '../../types';
 
 interface ListViewProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
   onRefresh?: () => void;
   onEditTask?: (task: GanttTask) => void;
+  currentUser: User;
 }
 
-export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefresh, onEditTask }) => {
+export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefresh, onEditTask, currentUser }) => {
   const [inlineAdding, setInlineAdding] = React.useState<boolean>(false);
   const [newTitle, setNewTitle] = React.useState('');
   const [menuTaskId, setMenuTaskId] = React.useState<string | null>(null);
@@ -62,15 +64,40 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
       onUpdateState(newState);
       setInlineAdding(false);
       setNewTitle('');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'CREATE',
+          entityType: 'GANTT_TASK',
+          entityId: newTask.id,
+          entityName: newTask.title,
+          details: `Tarefa de Gantt "${newTask.title}" criada (Lista) por ${currentUser.name}`
+      });
     } catch (error) { console.error(error); alert("Erro ao salvar tarefa."); }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Excluir esta tarefa?")) return;
     try {
+      const taskToDelete = state.ganttTasks.find(t => t.id === id);
       const newState = await deleteGanttTask(id);
       onUpdateState(newState);
       setMenuTaskId(null);
+
+      // Audit Log
+      if (taskToDelete) {
+          addAuditLog({
+              userId: currentUser.id,
+              userName: currentUser.name,
+              action: 'DELETE',
+              entityType: 'GANTT_TASK',
+              entityId: id,
+              entityName: taskToDelete.title,
+              details: `Tarefa de Gantt "${taskToDelete.title}" excluída (Lista) por ${currentUser.name}`
+          });
+      }
     } catch (error) { console.error(error); alert("Erro ao excluir."); }
   };
 

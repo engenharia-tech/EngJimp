@@ -705,7 +705,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const handleStopActivity = async (activity: OperationalActivity) => {
     const endTime = new Date().toISOString();
-    const durationSeconds = differenceInSeconds(parseISO(endTime), parseISO(activity.startTime));
+    const durationSeconds = calcActiveSeconds(activity.startTime, endTime, settings, !!activity.isOvertime);
     
     try {
       setIsSaving(true);
@@ -932,6 +932,18 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       name,
       isActive: true
     });
+
+    // Audit Log
+    addAuditLog({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        action: 'CREATE',
+        entityType: 'ACTIVITY_TYPE',
+        entityId: name,
+        entityName: name,
+        details: `Novo tipo de atividade operacional "${name}" criado por ${currentUser.name}`
+    });
+
     setNewTypeName('');
     setIsAddingType(false);
   };
@@ -943,6 +955,17 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     await onUpdateActivity({
       ...activity,
       isFlagged: !activity.isFlagged
+    });
+
+    // Audit Log
+    addAuditLog({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        action: 'UPDATE',
+        entityType: 'OPERATIONAL_ACTIVITY',
+        entityId: activity.id,
+        entityName: activity.description,
+        details: `${!activity.isFlagged ? 'Sinalização (flag)' : 'Remoção de sinalização'} adicionada à atividade "${activity.description}" por ${currentUser.name}`
     });
   };
 
@@ -1765,7 +1788,7 @@ const CurrentActivityTracker: React.FC<{
             </span>
             <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-mono font-bold">
               <Clock size={14} className="animate-pulse" />
-              <Timer startTime={currentActivity.startTime} />
+              <Timer startTime={currentActivity.startTime} settings={settings} isOvertime={currentActivity.isOvertime} />
             </div>
           </div>
           <h4 className={`text-lg font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
@@ -1831,7 +1854,7 @@ const CurrentActivityTracker: React.FC<{
   );
 };
 
-const Timer: React.FC<{ startTime: string }> = ({ startTime }) => {
+const Timer: React.FC<{ startTime: string; settings: AppSettings; isOvertime?: boolean }> = ({ startTime, settings, isOvertime }) => {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -1839,7 +1862,7 @@ const Timer: React.FC<{ startTime: string }> = ({ startTime }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const diff = differenceInSeconds(now, parseISO(startTime));
+  const diff = calcActiveSeconds(startTime, now, settings, !!isOvertime);
   const h = Math.floor(diff / 3600);
   const m = Math.floor((diff % 3600) / 60);
   const s = diff % 60;
