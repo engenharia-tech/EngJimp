@@ -132,6 +132,18 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
       onUpdateState(newState);
       setIsAddingWorkspace(false);
       setNewWorkspaceName('');
+      
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'CREATE',
+          entityType: 'GANTT_WORKSPACE',
+          entityId: newTask.id,
+          entityName: newTask.title,
+          details: `Novo Fluxo (Gantt) "${newTask.title}" criado por ${currentUser.name}`
+      });
+
       addToast("Novo fluxo criado com sucesso!", "success");
     } catch (error) {
       console.error("Error adding workspace:", error);
@@ -227,10 +239,10 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
 
       {/* View Content */}
       <div className="flex-grow overflow-hidden relative">
-        {activeTab === 'gantt' && <GanttView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
-        {activeTab === 'kanban' && <KanbanView state={state} onUpdateState={onUpdateState} onEditTask={handleEditTask} onRefresh={onRefresh} />}
-        {activeTab === 'list' && <ListView state={state} onUpdateState={onUpdateState} onEditTask={handleEditTask} onRefresh={onRefresh} />}
-        {activeTab === 'calendar' && <CalendarView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'gantt' && <GanttView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} currentUser={currentUser} />}
+        {activeTab === 'kanban' && <KanbanView state={state} onUpdateState={onUpdateState} onEditTask={handleEditTask} onRefresh={onRefresh} currentUser={currentUser} />}
+        {activeTab === 'list' && <ListView state={state} onUpdateState={onUpdateState} onEditTask={handleEditTask} onRefresh={onRefresh} currentUser={currentUser} />}
+        {activeTab === 'calendar' && <CalendarView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} currentUser={currentUser} />}
         {activeTab === 'workload' && <WorkloadView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
         {activeTab === 'people' && <PeopleView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
         {activeTab === 'dashboard' && <DashboardView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}

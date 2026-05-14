@@ -477,6 +477,47 @@ export const fetchAppState = async (): Promise<AppState> => {
   }
 };
 
+export const getDatabaseStats = async () => {
+    try {
+        const tables = [
+            'projects', 'issues', 'innovations', 'interruptions', 
+            'operational_activities', 'project_requests', 'audit_logs', 
+            'activity_types', 'interruption_types', 'users'
+        ];
+        
+        const counts: Record<string, number> = {};
+        let totalRecords = 0;
+        
+        // Use count(*) feature of Supabase/Postgrest
+        const countPromises = tables.map(table => 
+            supabase.from(table).select('*', { count: 'exact', head: true })
+        );
+        
+        const results = await Promise.all(countPromises);
+        
+        results.forEach((res, i) => {
+            const count = res.count || 0;
+            counts[tables[i]] = count;
+            totalRecords += count;
+        });
+        
+        // Estimate usage based on a theoretical limit (e.g. 100k records for free tier performance)
+        const limit = 100000; 
+        const usage = (totalRecords / limit) * 100;
+        
+        return {
+            totalRecords,
+            limit,
+            usage: Math.min(100, usage),
+            isHealthy: totalRecords < limit * 0.9,
+            counts
+        };
+    } catch (error) {
+        console.error("Error fetching DB stats:", error);
+        return null;
+    }
+};
+
 export const updateSettings = async (settings: AppSettings): Promise<AppState> => {
   try {
     console.log("UPDATING SETTINGS WITH:", settings);
@@ -2097,35 +2138,4 @@ export const deleteGanttTask = async (taskId: string): Promise<AppState> => {
   }
 };
 
-export const getDatabaseStats = async () => {
-  try {
-    const { count: projectCount } = await supabase.from('projects').select('*', { count: 'exact', head: true });
-    const { count: interruptionCount } = await supabase.from('interruptions').select('*', { count: 'exact', head: true });
-    const { count: activityCount } = await supabase.from('operational_activities').select('*', { count: 'exact', head: true });
-    const { count: innovationCount } = await supabase.from('innovations').select('*', { count: 'exact', head: true });
-    const { count: auditCount } = await supabase.from('audit_logs').select('*', { count: 'exact', head: true });
-
-    const total = (projectCount || 0) + (interruptionCount || 0) + (activityCount || 0) + (innovationCount || 0) + (auditCount || 0);
-    
-    // Default limit
-    const limit = 100000; 
-
-    return {
-      totalRecords: total,
-      limit,
-      usage: (total / limit) * 100,
-      isHealthy: total < limit * 0.9,
-      counts: {
-        projects: projectCount || 0,
-        interruptions: interruptionCount || 0,
-        activities: activityCount || 0,
-        innovations: innovationCount || 0,
-        audit: auditCount || 0
-      }
-    };
-  } catch (error) {
-    console.error("Error fetching DB stats:", error);
-    return null;
-  }
-};
 

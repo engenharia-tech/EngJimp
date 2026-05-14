@@ -43,13 +43,15 @@ import { CSS } from '@dnd-kit/utilities';
 import { AppState, GanttTask, GanttTaskStatus, TaskPriority } from '../../types';
 import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { updateGanttTask, addGanttTask } from '../../services/storageService';
+import { updateGanttTask, addGanttTask, addAuditLog } from '../../services/storageService';
+import { User } from '../../types';
 
 interface KanbanViewProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
   onRefresh?: () => void;
   onEditTask?: (task: GanttTask) => void;
+  currentUser: User;
 }
 
 const STATUS_COLUMNS = [
@@ -59,7 +61,7 @@ const STATUS_COLUMNS = [
   { id: GanttTaskStatus.CLOSED, label: 'FECHADO', color: 'bg-emerald-100 text-emerald-600' }
 ];
 
-export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState, onEditTask, onRefresh }) => {
+export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState, onEditTask, onRefresh, currentUser }) => {
   const [activeTask, setActiveTask] = React.useState<GanttTask | null>(null);
   const [inlineAdding, setInlineAdding] = React.useState<GanttTaskStatus | null>(null);
   const [newTitle, setNewTitle] = React.useState('');
@@ -99,6 +101,17 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState, on
       onUpdateState(newState);
       setInlineAdding(null);
       setNewTitle('');
+
+      // Audit Log
+      addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'CREATE',
+          entityType: 'GANTT_TASK',
+          entityId: newTask.id,
+          entityName: newTask.title,
+          details: `Tarefa "${newTask.title}" criada no Kanban por ${currentUser.name}`
+      });
     } catch (error) { console.error(error); }
   };
 
@@ -189,6 +202,19 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState, on
 
     try {
       await updateGanttTask(updatedTask);
+
+      if (task.status !== newStatus) {
+          // Audit Log for status change
+          addAuditLog({
+              userId: currentUser.id,
+              userName: currentUser.name,
+              action: 'UPDATE_STATUS',
+              entityType: 'GANTT_TASK',
+              entityId: task.id,
+              entityName: task.title,
+              details: `Status da tarefa "${task.title}" alterado de ${task.status} para ${newStatus} no Kanban por ${currentUser.name}`
+          });
+      }
     } catch (error) {
       console.error("Failed to persist task update:", error);
       onRefresh?.();

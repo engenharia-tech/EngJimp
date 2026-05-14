@@ -2080,7 +2080,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
                         <AlertCircle className="w-6 h-6 mr-2 text-orange-600 dark:text-orange-400" />
-                        {t('resolveDuplicates')} ({duplicateGroups.length})
+                        {t('resolveDuplicates', { count: duplicateGroups.length })}
                     </h3>
                     <button onClick={() => setShowDuplicateModal(false)} className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
                         <X className="w-6 h-6" />
@@ -2124,6 +2124,18 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                         const res = await deleteProjectById(group.discard.id, group.discard.ns);
                                         if (res.success) {
                                             window.alert(t('deleteSuccess'));
+                                            
+                                            // Audit Log
+                                            addAuditLog({
+                                                userId: currentUser.id,
+                                                userName: currentUser.name,
+                                                action: 'DELETE',
+                                                entityType: 'PROJECT_DUPLICATE',
+                                                entityId: group.discard.id,
+                                                entityName: group.discard.ns,
+                                                details: `Duplicata do projeto ${group.discard.ns} removida por ${currentUser.name} durante resolução de conflitos.`
+                                            });
+
                                             // Update UI instantly without reload
                                             setDuplicateGroups(prev => {
                                                 const newGroups = prev.filter(g => g.discard.id !== group.discard.id);

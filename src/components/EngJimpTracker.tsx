@@ -60,7 +60,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     const start = new Date(p.startTime);
     const now = new Date();
     
-    // Total working seconds from start to now
+    // Total working seconds from start to now (respecting office hours)
     const totalWorkingSeconds = calcActiveSeconds(start, now, settings, p.isOvertime);
 
     // Subtract working seconds spent in pauses
@@ -68,9 +68,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     if (p.pauses) {
       p.pauses.forEach(pause => {
         if (pause.durationSeconds > 0) {
-          const pStart = new Date(pause.timestamp);
-          const pEnd = new Date(pStart.getTime() + pause.durationSeconds * 1000);
-          totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, p.isOvertime);
+          // Pause duration is already stored as active seconds
+          totalPauseWorkingSeconds += pause.durationSeconds;
         } else if (pause.durationSeconds === -1) {
           const pStart = new Date(pause.timestamp);
           totalPauseWorkingSeconds += calcActiveSeconds(pStart, now, settings, p.isOvertime);
@@ -78,7 +77,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       });
     }
 
-    // Subtract associated interruptions
+    // Subtract associated interruptions (only those that overlap with this project's active time)
     const projectInterruptionSeconds = (interruptions || [])
       .filter(i => (i.projectId === p.id || i.projectNs === p.ns))
       .reduce((acc, i) => {
@@ -741,7 +740,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       }
 
       // Calculate current active seconds to update the snapshot
-      const currentActive = elapsedSeconds; 
+      const currentActive = getProjectLiveSeconds(activeProject); 
 
       const updatedProject = {
         ...activeProject,
@@ -815,9 +814,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       let totalPauseWorkingSeconds = 0;
       activeProject.pauses.forEach(p => {
           if (p.durationSeconds > 0) {
-              const pStart = new Date(p.timestamp);
-              const pEnd = new Date(pStart.getTime() + p.durationSeconds * 1000);
-              totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, !!activeProject.isOvertime);
+              // It's already the active seconds, just sum it
+              totalPauseWorkingSeconds += p.durationSeconds;
           }
       });
 
@@ -832,6 +830,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           const lastPauseDate = new Date(lastPause.timestamp);
           const currentPauseWorkingSeconds = calcActiveSeconds(lastPauseDate, finishedEndTimeDate, settings, !!activeProject.isOvertime);
           
+          totalPauseWorkingSeconds += currentPauseWorkingSeconds;
+
           finalPauses[lastIndex] = {
               ...lastPause,
               durationSeconds: currentPauseWorkingSeconds
