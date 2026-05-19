@@ -20,6 +20,7 @@ A plataforma possui três sistemas complementares de acompanhamento:
 # REGRAS DE ANÁLISE DE DESEMPENHO
 Sempre que um usuário perguntar sobre o desempenho, produtividade ou o que um projetista está fazendo:
 - Você DEVE consultar a tabela [equipe_desempenho_detalhado].
+- Para análises de "Tempo de Desenvolvimento" ou "Média de Horas", consulte obrigatoriamente a tabela [desempenho_mensal_real_por_projetista]. Nela as horas totais já estão divididas pela quantidade de projetistas ativos no mês, gerando a "media_horas_por_projetista", que é o valor real a ser usado como referência.
 - LEIA o campo "resumo_producao_detalhado".
 - OBSERVE as "atividades_operacionais": se o projetista tem poucas NS mas muitas horas em "reunião" ou "treinamento", ele NÃO está ocioso.
 - O "tempo_ocioso_hoje_estimado" refere-se apenas a GAPS detectados no dia atual. Não use valores acumulados de meses se houver registros operacionais justificando o tempo.
@@ -131,6 +132,36 @@ export const processNexusQuery = async (
       return { mes: chave, rastreador_concluidos: concluidosRastreador, nexus_concluidos: concluidasNexus };
     }).reverse();
 
+    // Novo: Desempenho Mensal Consolidado (Horas Reais Médias)
+    const designers = users.filter(u => u.role === 'PROJETISTA' || u.role === 'GESTOR' || u.role === 'COORDENADOR');
+    const designerIds = new Set(designers.map(u => u.id));
+    
+    const desempenhoMensalReal = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const mesChave = d.toISOString().substring(0, 7);
+      
+      const projsMes = projects.filter(p => p.startTime.startsWith(mesChave) && designerIds.has(p.userId));
+      const opsMes = operationalActivities.filter(a => a.startTime.startsWith(mesChave) && designerIds.has(a.userId));
+      
+      const horasTracker = projsMes.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600;
+      const horasOps = opsMes.reduce((acc, a) => acc + (a.durationSeconds || 0), 0) / 3600;
+      const totalHoras = horasTracker + horasOps;
+      
+      const distinctUsers = new Set([
+        ...projsMes.map(p => p.userId),
+        ...opsMes.map(a => a.userId)
+      ]);
+      const userCount = distinctUsers.size || 1;
+      
+      return {
+        mes: mesChave,
+        total_horas_engenharia: totalHoras.toFixed(1),
+        quantidade_projetistas_ativos: userCount,
+        media_horas_por_projetista: (totalHoras / userCount).toFixed(1)
+      };
+    }).reverse();
+
     // Filtro de segurança para o contexto enviado ao "Cérebro"
     const contextData = `
 [HOJE]
@@ -148,6 +179,10 @@ dados: {
 
 tabela: historico_comparativo_meses
 dados: ${JSON.stringify(ultimos6Meses)}
+
+tabela: desempenho_mensal_real_por_projetista
+info: "Média real de horas (Tracker + Operacional) dividida pelo número de projetistas ativos no mês"
+dados: ${JSON.stringify(desempenhoMensalReal)}
 
 tabela: equipe_desempenho_detalhado
 info: "Combina Rastreador (NS) e Nexus (Gantt)"

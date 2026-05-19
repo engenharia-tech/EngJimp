@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   Plus, 
   MoreVertical, 
-  User, 
+  User as UserIcon, 
   ArrowUpDown,
   Search,
   Filter,

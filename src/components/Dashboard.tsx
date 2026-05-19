@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, ComposedChart, Line
 } from 'recharts';
-import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings } from '../types';
 import { EngineeringPerformance } from './EngineeringPerformance';
 import { analyzePerformance } from '../services/geminiService';
@@ -367,15 +367,52 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const sums: Record<string, { total: number; count: number }> = {};
     
     filteredProjects.forEach(p => {
-      if (!sums[p.type]) sums[p.type] = { total: 0, count: 0 };
-      sums[p.type].total += p.totalActiveSeconds;
-      sums[p.type].count += 1;
+      // Normalize type to handle potential casing inconsistencies
+      const normalizedType = String(p.type || '').toUpperCase().trim();
+      if (!normalizedType) return;
+
+      if (!sums[normalizedType]) sums[normalizedType] = { total: 0, count: 0 };
+      sums[normalizedType].total += p.totalActiveSeconds;
+      sums[normalizedType].count += 1;
     });
 
     return Object.entries(sums).map(([type, stats]) => ({
       type,
       avgSeconds: Math.round(stats.total / stats.count)
     })).sort((a, b) => a.type.localeCompare(b.type));
+  }, [filteredProjects]);
+
+  const devProjectsStats = useMemo(() => {
+    const devProjects = filteredProjects.filter(p => 
+      String(p.type || '').toUpperCase().trim() === 'DESENVOLVIMENTO'
+    );
+    
+    const totalDevSeconds = devProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const totalDevHours = totalDevSeconds / 3600;
+    const count = devProjects.length;
+    
+    const start = startDate ? new Date(startDate) : new Date();
+    const end = endDate ? new Date(endDate) : new Date();
+    let monthDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+    if (monthDiff <= 0) monthDiff = 1;
+
+    return {
+      totalHours: Number(totalDevHours.toFixed(1)),
+      count,
+      avgPerMonth: Number((totalDevHours / monthDiff).toFixed(1)),
+      months: monthDiff
+    };
+  }, [filteredProjects, startDate, endDate]);
+
+  const releaseStats = useMemo(() => {
+    const releases = filteredProjects.filter(p => 
+      String(p.type || '').toUpperCase().trim() === 'LIBERAÇÃO'
+    );
+    
+    return {
+      count: releases.length,
+      totalHours: releases.reduce((acc, p) => acc + p.totalActiveSeconds, 0) / 3600
+    };
   }, [filteredProjects]);
 
   // 1.5 Calculate Total Savings (ALL APPROVED/IMPLEMENTED - regardless of period)
@@ -485,6 +522,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     return Math.round(totalWorkingSeconds / 3600);
   }, [filteredProjects, data.operationalActivities, data.interruptions, startDate, endDate, settings, t]);
+
+  const perCapitaStats = useMemo(() => {
+    const start = startDate ? new Date(startDate) : new Date();
+    const end = endDate ? new Date(endDate) : new Date();
+    
+    // Calculate number of months in the period (minimum 1)
+    let monthDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+    if (monthDiff <= 0) monthDiff = 1;
+
+    // Use available designers excluding non-engineering roles
+    const engineeringUsers = availableDesigners.filter(u => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(u.role));
+    const designerCount = engineeringUsers.length || 1;
+    
+    const avgPerDesignerMonth = totalHours / designerCount / monthDiff;
+
+    return {
+      avgPerDesignerMonth: Number(avgPerDesignerMonth.toFixed(1)),
+      designerCount,
+      monthsInPeriod: monthDiff
+    };
+  }, [totalHours, startDate, endDate, availableDesigners]);
 
   const goalProgress = useMemo(() => {
     if (monthlyGoal <= 0) return 0;
@@ -1237,11 +1295,88 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       {/* KPI Section */}
       {visibleSections.includes('kpi') && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {currentUser.role !== 'PROCESSOS' && averageTimes.length > 0 && averageTimes.map((stat) => (
+          {/* Unified Development Card */}
+          {currentUser.role !== 'PROCESSOS' && (
+             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-blue-500/5">
+               <div className="w-full">
+                 <p className="text-[9px] sm:text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-0.5 sm:mb-1">
+                   Desenvolvimento Total
+                 </p>
+                 <div className="flex items-baseline gap-1">
+                   <p className="text-xl sm:text-2xl font-black text-blue-800 dark:text-blue-300">
+                     {devProjectsStats.totalHours}h
+                   </p>
+                   <span className="text-[10px] text-blue-500/70 font-bold uppercase italic">produtivas</span>
+                 </div>
+                 <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 flex flex-col gap-0.5">
+                    <p className="text-[9px] text-gray-500 font-bold uppercase flex items-center gap-1">
+                      <Clock size={10} className="text-blue-400" />
+                      Média: {devProjectsStats.avgPerMonth}h / mês
+                    </p>
+                    <p className="text-[9px] text-gray-400 font-medium uppercase">
+                      Base: {devProjectsStats.count} {devProjectsStats.count === 1 ? 'Desenvolvimento' : 'Desenvolvimentos'}
+                    </p>
+                 </div>
+               </div>
+               <div className="h-7 w-7 sm:h-9 sm:w-9 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
+                 <Activity className="w-4 h-4 sm:w-5 sm:h-5" />
+               </div>
+             </div>
+          )}
+
+          {/* Releases Total Card */}
+          {currentUser.role !== 'PROCESSOS' && (
+             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-emerald-500/5">
+               <div className="w-full">
+                 <p className="text-[9px] sm:text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-0.5 sm:mb-1">
+                   Total de Liberações
+                 </p>
+                 <div className="flex items-baseline gap-1">
+                   <p className="text-xl sm:text-2xl font-black text-emerald-800 dark:text-emerald-300">
+                     {releaseStats.count}
+                   </p>
+                   <span className="text-[10px] text-emerald-500/70 font-bold uppercase italic">projetos</span>
+                 </div>
+                 <p className="text-[8px] text-gray-400 uppercase mt-1">
+                   Tempo Investido: {releaseStats.totalHours.toFixed(1)}h
+                 </p>
+               </div>
+               <div className="h-7 w-7 sm:h-9 sm:w-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+                 <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
+               </div>
+             </div>
+          )}
+
+          {/* Real Average Per Capita / Month */}
+          {currentUser.role !== 'PROCESSOS' && (
+             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 opacity-80">
+               <div className="w-full">
+                 <p className="text-[9px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
+                   Produtividade Per Capita
+                 </p>
+                 <div className="flex items-baseline gap-1">
+                   <p className="text-lg sm:text-xl font-black text-gray-800 dark:text-white">
+                     {perCapitaStats.avgPerDesignerMonth}h
+                   </p>
+                   <span className="text-[8px] sm:text-[9px] text-gray-400 font-bold uppercase italic">/projetista</span>
+                 </div>
+                 <p className="text-[8px] text-gray-500 uppercase mt-1">
+                   Ref: {perCapitaStats.designerCount} ativos
+                 </p>
+               </div>
+               <div className="h-7 w-7 sm:h-8 sm:w-8 bg-gray-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-gray-400 dark:text-slate-500 flex-shrink-0">
+                 <Users className="w-4 h-4" />
+               </div>
+             </div>
+          )}
+
+          {currentUser.role !== 'PROCESSOS' && averageTimes.length > 0 && averageTimes
+            .filter(stat => stat.type !== 'DESENVOLVIMENTO')
+            .map((stat) => (
             <div key={stat.type} className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
               <div>
-                <p className="text-[9px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('avgTime')} {stat.type}</p>
-                <p className="text-sm sm:text-xl font-black text-black dark:text-white">{formatDuration(stat.avgSeconds)}</p>
+                <p className="text-[9px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">Duração Média Projetos ({stat.type})</p>
+                <p className="text-sm sm:text-lg font-black text-black dark:text-white">{formatDuration(stat.avgSeconds)}</p>
               </div>
               <div className="h-7 w-7 sm:h-8 sm:w-8 bg-blue-50 dark:bg-black rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
                 <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

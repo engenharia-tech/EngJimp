@@ -966,8 +966,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         action: 'UPDATE',
         entityType: 'OPERATIONAL_ACTIVITY',
         entityId: activity.id,
-        entityName: activity.description,
-        details: `${!activity.isFlagged ? 'Sinalização (flag)' : 'Remoção de sinalização'} adicionada à atividade "${activity.description}" por ${currentUser.name}`
+        entityName: activity.activityName,
+        details: `${!activity.isFlagged ? 'Sinalização (flag)' : 'Remoção de sinalização'} adicionada à atividade "${activity.activityName}" por ${currentUser.name}`
     });
   };
 
@@ -1888,7 +1888,7 @@ const EngineeringDashboard: React.FC<{
   selectedDate: Date;
 }> = ({ projects, users, interruptions, theme, t, viewMode, selectedDate }) => {
   const stats = useMemo(() => {
-    const drafters = (users || []).filter(u => u?.role === 'PROJETISTA');
+    const drafters = (users || []).filter(u => ['PROJETISTA', 'GESTOR', 'COORDENADOR'].includes(u?.role));
     const drafterCount = drafters.length || 1;
 
     // Filter projects for these users and period

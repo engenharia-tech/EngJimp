@@ -5,7 +5,6 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
-  User, 
   User as UserIcon,
   Calendar,
   AlertCircle,
