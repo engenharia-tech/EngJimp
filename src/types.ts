@@ -348,7 +348,7 @@ export interface GanttTask {
   category?: string;
 }
 
-export type AuditAction = 'CREATE' | 'DELETE' | 'UPDATE' | 'LOGIN' | 'LOGOUT';
+export type AuditAction = 'CREATE' | 'DELETE' | 'UPDATE' | 'LOGIN' | 'LOGOUT' | 'UPDATE_STATUS' | 'ADMIN_RECALCULATE';
 
 export interface AuditLog {
   id: string;
