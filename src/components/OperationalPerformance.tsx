@@ -45,6 +45,8 @@ import {
   InterruptionRecord
 } from '../types';
 import { format, startOfDay, endOfDay, isWithinInterval, parseISO, differenceInSeconds, addSeconds, subDays, addDays } from 'date-fns';
+import { addAuditLog } from '../services/storageService';
+import { calcActiveSeconds } from '../utils/workdayCalc';
 import { ptBR, es, enUS } from 'date-fns/locale';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useToast } from './Toast';
@@ -1215,6 +1217,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                   canEditCurrent={canEditCurrent}
                   theme={theme}
                   t={t}
+                  settings={settings}
                 />
               </div>
             </div>
@@ -1768,7 +1771,8 @@ const CurrentActivityTracker: React.FC<{
   canEditCurrent: boolean;
   theme: 'light' | 'dark';
   t: any;
-}> = ({ currentActivity, activityTypes, onStartActivity, onStopActivity, canEditCurrent, theme, t }) => {
+  settings: AppSettings;
+}> = ({ currentActivity, activityTypes, onStartActivity, onStopActivity, canEditCurrent, theme, t, settings }) => {
   const [selectedType, setSelectedType] = useState('');
 
   useEffect(() => {
