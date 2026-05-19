@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Lightbulb, Plus, TrendingDown, TrendingUp, DollarSign, Calendar, User as UserIcon, Check, X, PlayCircle, Trash2, Calculator, ArrowRight, Eye, Edit, Info, MinusCircle, PlusCircle, Settings, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
+import { Lightbulb, Plus, TrendingDown, TrendingUp, DollarSign, Calendar, User as UserIcon, Check, X, PlayCircle, Trash2, Calculator, ArrowRight, Eye, Edit, Info, MinusCircle, PlusCircle, Settings, ArrowUpDown, ArrowUp, ArrowDown, Search, RotateCcw } from 'lucide-react';
 import { InnovationType, InnovationRecord, User, AppState, CalculationType, InnovationMaterial, InnovationMachine } from '../types';
 import { fetchUsers } from '../services/storageService';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -38,6 +38,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [type, setType] = useState<InnovationType>(InnovationType.PRODUCT_IMPROVEMENT);
   const [calculationType, setCalculationType] = useState<CalculationType>(CalculationType.RECURRING_MONTHLY);
   const [unitSavings, setUnitSavings] = useState<string>(''); // R$ value
+  const [effectiveAnnualSavings, setEffectiveAnnualSavings] = useState<string>(''); // R$ value
   const [quantity, setQuantity] = useState<string>(''); // Qty
   const [investmentCost, setInvestmentCost] = useState<string>(''); // R$ Investment
   const [productivityBefore, setProductivityBefore] = useState<string>('');
@@ -122,6 +123,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setCalculationType(normalizeEnumValue<CalculationType>(editingInnovation.calculationType, CalculationType));
         
         const uSavings = editingInnovation.unitSavings ?? 0;
+        const eSavings = editingInnovation.effectiveAnnualSavings ?? 0;
         const qty = editingInnovation.quantity ?? 1;
         const iCost = editingInnovation.investmentCost ?? 0;
         const pBefore = editingInnovation.productivityBefore ?? 0;
@@ -130,6 +132,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         const upValue = editingInnovation.unitProductValue ?? 0;
 
         setUnitSavings(uSavings.toString());
+        setEffectiveAnnualSavings(eSavings > 0 ? eSavings.toString() : '');
         setQuantity(qty.toString());
         setInvestmentCost(iCost.toString());
         setMaterials(editingInnovation.materials || []);
@@ -157,6 +160,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setType(InnovationType.PRODUCT_IMPROVEMENT);
         setCalculationType(CalculationType.RECURRING_MONTHLY);
         setUnitSavings('');
+        setEffectiveAnnualSavings('');
         setQuantity('');
         setInvestmentCost('');
         setMaterials([]);
@@ -367,6 +371,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             type,
             calculationType,
             unitSavings: safeParse(unitSavings),
+            effectiveAnnualSavings: effectiveAnnualSavings ? safeParse(effectiveAnnualSavings) : undefined,
             quantity: calculationType === CalculationType.ONE_TIME ? 1 : safeParse(quantity),
             totalAnnualSavings: total,
             investmentCost: invest,
@@ -388,6 +393,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             
             calculationType,
             unitSavings: safeParse(unitSavings),
+            effectiveAnnualSavings: effectiveAnnualSavings ? safeParse(effectiveAnnualSavings) : undefined,
             quantity: calculationType === CalculationType.ONE_TIME ? 1 : safeParse(quantity),
             totalAnnualSavings: total,
             investmentCost: invest,
@@ -661,6 +667,28 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             />
                         </div>
                     </div>
+
+                    <div className="md:col-span-1">
+                        <label className="block text-sm font-medium text-blue-600 dark:text-blue-400 mb-1 flex items-center">
+                            <Check className="w-4 h-4 mr-1" />
+                            {t('effectiveValue')}
+                        </label>
+                        <div className="relative">
+                            <span className="absolute left-3 top-3 text-blue-500 dark:text-blue-400 font-bold">{t('currencySymbol')}</span>
+                            <input 
+                                type="number" 
+                                step="0.01"
+                                value={effectiveAnnualSavings}
+                                onChange={e => setEffectiveAnnualSavings(e.target.value)}
+                                className="w-full pl-10 p-3 border border-blue-200 dark:border-blue-900/50 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-blue-50/30 dark:bg-black dark:text-slate-200"
+                                placeholder="Final após implantação"
+                            />
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1 italic italic">
+                          Obrigatório somente após a implementação.
+                        </p>
+                    </div>
+
 
                     <div className="md:col-span-1">
                         {calculationType !== CalculationType.ONE_TIME && calculationType !== CalculationType.ADD_EXPENSE ? (
@@ -944,19 +972,32 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             </div>
 
             {/* Final Preview Banner */}
-            <div className={`mt-6 border rounded-lg p-6 flex items-center justify-between shadow-sm ${previewAnnualSavings < 0 ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900/30' : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900/30'}`}>
-                <div>
-                    <div className={`text-xs font-bold uppercase tracking-widest ${previewAnnualSavings < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                        {previewAnnualSavings < 0 ? t('finalAnnualImpactCost') : t('finalAnnualImpactNet')}
+            <div className={`mt-6 border rounded-lg p-6 flex flex-col gap-6 shadow-sm ${previewAnnualSavings < 0 ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900/30' : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900/30'}`}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
+                    <div>
+                        <div className={`text-xs font-bold uppercase tracking-widest ${previewAnnualSavings < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            {t('projectedValue')}
+                        </div>
+                        <div className={`text-3xl font-black mt-1 ${previewAnnualSavings < 0 ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                            {formatCurrency(previewAnnualSavings)}
+                        </div>
+                        <div className="text-[10px] text-gray-500 mt-1 uppercase italic">
+                          {t('consideringBaseMaterials')}
+                        </div>
                     </div>
-                    <div className={`text-sm mt-1 ${previewAnnualSavings < 0 ? 'text-red-800 dark:text-red-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
-                        {t('consideringBaseMaterials')}
+                    
+                    <div className="md:border-l border-emerald-200 dark:border-emerald-900/50 md:pl-8">
+                        <div className="text-xs font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">
+                            {t('effectiveValue')}
+                        </div>
+                        <div className="text-3xl font-black mt-1 text-blue-700 dark:text-blue-300">
+                            {formatCurrency(effectiveAnnualSavings ? safeParse(effectiveAnnualSavings) : 0)}
+                        </div>
+                        <div className="text-[10px] text-gray-500 mt-1 uppercase italic">
+                          Valor realizado após a implementação
+                        </div>
                     </div>
-                </div>
-                <div className={`flex items-center text-3xl font-bold ${previewAnnualSavings < 0 ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
-                    <ArrowRight className={`w-6 h-6 mr-2 ${previewAnnualSavings < 0 ? 'text-red-400 dark:text-red-500' : 'text-emerald-400 dark:text-emerald-500'}`} />
-                    {formatCurrency(previewAnnualSavings)}
-                </div>
+               </div>
             </div>
 
             <div>
@@ -1020,9 +1061,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 
                 <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase leading-tight mb-2 truncate" title={inv.title}>{inv.title}</h4>
                 
-                <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800">
-                    <div>
-                        <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">{t('annualImpactCol')}</span>
+                <div className="flex flex-col gap-2 mb-4 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800">
+                    <div className="flex justify-between items-center">
+                        <span className="text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest leading-none">{t('projectedValue')}</span>
                         <span className={`text-sm font-black ${
                             inv.status === 'REJECTED' ? 'text-gray-400 dark:text-slate-600 line-through decoration-2' : 
                             inv.status === 'PENDING' ? 'text-gray-500 dark:text-slate-500' :
@@ -1031,15 +1072,23 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             {formatCurrency(inv.totalAnnualSavings)}
                         </span>
                     </div>
-                    <div>
-                        <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">{t('calculationCol')}</span>
-                        <span className="text-xs font-bold text-gray-700 dark:text-slate-300">
+                    {inv.effectiveAnnualSavings !== undefined && inv.effectiveAnnualSavings > 0 && (
+                        <div className="flex justify-between items-center border-t border-gray-200 dark:border-slate-800 pt-2">
+                            <span className="text-[8px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest leading-none">{t('effectiveValue')}</span>
+                            <span className="text-sm font-black text-blue-700 dark:text-blue-300">
+                                {formatCurrency(inv.effectiveAnnualSavings)}
+                            </span>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center border-t border-gray-200 dark:border-slate-800 pt-2">
+                        <span className="text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest leading-none">{t('calculationCol')}</span>
+                        <span className="text-[10px] font-bold text-gray-700 dark:text-slate-300 truncate max-w-[120px]">
                             {inv.calculationType === CalculationType.ONE_TIME || inv.calculationType === CalculationType.ADD_EXPENSE ? (
                                 <span className={inv.calculationType === CalculationType.ADD_EXPENSE ? 'text-red-500' : ''}>
                                     {inv.calculationType === CalculationType.ADD_EXPENSE ? t('expenseAbbr') : t('oneTimeAbbr')}
                                 </span>
                             ) : (
-                                `${formatCurrency(inv.unitSavings)} / ${inv.quantity} ${t('unitsAbbr')}`
+                                `${formatCurrency(inv.unitSavings)} X ${inv.quantity}`
                             )}
                         </span>
                     </div>
@@ -1059,6 +1108,55 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         </button>
                         {canManage && (
                            <>
+                             {inv.status === 'PENDING' && (
+                                <>
+                                    <button 
+                                        onClick={() => onStatusChange(inv.id, 'APPROVED')}
+                                        className="p-1 text-green-600 dark:text-green-400"
+                                    >
+                                        <Check className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                        onClick={() => onStatusChange(inv.id, 'REJECTED')}
+                                        className="p-1 text-red-600 dark:text-red-400"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </>
+                             )}
+                             {inv.status === 'APPROVED' && (
+                                <>
+                                    <button 
+                                        onClick={() => onStatusChange(inv.id, 'IMPLEMENTED')}
+                                        className="p-1 text-blue-600 dark:text-blue-400"
+                                    >
+                                        <PlayCircle className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                        onClick={() => onStatusChange(inv.id, 'PENDING')}
+                                        title="Retomar para Pendente"
+                                        className="p-1 text-gray-400"
+                                    >
+                                        <RotateCcw className="w-4 h-4" />
+                                    </button>
+                                </>
+                             )}
+                             {inv.status === 'REJECTED' && (
+                                <button 
+                                    onClick={() => onStatusChange(inv.id, 'PENDING')}
+                                    className="p-1 text-gray-400"
+                                >
+                                    <RotateCcw className="w-4 h-4" />
+                                </button>
+                             )}
+                             {inv.status === 'IMPLEMENTED' && (
+                                <button 
+                                    onClick={() => onStatusChange(inv.id, 'APPROVED')}
+                                    className="p-1 text-gray-400"
+                                >
+                                    <RotateCcw className="w-4 h-4" />
+                                </button>
+                             )}
                              <button 
                                 onClick={() => setEditingInnovation(inv)}
                                 className="p-1 text-amber-600 dark:text-amber-400"
@@ -1134,15 +1232,27 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                    </span>
                 </td>
                 <td className="p-4 text-right">
-                  <div className={`font-mono font-bold text-lg ${
-                     inv.status === 'REJECTED' ? 'text-gray-400 dark:text-slate-600 line-through decoration-2' : 
-                     inv.status === 'PENDING' ? 'text-gray-500 dark:text-slate-500' :
-                     'text-emerald-600 dark:text-emerald-400'
-                  }`}>
-                    {formatCurrency(inv.totalAnnualSavings)}
+                  <div className="flex flex-col items-end">
+                    <div className="text-[10px] text-gray-400 uppercase font-bold leading-tight">{t('projectedValue')}</div>
+                    <div className={`font-mono font-bold ${
+                       inv.status === 'REJECTED' ? 'text-gray-400 dark:text-slate-600 line-through decoration-2' : 
+                       inv.status === 'PENDING' ? 'text-gray-500 dark:text-slate-500' :
+                       'text-emerald-600 dark:text-emerald-400 shadow-sm'
+                    }`}>
+                      {formatCurrency(inv.totalAnnualSavings)}
+                    </div>
+                    
+                    {inv.effectiveAnnualSavings !== undefined && inv.effectiveAnnualSavings > 0 && (
+                       <div className="mt-1 pt-1 border-t border-gray-100 dark:border-slate-800 w-full flex flex-col items-end">
+                         <div className="text-[10px] text-blue-500 uppercase font-bold leading-tight">{t('effectiveValue')}</div>
+                         <div className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                           {formatCurrency(inv.effectiveAnnualSavings)}
+                         </div>
+                       </div>
+                    )}
                   </div>
                   {inv.investmentCost && inv.investmentCost > 0 && (
-                      <div className="text-xs text-red-400 dark:text-red-500 mt-1">{t('investmentAbbr')} -{formatCurrency(inv.investmentCost)}</div>
+                      <div className="text-[10px] text-red-500 dark:text-red-500 mt-1 uppercase italic font-bold">{t('investmentAbbr')} -{formatCurrency(inv.investmentCost)}</div>
                   )}
                 </td>
                 <td className="p-4 text-right">
@@ -1184,12 +1294,39 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     </>
                                 )}
                                 {inv.status === 'APPROVED' && (
-                                     <button 
-                                        onClick={() => onStatusChange(inv.id, 'IMPLEMENTED')}
-                                        className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition flex items-center shadow-sm"
+                                     <div className="flex items-center gap-1">
+                                        <button 
+                                            onClick={() => onStatusChange(inv.id, 'IMPLEMENTED')}
+                                            className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition flex items-center shadow-sm"
+                                        >
+                                            <PlayCircle className="w-3 h-3 mr-1" />
+                                            {t('implement')}
+                                        </button>
+                                        <button 
+                                            onClick={() => onStatusChange(inv.id, 'PENDING')}
+                                            title="Retomar para Pendente"
+                                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                                        >
+                                            <RotateCcw className="w-4 h-4" />
+                                        </button>
+                                     </div>
+                                )}
+                                {inv.status === 'REJECTED' && (
+                                    <button 
+                                        onClick={() => onStatusChange(inv.id, 'PENDING')}
+                                        title="Retomar para Pendente"
+                                        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
                                     >
-                                        <PlayCircle className="w-3 h-3 mr-1" />
-                                        {t('implement')}
+                                        <RotateCcw className="w-4 h-4" />
+                                    </button>
+                                )}
+                                {inv.status === 'IMPLEMENTED' && (
+                                    <button 
+                                        onClick={() => onStatusChange(inv.id, 'APPROVED')}
+                                        title="Voltar para Aprovado"
+                                        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                                    >
+                                        <RotateCcw className="w-4 h-4" />
                                     </button>
                                 )}
                                 {canDelete && (
@@ -1239,16 +1376,25 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                           <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">{t('improvementTitle')}</h4>
                           <p className="text-lg font-bold text-gray-800 dark:text-slate-200">{viewingInnovation.title}</p>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-b dark:border-slate-700 pb-4">
                           <div>
-                              <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">{t('innovationType')}</h4>
-                              <span className="px-2 py-1 bg-blue-50 text-blue-700 dark:bg-black dark:text-blue-400 rounded text-xs font-bold border border-blue-100 dark:border-blue-800">
-                                  {getInnovationTypeLabel(viewingInnovation.type)}
-                              </span>
+                              <h4 className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">{t('innovationType')}</h4>
+                               <span className="px-2 py-1 bg-blue-50 text-blue-700 dark:bg-black dark:text-blue-400 rounded text-xs font-bold border border-blue-100 dark:border-blue-800">
+                                   {getInnovationTypeLabel(viewingInnovation.type)}
+                               </span>
                           </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-blue-50/30 dark:bg-black p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
                           <div>
-                              <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">{t('annualImpactCol')}</h4>
-                              <p className="text-lg font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(viewingInnovation.totalAnnualSavings)}</p>
+                              <h4 className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-1">{t('projectedValue')}</h4>
+                              <p className="text-2xl font-mono font-black text-emerald-600 dark:text-emerald-400">{formatCurrency(viewingInnovation.totalAnnualSavings)}</p>
+                          </div>
+                          <div className="md:border-l border-blue-200 dark:border-blue-800 md:pl-6">
+                              <h4 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-1">{t('effectiveValue')}</h4>
+                              <p className="text-2xl font-mono font-black text-blue-700 dark:text-blue-300">
+                                {viewingInnovation.effectiveAnnualSavings !== undefined ? formatCurrency(viewingInnovation.effectiveAnnualSavings) : '---'}
+                              </p>
                           </div>
                       </div>
                       <div>

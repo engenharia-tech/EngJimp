@@ -107,6 +107,9 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     load();
   }, []);
 
+  const normalize = (str: string) => 
+    str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim() : "";
+
   const filteredProjects = useMemo(() => {
     const filtered = data.projects.filter(p => {
       const searchLower = filterNs.toLowerCase();
@@ -118,7 +121,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         (p.implementType || '').toLowerCase().includes(searchLower) ||
         (p.notes || '').toLowerCase().includes(searchLower);
       
-      const matchType = filterType ? p.type === filterType : true;
+      const matchType = filterType ? normalize(p.type) === normalize(filterType) : true;
       const matchStatus = filterStatus ? p.status === filterStatus : true;
       
       let matchDate = true;
