@@ -408,6 +408,7 @@ export const translations = {
     "innovationStatus": "STATUS DE INOVAÇÕES",
     "innovationStatusUpdated": "STATUS DA INOVAÇÃO ATUALIZADO.",
     "innovationType": "TIPO DE INOVAÇÃO",
+    "processOptimization": "OTIMIZAÇÃO DE PROCESSOS",
     "innovationUpdatedSuccess": "INOVAÇÃO ATUALIZADA COM SUCESSO!",
     "innovations": "INOVAÇÕES & CUSTOS",
     "innovationsByStatus": "INOVAÇÕES POR STATUS",
