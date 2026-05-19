@@ -382,6 +382,58 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     })).sort((a, b) => a.type.localeCompare(b.type));
   }, [filteredProjects]);
 
+  const yearlyStats = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const startOfYear = new Date(currentYear, 0, 1).getTime();
+    
+    // Explicitly group into months for easier display
+    const monthNames = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+    ];
+
+    const yearlyProjects = data.projects.filter(p => {
+       // Apply same logic as filteredProjects but for the whole year
+       if (p.userId && processUserIds.has(p.userId)) return false;
+       
+       // Role-based filtering: Designers only see their own data
+       if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
+         return false;
+       }
+       
+       const pDate = new Date(p.startTime).getTime();
+       return pDate >= startOfYear;
+    });
+
+    const devCount = yearlyProjects.filter(p => isTypeMatch(p.type, ProjectType.DEVELOPMENT)).length;
+    const releaseCount = yearlyProjects.filter(p => isTypeMatch(p.type, ProjectType.RELEASE)).length;
+    const totalHours = yearlyProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600;
+
+    const monthly: { name: string, dev: number, release: number, hours: number }[] = monthNames.map((name, i) => ({
+      name,
+      dev: 0,
+      release: 0,
+      hours: 0
+    }));
+
+    yearlyProjects.forEach(p => {
+      const pDate = new Date(p.startTime);
+      if (pDate.getFullYear() === currentYear) {
+         const m = pDate.getMonth();
+         if (isTypeMatch(p.type, ProjectType.DEVELOPMENT)) monthly[m].dev++;
+         if (isTypeMatch(p.type, ProjectType.RELEASE)) monthly[m].release++;
+         monthly[m].hours += (p.totalActiveSeconds || 0) / 3600;
+      }
+    });
+
+    return {
+      devCount,
+      releaseCount,
+      totalHours,
+      monthly: monthly.filter(m => m.dev > 0 || m.release > 0 || m.hours > 0)
+    };
+  }, [data.projects, processUserIds, currentUser.role, currentUser.id]);
+
   const devProjectsStats = useMemo(() => {
     const devProjects = filteredProjects.filter(p => 
       String(p.type || '').toUpperCase().trim() === 'DESENVOLVIMENTO'
@@ -415,16 +467,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     };
   }, [filteredProjects]);
 
-  // 1.5 Calculate Total Savings (ALL APPROVED/IMPLEMENTED - regardless of period)
-  const totalSavings = useMemo(() => {
-    return data.innovations.reduce((acc, curr) => {
-        // Include PENDING as well since the label says "Predicted/Expected"
-        if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED' || curr.status === 'PENDING') {
-            return acc + (curr.totalAnnualSavings || 0);
+  // 1.5 Calculate Total Savings (Filtered by period)
+  const savingsStats = useMemo(() => {
+    return filteredInnovations.reduce((acc, curr) => {
+        if (curr.status === 'REJECTED') return acc;
+
+        const isImplemented = curr.status === 'IMPLEMENTED';
+        const projected = curr.totalAnnualSavings || 0;
+        const effective = curr.effectiveAnnualSavings || 0;
+
+        if (isImplemented) {
+          acc.effective += effective > 0 ? effective : projected;
+          acc.implementedCount++;
+        } else {
+          acc.projected += projected;
+          acc.pendingCount++;
         }
+        
         return acc;
-    }, 0);
-  }, [data.innovations]);
+    }, { projected: 0, effective: 0, pendingCount: 0, implementedCount: 0 });
+  }, [filteredInnovations]);
 
   const totalHours = useMemo(() => {
     // Para um cálculo linear "sem margem de erro", precisamos unir todos os intervalos produtivos
@@ -1313,8 +1375,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       <Clock size={10} className="text-blue-400" />
                       Média: {devProjectsStats.avgPerMonth}h / mês
                     </p>
-                    <p className="text-[9px] text-gray-400 font-medium uppercase">
-                      Base: {devProjectsStats.count} {devProjectsStats.count === 1 ? 'Desenvolvimento' : 'Desenvolvimentos'}
+                    <p className="text-[9px] text-blue-600 font-black uppercase">
+                      Total Ano: {yearlyStats.devCount} PROJETOS
+                    </p>
+                    <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 mt-1 border-t border-blue-50 dark:border-slate-800/50 pt-1">
+                      {yearlyStats.monthly.map(m => (
+                        <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-blue-500 dark:text-blue-400">{m.dev}</span></span>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-gray-400 font-medium uppercase mt-0.5">
+                      Período: {devProjectsStats.count}
                     </p>
                  </div>
                </div>
@@ -1337,9 +1407,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                    </p>
                    <span className="text-[10px] text-emerald-500/70 font-bold uppercase italic">projetos</span>
                  </div>
-                 <p className="text-[8px] text-gray-400 uppercase mt-1">
-                   Tempo Investido: {releaseStats.totalHours.toFixed(1)}h
-                 </p>
+                 <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 flex flex-col gap-0.5">
+                    <p className="text-[9px] text-gray-500 font-bold uppercase flex items-center gap-1">
+                      <Clock size={10} className="text-emerald-400" />
+                      Média: {(releaseStats.count / devProjectsStats.months).toFixed(1)} / mês
+                    </p>
+                    <p className="text-[8px] text-emerald-600 font-black uppercase">
+                      Total Ano: {yearlyStats.releaseCount} PROJETOS
+                    </p>
+                    <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 mt-1 border-t border-emerald-50 dark:border-slate-800/50 pt-1">
+                      {yearlyStats.monthly.map(m => (
+                        <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-emerald-500 dark:text-emerald-400">{m.release}</span></span>
+                      ))}
+                    </div>
+                    <p className="text-[8px] text-gray-400 font-medium uppercase mt-0.5">
+                      Período: {releaseStats.count}
+                    </p>
+                 </div>
                </div>
                <div className="h-7 w-7 sm:h-9 sm:w-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
                  <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1358,11 +1442,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                    <p className="text-lg sm:text-xl font-black text-gray-800 dark:text-white">
                      {perCapitaStats.avgPerDesignerMonth}h
                    </p>
-                   <span className="text-[8px] sm:text-[9px] text-gray-400 font-bold uppercase italic">/projetista</span>
+                   <span className="text-[8px] sm:text-[9px] text-gray-400 font-bold uppercase italic">/mês</span>
                  </div>
-                 <p className="text-[8px] text-gray-500 uppercase mt-1">
-                   Ref: {perCapitaStats.designerCount} ativos
-                 </p>
+                 <div className="mt-2 pt-2 border-t border-gray-50 dark:border-slate-800/50 flex flex-col gap-0.5">
+                    <p className="text-[8px] text-gray-400 uppercase">
+                      Ref: {perCapitaStats.designerCount} projetistas ativos
+                    </p>
+                    <p className="text-[8px] text-gray-500 font-bold uppercase">
+                      {devProjectsStats.months} {devProjectsStats.months > 1 ? 'MESES SELECIONADOS' : 'MÊS SELECIONADO'}
+                    </p>
+                 </div>
                </div>
                <div className="h-7 w-7 sm:h-8 sm:w-8 bg-gray-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-gray-400 dark:text-slate-500 flex-shrink-0">
                  <Users className="w-4 h-4" />
@@ -1388,7 +1477,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
               <div className="w-full">
                 <p className="text-[9px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalHours')}</p>
-                <p className="text-sm sm:text-xl font-black text-indigo-800 dark:text-indigo-300">{totalHours}h</p>
+                <div className="flex items-baseline gap-1">
+                  <p className="text-sm sm:text-xl font-black text-indigo-800 dark:text-indigo-300">{totalHours}h</p>
+                  <span className="text-[8px] text-indigo-500 font-bold italic">/ {(totalHours / devProjectsStats.months).toFixed(1)}h MÊS</span>
+                </div>
+                <p className="text-[8px] text-indigo-400 font-bold uppercase mt-0.5 leading-tight">Total Ano: {Math.round(yearlyStats.totalHours)}h</p>
+                <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 mt-1 border-t border-indigo-50/50 dark:border-indigo-900/20 pt-1">
+                  {yearlyStats.monthly.map(m => (
+                    <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-indigo-500 dark:text-indigo-400">{Math.round(m.hours)}h</span></span>
+                  ))}
+                </div>
                 <div className="flex items-center gap-2 mt-1">
                   <div className="flex-1 h-1 sm:h-1.5 bg-gray-100 dark:bg-black rounded-full overflow-hidden">
                     <div className="h-full bg-indigo-500" style={{ width: `${goalProgress}%` }}></div>
@@ -1403,10 +1501,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           )}
 
           {/* Innovation KPI */}
-           <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
-              <div>
-                <p className="text-[9px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('annualSavings')}</p>
-                <p className="text-sm sm:text-xl font-black text-emerald-800 dark:text-emerald-300">{formatCurrency(totalSavings)}</p>
+           <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
+              <div className="flex-1 grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[8px] sm:text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('effectiveValue')}</p>
+                  <p className="text-sm sm:text-lg font-black text-emerald-800 dark:text-emerald-300">{formatCurrency(savingsStats.effective)}</p>
+                  <p className="text-[7px] text-gray-400 uppercase">{savingsStats.implementedCount} REALIZADAS</p>
+                </div>
+                <div className="border-l border-emerald-50 dark:border-emerald-900/30 pl-4">
+                  <p className="text-[8px] sm:text-[9px] font-bold text-emerald-400 dark:text-emerald-500 uppercase tracking-wider mb-0.5 sm:mb-1">{t('projectedValue')}</p>
+                  <p className="text-sm sm:text-lg font-black text-emerald-700/70 dark:text-emerald-400/70">{formatCurrency(savingsStats.projected)}</p>
+                  <p className="text-[7px] text-gray-400 uppercase">{savingsStats.pendingCount} PENDENTES</p>
+                </div>
               </div>
               <div className="h-7 w-7 sm:h-8 sm:w-8 bg-emerald-50 dark:bg-black rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
                 <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

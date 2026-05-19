@@ -163,6 +163,7 @@ export interface InnovationRecord {
   unitSavings: number;
   quantity: number;
   totalAnnualSavings: number;
+  effectiveAnnualSavings?: number;
   investmentCost?: number;
 
   // New Fields
