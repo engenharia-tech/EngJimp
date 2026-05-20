@@ -192,20 +192,13 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const elapsedSecondsRef = useRef<number>(0);
   const onUpdateRef = useRef(onUpdate);
 
-  // Auto-detect overtime based on clock when not in a project
+  // Overtime defaults to false by default as per user request: "em início de projeto, deixe por padrão não deixe ligado a hora extra, o projetista deve ligar"
   useEffect(() => {
-    if (!activeProject && settings) {
-      const now = new Date();
-      const isNowWorking = isWorkingHour(now, settings, false);
-      if (!isNowWorking) {
-        setIsOvertime(true);
-        setPickIsOvertime(true);
-      } else {
-        setIsOvertime(false);
-        setPickIsOvertime(false);
-      }
+    if (!activeProject) {
+      setIsOvertime(false);
+      setPickIsOvertime(false);
     }
-  }, [settings, activeProject, isVisible]);
+  }, [activeProject]);
 
   useEffect(() => {
     onUpdateRef.current = onUpdate;
