@@ -72,7 +72,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           totalPauseWorkingSeconds += pause.durationSeconds;
         } else if (pause.durationSeconds === -1) {
           const pStart = new Date(pause.timestamp);
-          totalPauseWorkingSeconds += calcActiveSeconds(pStart, now, settings, p.isOvertime);
+          totalPauseWorkingSeconds += calcActiveSeconds(pStart, now, settings, p.isOvertime, true);
         }
       });
     }
@@ -87,7 +87,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         const effectiveEnd = iEnd < now ? iEnd : now;
         
         if (effectiveStart < effectiveEnd) {
-          return acc + calcActiveSeconds(effectiveStart, effectiveEnd, settings, p.isOvertime);
+          return acc + calcActiveSeconds(effectiveStart, effectiveEnd, settings, p.isOvertime, true);
         }
         return acc;
       }, 0);
@@ -661,7 +661,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       const lastPauseIndex = updatedProject.pauses.length - 1;
       if (lastPauseIndex >= 0 && updatedProject.pauses[lastPauseIndex].durationSeconds === -1) {
         const pauseStart = new Date(updatedProject.pauses[lastPauseIndex].timestamp);
-        const pauseDuration = calcActiveSeconds(pauseStart, now, settings, updatedProject.isOvertime);
+        const pauseDuration = calcActiveSeconds(pauseStart, now, settings, updatedProject.isOvertime, true);
 
         const updatedPauses = [...updatedProject.pauses];
         updatedPauses[lastPauseIndex] = {
@@ -680,7 +680,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
         if (openInterruption) {
             const interruptionStart = new Date(openInterruption.startTime);
-            const interruptionDuration = calcActiveSeconds(interruptionStart, now, settings, updatedProject.isOvertime);
+            const interruptionDuration = calcActiveSeconds(interruptionStart, now, settings, updatedProject.isOvertime, true);
             
             const updatedInterruption: InterruptionRecord = {
                 ...openInterruption,
@@ -828,7 +828,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           const lastIndex = finalPauses.length - 1;
           const lastPause = finalPauses[lastIndex];
           const lastPauseDate = new Date(lastPause.timestamp);
-          const currentPauseWorkingSeconds = calcActiveSeconds(lastPauseDate, finishedEndTimeDate, settings, !!activeProject.isOvertime);
+          const currentPauseWorkingSeconds = calcActiveSeconds(lastPauseDate, finishedEndTimeDate, settings, !!activeProject.isOvertime, true);
           
           totalPauseWorkingSeconds += currentPauseWorkingSeconds;
 
@@ -849,7 +849,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
       for (const interruption of openInterruptions) {
           const iStart = new Date(interruption.startTime);
-          const iDuration = calcActiveSeconds(iStart, finishedEndTimeDate, settings, !!activeProject.isOvertime);
+          const iDuration = calcActiveSeconds(iStart, finishedEndTimeDate, settings, !!activeProject.isOvertime, true);
           onUpdateInterruption({
               ...interruption,
               endTime: finishedEndTime,
@@ -869,7 +869,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       const interruptionSeconds = projectInterruptions.reduce((acc, curr) => {
           if (openInterruptions.some(oi => oi.id === curr.id)) {
               const iStart = new Date(curr.startTime);
-              const iDuration = calcActiveSeconds(iStart, finishedEndTimeDate, settings, !!activeProject.isOvertime);
+              const iDuration = calcActiveSeconds(iStart, finishedEndTimeDate, settings, !!activeProject.isOvertime, true);
               return acc + (curr.totalTimeSeconds || 0) + iDuration;
           }
           return acc + curr.totalTimeSeconds;

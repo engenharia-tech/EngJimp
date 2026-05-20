@@ -104,7 +104,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         const openInterruptions = data.interruptions.filter(i => i.status === InterruptionStatus.OPEN && i.designerId === currentUser.id);
         openInterruptions.forEach(async (i) => {
           const startTime = new Date(i.startTime);
-          const currentDuration = calcActiveSeconds(startTime, new Date(), data.settings);
+          const currentDuration = calcActiveSeconds(startTime, new Date(), data.settings, false, true);
           onUpdateRef.current({
             ...i,
             totalTimeSeconds: currentDuration,
@@ -224,7 +224,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           startTime: startIso,
           endTime: endIso,
           totalTimeSeconds: endIso 
-            ? calcActiveSeconds(new Date(startIso), new Date(endIso), data.settings)
+            ? calcActiveSeconds(new Date(startIso), new Date(endIso), data.settings, false, true)
             : 0
         };
         const newState = await updateInterruption(updated);
@@ -257,7 +257,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           otherLosses,
           status: status,
           totalTimeSeconds: endIso 
-            ? calcActiveSeconds(new Date(startIso), new Date(endIso), data.settings)
+            ? calcActiveSeconds(new Date(startIso), new Date(endIso), data.settings, false, true)
             : 0
         };
         const newState = await addInterruption(newItem);
@@ -423,7 +423,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   const getElapsedTime = (startTime: string, endTime?: string | null) => {
     const start = new Date(startTime);
     const end = endTime ? new Date(endTime) : now;
-    return calcActiveSeconds(start, end, data.settings);
+    return calcActiveSeconds(start, end, data.settings, false, true);
   };
 
   const getAlertLevel = (startTime: string, status: InterruptionStatus) => {

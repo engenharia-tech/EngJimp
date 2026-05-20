@@ -3,7 +3,7 @@ import { AppSettings } from '../types';
 /**
  * Calculates the number of active seconds between two dates, considering the workday settings.
  */
-export function calcActiveSeconds(from: Date | string, to: Date | string, settings: AppSettings, isOvertime: boolean = false): number {
+export function calcActiveSeconds(from: Date | string, to: Date | string, settings: AppSettings, isOvertime: boolean = false, isPauseOrInterruption: boolean = false): number {
   const startDate = new Date(from);
   const endDate = new Date(to);
   const startMs = startDate.getTime();
@@ -30,8 +30,12 @@ export function calcActiveSeconds(from: Date | string, to: Date | string, settin
   while (current.getTime() < endMs) {
     const dayOfWeek = current.getDay();
     
+    // Check if it is a weekend (0 = Sunday, 6 = Saturday) and we are calculating a pause or interruption
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const skipDay = isPauseOrInterruption && isWeekend;
+
     // If overtime, we count every day. If not, only workdays.
-    if (isOvertime || workdays.includes(dayOfWeek)) {
+    if (!skipDay && (isOvertime || workdays.includes(dayOfWeek))) {
       const dayStartBoundary = new Date(current);
       const dayEndBoundary = new Date(current);
       

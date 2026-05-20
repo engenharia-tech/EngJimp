@@ -249,7 +249,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 if (dur > 0) {
                     const pStart = new Date(p.timestamp);
                     const pEnd = new Date(pStart.getTime() + dur * 1000);
-                    totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, data.settings, !!project.isOvertime);
+                    totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, data.settings, !!project.isOvertime, true);
                 }
             });
             
@@ -331,7 +331,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           if (dur > 0) {
               const pStart = new Date(p.timestamp);
               const pEnd = new Date(pStart.getTime() + dur * 1000);
-              totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, data.settings, !!project.isOvertime);
+              totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, data.settings, !!project.isOvertime, true);
           }
       });
       
@@ -397,7 +397,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             if (dur > 0) {
                 const pStart = new Date(p.timestamp);
                 const pEnd = new Date(pStart.getTime() + dur * 1000);
-                totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, data.settings, editForm.isOvertime);
+                totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, data.settings, editForm.isOvertime, true);
             }
         });
 
