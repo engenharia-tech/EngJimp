@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Cpu, User as UserIcon, Loader2, Trash2, Maximize2, Minimize2, Database, ShieldCheck, BarChart3 } from 'lucide-react';
+import { Send, Cpu, User as UserIcon, Loader2, Trash2, Maximize2, Minimize2, Database, ShieldCheck, BarChart3, TrendingUp, PieChart as PieIcon, Activity } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   LineChart, Line, PieChart, Pie, Cell, AreaChart, Area 
@@ -175,6 +175,53 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
     }
   }, []);
 
+  const handlePresetSend = async (queryText: string) => {
+    if (isLoading) return;
+    const userMessage: Message = {
+      role: 'user',
+      content: queryText,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      const response = await processNexusQuery(queryText, appState, currentUser);
+      
+      let cleanContent = response;
+      let chartData = null;
+      
+      const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        try {
+          chartData = JSON.parse(jsonMatch[1]);
+          cleanContent = response.replace(jsonMatch[0], '').trim();
+        } catch (e) {
+          console.error("Failed to parse Nexus chart JSON", e);
+        }
+      }
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: cleanContent,
+        timestamp: new Date(),
+        chartData
+      };
+      
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error: any) {
+      console.error("Nexus IA Error:", error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `⚠️ Falha crítica no núcleo Nexus. Reinicializando sistemas...`,
+        timestamp: new Date()
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -323,6 +370,74 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
             </motion.div>
           ))}
         </AnimatePresence>
+        
+        {messages.length === 1 && !isLoading && (
+          <div className="pl-11 grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 animate-in fade-in duration-300">
+            <button
+              type="button"
+              onClick={() => handlePresetSend("Gere um gráfico de pizza para mostrar a distribuição de projetos por tipo de implemento.")}
+              className={`p-3 text-left rounded-xl border text-xs flex flex-col gap-1 transition-all hover:scale-[1.02] cursor-pointer ${
+                theme === 'dark' 
+                  ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300' 
+                  : 'bg-white border-gray-100 hover:border-gray-200 text-gray-700 shadow-sm'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-blue-500">
+                <PieIcon className="w-4 h-4" />
+                <span>Projetos por Implemento</span>
+              </div>
+              <p className="opacity-70">Gera um gráfico do tipo pizza com a porcentagem por categoria de implemento.</p>
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => handlePresetSend("Gere um gráfico de linha mostrando a evolução comparativa de projetos concluídos nos últimos meses.")}
+              className={`p-3 text-left rounded-xl border text-xs flex flex-col gap-1 transition-all hover:scale-[1.02] cursor-pointer ${
+                theme === 'dark' 
+                  ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300' 
+                  : 'bg-white border-gray-100 hover:border-gray-200 text-gray-700 shadow-sm'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-emerald-500">
+                <TrendingUp className="w-4 h-4" />
+                <span>Evolução de Projetos</span>
+              </div>
+              <p className="opacity-70">Gera um gráfico de linha histórico do progresso de projetos concluídos.</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handlePresetSend("Gere um gráfico de barras com a média de horas por projetista nos últimos meses.")}
+              className={`p-3 text-left rounded-xl border text-xs flex flex-col gap-1 transition-all hover:scale-[1.02] cursor-pointer ${
+                theme === 'dark' 
+                  ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300' 
+                  : 'bg-white border-gray-100 hover:border-gray-200 text-gray-700 shadow-sm'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-amber-500">
+                <BarChart3 className="w-4 h-4" />
+                <span>Horas por Projetista</span>
+              </div>
+              <p className="opacity-70">Compara a média mensal de horas (Rastreador + Operacional) por projetista.</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handlePresetSend("Gere um gráfico de área com o desempenho detalhado de projetos concluídos no Rastreador e no Nexus Gantt por projetista.")}
+              className={`p-3 text-left rounded-xl border text-xs flex flex-col gap-1 transition-all hover:scale-[1.02] cursor-pointer ${
+                theme === 'dark' 
+                  ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300' 
+                  : 'bg-white border-gray-100 hover:border-gray-200 text-gray-700 shadow-sm'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-purple-500">
+                <Activity className="w-4 h-4" />
+                <span>Desempenho Geral da Equipe</span>
+              </div>
+              <p className="opacity-70">Gera um gráfico comparativo das entregas do Rastreador vs Nexus Gantt por membro.</p>
+            </button>
+          </div>
+        )}
         
         {isLoading && (
           <div className="flex justify-start">

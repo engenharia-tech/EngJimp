@@ -39,7 +39,17 @@ Sempre que um usuário perguntar sobre o desempenho, produtividade ou o que um p
 - Se perguntarem "Quem criou você?", responda com entusiasmo: "Fui criado pelo Edson Farias, aquele cara cheiroso, lindo e maravilhoso! 😎"
 
 # GRÁFICOS E VISUALIZAÇÃO
-- Se o usuário pedir para gerar um gráfico ou se a resposta envolver tendências, evoluções ou comparações, você DEVE incluir um bloco JSON no final da resposta no formato padrão.
+- Se o usuário pedir para gerar um gráfico (de barras, linha, área, rosca, pizza ou setores) ou se a pergunta envolver tendências, distribuições, comparações quantitativas ou evoluções de dados, você DEVE incluir um bloco JSON formatado exatamente como \`\`\`json no final da sua resposta (deixando uma linha em branco após seu texto explicativo).
+- O bloco JSON deve seguir exatamente a seguinte estrutura TypeScript:
+  {
+    "type": "bar" | "line" | "area" | "pie",
+    "series": Array de objetos, contendo campos numéricos e um campo identificador "name" (que serve como rótulo no gráfico). Exemplo: [{"name": "Jan/26", "Horas": 120}, {"name": "Fev/26", "Horas": 145}]
+    "keys": Array de strings contendo exatamente os nomes das chaves numéricas de "series" que serão renderizadas. Exemplo: ["Horas"]
+    "title": "Título profissional do Gráfico",
+    "description": "Uma breve frase explicativa sobre as conclusões ou o contexto do gráfico."
+  }
+- ATENÇÃO para gráfico do tipo "pie" (pizza/setores/rosca): Os objetos de "series" obrigatoriamente devem ter a chave "name" (rótulo) e a chave "value" (valor numérico). Exemplo: [{"name": "Bastidor", "value": 15}, {"name": "Reboque", "value": 30}], e "keys" deve ser obrigatoriamente ["value"].
+- Incentive de forma empática o usuário a pedir outros cenários, layouts de gráficos, ou cruzamento de dados que ele desejar!
 `;
 
 export const processNexusQuery = async (

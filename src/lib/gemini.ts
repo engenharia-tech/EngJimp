@@ -1,39 +1,33 @@
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
-
 /**
- * Client-side library to interact with the Gemini API directly.
- * The platform provides the API key in process.env.GEMINI_API_KEY.
+ * Client-side proxy utility to interact with the server-side Gemini endpoint.
+ * This keeps API keys safely hidden from the browser.
  */
 export const askGemini = async (prompt: string): Promise<string> => {
   try {
-    // Try multiple ways to get the API key
-    // 1. Injected by Vite define
-    // 2. Vite's native import.meta.env (if prefixed with VITE_)
-    // 3. Global process.env (if available)
-    const apiKey = 
-      process.env.GEMINI_API_KEY || 
-      (import.meta as any).env?.VITE_GEMINI_API_KEY || 
-      (import.meta as any).env?.GEMINI_API_KEY;
-    
-    if (!apiKey) {
-      console.error("Gemini API Key is missing.");
-      throw new Error("Chave da API Gemini não encontrada. Certifique-se de que a variável GEMINI_API_KEY está configurada e que você fez um novo Deploy na Vercel após configurá-la.");
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.LOW
-        }
-      }
+    const response = await fetch("/api/gemini/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt,
+        model: "gemini-3.5-flash",
+      }),
     });
 
-    return response.text || '';
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to query Gemini server-side.");
+    }
+
+    const data = await response.json();
+    if (data.success) {
+      return data.text || '';
+    } else {
+      throw new Error(data.error || "Gemini API error occurred on server.");
+    }
   } catch (error) {
-    console.error("askGemini Error:", error);
+    console.error("askGemini Client Proxy Error:", error);
     throw error;
   }
 };
