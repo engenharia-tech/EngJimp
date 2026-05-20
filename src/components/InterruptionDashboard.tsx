@@ -63,7 +63,8 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
     }> = {};
 
     interruptions.forEach(i => {
-      const area = i.responsibleArea;
+      let area = i.responsibleArea ? i.responsibleArea.trim().toUpperCase() : 'OUTROS';
+      if (area === 'PRODUÇÃO') area = 'PRODUCAO';
       if (!stats[area]) {
         stats[area] = { area, totalInterruptions: 0, totalLostTime: 0 };
       }
@@ -71,7 +72,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
       stats[area].totalLostTime += i.totalTimeSeconds;
     });
 
-    return Object.values(stats).sort((a, b) => a.area.localeCompare(b.area));
+    return Object.values(stats).sort((a, b) => b.totalLostTime - a.totalLostTime);
   }, [interruptions]);
 
   const selectedDesignerData = useMemo(() => {

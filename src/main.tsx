@@ -4,12 +4,15 @@ import App from './App.tsx';
 import './index.css';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { ToastProvider } from './components/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <LanguageProvider>
       <ToastProvider>
-        <App />
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
       </ToastProvider>
     </LanguageProvider>
   </StrictMode>,

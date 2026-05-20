@@ -1279,15 +1279,6 @@ const AppContent: React.FC = () => {
                  </div>
               </div>
               <Dashboard data={displayData} currentUser={currentUser} theme={theme} settings={effectiveSettings} onRefresh={handleRefresh} />
-              {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) && (
-                <div className="mt-12">
-                  <div className="mb-6">
-                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('interruptionReports').toUpperCase()}</h2>
-                    <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('bottleneckAnalysis').toUpperCase()}</p>
-                  </div>
-                  <InterruptionDashboard data={displayData} theme={theme} />
-                </div>
-              )}
             </div>
           )}
 

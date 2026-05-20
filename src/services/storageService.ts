@@ -443,8 +443,19 @@ export const fetchAppState = async (): Promise<AppState> => {
         })));
     }
 
+    // Buscar logs locais do localStorage (cache/fallback)
+    let fallbackLogs: AuditLog[] = [];
     try {
-      auditLogs = (auditLogsRes.data || []).map((l: any) => ({
+      const fallbackLogsStr = localStorage.getItem('local_audit_logs');
+      if (fallbackLogsStr) {
+        fallbackLogs = JSON.parse(fallbackLogsStr);
+      }
+    } catch (e) {
+      console.error("Erro ao carregar local_audit_logs:", e);
+    }
+
+    try {
+      const dbLogs = (auditLogsRes?.data || []).map((l: any) => ({
         id: l.id,
         userId: l.user_id,
         userName: l.user_name,
@@ -455,7 +466,36 @@ export const fetchAppState = async (): Promise<AppState> => {
         timestamp: l.timestamp,
         details: l.details
       }));
-    } catch (e) { console.error("AuditLogs mapping error:", e); }
+
+      // Mesclar logs do Supabase e do localStorage removendo duplicados
+      const seenLogKeys = new Set<string>();
+      const mergedLogs: AuditLog[] = [];
+
+      // Adiciona logs do banco primeiro
+      dbLogs.forEach((l: AuditLog) => {
+        const key = `${l.timestamp}_${l.action}_${l.entityId}_${l.userId}`;
+        seenLogKeys.add(key);
+        mergedLogs.push(l);
+      });
+
+      // Adiciona do localStorage se ainda não existirem no banco
+      fallbackLogs.forEach((l: AuditLog) => {
+        const key = `${l.timestamp}_${l.action}_${l.entityId}_${l.userId}`;
+        if (!seenLogKeys.has(key)) {
+          seenLogKeys.add(key);
+          mergedLogs.push(l);
+        }
+      });
+
+      // Ordenar por data decrescente (mais recente primeiro)
+      mergedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      // Máximo de 500 registros
+      auditLogs = mergedLogs.slice(0, 500);
+    } catch (e) { 
+      console.error("AuditLogs mapping error:", e); 
+      auditLogs = fallbackLogs;
+    }
 
     return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, auditLogs, settings };
   } catch (error) {
@@ -2103,6 +2143,34 @@ export const updateGanttTask = async (task: GanttTask): Promise<AppState> => {
 
 export const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Promise<void> => {
   try {
+    const timestamp = new Date().toISOString();
+    const id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11);
+
+    // 1. Gravar no cache local (localStorage) como fallback imediato
+    try {
+      const fallbackLogsStr = localStorage.getItem('local_audit_logs');
+      const fallbackLogs: AuditLog[] = fallbackLogsStr ? JSON.parse(fallbackLogsStr) : [];
+      
+      const newLogItem: AuditLog = {
+        id,
+        userId: log.userId,
+        userName: log.userName,
+        action: log.action as any,
+        entityType: log.entityType,
+        entityId: log.entityId,
+        entityName: log.entityName,
+        timestamp,
+        details: log.details
+      };
+
+      // Limitar a no máximo 200 logs locais para economizar espaço
+      const updatedLogs = [newLogItem, ...fallbackLogs].slice(0, 200);
+      localStorage.setItem('local_audit_logs', JSON.stringify(updatedLogs));
+    } catch (localErr) {
+      console.error("Local storage audit log save error:", localErr);
+    }
+
+    // 2. Gravar no Supabase se a tabela existir
     const { error } = await supabase.from('audit_logs').insert([{
       user_id: log.userId,
       user_name: log.userName,
@@ -2111,12 +2179,12 @@ export const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Prom
       entity_id: log.entityId,
       entity_name: log.entityName,
       details: log.details,
-      timestamp: new Date().toISOString()
+      timestamp
     }]);
 
     if (error) {
-      console.warn("Audit Log insert error:", error);
-      // We don't throw here to avoid interrupting the main flow
+      console.warn("Audit Log insert error (this happens if audit_logs table is not created in Supabase yet):", error);
+      // Não lançamos erro aqui para não travar o fluxo principal (como encerramentos, exclusões, etc.)
     }
   } catch (e) {
     console.error("Audit log exception:", e);

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { History, Search, Filter, Download, ArrowUpDown, ArrowUp, ArrowDown, Shield, User, Clock, FileText, Info } from 'lucide-react';
+import { History, Search, Filter, Download, ArrowUpDown, ArrowUp, ArrowDown, Shield, User, Clock, FileText, Info, Copy, Check, Database, AlertTriangle } from 'lucide-react';
 import { AuditLog, AuditAction, UserRole } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -15,6 +15,39 @@ export const AuditHistory: React.FC<AuditHistoryProps> = ({ logs, theme }) => {
   const [filterEntity, setFilterEntity] = useState<string>('');
   const [sortKey, setSortKey] = useState<keyof AuditLog>('timestamp');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  
+  // Custom states for database SQL helper
+  const [showSqlHelper, setShowSqlHelper] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const sqlScript = `-- Tabela de Logs de Auditoria (Audit Log)
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id uuid,
+  user_name text,
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text,
+  entity_name text,
+  timestamp timestamptz DEFAULT now(),
+  details text
+);
+
+-- Habilitar RLS para Audit Logs
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive Audit Select" ON public.audit_logs;
+CREATE POLICY "Permissive Audit Select" ON public.audit_logs FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Permissive Audit Insert" ON public.audit_logs;
+CREATE POLICY "Permissive Audit Insert" ON public.audit_logs FOR INSERT WITH CHECK (true);
+
+-- Recarregar schema
+NOTIFY pgrst, 'reload config';`;
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(sqlScript);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const entities = useMemo(() => {
     const set = new Set(logs.map(l => l.entityType));
@@ -113,6 +146,8 @@ export const AuditHistory: React.FC<AuditHistoryProps> = ({ logs, theme }) => {
           {t('exportCSV')}
         </button>
       </div>
+
+
 
       <div className={`p-6 rounded-2xl ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'} border shadow-sm space-y-4`}>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

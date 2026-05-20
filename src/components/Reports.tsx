@@ -226,7 +226,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     const stats: Record<string, { area: string, count: number, totalSeconds: number }> = {};
     
     filtered.forEach(i => {
-      const area = i.responsibleArea;
+      let area = i.responsibleArea ? i.responsibleArea.trim().toUpperCase() : 'OUTROS';
+      if (area === 'PRODUÇÃO') area = 'PRODUCAO';
       if (!stats[area]) {
         stats[area] = { area, count: 0, totalSeconds: 0 };
       }

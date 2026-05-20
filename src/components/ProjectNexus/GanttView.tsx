@@ -111,6 +111,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [editingTitleValue, setEditingTitleValue] = useState('');
   const [statusPickerOpenId, setStatusPickerOpenId] = useState<string | null>(null);
+  const [showClosedTasks, setShowClosedTasks] = useState(false);
 
   const [interactingTask, setInteractingTask] = useState<{
     id: string;
@@ -311,10 +312,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
 
   const todayLeft = differenceInDays(new Date(), timelineInterval.start) * zoomLevel;
 
-  const rootTasks = useMemo(() => {
+  const { rootTasks, closedTasks } = useMemo(() => {
     const buildTree = (parentId: string | null = null, depth = 0): (GanttTask & { children: any[] })[] => {
       if (depth > 20) return []; // Safety recursion break
       return state.ganttTasks
+        .filter(t => t.status !== GanttTaskStatus.CLOSED) // Filter out closed tasks from the active tree
         .filter(t => {
           // A task is a root task if its parentId is null, empty, or points to a non-existent task
           if (parentId === null) {
@@ -332,9 +334,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
           children: buildTree(t.id, depth + 1)
         }));
     };
-    const tree = buildTree(null);
-    console.log("BUILT GANTT TREE WITH", tree.length, "ROOT NODES", tree);
-    return tree;
+    
+    return {
+      rootTasks: buildTree(null),
+      closedTasks: state.ganttTasks.filter(t => t.status === GanttTaskStatus.CLOSED)
+    };
   }, [state.ganttTasks]);
 
   const flattenedTasks = useMemo(() => {
@@ -1288,6 +1292,66 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                 </div>
                 <div className="flex-shrink-0 bg-white/50 dark:bg-slate-900/30 transition-colors" style={{ width: `${days.length * zoomLevel}px` }} />
               </div>
+
+              {/* Closed Tasks Indicator/Section */}
+              {closedTasks.length > 0 && (
+                <div className="mt-4 border-t border-slate-100 dark:border-slate-800">
+                  <button 
+                    onClick={() => setShowClosedTasks(!showClosedTasks)}
+                    className="flex items-center gap-2 px-4 py-3 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors w-full bg-slate-50/30 dark:bg-slate-900/10"
+                  >
+                    <History size={16} className={showClosedTasks ? 'text-blue-500' : ''} />
+                    <span className="text-[11px] font-black uppercase tracking-widest">
+                      Tarefas Fechadas / Canceladas ({closedTasks.length})
+                    </span>
+                    <ChevronDown size={14} className={`transition-transform duration-200 ml-auto ${showClosedTasks ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  <AnimatePresence>
+                    {showClosedTasks && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden bg-slate-50/50 dark:bg-slate-900/20"
+                      >
+                         <div className="flex flex-col">
+                            {closedTasks.map((task, idx) => (
+                              <div key={task.id} className="flex h-10 border-b border-slate-100 dark:border-slate-800 items-stretch hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition-colors">
+                                <div 
+                                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-white dark:bg-slate-900 transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 opacity-0 border-none' : 'opacity-100'}`} 
+                                  style={{ paddingLeft: `12px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
+                                >
+                                   <div className="flex items-center gap-3 w-full opacity-60">
+                                      <span className="text-[10px] text-slate-400 font-mono w-6 text-center">{idx + 1}</span>
+                                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 truncate line-through">{task.title}</span>
+                                      <button 
+                                        onClick={() => handleEditTask(task)}
+                                        className="ml-auto p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 transition-colors"
+                                      >
+                                        <Eye size={12} />
+                                      </button>
+                                   </div>
+                                </div>
+                                <div className="flex-shrink-0 relative" style={{ width: `${days.length * zoomLevel}px` }}>
+                                   {/* Simple line for closed task timeline */}
+                                   <div 
+                                      className="absolute top-1/2 -translate-y-1/2 h-4 rounded-full opacity-20"
+                                      style={{
+                                        left: differenceInDays(safeParseDate(task.startDate), timelineInterval.start) * zoomLevel,
+                                        width: Math.max(zoomLevel, (differenceInDays(safeParseDate(task.endDate), safeParseDate(task.startDate)) + 1) * zoomLevel),
+                                        backgroundColor: task.color || '#94a3b8'
+                                      }}
+                                   />
+                                </div>
+                              </div>
+                            ))}
+                         </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
           </div>
         </div>
