@@ -92,6 +92,48 @@ app.post("/api/send-email", async (req, res) => {
   }
 });
 
+// API Route for Gemini analysis and chat
+app.post("/api/gemini/generate", async (req, res) => {
+  try {
+    const { prompt, model } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ success: false, error: "Prompt is missing." });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Gemini API Key is not configured on the server." 
+      });
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+
+    const targetModel = model || "gemini-3.5-flash";
+    const response = await ai.models.generateContent({
+      model: targetModel,
+      contents: prompt,
+    });
+
+    return res.json({ success: true, text: response.text || '' });
+  } catch (error: any) {
+    console.error("[Gemini API Server Error]:", error);
+    return res.status(500).json({ 
+      success: false, 
+      error: "Error processing request with Gemini.",
+      details: error.message || String(error)
+    });
+  }
+});
+
 // Global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Global Error:", err);

@@ -219,6 +219,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedSuspensions, setSelectedSuspensions] = useState<string[]>([]);
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
+  const [nsFilterByPeriod, setNsFilterByPeriod] = useState<boolean>(false);
 
   const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance']);
 
@@ -291,6 +292,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         return false;
       }
 
+      if (!nsFilterByPeriod) return true;
+
       if (!startDate && !endDate) return true;
 
       const rDate = new Date(r.createdAt).getTime();
@@ -312,7 +315,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       return rDate >= start && rDate <= end;
     });
-  }, [data.projectRequests, selectedCategories, selectedSuspensions, selectedClients, startDate, endDate]);
+  }, [data.projectRequests, selectedCategories, selectedSuspensions, selectedClients, startDate, endDate, nsFilterByPeriod]);
 
   const filteredProjects = useMemo(() => {
     return data.projects.filter(p => {
@@ -2070,18 +2073,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       {/* NS Queue Analysis Section */}
       {visibleSections.includes('ns_analysis') && (
         <div className="space-y-6 mb-6">
-          <div className="flex items-center justify-between bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm">
             <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
               <Layers className="w-5 h-5 mr-2 text-orange-500" />
               {t('nsReports')}
             </h3>
-            <button 
-              onClick={handleExportNSCSV}
-              className="flex items-center text-sm font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              {t('exportNSReport')}
-            </button>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-gray-700 dark:text-slate-300 select-none bg-gray-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 transition-colors hover:bg-gray-100 dark:hover:bg-slate-800">
+                <input 
+                  type="checkbox"
+                  checked={nsFilterByPeriod}
+                  onChange={(e) => setNsFilterByPeriod(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-orange-500 focus:ring-orange-500 bg-white dark:bg-slate-800 cursor-pointer"
+                />
+                <span>{t('filterByPeriod')}</span>
+              </label>
+              <button 
+                onClick={handleExportNSCSV}
+                className="flex items-center text-sm font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                {t('exportNSReport')}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
