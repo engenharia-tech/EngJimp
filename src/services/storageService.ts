@@ -1893,7 +1893,7 @@ export const recalculateAllInterruptionTimes = async (): Promise<{ success: bool
 
     let updatedCount = 0;
     for (const i of interruptions || []) {
-      const newDuration = calcActiveSeconds(new Date(i.start_time), new Date(i.end_time), settings);
+      const newDuration = calcActiveSeconds(new Date(i.start_time), new Date(i.end_time), settings, false, true);
       
       if (newDuration !== i.total_time_seconds) {
         const { error: updateError } = await supabase
@@ -1939,7 +1939,7 @@ export const recalculateAllProjectTimes = async (): Promise<{ success: boolean; 
           if (dur > 0 && pause.timestamp) {
             const pStart = new Date(pause.timestamp);
             const pEnd = new Date(pStart.getTime() + dur * 1000);
-            totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, isOvertime);
+            totalPauseWorkingSeconds += calcActiveSeconds(pStart, pEnd, settings, isOvertime, true);
           }
         });
 
