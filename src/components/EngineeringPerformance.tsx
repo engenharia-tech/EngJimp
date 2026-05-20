@@ -426,6 +426,8 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
                       borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
                       borderRadius: '12px'
                     }}
+                    itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                    labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                     formatter={(value: any) => [`${value}%`, t('complianceRate')]}
                   />
                   <Bar dataKey="avgCompliance" radius={[0, 4, 4, 0]} barSize={20}>
@@ -573,6 +575,8 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
                           borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
                           borderRadius: '12px'
                         }}
+                        itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                        labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                       />
                       <Area type="monotone" dataKey="compliance" stroke="#3b82f6" fillOpacity={1} fill="url(#colorComp)" strokeWidth={3} />
                     </AreaChart>
@@ -609,6 +613,8 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
                             borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
                             borderRadius: '12px'
                           }}
+                          itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                          labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                         />
                         <Bar dataKey="gapMinutes" fill="#ef4444" radius={[4, 4, 0, 0]} />
                       </BarChart>

@@ -159,25 +159,22 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
   const todayLeft = differenceInDays(new Date(), timelineInterval.start) * zoomLevel;
 
   // Hierarchical task structure
-  const rootTasks = useMemo(() => {
-    const buildTree = (parentId: string | null = null): (GanttTask & { children: any[] })[] => {
-      let tasks = state.ganttTasks.filter(t => t.parentId === parentId);
+  const { rootTasks, closedTasks } = useMemo(() => {
+    const buildTree = (parentId: string | null = null, allTasks: GanttTask[]): (GanttTask & { children: any[] })[] => {
+      let tasks = allTasks.filter(t => t.parentId === parentId);
       
-      if (showOnlyMyTasks && currentUser) {
-        // If filtering by my tasks, we need to keep nodes that have assigned children too
-        // But for simplicity, we'll filter top-level if any child or self matches
-        // Actually, let's just filter the final list for display
-      }
-
       return tasks
         .sort((a, b) => (a.order || 0) - (b.order || 0))
         .map(t => ({
           ...t,
-          children: buildTree(t.id)
+          children: buildTree(t.id, allTasks)
         }));
     };
 
-    let tree = buildTree(null);
+    const activeTasksList = state.ganttTasks.filter(t => t.status !== 'closed');
+    const closedTasksList = state.ganttTasks.filter(t => t.status === 'closed');
+
+    let tree = buildTree(null, activeTasksList);
 
     if (showOnlyMyTasks && currentUser) {
       const filterTree = (nodes: any[]): any[] => {
@@ -191,10 +188,13 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
           return false;
         });
       };
-      return filterTree(tree);
+      tree = filterTree(tree);
     }
 
-    return tree;
+    return { 
+      rootTasks: tree, 
+      closedTasks: closedTasksList.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    };
   }, [state.ganttTasks, showOnlyMyTasks, currentUser]);
 
   const toggleExpand = (id: string) => {
@@ -750,6 +750,69 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
             )}
           </div>
         </div>
+
+        {/* Closed Tasks Section */}
+        {closedTasks.length > 0 && (
+          <div className="mt-8 border-t border-slate-200 bg-slate-50/30 p-6">
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Lock className="text-slate-400" size={16} />
+              Tarefas Fechadas / Canceladas ({closedTasks.length})
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {closedTasks.map(task => (
+                <div 
+                  key={task.id} 
+                  className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm hover:shadow-md transition-shadow group flex items-start justify-between gap-3"
+                >
+                  <div className="flex-grow min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-2 h-2 rounded-full ${task.color}`} />
+                      <h4 className="text-sm font-bold text-slate-800 truncate line-through opacity-60">
+                        {task.title || 'Untitled Task'}
+                      </h4>
+                    </div>
+                    <p className="text-[10px] text-slate-400 line-clamp-1">{task.description}</p>
+                    <div className="mt-2 flex items-center gap-3">
+                       <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-medium">
+                         {format(new Date(task.updatedAt), 'dd/MM/yyyy')}
+                       </span>
+                       <div className="flex -space-x-1">
+                          {task.assignedTo?.slice(0, 3).map((uid: string) => {
+                            const u = state.users.find(usr => usr.id === uid);
+                            return (
+                              <div 
+                               key={uid} 
+                               className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-[7px] font-bold text-slate-600 border border-white"
+                               title={u?.name}
+                              >
+                                {u?.name.charAt(0)}
+                              </div>
+                            );
+                          })}
+                       </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => handleEditTask(task)}
+                      className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-indigo-600"
+                      title="Editar / Reabrir"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteTask(task.id)}
+                      className="p-1.5 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600"
+                      title={t('delete')}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Task Creation/Editing Modal */}

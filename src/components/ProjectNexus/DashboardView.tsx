@@ -139,6 +139,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
                   </Pie>
                   <Tooltip 
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: '#1e293b', color: '#fff' }} 
+                    itemStyle={{ color: '#fff' }}
+                    labelStyle={{ color: '#94a3b8', fontWeight: 'bold' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -171,6 +173,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
                   <Tooltip 
                     cursor={{ fill: '#f8fafc', opacity: 0.05 }}
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: '#1e293b', color: '#fff' }} 
+                    itemStyle={{ color: '#fff' }}
+                    labelStyle={{ color: '#94a3b8', fontWeight: 'bold' }}
                   />
                   <Bar dataKey="tasks" fill="#4f46e5" radius={[4, 4, 0, 0]} barSize={40} />
                 </BarChart>
@@ -224,6 +228,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} />
                   <Tooltip 
                     contentStyle={{ borderRadius: '8px', border: 'none', backgroundColor: '#1e293b', color: '#fff' }}
+                    itemStyle={{ color: '#fff' }}
+                    labelStyle={{ color: '#94a3b8', fontWeight: 'bold' }}
                   />
                   <Area type="monotone" dataKey="activity" stroke="#4f46e5" fillOpacity={1} fill="url(#colorActivity)" strokeWidth={3} />
                 </AreaChart>

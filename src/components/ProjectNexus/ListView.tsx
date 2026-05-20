@@ -195,7 +195,9 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
                 <td className="px-4 py-3"></td>
               </tr>
             )}
-            {state.ganttTasks.map((task, idx) => (
+            {state.ganttTasks
+              .filter(t => t.status !== GanttTaskStatus.CLOSED)
+              .map((task, idx) => (
               <tr 
                 key={task.id} 
                 className={`hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group bg-white dark:bg-black relative cursor-pointer ${(statusPickerOpenId === task.id || menuTaskId === task.id) ? 'z-[50]' : 'z-0'}`}

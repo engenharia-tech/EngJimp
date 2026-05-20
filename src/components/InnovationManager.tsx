@@ -251,7 +251,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
       const isProcessAuthor = curr.authorId && usersMap[curr.authorId] === undefined && Object.keys(usersMap).length > 0;
       if (isProcessAuthor) return acc;
 
-      if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED' || curr.status === 'PENDING') {
+      if (curr.status === 'APPROVED' || curr.status === 'IMPLEMENTED') {
          return {
             savings: acc.savings + (curr.totalAnnualSavings || 0),
             count: acc.count + 1
@@ -1294,7 +1294,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     </>
                                 )}
                                 {inv.status === 'APPROVED' && (
-                                     <div className="flex items-center gap-1">
+                                     <div className="flex items-center gap-2">
                                         <button 
                                             onClick={() => onStatusChange(inv.id, 'IMPLEMENTED')}
                                             className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition flex items-center shadow-sm"
@@ -1305,26 +1305,24 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                         <button 
                                             onClick={() => onStatusChange(inv.id, 'PENDING')}
                                             title="Retomar para Pendente"
-                                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition border border-transparent hover:border-blue-200"
                                         >
                                             <RotateCcw className="w-4 h-4" />
                                         </button>
+                                        <button 
+                                            onClick={() => onStatusChange(inv.id, 'REJECTED')}
+                                            title={t('reject')}
+                                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition border border-transparent"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
                                      </div>
                                 )}
-                                {inv.status === 'REJECTED' && (
+                                {(inv.status === 'REJECTED' || inv.status === 'IMPLEMENTED') && (
                                     <button 
                                         onClick={() => onStatusChange(inv.id, 'PENDING')}
                                         title="Retomar para Pendente"
-                                        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
-                                    >
-                                        <RotateCcw className="w-4 h-4" />
-                                    </button>
-                                )}
-                                {inv.status === 'IMPLEMENTED' && (
-                                    <button 
-                                        onClick={() => onStatusChange(inv.id, 'APPROVED')}
-                                        title="Voltar para Aprovado"
-                                        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                                        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition border border-transparent hover:border-blue-200"
                                     >
                                         <RotateCcw className="w-4 h-4" />
                                     </button>

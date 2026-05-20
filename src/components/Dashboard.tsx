@@ -3,11 +3,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, ComposedChart, Line
 } from 'recharts';
-import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users } from 'lucide-react';
+import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings } from '../types';
 import { EngineeringPerformance } from './EngineeringPerformance';
+import { InterruptionDashboard } from './InterruptionDashboard';
+import { PerCapitaConfigModal } from './PerCapitaConfigModal';
 import { analyzePerformance } from '../services/geminiService';
-import { fetchUsers } from '../services/storageService';
+import { fetchUsers, deleteProjectById, deleteProjectRequest, addAuditLog } from '../services/storageService';
+import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
 import { PRODUCT_CATEGORIES, SUSPENSION_TYPES } from '../constants';
 import { parseISO } from 'date-fns';
@@ -115,10 +118,81 @@ const MultiSelect: React.FC<{
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, settings, onRefresh }) => {
   const { t } = useLanguage();
+  const { addToast } = useToast();
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
   const [availableDesigners, setAvailableDesigners] = useState<User[]>([]);
+
+  // Deletion States
+  const [deleteConfirmationNs, setDeleteConfirmationNs] = useState<string | null>(null);
+  const [isDeletingNs, setIsDeletingNs] = useState(false);
+
+  const handleDeleteNs = async () => {
+    if (!deleteConfirmationNs) return;
+    setIsDeletingNs(true);
+    try {
+      const ns = deleteConfirmationNs;
+      const request = data.projectRequests.find(r => r.ns === ns);
+      const projects = data.projects.filter(p => p.ns === ns);
+
+      let deletedRequestCount = 0;
+      let deletedProjectsCount = 0;
+
+      // 1. Delete matching project request
+      if (request) {
+        await deleteProjectRequest(request.id);
+        deletedRequestCount++;
+      }
+
+      // 2. Delete matching project sessions
+      for (const p of projects) {
+        const res = await deleteProjectById(p.id, p.ns);
+        if (res.success) {
+          deletedProjectsCount++;
+        }
+      }
+
+      addToast(`Sucesso: ${deletedRequestCount} pedido(s) de NS e ${deletedProjectsCount} sessão(ões) d-projeto excluídos para o NS "${ns}".`, 'success');
+
+      // 3. Log to audit trails
+      await addAuditLog({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        action: 'DELETE',
+        entityType: 'PROJECT',
+        entityId: ns,
+        entityName: ns,
+        details: `Exclusão forçada do NS "${ns}" realizada por ${currentUser.name} via Relatório Detalhado. Apagado(s) ${deletedRequestCount} pedido(s) e ${deletedProjectsCount} sessão(ões).`
+      });
+
+      // 4. Refresh app data
+      if (onRefresh) {
+        await onRefresh();
+      } else {
+        window.location.reload();
+      }
+    } catch (error: any) {
+      console.error("Erro ao deletar NS:", error);
+      addToast("Ocorreu um erro ao excluir os registros.", 'error');
+    } finally {
+      setIsDeletingNs(false);
+      setDeleteConfirmationNs(null);
+    }
+  };
+
+  // Estados para personalização do cálculo de produtividade Per Capita
+  const [overrideMonths, setOverrideMonths] = useState<number | null>(() => {
+    const saved = localStorage.getItem('per_capita_override_months');
+    return saved ? parseFloat(saved) : null;
+  });
+  
+  const [designerWeights, setDesignerWeights] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('per_capita_designer_weights');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [isPerCapitaModalOpen, setIsPerCapitaModalOpen] = useState(false);
 
   // Filter States
   const [startDate, setStartDate] = useState<string>(() => {
@@ -155,8 +229,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const isTypeMatch = (type: string, target: ProjectType) => 
     normalize(type) === normalize(target);
 
-  const isInnovationTypeMatch = (type: string, target: InnovationType) => 
-    normalize(type) === normalize(target);
+  const isInnovationTypeMatch = (type: string, target: InnovationType) => {
+    if (!type) return false;
+    const normType = normalize(type).replace(/_/g, " ").replace(/\s+/g, " ").trim();
+    const normTarget = normalize(target).replace(/_/g, " ").replace(/\s+/g, " ").trim();
+
+    if (normType === normTarget) return true;
+
+    // Direct mappings for common Portuguese / English and legacy DB terms
+    if (target === InnovationType.NEW_PROJECT) {
+      return normType === 'NOVO PROJETO' || normType === 'NEW PROJECT';
+    }
+    if (target === InnovationType.PRODUCT_IMPROVEMENT) {
+      return normType === 'MELHORIA DE PRODUTO' || normType === 'PRODUCT IMPROVEMENT';
+    }
+    if (target === InnovationType.PROCESS_OPTIMIZATION) {
+      return normType === 'OTIMIZACAO DE PROCESSOS' || normType === 'PROCESS OPTIMIZATION';
+    }
+
+    return false;
+  };
 
   useEffect(() => {
     // Load users for the manager chart from the data prop to avoid extra API calls and ensure consistency
@@ -409,6 +501,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const releaseCount = yearlyProjects.filter(p => isTypeMatch(p.type, ProjectType.RELEASE)).length;
     const totalHours = yearlyProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600;
 
+    const yearlyInnovations = data.innovations.filter(inv => {
+      const iDate = new Date(inv.createdAt);
+      return iDate.getFullYear() === currentYear;
+    });
+
+    const yearlyInnovationStats = yearlyInnovations.reduce((acc, curr) => {
+      if (curr.status === 'REJECTED' || curr.status === 'PENDING') return acc;
+      const isImplemented = curr.status === 'IMPLEMENTED';
+      const projected = curr.totalAnnualSavings || 0;
+      const effective = curr.effectiveAnnualSavings || 0;
+      
+      if (isImplemented) {
+        acc.effective += effective > 0 ? effective : projected;
+      } else if (curr.status === 'APPROVED') {
+        acc.projected += projected;
+      }
+      return acc;
+    }, { effective: 0, projected: 0 });
+
     const monthly: { name: string, dev: number, release: number, hours: number }[] = monthNames.map((name, i) => ({
       name,
       dev: 0,
@@ -430,6 +541,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       devCount,
       releaseCount,
       totalHours,
+      innovation: yearlyInnovationStats,
       monthly: monthly.filter(m => m.dev > 0 || m.release > 0 || m.hours > 0)
     };
   }, [data.projects, processUserIds, currentUser.role, currentUser.id]);
@@ -469,23 +581,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   // 1.5 Calculate Total Savings (Filtered by period)
   const savingsStats = useMemo(() => {
-    return filteredInnovations.reduce((acc, curr) => {
-        if (curr.status === 'REJECTED') return acc;
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    
+    const initialMonthly = monthNames.map(name => ({
+      name,
+      effective: 0,
+      projected: 0,
+      count: 0
+    }));
+
+    const stats = filteredInnovations.reduce((acc, curr) => {
+        if (curr.status === 'REJECTED' || curr.status === 'PENDING') return acc;
 
         const isImplemented = curr.status === 'IMPLEMENTED';
         const projected = curr.totalAnnualSavings || 0;
         const effective = curr.effectiveAnnualSavings || 0;
+        
+        const invDate = new Date(curr.createdAt);
+        const monthIndex = invDate.getMonth();
 
         if (isImplemented) {
-          acc.effective += effective > 0 ? effective : projected;
+          const value = effective > 0 ? effective : projected;
+          acc.effective += value;
           acc.implementedCount++;
-        } else {
+          acc.monthly[monthIndex].effective += value;
+        } else if (curr.status === 'APPROVED') {
           acc.projected += projected;
-          acc.pendingCount++;
+          acc.pendingCount++; // This counts as "Planned/Approved" now
+          acc.monthly[monthIndex].projected += projected;
         }
         
+        acc.monthly[monthIndex].count++;
+        
         return acc;
-    }, { projected: 0, effective: 0, pendingCount: 0, implementedCount: 0 });
+    }, { projected: 0, effective: 0, pendingCount: 0, implementedCount: 0, monthly: initialMonthly });
+
+    return {
+      ...stats,
+      monthly: stats.monthly.filter(m => m.count > 0)
+    };
   }, [filteredInnovations]);
 
   const totalHours = useMemo(() => {
@@ -590,21 +724,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const end = endDate ? new Date(endDate) : new Date();
     
     // Calculate number of months in the period (minimum 1)
-    let monthDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
-    if (monthDiff <= 0) monthDiff = 1;
+    let calculatedMonthDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+    if (calculatedMonthDiff <= 0) calculatedMonthDiff = 1;
+
+    // Months divisor to use
+    const monthsInPeriod = overrideMonths !== null ? overrideMonths : calculatedMonthDiff;
 
     // Use available designers excluding non-engineering roles
     const engineeringUsers = availableDesigners.filter(u => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(u.role));
-    const designerCount = engineeringUsers.length || 1;
     
-    const avgPerDesignerMonth = totalHours / designerCount / monthDiff;
+    // Calculate sum of weights
+    let totalWeight = 0;
+    engineeringUsers.forEach(u => {
+      const weight = designerWeights[u.id] !== undefined ? designerWeights[u.id] : 1.0;
+      totalWeight += weight;
+    });
+
+    // If totalWeight is 0 (all excluded), fallback to 1 to avoid division by zero
+    const designerCount = totalWeight > 0 ? totalWeight : 1;
+    
+    const avgPerDesignerMonth = totalHours / designerCount / monthsInPeriod;
 
     return {
       avgPerDesignerMonth: Number(avgPerDesignerMonth.toFixed(1)),
-      designerCount,
-      monthsInPeriod: monthDiff
+      designerCount: Number(designerCount.toFixed(2)),
+      monthsInPeriod,
+      calculatedMonths: calculatedMonthDiff,
+      engineeringUsers,
+      totalWeight,
+      isCustomized: overrideMonths !== null || Object.values(designerWeights).some(w => w !== 1.0)
     };
-  }, [totalHours, startDate, endDate, availableDesigners]);
+  }, [totalHours, startDate, endDate, availableDesigners, overrideMonths, designerWeights]);
 
   const goalProgress = useMemo(() => {
     if (monthlyGoal <= 0) return 0;
@@ -719,17 +869,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   // 2. Bar Chart Data: Releases (Monthly, Yearly or Global)
   const barData = useMemo(() => {
+    // 1. Get all-time completed projects
+    const completedProjectsAllTime = data.projects.filter(p => {
+      // Must be completed
+      if (p.status !== 'COMPLETED') return false;
+
+      // Exclude data from 'PROCESSOS' users
+      if (p.userId && processUserIds.has(p.userId)) {
+        return false;
+      }
+
+      // Role-based filtering: Designers only see their own data
+      if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // 2. Apply additional selected designer selector (if Gestor/CEO selects one)
+    const designerFiltered = completedProjectsAllTime.filter(p => {
+      if (currentUser.role === 'PROJETISTA') {
+        return p.userId === currentUser.id;
+      }
+      return selectedDesignerForReleases === 'ALL' || p.userId === selectedDesignerForReleases;
+    });
+
+    // 3. Group based on releaseGrouping
     if (releaseGrouping === 'GLOBAL') {
         return [{
             name: 'Total Global',
-            liberacoes: filteredProjects.length
+            liberacoes: designerFiltered.length
         }];
     }
 
-    const releasesByPeriod = filteredProjects
-      .filter(p => selectedDesignerForReleases === 'ALL' || p.userId === selectedDesignerForReleases)
-      .reduce((acc, curr) => {
-        const date = new Date(curr.endTime || curr.startTime);
+    const releasesByPeriod = designerFiltered.reduce((acc, curr) => {
+        const date = curr.endTime ? new Date(curr.endTime) : (curr.startTime ? new Date(curr.startTime) : new Date());
         let key = '';
         
         if (releaseGrouping === 'MONTHLY') {
@@ -742,7 +917,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         
         acc[key] = (acc[key] || 0) + 1;
         return acc;
-      }, {} as Record<string, number>);
+    }, {} as Record<string, number>);
 
     return Object.keys(releasesByPeriod).map(key => ({
       name: key,
@@ -756,7 +931,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         }
         return a.name.localeCompare(b.name);
     });
-  }, [filteredProjects, releaseGrouping, selectedDesignerForReleases, months]);
+  }, [data.projects, processUserIds, currentUser.role, currentUser.id, selectedDesignerForReleases, releaseGrouping, months]);
 
   // 3. Removed: Issue Type Distribution (Pie Chart)
 
@@ -802,7 +977,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     }));
   }, [filteredProjects, currentUser.role, usersMap, designerGrouping, months, t]);
 
-  // 6. Stacked Bar Chart: Innovations by Status and Type
+  // 6. Stacked Bar Chart: Innovations by Status and Type (All-time suggestions pipeline/backlog)
   const innovationChartData = useMemo(() => {
     const statuses = ['PENDING', 'APPROVED', 'IMPLEMENTED', 'REJECTED'];
     const labelMap: Record<string, string> = {
@@ -813,7 +988,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     };
 
     return statuses.map(status => {
-        const items = filteredInnovations.filter(i => i.status === status);
+        const items = data.innovations.filter(i => i.status === status);
         const newProjects = items.filter(i => isInnovationTypeMatch(i.type, InnovationType.NEW_PROJECT)).length;
         const improvements = items.filter(i => isInnovationTypeMatch(i.type, InnovationType.PRODUCT_IMPROVEMENT)).length;
         const optimizations = items.filter(i => isInnovationTypeMatch(i.type, InnovationType.PROCESS_OPTIMIZATION)).length;
@@ -825,7 +1000,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             [InnovationType.PROCESS_OPTIMIZATION]: optimizations
         };
     });
-  }, [filteredInnovations]);
+  }, [data.innovations, t]);
 
 
   // 7. Stacked Bar Chart: Activities by Designer (Release, Variation, Development)
@@ -1019,7 +1194,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       return {
         ns,
         clientName: request?.clientName || projects[0]?.clientName || '-',
-        productType: request?.productType || projects[0]?.implementType || '-',
+        productType: request?.productType || projects[0]?.implementType || projects[0]?.type || '-',
         dimension: request?.dimension || '-',
         setup: request?.setup || '-',
         chassis: request?.chassisNumber || projects[0]?.chassisNumber || '-',
@@ -1177,7 +1352,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           <MultiSelect 
             label={t('category')}
-            options={PRODUCT_CATEGORIES}
+            options={[...PRODUCT_CATEGORIES, ...Object.values(ProjectType)].sort()}
             selected={selectedCategories}
             onChange={setSelectedCategories}
             t={t}
@@ -1378,14 +1553,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <p className="text-[9px] text-blue-600 font-black uppercase">
                       Total Ano: {yearlyStats.devCount} PROJETOS
                     </p>
-                    <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 mt-1 border-t border-blue-50 dark:border-slate-800/50 pt-1">
-                      {yearlyStats.monthly.map(m => (
-                        <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-blue-500 dark:text-blue-400">{m.dev}</span></span>
-                      ))}
+                    <div className="flex flex-col gap-0.5 mt-1 border-t border-blue-50 dark:border-slate-800/50 pt-1">
+                       <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {devProjectsStats.count})</p>
+                       <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
+                         {yearlyStats.monthly.map(m => (
+                           <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-blue-500 dark:text-blue-400">{m.dev}</span></span>
+                         ))}
+                       </div>
                     </div>
-                    <p className="text-[9px] text-gray-400 font-medium uppercase mt-0.5">
-                      Período: {devProjectsStats.count}
-                    </p>
                  </div>
                </div>
                <div className="h-7 w-7 sm:h-9 sm:w-9 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
@@ -1415,14 +1590,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <p className="text-[8px] text-emerald-600 font-black uppercase">
                       Total Ano: {yearlyStats.releaseCount} PROJETOS
                     </p>
-                    <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 mt-1 border-t border-emerald-50 dark:border-slate-800/50 pt-1">
-                      {yearlyStats.monthly.map(m => (
-                        <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-emerald-500 dark:text-emerald-400">{m.release}</span></span>
-                      ))}
+                    <div className="flex flex-col gap-0.5 mt-1 border-t border-emerald-50 dark:border-slate-800/50 pt-1">
+                       <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {releaseStats.count})</p>
+                       <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
+                         {yearlyStats.monthly.map(m => (
+                           <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-emerald-500 dark:text-emerald-400">{m.release}</span></span>
+                         ))}
+                       </div>
                     </div>
-                    <p className="text-[8px] text-gray-400 font-medium uppercase mt-0.5">
-                      Período: {releaseStats.count}
-                    </p>
                  </div>
                </div>
                <div className="h-7 w-7 sm:h-9 sm:w-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
@@ -1433,11 +1608,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           {/* Real Average Per Capita / Month */}
           {currentUser.role !== 'PROCESSOS' && (
-             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 opacity-80">
+             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                <div className="w-full">
-                 <p className="text-[9px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
-                   Produtividade Per Capita
-                 </p>
+                 <div className="flex items-center justify-between">
+                   <p className="text-[9px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
+                     Produtividade Per Capita
+                   </p>
+                   {perCapitaStats.isCustomized && (
+                     <span className="text-[7px] sm:text-[8px] px-1 py-0.5 bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-400 font-bold uppercase rounded tracking-wider">
+                       Ajustado
+                     </span>
+                   )}
+                 </div>
                  <div className="flex items-baseline gap-1">
                    <p className="text-lg sm:text-xl font-black text-gray-800 dark:text-white">
                      {perCapitaStats.avgPerDesignerMonth}h
@@ -1446,11 +1628,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                  </div>
                  <div className="mt-2 pt-2 border-t border-gray-50 dark:border-slate-800/50 flex flex-col gap-0.5">
                     <p className="text-[8px] text-gray-400 uppercase">
-                      Ref: {perCapitaStats.designerCount} projetistas ativos
+                      Ref: <strong className="text-gray-600 dark:text-slate-300">{perCapitaStats.designerCount}</strong> projetistas {perCapitaStats.isCustomized ? 'equivalentes' : 'ativos'}
                     </p>
                     <p className="text-[8px] text-gray-500 font-bold uppercase">
-                      {devProjectsStats.months} {devProjectsStats.months > 1 ? 'MESES SELECIONADOS' : 'MÊS SELECIONADO'}
+                      {perCapitaStats.monthsInPeriod} {perCapitaStats.monthsInPeriod === 1 ? 'MÊS SELECIONADO' : 'MESES SELECIONADOS'}
                     </p>
+                    <button 
+                      onClick={() => setIsPerCapitaModalOpen(true)}
+                      className="mt-1 flex items-center gap-1 text-[8.5px] font-bold uppercase text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer self-start border border-blue-50 dark:border-slate-800 bg-blue-50/50 dark:bg-slate-900/30 px-1.5 py-0.5 rounded transition shadow-sm hover:shadow"
+                    >
+                      <SlidersHorizontal size={9} />
+                      Configurar Cálculo
+                    </button>
                  </div>
                </div>
                <div className="h-7 w-7 sm:h-8 sm:w-8 bg-gray-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-gray-400 dark:text-slate-500 flex-shrink-0">
@@ -1502,16 +1691,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           {/* Innovation KPI */}
            <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
-              <div className="flex-1 grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[8px] sm:text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('effectiveValue')}</p>
-                  <p className="text-sm sm:text-lg font-black text-emerald-800 dark:text-emerald-300">{formatCurrency(savingsStats.effective)}</p>
-                  <p className="text-[7px] text-gray-400 uppercase">{savingsStats.implementedCount} REALIZADAS</p>
+              <div className="flex-1 w-full">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[8px] sm:text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('effectiveValue')}</p>
+                    <p className="text-sm sm:text-lg font-black text-emerald-800 dark:text-emerald-300">{formatCurrency(savingsStats.effective)}</p>
+                    <p className="text-[7px] text-gray-400 uppercase font-bold">{savingsStats.implementedCount} REALIZADAS</p>
+                  </div>
+                  <div className="border-l border-emerald-50 dark:border-emerald-900/30 pl-4">
+                    <p className="text-[8px] sm:text-[9px] font-bold text-emerald-400 dark:text-emerald-500 uppercase tracking-wider mb-0.5 sm:mb-1">{t('projectedValue')}</p>
+                    <p className="text-sm sm:text-lg font-black text-emerald-700/70 dark:text-emerald-400/70">{formatCurrency(savingsStats.projected)}</p>
+                    <p className="text-[7px] text-gray-400 uppercase font-bold">{savingsStats.pendingCount} APROVADAS</p>
+                  </div>
                 </div>
-                <div className="border-l border-emerald-50 dark:border-emerald-900/30 pl-4">
-                  <p className="text-[8px] sm:text-[9px] font-bold text-emerald-400 dark:text-emerald-500 uppercase tracking-wider mb-0.5 sm:mb-1">{t('projectedValue')}</p>
-                  <p className="text-sm sm:text-lg font-black text-emerald-700/70 dark:text-emerald-400/70">{formatCurrency(savingsStats.projected)}</p>
-                  <p className="text-[7px] text-gray-400 uppercase">{savingsStats.pendingCount} PENDENTES</p>
+                
+                <div className="mt-2 pt-2 border-t border-emerald-50 dark:border-slate-800 flex flex-col gap-0.5">
+                  <p className="text-[9px] text-emerald-600 font-black uppercase">RESUMO TOTAL ANO</p>
+                  <p className="text-[8px] text-gray-500 font-bold uppercase italic">
+                    REALIZADO: <span className="text-emerald-600">{formatCurrency(yearlyStats.innovation.effective)}</span> | 
+                    PROJETADO: <span className="text-emerald-400">{formatCurrency(yearlyStats.innovation.projected)}</span>
+                  </p>
+                  
+                  <p className="text-[9px] text-emerald-600 font-black uppercase mt-1">RESUMO POR MÊS (PERÍODO)</p>
+                  <div className="flex flex-wrap gap-x-2 gap-y-1 mt-1">
+                    {savingsStats.monthly.map(m => (
+                      <div key={m.name} className="flex flex-col">
+                        <span className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}</span>
+                        <div className="flex gap-1.5">
+                          {m.effective > 0 && <span className="text-[7px] text-emerald-600 font-bold">{formatCurrency(m.effective)}</span>}
+                          {m.projected > 0 && <span className="text-[7px] text-emerald-400/70 font-medium">{formatCurrency(m.projected)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
               <div className="h-7 w-7 sm:h-8 sm:w-8 bg-emerald-50 dark:bg-black rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
@@ -1627,6 +1839,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     />
                     <Tooltip 
                       contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                      itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                      labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                       cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }}
                       formatter={(value: number) => [`${value}h`, '']}
                     />
@@ -1790,6 +2004,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                             />
                             <Tooltip 
                                 contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                                 cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }}
                             />
                             <Bar dataKey="total" name={t('totalDeliveries').toUpperCase()} fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={30}>
@@ -1846,7 +2062,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ backgroundColor: theme === 'dark' ? '#000' : '#fff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#fff' : '#000' }}
+                    contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#fff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#fff' : '#000', borderRadius: '8px' }}
+                    itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                    labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                   />
                   <Legend />
                 </PieChart>
@@ -1868,7 +2086,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   <XAxis type="number" stroke={theme === 'dark' ? '#94a3b8' : '#64748b'} fontSize={12} />
                   <YAxis dataKey="name" type="category" stroke={theme === 'dark' ? '#94a3b8' : '#64748b'} fontSize={10} width={100} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: theme === 'dark' ? '#000' : '#fff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#fff' : '#000' }}
+                    contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#fff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#fff' : '#000', borderRadius: '8px' }}
+                    itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                    labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                   />
                   <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} name={t('ordersCount')} />
                 </BarChart>
@@ -1960,13 +2180,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 <div key={idx} className="bg-gray-50 dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-800">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">{item.ns}</span>
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
-                      item.status === ProjectRequestStatus.COMPLETED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                      item.status === ProjectRequestStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                      'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-400'
-                    }`}>
-                      {item.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                        item.status === ProjectRequestStatus.COMPLETED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                        item.status === ProjectRequestStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                        'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-400'
+                      }`}>
+                        {item.status}
+                      </span>
+                      {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                        <button
+                          onClick={() => setDeleteConfirmationNs(item.ns)}
+                          className="p-1 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                          title={t('delete') || 'Excluir'}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2 uppercase">{item.clientName}</h4>
                   <div className="grid grid-cols-2 gap-y-2 text-[10px] font-medium uppercase text-gray-500 dark:text-slate-400">
@@ -2002,6 +2233,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('dimension')}</th>
                   <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('status')}</th>
                   <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('releasedMonth')}</th>
+                  {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                    <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider text-right">{t('actions') || 'AÇÕES'}</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -2030,6 +2264,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                         </span>
                       )}
                     </td>
+                    {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          onClick={() => setDeleteConfirmationNs(item.ns)}
+                          className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 rounded transition"
+                          title={t('delete') || 'Excluir'}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -2039,93 +2284,175 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 {t('showingRecentNs', { count: 20 })}
               </p>
             )}
+
+            {/* NS Delete Confirmation Modal */}
+            {deleteConfirmationNs && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+                  <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700 text-left">
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 uppercase">{t('confirmDeletion') || 'CONFIRMAR EXCLUSÃO'}</h3>
+                      <p className="text-gray-600 dark:text-slate-400 mb-6 text-sm">
+                        {`Deseja realmente excluir todos os registros (pedido de rastreamento e sessões de projeto) vinculados ao NS "${deleteConfirmationNs}"? Essa ação é irreversível e removerá todos os dados históricos desse NS.`}
+                      </p>
+                      <div className="flex justify-end gap-3">
+                          <button 
+                              onClick={() => setDeleteConfirmationNs(null)}
+                              disabled={isDeletingNs}
+                              className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
+                          >
+                              {t('cancel') || 'CANCELAR'}
+                          </button>
+                          <button 
+                              onClick={handleDeleteNs}
+                              disabled={isDeletingNs}
+                              className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium text-sm transition-colors shadow-sm flex items-center"
+                          >
+                              {isDeletingNs ? (
+                                <>
+                                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                  {t('deleting') || 'EXCLUINDO...'}
+                                </>
+                              ) : (
+                                <>
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  {t('yesDelete') || 'SIM, EXCLUIR'}
+                                </>
+                              )}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+            )}
+
+            {/* Per Capita Configuration Modal */}
+            {isPerCapitaModalOpen && (
+              <PerCapitaConfigModal
+                perCapitaStats={perCapitaStats}
+                totalHours={totalHours}
+                overrideMonths={overrideMonths}
+                designerWeights={designerWeights}
+                onClose={() => setIsPerCapitaModalOpen(false)}
+                onSave={(newMonths, newWeights) => {
+                  if (newMonths === null) {
+                    localStorage.removeItem('per_capita_override_months');
+                  } else {
+                    localStorage.setItem('per_capita_override_months', String(newMonths));
+                  }
+                  localStorage.setItem('per_capita_designer_weights', JSON.stringify(newWeights));
+                  setOverrideMonths(newMonths);
+                  setDesignerWeights(newWeights);
+                  setIsPerCapitaModalOpen(false);
+                  addToast("Parâmetros per capita atualizados com sucesso!", "success");
+                }}
+                onReset={() => {
+                  localStorage.removeItem('per_capita_override_months');
+                  localStorage.removeItem('per_capita_designer_weights');
+                  setOverrideMonths(null);
+                  setDesignerWeights({});
+                  setIsPerCapitaModalOpen(false);
+                  addToast("Parâmetros per capita restaurados ao padrão!", "info");
+                }}
+                theme={theme}
+              />
+            )}
           </div>
         </div>
       )}
 
       {/* Interruption Report Section */}
       {visibleSections.includes('interruption_report') && (
-        <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-500 mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
-              <PauseCircle className="w-5 h-5 mr-2 text-red-500" />
-              {t('interruptionReport')}
-            </h3>
-            <button 
-              onClick={() => {
-                const headers = [
-                  t('nsHeader'), 
-                  t('clientHeader'), 
-                  t('designerCol'), 
-                  t('reason'), 
-                  t('area'), 
-                  t('start'), 
-                  t('totalTime'), 
-                  t('estimatedCost')
-                ];
-                const rows = filteredInterruptions.map(i => [
-                  i.projectNs,
-                  i.clientName,
-                  usersMap[i.designerId] || i.designerId,
-                  i.problemType,
-                  t(i.responsibleArea.toLowerCase() as any),
-                  i.startTime,
-                  formatDuration(i.totalTimeSeconds),
-                  formatCurrency(i.totalTimeSeconds * costPerSecond)
-                ]);
-                const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement("a");
-                const url = URL.createObjectURL(blob);
-                link.setAttribute("href", url);
-                link.setAttribute("download", `relatorio_interrupcoes_custos_${new Date().toISOString().split('T')[0]}.csv`);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }}
-              className="flex items-center text-xs font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
-            >
-              <Download className="w-4 h-4 mr-1" />
-              {t('exportReport')}
-            </button>
-          </div>
+        <div className="space-y-8 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) && (
+            <div className="mt-6 bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
+              <div className="mb-4">
+                <h2 className={`text-2xl font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('interruptionReports')}</h2>
+                <div className="text-xs text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wide">{t('bottleneckAnalysis')}</div>
+              </div>
+              <InterruptionDashboard data={data} theme={theme} />
+            </div>
+          )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-slate-800">
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('nsHeader')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('client')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('designerCol')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('reason')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('area')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('totalTime')}</th>
-                  <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('estimatedCost')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredInterruptions.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-10 text-center text-gray-400 dark:text-slate-500 italic text-sm">
-                      {t('noInterruptions')}
-                    </td>
+          <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
+                <PauseCircle className="w-5 h-5 mr-2 text-red-500" />
+                {t('interruptionReport')}
+              </h3>
+              <button 
+                onClick={() => {
+                  const headers = [
+                    t('nsHeader'), 
+                    t('clientHeader'), 
+                    t('designerCol'), 
+                    t('reason'), 
+                    t('area'), 
+                    t('start'), 
+                    t('totalTime'), 
+                    t('estimatedCost')
+                  ];
+                  const rows = filteredInterruptions.map(i => [
+                    i.projectNs,
+                    i.clientName,
+                    usersMap[i.designerId] || i.designerId,
+                    i.problemType,
+                    t(i.responsibleArea.toLowerCase() as any),
+                    i.startTime,
+                    formatDuration(i.totalTimeSeconds),
+                    formatCurrency(i.totalTimeSeconds * costPerSecond)
+                  ]);
+                  const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+                  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                  const link = document.createElement("a");
+                  const url = URL.createObjectURL(blob);
+                  link.setAttribute("href", url);
+                  link.setAttribute("download", `relatorio_interrupcoes_custos_${new Date().toISOString().split('T')[0]}.csv`);
+                  link.style.visibility = 'hidden';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                className="flex items-center text-xs font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
+              >
+                <Download className="w-4 h-4 mr-1" />
+                {t('exportReport')}
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-slate-800">
+                    <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('nsHeader')}</th>
+                    <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('client')}</th>
+                    <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('designerCol')}</th>
+                    <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('reason')}</th>
+                    <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('area')}</th>
+                    <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('totalTime')}</th>
+                    <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('estimatedCost')}</th>
                   </tr>
-                ) : (
-                  filteredInterruptions.map((item, idx) => (
-                    <tr key={idx} className="border-b border-gray-50 dark:border-slate-900 hover:bg-gray-50/50 dark:hover:bg-slate-900/50 transition-colors">
-                      <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{item.projectNs}</td>
-                      <td className="py-3 px-4 text-xs font-medium text-gray-800 dark:text-white truncate max-w-[150px]">{item.clientName}</td>
-                      <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{usersMap[item.designerId] || item.designerId}</td>
-                      <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300 truncate max-w-[200px]" title={item.problemType}>{item.problemType}</td>
-                      <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{t(item.responsibleArea.toLowerCase() as any)}</td>
-                      <td className="py-3 px-4 text-xs font-mono text-gray-700 dark:text-slate-200">{formatDuration(item.totalTimeSeconds)}</td>
-                      <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{formatCurrency(item.totalTimeSeconds * costPerSecond)}</td>
+                </thead>
+                <tbody>
+                  {filteredInterruptions.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-10 text-center text-gray-400 dark:text-slate-500 italic text-sm">
+                        {t('noInterruptions')}
+                      </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredInterruptions.map((item, idx) => (
+                      <tr key={idx} className="border-b border-gray-50 dark:border-slate-900 hover:bg-gray-50/50 dark:hover:bg-slate-900/50 transition-colors">
+                        <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{item.projectNs}</td>
+                        <td className="py-3 px-4 text-xs font-medium text-gray-800 dark:text-white truncate max-w-[150px]">{item.clientName}</td>
+                        <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{usersMap[item.designerId] || item.designerId}</td>
+                        <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300 truncate max-w-[200px]" title={item.problemType}>{item.problemType}</td>
+                        <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{t(item.responsibleArea.toLowerCase() as any)}</td>
+                        <td className="py-3 px-4 text-xs font-mono text-gray-700 dark:text-slate-200">{formatDuration(item.totalTimeSeconds)}</td>
+                        <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{formatCurrency(item.totalTimeSeconds * costPerSecond)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -2177,6 +2504,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       <YAxis allowDecimals={false} tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
                       <Tooltip 
                           contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                          itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                          labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                           cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                       />
                       <Bar dataKey="liberacoes" name={t('releases')} fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={releaseGrouping === 'GLOBAL' ? 80 : 40} />
@@ -2206,12 +2535,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                         <YAxis allowDecimals={false} tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
                         <Tooltip 
                             contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                            itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                            labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                             cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                         />
                         <Legend />
                         <Bar dataKey={InnovationType.NEW_PROJECT} name={t('newProject').toUpperCase()} stackId="a" fill="#8b5cf6" />
-                        <Bar dataKey={InnovationType.PRODUCT_IMPROVEMENT} name={t('improvement').toUpperCase()} stackId="a" fill="#3b82f6" />
-                        <Bar dataKey={InnovationType.PROCESS_OPTIMIZATION} name={t('optimization').toUpperCase()} stackId="a" fill="#f97316" />
+                        <Bar dataKey={InnovationType.PRODUCT_IMPROVEMENT} name={t('productImprovement').toUpperCase()} stackId="a" fill="#3b82f6" />
+                        <Bar dataKey={InnovationType.PROCESS_OPTIMIZATION} name={t('processOptimization').toUpperCase()} stackId="a" fill="#f97316" />
                     </BarChart>
                 </ResponsiveContainer>
             </div>
@@ -2240,6 +2571,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
                                 <Tooltip 
                                     contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                    itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                    labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                                     cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                                 />
                                 <Legend />
@@ -2287,6 +2620,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                     <YAxis allowDecimals={false} tickLine={false} axisLine={false} label={{ value: t('stopCount'), angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }} />
                                     <Tooltip 
                                         contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                        itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                        labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                                         cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                                     />
                                     {/* No legend in general view as requested */}
@@ -2307,6 +2642,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                     <YAxis allowDecimals={false} tickLine={false} axisLine={false} label={{ value: t('stopCount'), angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }} />
                                     <Tooltip 
                                         contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                        itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                                        labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                                         cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
                                     />
                                     <Legend />

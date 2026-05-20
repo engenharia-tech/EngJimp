@@ -1448,6 +1448,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         borderRadius: '12px',
                         boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
                       }}
+                      itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                      labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                     />
                     <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={viewMode === 'month' ? 15 : 40} />
                   </BarChart>
@@ -1483,6 +1485,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                       borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
                       color: theme === 'dark' ? '#fff' : '#000'
                     }}
+                    itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                    labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                   />
                   <Legend />
                 </PieChart>
@@ -2031,6 +2035,8 @@ const EngineeringDashboard: React.FC<{
                     borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
                     borderRadius: '12px'
                   }}
+                  itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                  labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
                 />
                 <Bar dataKey="avgHours" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20}>
                   {stats.averageByType.map((entry, index) => (

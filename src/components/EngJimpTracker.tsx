@@ -2311,13 +2311,13 @@ JIMPNEXUS
                             className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none dark:bg-black dark:text-white"
                         >
                             <option value="">{t('selectSector')}</option>
-                            <option value="Comercial">{t('comercial')}</option>
-                            <option value="Engenharia">{t('engineering')}</option>
+                            <option value="COMERCIAL">{t('comercial')}</option>
+                            <option value="ENGENHARIA">{t('engineering')}</option>
                             <option value="PCP">{t('pcp')}</option>
-                            <option value="Produção">{t('production')}</option>
-                            <option value="Cliente">{t('client')}</option>
-                            <option value="Vendas">{t('sales')}</option>
-                            <option value="Outros">{t('others')}</option>
+                            <option value="PRODUÇÃO">{t('production')}</option>
+                            <option value="CLIENTE">{t('client')}</option>
+                            <option value="VENDAS">{t('sales')}</option>
+                            <option value="OUTROS">{t('others')}</option>
                         </select>
                     </div>
                 )}
