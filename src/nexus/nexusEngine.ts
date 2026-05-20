@@ -208,9 +208,10 @@ dados: ${JSON.stringify(equipePerformace)}
     const response = await askGemini(fullPrompt);
     
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Nexus Engine Error:", error);
-    return localFallbackEngine(query, appState);
+    const errorMessage = error?.message || String(error);
+    return `⚠️ Erro de Processamento Avançado (Nexus): ${errorMessage}\n\nPor favor, reporte este erro ao administrador.\n\nFallback: ` + localFallbackEngine(query, appState);
   }
 };
 

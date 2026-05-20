@@ -100,30 +100,59 @@ app.post("/api/gemini/generate", async (req, res) => {
       return res.status(400).json({ success: false, error: "Prompt is missing." });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    const rawApiKey = process.env.GEMINI_API_KEY;
+    if (!rawApiKey) {
       return res.status(400).json({ 
         success: false, 
         error: "Gemini API Key is not configured on the server." 
       });
     }
 
-    const ai = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
-
+    const apiKey = rawApiKey.trim();
     const targetModel = model || "gemini-3.5-flash";
-    const response = await ai.models.generateContent({
-      model: targetModel,
-      contents: prompt,
-    });
+    let text = "";
 
-    return res.json({ success: true, text: response.text || '' });
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      const response = await ai.models.generateContent({
+        model: targetModel,
+        contents: prompt,
+      });
+
+      text = response.text || '';
+    } catch (sdkError: any) {
+      console.warn("[Gemini API SDK failed, trying direct REST fallback]:", sdkError);
+      
+      const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`;
+      const restResponse = await fetch(restUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "aistudio-build"
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+
+      if (!restResponse.ok) {
+        const errText = await restResponse.text();
+        throw new Error(`SDK Error: ${sdkError.message}. REST Fallback Error (Status ${restResponse.status}): ${errText}`);
+      }
+
+      const restData: any = await restResponse.json();
+      text = restData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    }
+
+    return res.json({ success: true, text });
   } catch (error: any) {
     console.error("[Gemini API Server Error]:", error);
     return res.status(500).json({ 
