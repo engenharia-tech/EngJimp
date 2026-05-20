@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, ComposedChart, Line
 } from 'recharts';
-import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal } from 'lucide-react';
+import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal, GitBranch } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings } from '../types';
 import { EngineeringPerformance } from './EngineeringPerformance';
 import { InterruptionDashboard } from './InterruptionDashboard';
@@ -329,6 +329,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         return false;
       }
 
+      // Filter by selected designer (for roles other than PROJETISTA, which is already restricted)
+      if (selectedDesignerForReleases !== 'ALL' && p.userId !== selectedDesignerForReleases) {
+        return false;
+      }
+
       // Category Filter
       if (selectedCategories.length > 0) {
         const req = data.projectRequests.find(r => r.ns === p.ns);
@@ -373,7 +378,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       // A project is relevant if it overlaps with the selected range
       return pStart <= end && pEnd >= start;
     });
-  }, [data.projects, startDate, endDate, currentUser.role, currentUser.id, selectedCategories, selectedSuspensions, selectedClients, data.projectRequests]);
+  }, [data.projects, startDate, endDate, currentUser.role, currentUser.id, selectedCategories, selectedSuspensions, selectedClients, data.projectRequests, selectedDesignerForReleases]);
 
   const filteredIssues = useMemo(() => {
      return data.issues.filter(i => {
@@ -549,6 +554,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     const devCount = yearlyProjects.filter(p => isTypeMatch(p.type, ProjectType.DEVELOPMENT)).length;
     const releaseCount = yearlyProjects.filter(p => isTypeMatch(p.type, ProjectType.RELEASE)).length;
+    const variationCount = yearlyProjects.filter(p => isTypeMatch(p.type, ProjectType.VARIATION)).length;
     const totalHours = yearlyProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600;
 
     const yearlyInnovations = data.innovations.filter(inv => {
@@ -570,10 +576,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       return acc;
     }, { effective: 0, projected: 0 });
 
-    const monthly: { name: string, dev: number, release: number, hours: number }[] = monthNames.map((name, i) => ({
+    const monthly: { name: string, dev: number, release: number, variation: number, hours: number }[] = monthNames.map((name, i) => ({
       name,
       dev: 0,
       release: 0,
+      variation: 0,
       hours: 0
     }));
 
@@ -583,6 +590,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
          const m = pDate.getMonth();
          if (isTypeMatch(p.type, ProjectType.DEVELOPMENT)) monthly[m].dev++;
          if (isTypeMatch(p.type, ProjectType.RELEASE)) monthly[m].release++;
+         if (isTypeMatch(p.type, ProjectType.VARIATION)) monthly[m].variation++;
          monthly[m].hours += (p.totalActiveSeconds || 0) / 3600;
       }
     });
@@ -590,9 +598,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     return {
       devCount,
       releaseCount,
+      variationCount,
       totalHours,
       innovation: yearlyInnovationStats,
-      monthly: monthly.filter(m => m.dev > 0 || m.release > 0 || m.hours > 0)
+      monthly: monthly.filter(m => m.dev > 0 || m.release > 0 || m.variation > 0 || m.hours > 0)
     };
   }, [data.projects, processUserIds, currentUser.role, currentUser.id]);
 
@@ -628,6 +637,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       totalHours: releases.reduce((acc, p) => acc + p.totalActiveSeconds, 0) / 3600
     };
   }, [filteredProjects]);
+
+  const variationStats = useMemo(() => {
+    const variations = filteredProjects.filter(p => 
+      String(p.type || '').toUpperCase().trim() === 'VARIAÇÃO'
+    );
+    
+    const start = startDate ? new Date(startDate) : new Date();
+    const end = endDate ? new Date(endDate) : new Date();
+    let monthDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+    if (monthDiff <= 0) monthDiff = 1;
+
+    const totalVariationSeconds = variations.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const totalVariationHours = totalVariationSeconds / 3600;
+
+    return {
+      count: variations.length,
+      totalHours: Number(totalVariationHours.toFixed(1)),
+      avgPerMonth: Number((totalVariationHours / monthDiff).toFixed(1)),
+      months: monthDiff
+    };
+  }, [filteredProjects, startDate, endDate]);
 
   // 1.5 Calculate Total Savings (Filtered by period)
   const savingsStats = useMemo(() => {
@@ -723,6 +753,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     // Processar Atividades Operacionais (que já são produtivas por natureza)
     data.operationalActivities.forEach(a => {
+        // Exclude data from 'PROCESSOS' users
+        if (a.userId && processUserIds.has(a.userId)) {
+            return;
+        }
+
+        // Role-based filtering: Designers only see their own data
+        if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) {
+            return;
+        }
+
+        // Filter by selected designer
+        if (selectedDesignerForReleases !== 'ALL' && a.userId !== selectedDesignerForReleases) {
+            return;
+        }
+
         const aStart = parseISO(a.startTime).getTime();
         const aEnd = (a.endTime ? parseISO(a.endTime) : new Date()).getTime();
         
@@ -767,7 +812,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     });
 
     return Math.round(totalWorkingSeconds / 3600);
-  }, [filteredProjects, data.operationalActivities, data.interruptions, startDate, endDate, settings, t]);
+  }, [filteredProjects, data.operationalActivities, data.interruptions, startDate, endDate, settings, t, selectedDesignerForReleases]);
 
   const perCapitaStats = useMemo(() => {
     const start = startDate ? new Date(startDate) : new Date();
@@ -1656,6 +1701,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
              </div>
           )}
 
+          {/* Total de Variações Card */}
+          {currentUser.role !== 'PROCESSOS' && (
+             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-amber-500/5">
+                <div className="w-full">
+                  <p className="text-[9px] sm:text-xs font-black text-amber-600 dark:text-amber-450 uppercase tracking-widest mb-0.5 sm:mb-1">
+                    Total de Variações
+                  </p>
+                  <div className="flex items-baseline gap-1">
+                    <p className="text-xl sm:text-2xl font-black text-amber-800 dark:text-amber-300">
+                      {variationStats.count}
+                    </p>
+                    <span className="text-[10px] text-amber-500/70 font-bold uppercase italic">variações</span>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 flex flex-col gap-0.5">
+                     <p className="text-[9px] text-gray-500 font-bold uppercase flex items-center gap-1">
+                       <Clock size={10} className="text-amber-450" />
+                       Média: {variationStats.avgPerMonth} / mês
+                     </p>
+                     <p className="text-[8px] text-amber-650 font-black uppercase">
+                       Total Ano: {yearlyStats.variationCount} VARIAÇÕES
+                     </p>
+                     <div className="flex flex-col gap-0.5 mt-1 border-t border-amber-50 dark:border-slate-800/50 pt-1">
+                        <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {variationStats.count})</p>
+                        <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
+                          {yearlyStats.monthly.map(m => (
+                            <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-amber-500 dark:text-amber-400">{m.variation}</span></span>
+                          ))}
+                        </div>
+                     </div>
+                  </div>
+                </div>
+                <div className="h-7 w-7 sm:h-9 sm:w-9 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center text-amber-600 dark:text-amber-400 flex-shrink-0">
+                  <GitBranch className="w-4 h-4 sm:w-5 sm:h-5" />
+                </div>
+             </div>
+          )}
+
           {/* Real Average Per Capita / Month */}
           {currentUser.role !== 'PROCESSOS' && (
              <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
@@ -1739,47 +1821,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
           )}
 
-          {/* Innovation KPI */}
-           <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
-              <div className="flex-1 w-full">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-[8px] sm:text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('effectiveValue')}</p>
-                    <p className="text-sm sm:text-lg font-black text-emerald-800 dark:text-emerald-300">{formatCurrency(savingsStats.effective)}</p>
-                    <p className="text-[7px] text-gray-400 uppercase font-bold">{savingsStats.implementedCount} REALIZADAS</p>
-                  </div>
-                  <div className="border-l border-emerald-50 dark:border-emerald-900/30 pl-4">
-                    <p className="text-[8px] sm:text-[9px] font-bold text-emerald-400 dark:text-emerald-500 uppercase tracking-wider mb-0.5 sm:mb-1">{t('projectedValue')}</p>
-                    <p className="text-sm sm:text-lg font-black text-emerald-700/70 dark:text-emerald-400/70">{formatCurrency(savingsStats.projected)}</p>
-                    <p className="text-[7px] text-gray-400 uppercase font-bold">{savingsStats.pendingCount} APROVADAS</p>
-                  </div>
-                </div>
-                
-                <div className="mt-2 pt-2 border-t border-emerald-50 dark:border-slate-800 flex flex-col gap-0.5">
-                  <p className="text-[9px] text-emerald-600 font-black uppercase">RESUMO TOTAL ANO</p>
-                  <p className="text-[8px] text-gray-500 font-bold uppercase italic">
-                    REALIZADO: <span className="text-emerald-600">{formatCurrency(yearlyStats.innovation.effective)}</span> | 
-                    PROJETADO: <span className="text-emerald-400">{formatCurrency(yearlyStats.innovation.projected)}</span>
-                  </p>
-                  
-                  <p className="text-[9px] text-emerald-600 font-black uppercase mt-1">RESUMO POR MÊS (PERÍODO)</p>
-                  <div className="flex flex-wrap gap-x-2 gap-y-1 mt-1">
-                    {savingsStats.monthly.map(m => (
-                      <div key={m.name} className="flex flex-col">
-                        <span className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}</span>
-                        <div className="flex gap-1.5">
-                          {m.effective > 0 && <span className="text-[7px] text-emerald-600 font-bold">{formatCurrency(m.effective)}</span>}
-                          {m.projected > 0 && <span className="text-[7px] text-emerald-400/70 font-medium">{formatCurrency(m.projected)}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-emerald-50 dark:bg-black rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
-                <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </div>
-            </div>
+
 
           {/* Cost KPI */}
           <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
