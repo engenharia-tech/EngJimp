@@ -430,6 +430,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         return false;
       }
 
+      // Security role constraint: Designers only see their own interruptions
+      if (currentUser.role === 'PROJETISTA' && i.designerId !== currentUser.id) {
+        return false;
+      }
+
+      // Filter by selected interruption designer
+      if (selectedInterruptionDesigner !== 'ALL' && i.designerId !== selectedInterruptionDesigner) {
+        return false;
+      }
+
+      // Filter by client
+      if (selectedClients.length > 0 && !selectedClients.includes(i.clientName || '')) {
+        return false;
+      }
+
+      // Filter by suspension reasons (problem types)
+      if (selectedSuspensions.length > 0 && !selectedSuspensions.includes(i.problemType || '')) {
+        return false;
+      }
+
+      // Filter by categories (corresponds to active project's type)
+      if (selectedCategories.length > 0) {
+        const project = data.projects.find(p => p.id === i.projectId || p.ns === i.projectNs);
+        if (project) {
+          if (!selectedCategories.includes(project.type || '')) return false;
+        } else {
+          const req = data.projectRequests.find(r => r.ns === i.projectNs);
+          if (req) {
+            if (!selectedCategories.includes(req.productType || '')) return false;
+          } else {
+            return false;
+          }
+        }
+      }
+
       if (!startDate && !endDate) return true;
 
       const iDate = new Date(i.startTime).getTime();
@@ -451,7 +486,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       return iDate >= start && iDate <= end;
     });
-  }, [data.interruptions, startDate, endDate]);
+  }, [
+    data.interruptions, 
+    data.projects, 
+    data.projectRequests, 
+    startDate, 
+    endDate, 
+    processUserIds, 
+    currentUser, 
+    selectedClients, 
+    selectedSuspensions, 
+    selectedCategories, 
+    selectedInterruptionDesigner
+  ]);
 
 
   // 1. Calculate Average Time per Project Type
@@ -2367,7 +2414,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 <h2 className={`text-2xl font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('interruptionReports')}</h2>
                 <div className="text-xs text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wide">{t('bottleneckAnalysis')}</div>
               </div>
-              <InterruptionDashboard data={data} theme={theme} />
+              <InterruptionDashboard data={data} theme={theme} filteredInterruptions={filteredInterruptions} />
             </div>
           )}
 
@@ -2394,7 +2441,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     i.clientName,
                     usersMap[i.designerId] || i.designerId,
                     i.problemType,
-                    t(i.responsibleArea.toLowerCase() as any),
+                    i.responsibleArea ? t(i.responsibleArea.toLowerCase() as any) : 'N/A',
                     i.startTime,
                     formatDuration(i.totalTimeSeconds),
                     formatCurrency(i.totalTimeSeconds * costPerSecond)
@@ -2443,8 +2490,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                         <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{item.projectNs}</td>
                         <td className="py-3 px-4 text-xs font-medium text-gray-800 dark:text-white truncate max-w-[150px]">{item.clientName}</td>
                         <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{usersMap[item.designerId] || item.designerId}</td>
-                        <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300 truncate max-w-[200px]" title={item.problemType}>{item.problemType}</td>
-                        <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{t(item.responsibleArea.toLowerCase() as any)}</td>
+                        <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{item.problemType}</td>
+                        <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{item.responsibleArea ? t(item.responsibleArea.toLowerCase() as any) : 'N/A'}</td>
                         <td className="py-3 px-4 text-xs font-mono text-gray-700 dark:text-slate-200">{formatDuration(item.totalTimeSeconds)}</td>
                         <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{formatCurrency(item.totalTimeSeconds * costPerSecond)}</td>
                       </tr>

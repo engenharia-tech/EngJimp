@@ -10,17 +10,21 @@ import { useLanguage } from '../i18n/LanguageContext';
 interface InterruptionDashboardProps {
   data: AppState;
   theme: 'light' | 'dark';
+  filteredInterruptions?: InterruptionRecord[];
 }
 
-export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ data, theme }) => {
+export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ data, theme, filteredInterruptions }) => {
   const { t, language } = useLanguage();
   const processUserIds = useMemo(() => {
     return new Set(data.users.filter(u => u.role === 'PROCESSOS').map(u => u.id));
   }, [data.users]);
 
   const interruptions = useMemo(() => {
+    if (filteredInterruptions) {
+      return filteredInterruptions;
+    }
     return data.interruptions.filter(i => !processUserIds.has(i.designerId));
-  }, [data.interruptions, processUserIds]);
+  }, [data.interruptions, processUserIds, filteredInterruptions]);
 
   const [selectedDesigner, setSelectedDesigner] = useState<string | null>(null);
 
