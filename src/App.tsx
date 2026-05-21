@@ -295,20 +295,14 @@ const AppContent: React.FC = () => {
       const timeoutMinutes = data.settings.autoLockTimeout || 0;
       if (timeoutMinutes > 0 && !isLocked && currentUser) {
         const timeSinceLastActive = Date.now() - lastActiveRef.current;
-        const SENSITIVE_TABS = ['dashboard', 'team', 'settings', 'reports', 'engineering_performance', 'innovations', 'audit'];
-        const isSensitive = SENSITIVE_TABS.includes(activeTab);
+        const timeoutMs = timeoutMinutes * 60 * 1000;
         
-        if (isSensitive) {
-          const timeoutMs = timeoutMinutes * 60 * 1000;
-          if (timeSinceLastActive >= timeoutMs) {
-            setIsLocked(true);
-            setWarningCountdown(null);
-          } else if (timeSinceLastActive >= timeoutMs - 10000) {
-            const remaining = Math.max(1, Math.ceil((timeoutMs - timeSinceLastActive) / 1000));
-            setWarningCountdown(remaining);
-          } else {
-            setWarningCountdown(null);
-          }
+        if (timeSinceLastActive >= timeoutMs) {
+          setIsLocked(true);
+          setWarningCountdown(null);
+        } else if (timeSinceLastActive >= timeoutMs - 10000) {
+          const remaining = Math.max(1, Math.ceil((timeoutMs - timeSinceLastActive) / 1000));
+          setWarningCountdown(remaining);
         } else {
           setWarningCountdown(null);
         }

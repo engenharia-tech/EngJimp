@@ -103,7 +103,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     lunchStart: localStorage.getItem('lunch_start') || "12:00",
     lunchEnd: localStorage.getItem('lunch_end') || "13:00",
     language: (localStorage.getItem('language') as any) || "pt-BR",
-    autoLockTimeout: parseSafeNumber(localStorage.getItem('auto_lock_timeout')) || 0
+    autoLockTimeout: localStorage.getItem('auto_lock_timeout') === null ? 15 : (parseSafeNumber(localStorage.getItem('auto_lock_timeout')) ?? 15)
   };
 
   try {
@@ -150,7 +150,10 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (lunchStartRow) settings.lunchStart = lunchStartRow.value || "12:00";
       if (lunchEndRow) settings.lunchEnd = lunchEndRow.value || "13:00";
       if (languageRow) settings.language = (languageRow.value as any) || "pt-BR";
-      if (autoLockTimeoutRow) settings.autoLockTimeout = parseSafeNumber(autoLockTimeoutRow.value);
+      if (autoLockTimeoutRow) {
+        const val = autoLockTimeoutRow.value;
+        settings.autoLockTimeout = (val === null || val === undefined || val === '') ? 15 : parseSafeNumber(val);
+      }
  
       // Sync to localStorage for offline fallback
       localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
