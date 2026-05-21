@@ -72,7 +72,17 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const currentUser = state.users.find(u => u.username === localStorage.getItem('nexus_user'));
+  const currentUser = useMemo(() => {
+    const raw = sessionStorage.getItem('nexus_user') || localStorage.getItem('nexus_user');
+    if (!raw) return undefined;
+    try {
+      const parsed = JSON.parse(raw);
+      const username = typeof parsed === 'string' ? parsed : (parsed?.username || '');
+      return state.users.find(u => u.username === username);
+    } catch {
+      return state.users.find(u => u.username === raw);
+    }
+  }, [state.users]);
 
   // Drag and drop / Resize Logic
   useEffect(() => {

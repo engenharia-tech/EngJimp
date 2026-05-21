@@ -28,7 +28,7 @@ const defaultSettings = {
   lunchStart: '12:00',
   lunchEnd: '13:00',
   workdays: [1, 2, 3, 4, 5],
-  autoLockTimeout: 0
+  autoLockTimeout: 15
 };
 
 const initialAppState: AppState = { 
@@ -53,7 +53,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [data, setData] = useState<AppState>(initialAppState);
   const [currentUser, setCurrentUserState] = useState<User | null>(() => {
     try {
-      const saved = localStorage.getItem('nexus_user');
+      const saved = sessionStorage.getItem('nexus_user');
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -74,8 +74,11 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setCurrentUser = useCallback((user: User | null) => {
     setCurrentUserState(user);
     if (user) {
-      localStorage.setItem('nexus_user', JSON.stringify(user));
+      sessionStorage.setItem('nexus_user', JSON.stringify(user));
+      // Standard cleanup of legacy insecure localStorage item
+      localStorage.removeItem('nexus_user');
     } else {
+      sessionStorage.removeItem('nexus_user');
       localStorage.removeItem('nexus_user');
     }
   }, []);
