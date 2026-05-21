@@ -183,6 +183,7 @@ const AppContent: React.FC = () => {
   const [lockError, setLockError] = useState(false);
   const [warningCountdown, setWarningCountdown] = useState<number | null>(null);
   const lastActiveRef = useRef<number>(Date.now());
+  const isLockedByInactivityRef = useRef<boolean>(false);
 
   const handleBiometricUnlock = async () => {
     if (!currentUser) return;
@@ -194,6 +195,7 @@ const AppContent: React.FC = () => {
         setIsLocked(false);
         setLockPassword('');
         setLockError(false);
+        isLockedByInactivityRef.current = false;
         lastActiveRef.current = Date.now();
         addToast(`Olá, ${currentUser.name}! Desbloqueado via biometria com sucesso.`, 'success');
         addAuditLog({
@@ -226,6 +228,7 @@ const AppContent: React.FC = () => {
         setIsLocked(false);
         setLockPassword('');
         setLockError(false);
+        isLockedByInactivityRef.current = false;
         lastActiveRef.current = Date.now();
         addToast(`Olá, ${currentUser.name}! Desbloqueado via biometria do dispositivo.`, 'success');
         addAuditLog({
@@ -252,6 +255,7 @@ const AppContent: React.FC = () => {
             setIsLocked(false);
             setLockPassword('');
             setLockError(false);
+            isLockedByInactivityRef.current = false;
             lastActiveRef.current = Date.now();
             addToast(`Desbloqueado com sucesso!`, 'success');
           }, 800);
@@ -264,10 +268,13 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     if (isLocked && currentUser && localStorage.getItem(`biometric_enabled_${currentUser.id}`) === 'true') {
-      const timer = setTimeout(() => {
-        handleBiometricUnlock();
-      }, 600);
-      return () => clearTimeout(timer);
+      // Only auto-unlock using biometrics if the lock was triggered during the active session by inactivity
+      if (isLockedByInactivityRef.current) {
+        const timer = setTimeout(() => {
+          handleBiometricUnlock();
+        }, 600);
+        return () => clearTimeout(timer);
+      }
     }
   }, [isLocked, currentUser]);
 
@@ -284,8 +291,25 @@ const AppContent: React.FC = () => {
       setWarningCountdown(null);
     };
 
+    // Sub-pixel layout shift mousemove filtering to prevent false activity resets when idle
+    const lastMousePos = { x: -1, y: -1 };
+    const handleMouseMove = (e: MouseEvent) => {
+      if (lastMousePos.x === -1 && lastMousePos.y === -1) {
+        lastMousePos.x = e.clientX;
+        lastMousePos.y = e.clientY;
+        return;
+      }
+      const dx = Math.abs(e.clientX - lastMousePos.x);
+      const dy = Math.abs(e.clientY - lastMousePos.y);
+      if (dx > 20 || dy > 20) {
+        lastMousePos.x = e.clientX;
+        lastMousePos.y = e.clientY;
+        handleActivity();
+      }
+    };
+
     // Listeners for user activity
-    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('keydown', handleActivity);
     window.addEventListener('click', handleActivity);
     window.addEventListener('scroll', handleActivity);
@@ -302,6 +326,7 @@ const AppContent: React.FC = () => {
         setCurrentUser(null);
         setIsLocked(false);
         setWarningCountdown(null);
+        isLockedByInactivityRef.current = false;
         addToast('Sessão encerrada por inatividade de 10 minutos.', 'info');
         
         try {
@@ -326,6 +351,7 @@ const AppContent: React.FC = () => {
         const timeoutMs = timeoutMinutes * 60 * 1000;
         
         if (timeSinceLastActive >= timeoutMs) {
+          isLockedByInactivityRef.current = true; // Mark as locked by inactivity to allow biometric auto-scanning afterward
           setIsLocked(true);
           setWarningCountdown(null);
         } else if (timeSinceLastActive >= timeoutMs - 10000) {
@@ -340,7 +366,7 @@ const AppContent: React.FC = () => {
     }, 1000); // Check every second for countdown timing
 
     return () => {
-      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('keydown', handleActivity);
       window.removeEventListener('click', handleActivity);
       window.removeEventListener('scroll', handleActivity);
@@ -1783,6 +1809,7 @@ const AppContent: React.FC = () => {
                       setIsLocked(false);
                       setLockPassword('');
                       setLockError(false);
+                      isLockedByInactivityRef.current = false;
                       lastActiveRef.current = Date.now();
                       addToast('Acesso restabelecido com sucesso', 'success');
 
@@ -1833,6 +1860,7 @@ const AppContent: React.FC = () => {
                         setIsLocked(false);
                         setLockPassword('');
                         setLockError(false);
+                        isLockedByInactivityRef.current = false;
                         setCurrentUser(null);
                         addToast('Sessão encerrada por segurança', 'info');
                       }}
