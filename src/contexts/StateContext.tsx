@@ -69,7 +69,13 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return 'light';
     }
   });
-  const [isLocked, setIsLocked] = useState(false);
+  const [isLocked, setIsLocked] = useState(() => {
+    try {
+      return sessionStorage.getItem('nexus_user') !== null;
+    } catch {
+      return false;
+    }
+  });
 
   const setCurrentUser = useCallback((user: User | null) => {
     setCurrentUserState(user);
