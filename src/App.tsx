@@ -292,9 +292,37 @@ const AppContent: React.FC = () => {
     window.addEventListener('touchstart', handleActivity);
 
     const checkInterval = setInterval(() => {
+      if (!currentUser) return;
+      
+      const timeSinceLastActive = Date.now() - lastActiveRef.current;
+      
+      // 1. Absolute 10-minute (600,000 ms) inactivity check to close session
+      const absoluteLogoutMs = 10 * 60 * 1000;
+      if (timeSinceLastActive >= absoluteLogoutMs) {
+        setCurrentUser(null);
+        setIsLocked(false);
+        setWarningCountdown(null);
+        addToast('Sessão encerrada por inatividade de 10 minutos.', 'info');
+        
+        try {
+          addAuditLog({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            action: 'LOGOUT',
+            entityType: 'SESSION',
+            entityId: 'auto_expirada',
+            entityName: 'Sessão Expirada por Inatividade',
+            details: `Sessão do usuário ${currentUser.name} limpa automaticamente após 10 minutos sem interações.`
+          });
+        } catch (e) {
+          console.error('[Error logging auto-logout audit]', e);
+        }
+        return;
+      }
+
+      // 2. Standard lock screen warning and locking based on settings
       const timeoutMinutes = data.settings.autoLockTimeout || 0;
-      if (timeoutMinutes > 0 && !isLocked && currentUser) {
-        const timeSinceLastActive = Date.now() - lastActiveRef.current;
+      if (timeoutMinutes > 0 && !isLocked) {
         const timeoutMs = timeoutMinutes * 60 * 1000;
         
         if (timeSinceLastActive >= timeoutMs) {
