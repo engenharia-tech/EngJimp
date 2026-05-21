@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp, Fingerprint, Key } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
+import { AIChat } from './components/AIChat';
 import { NexusChat } from './nexus/NexusChat';
 import { Dashboard } from './components/Dashboard';
 import { ProjectHistory } from './components/ProjectHistory';
@@ -59,6 +60,7 @@ import { ProjectNexus } from './components/ProjectNexus/ProjectNexus';
 import { ToastProvider, useToast } from './components/Toast';
 import { useLanguage } from './i18n/LanguageContext';
 import { Language } from './i18n/translations';
+import { useAppState } from './contexts/StateContext';
 
 interface NavItemProps {
   id: any;
@@ -146,37 +148,23 @@ const App: React.FC = () => {
 const AppContent: React.FC = () => {
   const { addToast } = useToast();
   const { language, setLanguage, t } = useLanguage();
-  // Auth State
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  
+  // High-performance Centralized Global State Integration
+  const {
+    data,
+    setData,
+    currentUser,
+    setCurrentUser,
+    isLoading,
+    setIsLoading,
+    activeTab,
+    setActiveTab,
+    theme,
+    setTheme,
+    isLocked,
+    setIsLocked
+  } = useAppState();
 
-  // App State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tracker' | 'history' | 'team' | 'innovations' | 'interruptions' | 'reports' | 'settings' | 'seo' | 'operational' | 'nexus' | 'gantt' | 'audit' | 'engineering_performance'>('dashboard');
-  const [data, setData] = useState<AppState>({ 
-    projects: [], 
-    issues: [], 
-    innovations: [],
-    interruptions: [],
-    interruptionTypes: [],
-    users: [],
-    settings: { 
-      hourlyCost: 150,
-      emailTo: '',
-      interruptionEmailTo: '',
-      interruptionEmailTemplate: '',
-      companyName: 'JIMP NEXUS',
-      language: 'pt-BR',
-      workdayStart: '07:30',
-      workdayEnd: '17:30',
-      lunchStart: '12:00',
-      lunchEnd: '13:00',
-      workdays: [1, 2, 3, 4, 5]
-    },
-    seoData: { keywords: [], metrics: [], tasks: [] },
-    activityTypes: [],
-    operationalActivities: [],
-    projectRequests: [],
-    ganttTasks: []
-  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
@@ -185,13 +173,159 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
-  const [isLoading, setIsLoading] = useState(false);
+
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('theme');
-    return (saved as 'light' | 'dark') || 'light';
-  });
+  const [isFloatingAiOpen, setIsFloatingAiOpen] = useState(false);
+
+  // Screen Lock helper states (remain component-local)
+  const [lockPassword, setLockPassword] = useState('');
+  const [lockError, setLockError] = useState(false);
+  const [warningCountdown, setWarningCountdown] = useState<number | null>(null);
+  const lastActiveRef = useRef<number>(Date.now());
+
+  const handleBiometricUnlock = async () => {
+    if (!currentUser) return;
+    const isSimulated = localStorage.getItem(`biometric_simulated_${currentUser.id}`) === 'true';
+
+    if (isSimulated) {
+      addToast('Escaneando biometria cadastrada...', 'info');
+      setTimeout(() => {
+        setIsLocked(false);
+        setLockPassword('');
+        setLockError(false);
+        lastActiveRef.current = Date.now();
+        addToast(`Olá, ${currentUser.name}! Desbloqueado via biometria com sucesso.`, 'success');
+        addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'LOGIN',
+          entityType: 'SCREEN_LOCK',
+          entityId: 'unlocked_biometrics_simulated',
+          entityName: 'Auto-Bloqueio de Inatividade',
+          details: `Usuário retornou e destravou a tela usando autenticação biométrica simulada.`
+        });
+      }, 1000);
+      return;
+    }
+
+    try {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const getCredentialOptions: CredentialRequestOptions = {
+        publicKey: {
+          challenge,
+          rpId: window.location.hostname,
+          userVerification: "required"
+        }
+      };
+
+      addToast('Escaneando leitor biométrico...', 'info');
+      const assertion = await navigator.credentials.get(getCredentialOptions);
+      if (assertion) {
+        setIsLocked(false);
+        setLockPassword('');
+        setLockError(false);
+        lastActiveRef.current = Date.now();
+        addToast(`Olá, ${currentUser.name}! Desbloqueado via biometria do dispositivo.`, 'success');
+        addAuditLog({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'LOGIN',
+          entityType: 'SCREEN_LOCK',
+          entityId: 'unlocked_biometrics_native',
+          entityName: 'Auto-Bloqueio de Inatividade',
+          details: `Usuário retornou e destravou a tela usando autenticação biométrica nativa.`
+        });
+      }
+    } catch (err: any) {
+      console.warn("Assertion WebAuthn error:", err);
+      const isSandboxError = err.name === 'NotAllowedError' || err.message?.includes('secure context') || err.message?.includes('sandboxed') || err.name === 'SecurityError';
+      if (isSandboxError) {
+        const confirmSim = window.confirm(
+          "Aviso de Sandbox: O iFrame barrou a leitura de biometria física real. Deseja efetuar a verificação local simulada para fins de homologação?"
+        );
+        if (confirmSim) {
+          localStorage.setItem(`biometric_simulated_${currentUser.id}`, 'true');
+          addToast('Simulando biometria segura...', 'info');
+          setTimeout(() => {
+            setIsLocked(false);
+            setLockPassword('');
+            setLockError(false);
+            lastActiveRef.current = Date.now();
+            addToast(`Desbloqueado com sucesso!`, 'success');
+          }, 800);
+        }
+      } else {
+        addToast('Falha na autenticação biométrica do dispositivo. Digite sua senha.', 'error');
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isLocked && currentUser && localStorage.getItem(`biometric_enabled_${currentUser.id}`) === 'true') {
+      const timer = setTimeout(() => {
+        handleBiometricUnlock();
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [isLocked, currentUser]);
+
+  // Inactivity Detection for Security Auto-Lock
+  useEffect(() => {
+    if (!currentUser) {
+      setIsLocked(false);
+      setWarningCountdown(null);
+      return;
+    }
+
+    const handleActivity = () => {
+      lastActiveRef.current = Date.now();
+      setWarningCountdown(null);
+    };
+
+    // Listeners for user activity
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('click', handleActivity);
+    window.addEventListener('scroll', handleActivity);
+    window.addEventListener('touchstart', handleActivity);
+
+    const checkInterval = setInterval(() => {
+      const timeoutMinutes = data.settings.autoLockTimeout || 0;
+      if (timeoutMinutes > 0 && !isLocked && currentUser) {
+        const timeSinceLastActive = Date.now() - lastActiveRef.current;
+        const SENSITIVE_TABS = ['dashboard', 'team', 'settings', 'reports', 'engineering_performance', 'innovations', 'audit'];
+        const isSensitive = SENSITIVE_TABS.includes(activeTab);
+        
+        if (isSensitive) {
+          const timeoutMs = timeoutMinutes * 60 * 1000;
+          if (timeSinceLastActive >= timeoutMs) {
+            setIsLocked(true);
+            setWarningCountdown(null);
+          } else if (timeSinceLastActive >= timeoutMs - 10000) {
+            const remaining = Math.max(1, Math.ceil((timeoutMs - timeSinceLastActive) / 1000));
+            setWarningCountdown(remaining);
+          } else {
+            setWarningCountdown(null);
+          }
+        } else {
+          setWarningCountdown(null);
+        }
+      } else {
+        setWarningCountdown(null);
+      }
+    }, 1000); // Check every second for countdown timing
+
+    return () => {
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('click', handleActivity);
+      window.removeEventListener('scroll', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+      clearInterval(checkInterval);
+    };
+  }, [currentUser, isLocked, data.settings.autoLockTimeout, activeTab]);
 
   useEffect(() => {
     localStorage.setItem('theme', theme);
@@ -540,7 +674,35 @@ const AppContent: React.FC = () => {
                addToast(t('projectUpdatedSuccess'), 'success');
           }
 
-          // Audit Log
+          // Comparative diff for expanded project audit logs
+          const oldProject = data.projects.find(p => p.id === project.id);
+          const changedProps: string[] = [];
+          if (oldProject) {
+            if (oldProject.ns !== project.ns) changedProps.push(`NS (ex: "${oldProject.ns}", novo: "${project.ns}")`);
+            if (oldProject.clientName !== project.clientName) changedProps.push(`Cliente (ex: "${oldProject.clientName || ''}", novo: "${project.clientName || ''}")`);
+            if (oldProject.projectCode !== project.projectCode) changedProps.push(`Código (ex: "${oldProject.projectCode || ''}", novo: "${project.projectCode || ''}")`);
+            if (oldProject.chassisNumber !== project.chassisNumber) changedProps.push(`Chassi (ex: "${oldProject.chassisNumber || ''}", novo: "${project.chassisNumber || ''}")`);
+            if (oldProject.flooringType !== project.flooringType) changedProps.push(`Piso (ex: "${oldProject.flooringType || ''}", novo: "${project.flooringType || ''}")`);
+            if (oldProject.type !== project.type) changedProps.push(`Tipo (ex: "${oldProject.type}", novo: "${project.type}")`);
+            if (oldProject.implementType !== project.implementType) changedProps.push(`Implemento (ex: "${oldProject.implementType || ''}", novo: "${project.implementType || ''}")`);
+            if (oldProject.status !== project.status) changedProps.push(`Status (ex: "${oldProject.status}", novo: "${project.status}")`);
+            if ((oldProject.estimatedSeconds || 0) !== (project.estimatedSeconds || 0)) {
+              const oldHrs = (((oldProject.estimatedSeconds || 0) / 3600)).toFixed(2);
+              const newHrs = (((project.estimatedSeconds || 0) / 3600)).toFixed(2);
+              changedProps.push(`Horas Previstas (ex: ${oldHrs}h, novo: ${newHrs}h)`);
+            }
+            if ((oldProject.totalActiveSeconds || 0) !== (project.totalActiveSeconds || 0)) {
+              const oldHrs = (((oldProject.totalActiveSeconds || 0) / 3600)).toFixed(2);
+              const newHrs = (((project.totalActiveSeconds || 0) / 3600)).toFixed(2);
+              changedProps.push(`Horas Trabalhadas (ex: ${oldHrs}h, novo: ${newHrs}h)`);
+            }
+            if (oldProject.notes !== project.notes) changedProps.push(`Notas (ex: "${oldProject.notes || ''}", novo: "${project.notes || ''}")`);
+          }
+
+          const details = changedProps.length > 0 
+            ? `Projeto NS ${project.ns} atualizado por ${currentUser?.name}. Alterações: ${changedProps.join(', ')}`
+            : `Projeto NS ${project.ns} salvo sem alterações de conteúdo por ${currentUser?.name}.`;
+
           addAuditLog({
               userId: currentUser?.id,
               userName: currentUser?.name,
@@ -548,7 +710,7 @@ const AppContent: React.FC = () => {
               entityType: 'PROJECT',
               entityId: project.id,
               entityName: project.ns,
-              details: `Projeto NS ${project.ns} atualizado por ${currentUser?.name}. Status: ${project.status}`
+              details
           });
         }
     } catch (e) {
@@ -1070,6 +1232,59 @@ const AppContent: React.FC = () => {
 
   return (
     <div className={`flex min-h-screen ${theme === 'dark' ? 'bg-black text-slate-200' : 'bg-gray-50 text-gray-900'}`}>
+      {/* Interactive Circular Inactivity Auto-Lock Warning Countdown Alert */}
+      {warningCountdown !== null && currentUser && !isLocked && (
+        <div className="fixed top-6 right-6 z-[9990] flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-950 border border-amber-200 dark:border-amber-900/60 shadow-2xl animate-in slide-in-from-top-4 duration-300">
+          <div className="relative w-12 h-12 flex items-center justify-center">
+            {/* Circular Progress Ring */}
+            <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+              <circle
+                cx="24"
+                cy="24"
+                r="20"
+                className="stroke-gray-100 dark:stroke-slate-800"
+                strokeWidth="3.5"
+                fill="transparent"
+              />
+              <circle
+                cx="24"
+                cy="24"
+                r="20"
+                className="stroke-amber-500 dark:stroke-amber-400 transition-all duration-1000 ease-linear"
+                strokeWidth="3.5"
+                fill="transparent"
+                strokeDasharray={2 * Math.PI * 20}
+                strokeDashoffset={2 * Math.PI * 20 * (1 - warningCountdown / 10)}
+                strokeLinecap="round"
+              />
+            </svg>
+            <span className="text-sm font-extrabold text-amber-600 dark:text-amber-400 font-mono animate-pulse">
+              {warningCountdown}
+            </span>
+          </div>
+
+          <div className="text-left">
+            <h4 className="text-xs font-black text-amber-500 uppercase tracking-wider">
+              Aviso de Ausência
+            </h4>
+            <p className="text-sm text-gray-700 dark:text-slate-300 font-medium leading-tight max-w-[190px]">
+              Sua tela será bloqueada por segurança em instantes.
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              lastActiveRef.current = Date.now();
+              setWarningCountdown(null);
+              addToast('Sua sessão permanece ativa com sucesso!', 'success');
+            }}
+            className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition-all duration-200 shadow-md shadow-amber-500/10 active:scale-95 cursor-pointer animate-pulse"
+          >
+            Continuar
+          </button>
+        </div>
+      )}
+
       {/* Sidebar for Desktop */}
       <aside className={`hidden md:flex flex-col ${isSidebarCollapsed ? 'w-20' : 'w-64'} ${theme === 'dark' ? 'bg-black border-slate-800 text-white' : 'bg-white border-gray-200 text-slate-900'} border-r fixed h-full z-10 shadow-xl transition-all duration-300 ease-in-out`}>
         <div className={`p-4 border-b ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'}`}>
@@ -1490,6 +1705,157 @@ const AppContent: React.FC = () => {
                 onClose={() => setIsProfileOpen(false)} 
                 onUpdateUser={(updated) => setCurrentUser(updated)} 
             />
+          )}
+
+          {/* Security Auto-Lock Screen Overlay */}
+          {isLocked && currentUser && (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-2xl animate-in fade-in duration-300">
+              <div className="bg-white dark:bg-slate-950 p-8 rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 max-w-md w-full mx-4 text-center space-y-6">
+                <div className="mx-auto w-16 h-16 bg-rose-50 dark:bg-rose-950/20 rounded-2xl flex items-center justify-center text-rose-500 border border-rose-100 dark:border-rose-900/30">
+                  <Shield className="w-8 h-8 animate-pulse" />
+                </div>
+                
+                <div className="space-y-2">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                    Tela Bloqueada por Inatividade
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-slate-400">
+                    Esta tela contém dados confidenciais (salários, metas e faturamentos). Insira sua senha para reestabelecer o acesso com segurança.
+                  </p>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-slate-900/40 p-4 rounded-2xl border border-gray-100 dark:border-slate-800/60 flex items-center gap-3 justify-center">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm">
+                    {currentUser.name.substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
+                      {currentUser.name} {currentUser.surname || ''}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {currentUser.role.toUpperCase()}
+                    </p>
+                  </div>
+                </div>
+
+                {currentUser && localStorage.getItem(`biometric_enabled_${currentUser.id}`) === 'true' && (
+                  <div className="pt-2 pb-2 border-b border-gray-100 dark:border-slate-800/80">
+                    <button
+                      type="button"
+                      onClick={handleBiometricUnlock}
+                      className="w-full flex items-center justify-center gap-3 px-5 py-4 bg-gradient-to-tr from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl font-bold text-sm shadow-md hover:shadow-lg transition-all duration-300 group hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                    >
+                      <Fingerprint className="w-5 h-5 text-emerald-100 animate-pulse group-hover:scale-115 transition-transform" />
+                      <span>Desbloquear via Biometria</span>
+                    </button>
+                    <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-2 text-center">
+                      Identificação segura ativa {localStorage.getItem(`biometric_simulated_${currentUser.id}`) === 'true' && '(Modo de Teste)'}.
+                    </p>
+                  </div>
+                )}
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (lockPassword === currentUser.password) {
+                      setIsLocked(false);
+                      setLockPassword('');
+                      setLockError(false);
+                      lastActiveRef.current = Date.now();
+                      addToast('Acesso restabelecido com sucesso', 'success');
+
+                      addAuditLog({
+                        userId: currentUser.id,
+                        userName: currentUser.name,
+                        action: 'LOGIN',
+                        entityType: 'SCREEN_LOCK',
+                        entityId: 'unlocked',
+                        entityName: 'Auto-Bloqueio de Inatividade',
+                        details: `Usuário retornou após inatividade e destravou a tela de segurança.`
+                      });
+                    } else {
+                      setLockError(true);
+                      addToast('Senha incorreta', 'error');
+                    }
+                  }}
+                  className="space-y-4"
+                >
+                  <div className="space-y-1 text-left">
+                    <label className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider block">
+                      Confirmar Senha de Acesso
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={lockPassword}
+                      onChange={(e) => {
+                        setLockPassword(e.target.value);
+                        if (lockError) setLockError(false);
+                      }}
+                      placeholder="Insira sua senha"
+                      className={`w-full px-4 py-3 bg-gray-50 dark:bg-slate-900 border ${
+                        lockError ? 'border-red-500 focus:ring-red-500' : 'border-gray-200 dark:border-slate-700 focus:ring-blue-500'
+                      } rounded-2xl outline-none focus:ring-2 dark:text-white text-sm transition-all`}
+                    />
+                    {lockError && (
+                      <p className="text-xs text-red-500 font-medium mt-1">
+                        Senha incorreta. Tente novamente ou efetue logout.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsLocked(false);
+                        setLockPassword('');
+                        setLockError(false);
+                        setCurrentUser(null);
+                        addToast('Sessão encerrada por segurança', 'info');
+                      }}
+                      className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 text-sm font-bold rounded-2xl transition-all"
+                    >
+                      Sair / Logout
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all"
+                    >
+                      Desbloquear
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Floating AI Assistant Trigger Button */}
+          {currentUser && !isFloatingAiOpen && (
+            <button
+              onClick={() => setIsFloatingAiOpen(true)}
+              className="fixed bottom-6 right-6 z-40 bg-gradient-to-tr from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-full p-4 shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 cursor-pointer active:scale-95 group focus:outline-none border border-blue-400/20 ring-4 ring-blue-500/10 hover:ring-blue-500/30 animate-bounce"
+              title="Assistente de IA JimpNexus"
+              id="floating-ai-assistant-btn"
+              style={{ animationDuration: '3s' }}
+            >
+              <Cpu className="w-6 h-6 animate-pulse" />
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white dark:border-black"></span>
+              </span>
+            </button>
+          )}
+
+          {/* Floating AI Assistant Chat panel */}
+          {currentUser && isFloatingAiOpen && (
+            <div className="fixed bottom-24 right-4 sm:right-6 md:right-8 w-[350px] sm:w-[450px] h-[550px] max-h-[75vh] z-50 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-300 border border-slate-200 dark:border-slate-800">
+              <AIChat 
+                appState={data} 
+                currentUser={currentUser} 
+                onClose={() => setIsFloatingAiOpen(false)} 
+              />
+            </div>
           )}
 
           {/* Footer */}

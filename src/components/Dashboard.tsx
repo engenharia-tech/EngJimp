@@ -1,14 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  PieChart, Pie, Cell, ComposedChart, Line
+  PieChart, Pie, Cell, ComposedChart, Line, ScatterChart, Scatter, ZAxis
 } from 'recharts';
-import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal, GitBranch } from 'lucide-react';
+import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, TrendingUp, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal, GitBranch } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings } from '../types';
 import { EngineeringPerformance } from './EngineeringPerformance';
 import { InterruptionDashboard } from './InterruptionDashboard';
 import { PerCapitaConfigModal } from './PerCapitaConfigModal';
 import { analyzePerformance } from '../services/geminiService';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import { fetchUsers, deleteProjectById, deleteProjectRequest, addAuditLog } from '../services/storageService';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -221,7 +222,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [nsFilterByPeriod, setNsFilterByPeriod] = useState<boolean>(false);
 
-  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance']);
+  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts']);
 
   // Helper to normalize strings for comparison (remove accents and uppercase)
   const normalize = (str: string) => 
@@ -1245,6 +1246,74 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     return { statusData, categoryData };
   }, [filteredRequests]);
 
+  // Memos for Advanced Indicators & Charts (Scatter, Funnel, Heatmap)
+  const advancedScatterData = useMemo(() => {
+    return filteredProjects
+      .filter(p => p.status === 'COMPLETED')
+      .map(p => {
+        const hours = parseFloat(((p.durationSeconds || 0) / 3600).toFixed(1));
+        const interruptionsCount = p.pauses?.length || 0;
+        const variationsCount = p.variations?.length || 0;
+        return {
+          name: p.name || p.ns || 'Sem Nome',
+          ns: p.ns || '',
+          hours, // X Axis
+          interruptions: interruptionsCount, // Y Axis
+          z: variationsCount + 2, // Size of bubble (minimum 2 for visibility)
+        };
+      })
+      .slice(0, 30); // limit to recent 30 projects for clean display
+  }, [filteredProjects]);
+
+  const advancedFunnelData = useMemo(() => {
+    const totalRequests = data.projectRequests?.length || 0;
+    const todoTasks = data.ganttTasks?.filter(t => t.status === 'todo').length || 0;
+    const workingTasks = data.ganttTasks?.filter(t => t.status === 'in_progress').length || 0;
+    const blockedTasks = data.ganttTasks?.filter(t => t.status === 'closed').length || 0;
+    const completedProjects = data.projects?.filter(p => p.status === 'COMPLETED').length || 0;
+
+    const maxVal = Math.max(totalRequests, todoTasks, workingTasks, blockedTasks, completedProjects, 1);
+
+    return [
+      { stage: 'Solicitações Recebidas', count: totalRequests, colorBg: 'bg-blue-600 dark:bg-blue-600', colorText: 'text-blue-600 dark:text-blue-400', percent: Math.round((totalRequests / maxVal) * 100) },
+      { stage: 'Fila Kanban (Todo)', count: todoTasks, colorBg: 'bg-indigo-500 dark:bg-indigo-600', colorText: 'text-indigo-500 dark:text-indigo-400', percent: Math.round((todoTasks / maxVal) * 100) },
+      { stage: 'Em Desenvolvimento (Doing)', count: workingTasks, colorBg: 'bg-purple-500 dark:bg-purple-600', colorText: 'text-purple-500 dark:text-purple-400', percent: Math.round((workingTasks / maxVal) * 100) },
+      { stage: 'Impedido / Pausado', count: blockedTasks, colorBg: 'bg-rose-500 dark:bg-rose-600', colorText: 'text-rose-500 dark:text-rose-400', percent: Math.round((blockedTasks / maxVal) * 100) },
+      { stage: 'Projetos Concluídos (Done)', count: completedProjects, colorBg: 'bg-emerald-500 dark:bg-emerald-600', colorText: 'text-emerald-500 dark:text-emerald-400', percent: Math.round((completedProjects / maxVal) * 100) },
+    ];
+  }, [data.projectRequests, data.ganttTasks, data.projects]);
+
+  const advancedWeeklyHeatmap = useMemo(() => {
+    const daysName = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
+    const designers = data.users || [];
+    
+    const matrix = designers.map(user => {
+      const dayHours = [0, 0, 0, 0, 0]; // Seg to Sex
+      
+      const userProjects = filteredProjects.filter(p => p.userId === user.id);
+      userProjects.forEach(proj => {
+        if (!proj.startTime) return;
+        const pDate = new Date(proj.startTime);
+        if (isNaN(pDate.getTime())) return;
+        
+        const weekday = pDate.getDay(); // 0 = Sun, 1 = Mon, ..., 5 = Fri, 6 = Sat
+        if (weekday >= 1 && weekday <= 5) {
+          dayHours[weekday - 1] += (proj.durationSeconds || 0) / 3600;
+        }
+      });
+      
+      return {
+        id: user.id,
+        name: user.name + (user.surname ? ` ${user.surname}` : ''),
+        role: user.role,
+        hours: dayHours.map(h => parseFloat(h.toFixed(1))),
+        total: parseFloat(dayHours.reduce((acc, h) => acc + h, 0).toFixed(1))
+      };
+    });
+
+    return { daysName, matrix };
+  }, [filteredProjects, data.users]);
+
   const keyProductsReport = useMemo(() => {
     return PRODUCT_CATEGORIES.filter(cat => cat !== 'Outros').map(category => {
       const queueItems = data.projectRequests.filter(r => 
@@ -1555,6 +1624,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('detailedReport')}</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('advanced_charts')} 
+              onChange={() => setVisibleSections(prev => prev.includes('advanced_charts') ? prev.filter(s => s !== 'advanced_charts') : [...prev, 'advanced_charts'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">Gráficos Avançados</span>
           </label>
           {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
             <>
@@ -1867,8 +1945,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
             
             {aiAnalysis ? (
-              <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-4 rounded-lg">
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed uppercase">{aiAnalysis}</pre>
+              <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/20 shadow-inner">
+                <MarkdownRenderer content={aiAnalysis} theme={theme} />
               </div>
             ) : (
               <p className="text-black dark:text-white text-sm uppercase">
@@ -2772,6 +2850,194 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           </>
         )}
       </div>
+
+      {/* Advanced Indicators & Analytics Section */}
+      {visibleSections.includes('advanced_charts') && (
+        <div className="bg-white dark:bg-black/40 border border-gray-150 dark:border-slate-800 p-6 rounded-2xl col-span-1 md:col-span-2 space-y-6 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex flex-col gap-1 border-b border-gray-100 dark:border-slate-800 pb-3">
+            <h3 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wide flex items-center gap-2">
+              <TrendingUp className="text-indigo-500 w-5 h-5 animate-pulse" />
+              Gráficos Avançados & Indicadores de Performance
+            </h3>
+            <p className="text-xs text-slate-400">Análise de dispersão, funil de progresso de entregas de engenharia e mapa de calor semanal de horas projetadas.</p>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {/* 1. Scatter Plot (Dispersão) */}
+            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-850 shadow-sm flex flex-col justify-between min-h-[400px]">
+              <div>
+                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2 mb-1">
+                  <Activity className="text-blue-500 w-4 h-4" />
+                  Dispersão: Complexidade vs Interrupções
+                </h4>
+                <p className="text-[11px] text-gray-400 mb-4 font-medium uppercase">Mostra se os projetos mais longos (em horas) sofrem mais pausas ou retrabalhos.</p>
+              </div>
+
+              <div className="h-[280px] w-full">
+                {advancedScatterData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                      <XAxis 
+                        type="number" 
+                        dataKey="hours" 
+                        name="Horas do Projeto" 
+                        unit="h" 
+                        style={{fontSize: '11px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} 
+                        label={{ value: 'Duração (Horas)', position: 'insideBottom', offset: -5, fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: '11px' }}
+                      />
+                      <YAxis 
+                        type="number" 
+                        dataKey="interruptions" 
+                        name="Paradas" 
+                        unit="p" 
+                        allowDecimals={false}
+                        style={{fontSize: '11px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} 
+                        label={{ value: 'Qtd de Interrupções', angle: -90, position: 'insideLeft', fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: '11px' }}
+                      />
+                      <ZAxis type="number" dataKey="z" range={[40, 400]} />
+                      <Tooltip 
+                        cursor={{ strokeDasharray: '3 3' }}
+                        contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                        itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                        labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
+                        formatter={(value: any, name: any) => {
+                          if (name === "Horas do Projeto") return [`${value} horas`, "Duração"];
+                          if (name === "Paradas") return [`${value} paradas`, "Interrupções"];
+                          return [value, name];
+                        }}
+                      />
+                      <Scatter name="Projetos" data={advancedScatterData} fill="#3b82f6" fillOpacity={0.8}>
+                        {advancedScatterData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#3b82f6' : '#6366f1'} />
+                        ))}
+                      </Scatter>
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
+                    Aguardando projetos concluídos para gerar análise de dispersão.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Pipeline Funnel Chart (Funil de Progresso de Entregas) */}
+            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-850 shadow-sm flex flex-col justify-between min-h-[400px]">
+              <div>
+                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2 mb-1">
+                  <SlidersHorizontal className="text-indigo-500 w-4 h-4" />
+                  Funil de Conversão & Entregas de Engenharia
+                </h4>
+                <p className="text-[11px] text-gray-400 mb-4 font-medium uppercase">Visualização de gargalos e taxas de conversão do fluxo operacional da fábrica.</p>
+              </div>
+
+              <div className="space-y-4 flex-grow flex flex-col justify-center">
+                {advancedFunnelData.map((item) => {
+                  return (
+                    <div key={item.stage} className="space-y-1">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded ${item.colorBg}`} />
+                          {item.stage}
+                        </span>
+                        <span className="flex items-center gap-3">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px]">{item.count}</span>
+                          <span className={`${item.colorText} text-[10px]`}>{item.percent}%</span>
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-900 h-3.5 rounded-full overflow-hidden border border-slate-200/50 dark:border-slate-800/10">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-1000 ${item.colorBg}`}
+                          style={{ width: `${Math.max(item.percent, 3)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3. Heatmap de Produtividade Semanal (Weekly Heatmap) */}
+            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-850 shadow-sm col-span-1 xl:col-span-2 flex flex-col justify-between min-h-[400px]">
+              <div>
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-2 mb-1">
+                  <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2">
+                    <Calendar className="text-emerald-500 w-4 h-4" />
+                    Mapa de Calor: Intensidade Diária por Projetista (Seg-Sex)
+                  </h4>
+                  <div className="flex items-center gap-2 text-[9px] font-black uppercase text-gray-400">
+                    <span>Inativo (0h)</span>
+                    <div className="w-3.5 h-3.5 rounded bg-gray-100 dark:bg-slate-900 border border-slate-250 dark:border-slate-800" />
+                    <div className="w-3.5 h-3.5 rounded bg-indigo-100/40 dark:bg-indigo-950/25 border border-indigo-200/20" />
+                    <div className="w-3.5 h-3.5 rounded bg-indigo-300/60 dark:bg-indigo-700/65" />
+                    <div className="w-3.5 h-3.5 rounded bg-indigo-600" />
+                    <span>Alto volume (6h+)</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-gray-400 mb-4 font-medium uppercase">Matriz de esforço diário em horas dos projetistas para otimização do balanceamento de carga.</p>
+              </div>
+
+              <div className="overflow-x-auto w-full no-scrollbar border border-slate-100 dark:border-slate-850 rounded-xl">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-150 dark:border-slate-850">
+                      <th className="py-2.5 px-4 text-left text-[11px] font-black text-slate-400 tracking-wider uppercase border-r border-slate-100 dark:border-slate-850">Projetista</th>
+                      {advancedWeeklyHeatmap.daysName.map(day => (
+                        <th key={day} className="py-2.5 px-4 text-center text-[11px] font-black text-slate-400 tracking-wide uppercase border-r border-slate-100 dark:border-slate-850">{day}</th>
+                      ))}
+                      <th className="py-2.5 px-4 text-center text-[11px] font-black text-slate-400 tracking-wide uppercase">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {advancedWeeklyHeatmap.matrix.length > 0 && advancedWeeklyHeatmap.matrix.some(row => row.role === 'PROJETISTA' || row.role === 'COORDENADOR') ? (
+                      advancedWeeklyHeatmap.matrix
+                        .filter(row => row.role === 'PROJETISTA' || row.role === 'COORDENADOR')
+                        .map(row => (
+                          <tr key={row.id} className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
+                            <td className="py-3 px-4 font-bold text-xs text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-850">
+                              {row.name}
+                            </td>
+                            {row.hours.map((val, idx) => {
+                              let bgClass = "bg-gray-100 dark:bg-slate-900 text-gray-400";
+                              if (val > 0 && val <= 2) {
+                                bgClass = "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 border border-indigo-100/40 dark:border-indigo-900/10";
+                              } else if (val > 2 && val <= 6) {
+                                bgClass = "bg-indigo-200 dark:bg-indigo-700/60 text-indigo-800 dark:text-indigo-200 font-extrabold border border-indigo-300/40 dark:border-indigo-850";
+                              } else if (val > 6) {
+                                bgClass = "bg-indigo-600 text-white font-black";
+                              }
+
+                              return (
+                                <td key={idx} className="p-1 border-r border-slate-100 dark:border-slate-850">
+                                  <div 
+                                    className={`py-2 px-1 text-center text-xs rounded-lg transition-all border border-transparent shadow-xs hover:scale-[1.03] duration-150 ${bgClass}`}
+                                    title={`${row.name} - ${advancedWeeklyHeatmap.daysName[idx]}: ${val} horas projetadas.`}
+                                  >
+                                    {val > 0 ? `${val}h` : '0h'}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                            <td className="py-3 px-4 text-center font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-950/10">
+                              {row.total}h
+                            </td>
+                          </tr>
+                        ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-xs text-gray-400">
+                          Nenhum projetista registrado ou horas de projeto alocadas para esta semana.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

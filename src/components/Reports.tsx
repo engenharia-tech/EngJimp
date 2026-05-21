@@ -39,6 +39,7 @@ import {
   Cell
 } from 'recharts';
 import { analyzePerformance } from '../services/geminiService';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import { ProjectType } from '../types';
 
 interface ReportsProps {
@@ -982,8 +983,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
         </div>
         
         {aiAnalysis ? (
-          <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-4 rounded-lg border border-indigo-100/50 dark:border-indigo-900/20">
-            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed uppercase">{aiAnalysis}</pre>
+          <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/20 shadow-inner">
+            <MarkdownRenderer content={aiAnalysis} theme={theme} />
           </div>
         ) : (
           <p className="text-indigo-800/70 dark:text-indigo-300/70 text-sm uppercase">

@@ -102,7 +102,8 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     workdays: parseSafeJson(localStorage.getItem('workdays'), [1,2,3,4,5]).map(Number),
     lunchStart: localStorage.getItem('lunch_start') || "12:00",
     lunchEnd: localStorage.getItem('lunch_end') || "13:00",
-    language: (localStorage.getItem('language') as any) || "pt-BR"
+    language: (localStorage.getItem('language') as any) || "pt-BR",
+    autoLockTimeout: parseSafeNumber(localStorage.getItem('auto_lock_timeout')) || 0
   };
 
   try {
@@ -127,6 +128,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       const lunchStartRow = settingsData.find(s => s.key === 'lunch_start');
       const lunchEndRow = settingsData.find(s => s.key === 'lunch_end');
       const languageRow = settingsData.find(s => s.key === 'language');
+      const autoLockTimeoutRow = settingsData.find(s => s.key === 'auto_lock_timeout');
 
       if (hourlyCostRow) settings.hourlyCost = parseSafeNumber(hourlyCostRow.value);
       if (logoUrlRow) settings.logoUrl = logoUrlRow.value === 'null' ? '' : (logoUrlRow.value || '');
@@ -148,6 +150,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (lunchStartRow) settings.lunchStart = lunchStartRow.value || "12:00";
       if (lunchEndRow) settings.lunchEnd = lunchEndRow.value || "13:00";
       if (languageRow) settings.language = (languageRow.value as any) || "pt-BR";
+      if (autoLockTimeoutRow) settings.autoLockTimeout = parseSafeNumber(autoLockTimeoutRow.value);
  
       // Sync to localStorage for offline fallback
       localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
@@ -163,6 +166,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (settings.lunchStart) localStorage.setItem('lunch_start', settings.lunchStart);
       if (settings.lunchEnd) localStorage.setItem('lunch_end', settings.lunchEnd);
       if (settings.language) localStorage.setItem('language', settings.language);
+      if (settings.autoLockTimeout !== undefined) localStorage.setItem('auto_lock_timeout', settings.autoLockTimeout.toString());
     }
   } catch (e) {
     console.warn("Error fetching settings from Supabase, using localStorage/defaults:", e);
@@ -575,6 +579,7 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.lunchStart !== undefined) localStorage.setItem('lunch_start', settings.lunchStart || '12:00');
     if (settings.lunchEnd !== undefined) localStorage.setItem('lunch_end', settings.lunchEnd || '13:00');
     if (settings.language !== undefined) localStorage.setItem('language', settings.language || 'pt-BR');
+    if (settings.autoLockTimeout !== undefined) localStorage.setItem('auto_lock_timeout', settings.autoLockTimeout.toString());
 
     const updates: { key: string, value: string }[] = [];
 
@@ -591,6 +596,7 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.lunchStart !== undefined) updates.push({ key: 'lunch_start', value: settings.lunchStart });
     if (settings.lunchEnd !== undefined) updates.push({ key: 'lunch_end', value: settings.lunchEnd });
     if (settings.language !== undefined) updates.push({ key: 'language', value: settings.language });
+    if (settings.autoLockTimeout !== undefined) updates.push({ key: 'auto_lock_timeout', value: settings.autoLockTimeout.toString() });
 
     console.log("SUPABASE UPDATES PAYLOAD:", updates);
 

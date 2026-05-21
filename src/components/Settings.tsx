@@ -56,6 +56,34 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
       await onUpdate(formData);
       setIsEditing(false);
       addToast(t('settingsSavedSuccess'), 'success');
+
+      // Detailed audit log for settings change
+      const changedProps: string[] = [];
+      if (settings.hourlyCost !== formData.hourlyCost) changedProps.push(`Custo Hora (ex: "${settings.hourlyCost}", novo: "${formData.hourlyCost}")`);
+      if (settings.useAutomaticCost !== formData.useAutomaticCost) changedProps.push(`Custo Automático (ex: "${settings.useAutomaticCost ? 'Sim' : 'Não'}", novo: "${formData.useAutomaticCost ? 'Sim' : 'Não'}")`);
+      if (settings.companyName !== formData.companyName) changedProps.push(`Nome Empresa (ex: "${settings.companyName || ''}", novo: "${formData.companyName || ''}")`);
+      if (settings.emailTo !== formData.emailTo) changedProps.push(`Notificação Geral (ex: "${settings.emailTo || ''}", novo: "${formData.emailTo || ''}")`);
+      if (settings.interruptionEmailTo !== formData.interruptionEmailTo) changedProps.push(`Notificação Interrupções (ex: "${settings.interruptionEmailTo || ''}", novo: "${formData.interruptionEmailTo || ''}")`);
+      if (settings.workdayStart !== formData.workdayStart) changedProps.push(`Início Turno (ex: "${settings.workdayStart || ''}", novo: "${formData.workdayStart || ''}")`);
+      if (settings.workdayEnd !== formData.workdayEnd) changedProps.push(`Fim Turno (ex: "${settings.workdayEnd || ''}", novo: "${formData.workdayEnd || ''}")`);
+      if (settings.lunchStart !== formData.lunchStart) changedProps.push(`Início Almoço (ex: "${settings.lunchStart || ''}", novo: "${formData.lunchStart || ''}")`);
+      if (settings.lunchEnd !== formData.lunchEnd) changedProps.push(`Fim Almoço (ex: "${settings.lunchEnd || ''}", novo: "${formData.lunchEnd || ''}")`);
+      if (settings.language !== formData.language) changedProps.push(`Idioma (ex: "${settings.language || ''}", novo: "${formData.language || ''}")`);
+      if (settings.autoLockTimeout !== formData.autoLockTimeout) changedProps.push(`Auto-Bloqueio (ex: "${settings.autoLockTimeout || 0}", novo: "${formData.autoLockTimeout || 0}")`);
+
+      const details = changedProps.length > 0 
+        ? `Configurações globais alteradas por ${currentUser.name}. Alterações: ${changedProps.join(', ')}`
+        : `Salvo configurações sem alterações por ${currentUser.name}.`;
+
+      addAuditLog({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        action: 'UPDATE',
+        entityType: 'SETTINGS',
+        entityId: 'SYSTEM',
+        entityName: 'Configurações de Sistema',
+        details
+      });
     } catch (error) {
       addToast(t('errorUpdatingSettings'), 'error');
     } finally {
@@ -177,6 +205,26 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 <option value="pt-BR">{t('portuguese')}</option>
                 <option value="en-US">{t('english')}</option>
                 <option value="es-ES">{t('spanish')}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1 flex items-center">
+                <Shield className="w-4 h-4 mr-1.5 text-rose-500" />
+                Auto-Bloqueio por Inatividade
+              </label>
+              <select
+                disabled={!isEditing}
+                value={formData.autoLockTimeout !== undefined ? formData.autoLockTimeout : 0}
+                onChange={e => setFormData({ ...formData, autoLockTimeout: parseInt(e.target.value) || 0 })}
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+              >
+                <option value={0}>Inativo (Nunca bloquear)</option>
+                <option value={1}>1 minuto</option>
+                <option value={3}>3 minutos</option>
+                <option value={5}>5 minutos</option>
+                <option value={10}>10 minutos</option>
+                <option value={15}>15 minutos</option>
+                <option value={30}>30 minutos</option>
               </select>
             </div>
             <div>

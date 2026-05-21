@@ -8,6 +8,7 @@ import {
 import { askGemini } from '../lib/gemini';
 import { useLanguage } from '../i18n/LanguageContext';
 import { AppState, User, InterruptionStatus } from '../types';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -126,9 +127,10 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
 interface AIChatProps {
   appState: AppState;
   currentUser: User;
+  onClose?: () => void;
 }
 
-export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser }) => {
+export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -342,6 +344,15 @@ ${usersInfo}
           >
             <Trash2 className="w-4 h-4" />
           </button>
+          {onClose && (
+            <button 
+              onClick={onClose}
+              className="p-1.5 hover:bg-red-650 hover:bg-red-500 rounded-lg transition-colors border border-white/10 ml-1"
+              title="Fechar chat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -390,7 +401,13 @@ ${usersInfo}
                     ? 'bg-blue-600 text-white rounded-tr-none' 
                     : 'bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 text-gray-800 dark:text-gray-200 rounded-tl-none'
                 }`}>
-                  <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                  {msg.role === 'user' ? (
+                    <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                  ) : (
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      <MarkdownRenderer content={msg.content} theme={msg.role === 'user' ? 'light' : 'dark'} />
+                    </div>
+                  )}
                   
                   {msg.chartData && <ChartRenderer data={msg.chartData} />}
 

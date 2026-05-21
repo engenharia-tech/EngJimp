@@ -97,7 +97,32 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     if (result.success) {
       addToast(editingUserId ? t('userUpdatedSuccess', { name }) : t('userCreatedSuccess', { name }), 'success');
       
-      // Audit Log
+      // Expanded Audit Log comparing old vs new values
+      let details = '';
+      if (editingUserId) {
+        const oldUser = users.find(u => u.id === editingUserId);
+        const changedProps: string[] = [];
+        if (oldUser) {
+          if (oldUser.name !== name) changedProps.push(`Nome (ex: "${oldUser.name}", novo: "${name}")`);
+          if ((oldUser.surname || '') !== surname) changedProps.push(`Sobrenome (ex: "${oldUser.surname || ''}", novo: "${surname}")`);
+          if ((oldUser.email || '') !== email) changedProps.push(`E-mail (ex: "${oldUser.email || ''}", novo: "${email}")`);
+          if ((oldUser.phone || '') !== phone) changedProps.push(`Telefone (ex: "${oldUser.phone || ''}", novo: "${phone}")`);
+          if (oldUser.username !== username) changedProps.push(`Login (ex: "${oldUser.username}", novo: "${username}")`);
+          if (oldUser.role !== role) changedProps.push(`Cargo (ex: "${oldUser.role}", novo: "${role}")`);
+          if ((oldUser.salary || 0) !== salary) {
+            const oldSal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(oldUser.salary || 0);
+            const newSal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(salary);
+            changedProps.push(`Salário (ex: "${oldSal}", novo: "${newSal}")`);
+          }
+        }
+        details = changedProps.length > 0 
+          ? `Usuário ${userPayload.username} editado por ${currentUser.name}. Modificações: ${changedProps.join(', ')}`
+          : `Usuário ${userPayload.username} editado por ${currentUser.name} sem alterações de conteúdo.`;
+      } else {
+        const fmtSal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(userPayload.salary || 0);
+        details = `Usuário ${userPayload.username} [Cargo: ${userPayload.role}, Salário: ${fmtSal}] criado por ${currentUser.name}`;
+      }
+
       addAuditLog({
           userId: currentUser.id,
           userName: currentUser.name,
@@ -105,7 +130,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
           entityType: 'USER',
           entityId: userPayload.id,
           entityName: userPayload.username,
-          details: `Usuário ${userPayload.username} (${userPayload.name}) ${editingUserId ? 'editado' : 'criado'} por ${currentUser.name}`
+          details
       });
 
       await loadList(); // Refresh list

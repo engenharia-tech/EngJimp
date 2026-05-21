@@ -1,5 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Filter, Calendar, Search, Clock, Hash, User as UserIcon, Truck, Trash2, Layers, Box, Eye, X, FileCheck, FileX, AlertTriangle, Edit, Timer, RefreshCw, AlertCircle, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, Plus } from 'lucide-react';
+import { Filter, Calendar, Search, Clock, Hash, User as UserIcon, Truck, Trash2, Layers, Box, Eye, X, FileCheck, FileX, AlertTriangle, Edit, Timer, RefreshCw, AlertCircle, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, Plus, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 import { AppState, ProjectType, User, VariationRecord, ProjectSession, ImplementType, PauseRecord, InterruptionRecord, InterruptionStatus, InterruptionArea } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
 import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, DuplicateGroup, addAuditLog } from '../services/storageService';
@@ -679,6 +682,140 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     };
   }, [filteredProjects, isGestor, engineeringHourlyRate]);
 
+  const handleExportExcel = () => {
+    if (filteredProjects.length === 0) {
+      addToast(t('noDataToExport') || 'Nenhum registro para exportar', 'error');
+      return;
+    }
+
+    try {
+      const exportData = filteredProjects.map((p, idx) => {
+        const designerName = usersMap[p.userId || '']?.name || 'Não atribuído';
+        const activeHours = (p.totalActiveSeconds || 0) / 3600;
+        const estHours = (p.estimatedSeconds || 0) / 3600;
+        const efficiency = estHours > 0 ? `${Math.round((activeHours / estHours) * 100)}%` : '-';
+        
+        return {
+          '#': idx + 1,
+          'N.S.': p.ns || '',
+          'Cliente': p.clientName || '',
+          'Código do Projeto': p.projectCode || '',
+          'Tipo': p.type || '',
+          'Implemento': p.implementType || '',
+          'Piso': p.flooringType || '',
+          'Status': p.status === 'COMPLETED' ? 'Finalizado' : 'Em Andamento',
+          'Projetista': designerName,
+          'Data Início': p.startTime ? new Date(p.startTime).toLocaleDateString('pt-BR') : '',
+          'Horas Reais (h)': parseFloat(activeHours.toFixed(2)),
+          'Horas Previstas (h)': parseFloat(estHours.toFixed(2)),
+          'Eficiência': efficiency,
+          'Custo Estimado (R$)': p.totalCost ? parseFloat(p.totalCost.toFixed(2)) : 0
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Histórico');
+
+      // Auto-fit column widths
+      const maxLens = Object.keys(exportData[0] || {}).map(key => {
+        let maxL = key.length;
+        exportData.forEach(row => {
+          const val = String((row as any)[key] || '');
+          if (val.length > maxL) maxL = val.length;
+        });
+        return { wch: maxL + 3 };
+      });
+      ws['!cols'] = maxLens;
+
+      XLSX.writeFile(wb, `historico_projetos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      addToast(t('exportSuccess') || 'Exportado com sucesso para Excel!', 'success');
+      
+      // Audit Log
+      addAuditLog({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        action: 'UPDATE',
+        entityType: 'PROJECT',
+        entityId: 'export_excel',
+        entityName: 'Exportação Excel',
+        details: `Exportação de ${filteredProjects.length} registros para planilha Excel.`
+      });
+    } catch (error) {
+      console.error('Erro ao exportar para Excel:', error);
+      addToast('Falha na exportação para Excel', 'error');
+    }
+  };
+
+  const handleExportPDF = () => {
+    if (filteredProjects.length === 0) {
+      addToast(t('noDataToExport') || 'Nenhum registro para exportar', 'error');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF('landscape', 'pt', 'a4');
+      const titleColor = [30, 41, 59]; // slate-800
+      
+      // Header
+      doc.setFontSize(16);
+      doc.setTextColor(titleColor[0], titleColor[1], titleColor[2]);
+      doc.setFont('helvetica', 'bold');
+      doc.text('NEXUS - HISTÓRICO DE PROJETOS & ENGENHARIA', 40, 45);
+      
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')} por ${currentUser.name}`, 40, 60);
+      doc.text(`Filtros: Período ${startDate || 'Início'} até ${endDate || 'Fim'} | Registros encontrados: ${filteredProjects.length}`, 40, 72);
+      
+      // Line separator
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(1);
+      doc.line(40, 80, 802, 80);
+
+      const tableRows = filteredProjects.map((p, idx) => {
+        const designerName = usersMap[p.userId || '']?.name || '-';
+        const hoursReal = ((p.totalActiveSeconds || 0) / 3600).toFixed(1) + 'h';
+        const hoursEst = p.estimatedSeconds ? ((p.estimatedSeconds || 0) / 3600).toFixed(1) + 'h' : '-';
+        const dateStr = p.startTime ? new Date(p.startTime).toLocaleDateString('pt-BR') : '-';
+        const costStr = p.totalCost ? `R$ ${p.totalCost.toFixed(2)}` : 'R$ 0,00';
+
+        return [
+          idx + 1,
+          p.ns || '-',
+          p.clientName || '-',
+          p.projectCode || '-',
+          p.type || '-',
+          getTranslatedImplement(p.implementType || ''),
+          dateStr,
+          designerName,
+          hoursReal,
+          hoursEst,
+          p.status === 'COMPLETED' ? 'Fim' : 'Ativo',
+          costStr
+        ];
+      });
+
+      (doc as any).autoTable({
+        startY: 90,
+        head: [['#', 'N.S.', 'Cliente', 'Código', 'Tipo', 'Implemento', 'Data', 'Projetista', 'H. Real', 'H. Prev', 'Status', 'Custo']],
+        body: tableRows,
+        styles: { fontSize: 8, cellPadding: 5 },
+        headStyles: { fillColor: [43, 62, 104], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        margin: { left: 40, right: 40 },
+        theme: 'striped'
+      });
+
+      doc.save(`historico_projetos_${new Date().toISOString().slice(0, 10)}.pdf`);
+      addToast(t('exportSuccess') || 'Exportado com sucesso para PDF!', 'success');
+    } catch (error) {
+      console.error('Erro ao exportar para PDF:', error);
+      addToast('Falha na exportação para PDF', 'error');
+    }
+  };
+
   const handleSort = (key: string) => {
     if (sortKey === key) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -714,18 +851,41 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             </button>
         </div>
 
-        {activeSubTab === 'list' && (
-          <div className="hidden md:flex items-center gap-4 text-xs font-medium text-gray-500 dark:text-slate-400">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-green-500"></div>
-              <span>{stats.totalProjects} {t('totalProjects')}</span>
+        <div className="flex items-center gap-2">
+          {filteredProjects.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportExcel}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-xs font-bold rounded-xl border border-emerald-200/50 dark:border-emerald-800/20 transition-all cursor-pointer"
+                title="Exportar registros filtrados para planilha Excel (.xlsx)"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>EXCEL</span>
+              </button>
+              <button
+                onClick={handleExportPDF}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/20 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 text-xs font-bold rounded-xl border border-indigo-200/50 dark:border-indigo-800/20 transition-all cursor-pointer"
+                title="Exportar relatório formatado em PDF pronto para impressão"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>PDF IMPRESSÃO</span>
+              </button>
             </div>
-            <div className="flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" />
-              <span>{stats.totalHours}h {stats.totalMinutes}m {t('totalTime')}</span>
+          )}
+
+          {activeSubTab === 'list' && (
+            <div className="hidden lg:flex items-center gap-4 text-xs font-medium text-gray-500 dark:text-slate-400 ml-2">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                <span>{stats.totalProjects} {t('totalProjects')}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{stats.totalHours}h {stats.totalMinutes}m {t('totalTime')}</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Stats Cards (Only in List view) */}

@@ -241,6 +241,7 @@ export interface AppSettings {
   lunchEnd?: string;     // "13:00"
   language?: 'pt-BR' | 'en-US' | 'es-ES';
   hourlyCostCalculated?: number; // New: calculated hourly rate
+  autoLockTimeout?: number; // Screen auto-lock timeout in minutes (0 = disabled)
 }
 
 export interface SEOKeyword {
