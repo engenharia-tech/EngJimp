@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2, Briefcase, ChevronRight, Plus, FileCheck, FileX, Trash2, Building, Layers, CheckSquare, Edit, Info, X, Loader2, Search } from 'lucide-react';
 import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea, ProjectRequest, ProjectRequestStatus, AppState } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES, SUSPENSION_TYPES, PRODUCT_CATEGORIES } from '../constants';
@@ -210,14 +210,36 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
+  const unifiedTypes = useMemo(() => [
+    ImplementType.FURGAO_SC, ImplementType.FURGAO_SR, 
+    ImplementType.SIDER_SC, ImplementType.SIDER_SR,
+    ImplementType.GRANELEIRO, ImplementType.BASCULANTE,
+    ImplementType.CARGA_SECA_SC, ImplementType.CARGA_SECA_SR,
+    ImplementType.BASE_AND_BOX
+  ], []);
+
+  const checkRequestParts = useCallback((request: ProjectRequest) => {
+    const hasBase = request.baseProjectId || allProjects.some(p => 
+      p.ns.toLowerCase() === request.ns.toLowerCase() && 
+      (p.implementType === ImplementType.BASE || p.implementType === ImplementType.BASE_AND_BOX || p.implementType === 'BASE E CAIXA DE CARGA' || p.implementType === 'BASE_AND_BOX' || unifiedTypes.includes(p.implementType))
+    );
+    const hasBox = request.boxProjectId || allProjects.some(p => 
+      p.ns.toLowerCase() === request.ns.toLowerCase() && 
+      (p.implementType === ImplementType.CAIXA_CARGA || p.implementType === ImplementType.BASE_AND_BOX || p.implementType === 'BASE E CAIXA DE CARGA' || p.implementType === 'BASE_AND_BOX' || unifiedTypes.includes(p.implementType))
+    );
+    return { hasBase, hasBox };
+  }, [allProjects, unifiedTypes]);
+
   const filteredRequests = useMemo(() => {
     return projectRequests.filter(request => {
       // Basic status filter
       if (request.status === ProjectRequestStatus.COMPLETED || request.status === ProjectRequestStatus.CANCELLED) return false;
       
+      const { hasBase, hasBox } = checkRequestParts(request);
+
       // Availability filter: show if there's at least one part (Base or Box) that still needs to be started
-      const basePending = request.needsBase && !request.baseProjectId;
-      const boxPending = request.needsBox && !request.boxProjectId;
+      const basePending = request.needsBase && !hasBase;
+      const boxPending = request.needsBox && !hasBox;
       if (!basePending && !boxPending) return false;
 
       // Search filter
@@ -232,7 +254,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         (request.chassisNumber || '').toLowerCase().includes(search)
       );
     });
-  }, [projectRequests, nsSearch]);
+  }, [projectRequests, nsSearch, checkRequestParts]);
 
   const pendingProjects = useMemo(() => {
     return existingProjects
@@ -399,10 +421,12 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const handlePickRequest = (request: ProjectRequest) => {
     setSelectedRequest(request);
     
+    const { hasBase, hasBox } = checkRequestParts(request);
+
     // Default pick part based on what's available
-    if (request.needsBase && !request.baseProjectId) {
+    if (request.needsBase && !hasBase) {
       setPickPart('BASE');
-    } else if (request.needsBox && !request.boxProjectId) {
+    } else if (request.needsBox && !hasBox) {
       setPickPart('BOX');
     }
     
@@ -1544,18 +1568,23 @@ JIMPNEXUS
                           {t('effectiveTime')}: {(allProjects.filter(p => p.ns === request.ns).reduce((acc, p) => acc + getProjectLiveSeconds(p), 0) / 3600).toFixed(1)}h
                         </span>
                       </div>
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {request.needsBase && (
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${request.baseProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                            {t('base')} {request.baseProjectId ? `(${t('ok')})` : ''}
-                          </span>
-                        )}
-                        {request.needsBox && (
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${request.boxProjectId ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                            {t('box')} {request.boxProjectId ? `(${t('ok')})` : ''}
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        const { hasBase, hasBox } = checkRequestParts(request);
+                        return (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {request.needsBase && (
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${hasBase ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                {t('base')} {hasBase ? `(${t('ok')})` : ''}
+                              </span>
+                            )}
+                            {request.needsBox && (
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${hasBox ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                {t('box')} {hasBox ? `(${t('ok')})` : ''}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))
@@ -2163,106 +2192,109 @@ JIMPNEXUS
       )}
 
       {/* Pick NS Modal */}
-      {showPickModal && selectedRequest && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-orange-100 dark:border-orange-900/50">
-            <h3 className="text-lg font-bold mb-4 flex items-center text-orange-600 dark:text-orange-400">
-              <Play className="w-5 h-5 mr-2" />
-              {t('startProjectNs', { ns: selectedRequest.ns })}
-            </h3>
-            
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-2">{t('whatWillYouDesign')}</label>
-                <div className="grid grid-cols-1 gap-2">
-                  {selectedRequest.needsBase && !selectedRequest.baseProjectId && (
-                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BASE' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
-                      <input type="radio" name="pickPart" value="BASE" checked={pickPart === 'BASE'} onChange={() => setPickPart('BASE')} className="hidden" />
-                      <div className="flex-1 font-bold">{t('onlyBase')}</div>
-                      {pickPart === 'BASE' && <CheckSquare className="w-4 h-4" />}
-                    </label>
-                  )}
-                  {selectedRequest.needsBox && !selectedRequest.boxProjectId && (
-                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOX' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
-                      <input type="radio" name="pickPart" value="BOX" checked={pickPart === 'BOX'} onChange={() => setPickPart('BOX')} className="hidden" />
-                      <div className="flex-1 font-bold">{t('onlyBox')}</div>
-                      {pickPart === 'BOX' && <CheckSquare className="w-4 h-4" />}
-                    </label>
-                  )}
-                  {selectedRequest.needsBase && !selectedRequest.baseProjectId && selectedRequest.needsBox && !selectedRequest.boxProjectId && (
-                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOTH' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
-                      <input type="radio" name="pickPart" value="BOTH" checked={pickPart === 'BOTH'} onChange={() => setPickPart('BOTH')} className="hidden" />
-                      <div className="flex-1 font-bold">{t('baseAndBox')}</div>
-                      {pickPart === 'BOTH' && <CheckSquare className="w-4 h-4" />}
-                    </label>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('yourEstimateDesigner')}</label>
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex-1">
-                    <input 
-                      type="number" 
-                      placeholder={t('hours')}
-                      value={pickDesignerEstHours}
-                      onChange={e => setPickDesignerEstHours(e.target.value)}
-                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
-                    />
-                  </div>
-                  <span className="font-bold">:</span>
-                  <div className="flex-1">
-                    <input 
-                      type="number" 
-                      placeholder={t('minutes')}
-                      value={pickDesignerEstMinutes}
-                      onChange={e => setPickDesignerEstMinutes(e.target.value)}
-                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
-                    />
+      {showPickModal && selectedRequest && (() => {
+        const { hasBase: selectedHasBase, hasBox: selectedHasBox } = checkRequestParts(selectedRequest);
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-orange-100 dark:border-orange-900/50">
+              <h3 className="text-lg font-bold mb-4 flex items-center text-orange-600 dark:text-orange-400">
+                <Play className="w-5 h-5 mr-2" />
+                {t('startProjectNs', { ns: selectedRequest.ns })}
+              </h3>
+              
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-2">{t('whatWillYouDesign')}</label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {selectedRequest.needsBase && !selectedHasBase && (
+                      <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BASE' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
+                        <input type="radio" name="pickPart" value="BASE" checked={pickPart === 'BASE'} onChange={() => setPickPart('BASE')} className="hidden" />
+                        <div className="flex-1 font-bold">{t('onlyBase')}</div>
+                        {pickPart === 'BASE' && <CheckSquare className="w-4 h-4" />}
+                      </label>
+                    )}
+                    {selectedRequest.needsBox && !selectedHasBox && (
+                      <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOX' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
+                        <input type="radio" name="pickPart" value="BOX" checked={pickPart === 'BOX'} onChange={() => setPickPart('BOX')} className="hidden" />
+                        <div className="flex-1 font-bold">{t('onlyBox')}</div>
+                        {pickPart === 'BOX' && <CheckSquare className="w-4 h-4" />}
+                      </label>
+                    )}
+                    {selectedRequest.needsBase && !selectedHasBase && selectedRequest.needsBox && !selectedHasBox && (
+                      <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${pickPart === 'BOTH' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
+                        <input type="radio" name="pickPart" value="BOTH" checked={pickPart === 'BOTH'} onChange={() => setPickPart('BOTH')} className="hidden" />
+                        <div className="flex-1 font-bold">{t('baseAndBox')}</div>
+                        {pickPart === 'BOTH' && <CheckSquare className="w-4 h-4" />}
+                      </label>
+                    )}
                   </div>
                 </div>
 
-                <label className="flex items-center space-x-2 cursor-pointer bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg border border-amber-100 dark:border-amber-900/30 w-full">
-                  <input 
-                    type="checkbox" 
-                    checked={pickIsOvertime}
-                    onChange={e => setPickIsOvertime(e.target.checked)}
-                    className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
-                  />
-                  <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{t('overtime')}</span>
-                </label>
-              </div>
-            </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-slate-300 mb-1">{t('yourEstimateDesigner')}</label>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex-1">
+                      <input 
+                        type="number" 
+                        placeholder={t('hours')}
+                        value={pickDesignerEstHours}
+                        onChange={e => setPickDesignerEstHours(e.target.value)}
+                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
+                      />
+                    </div>
+                    <span className="font-bold">:</span>
+                    <div className="flex-1">
+                      <input 
+                        type="number" 
+                        placeholder={t('minutes')}
+                        value={pickDesignerEstMinutes}
+                        onChange={e => setPickDesignerEstMinutes(e.target.value)}
+                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
+                      />
+                    </div>
+                  </div>
 
-            <div className="flex justify-end gap-2">
-              <button 
-                onClick={() => {
-                  setShowPickModal(false);
-                  setSelectedRequest(null);
-                }}
-                className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-              >
-                {t('cancel')}
-              </button>
-              <button 
-                onClick={handleConfirmPick}
-                disabled={!pickPart || isSaving}
-                className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-bold shadow-sm transition-colors flex items-center"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {t('starting')}
-                  </>
-                ) : (
-                  t('startNow')
-                )}
-              </button>
+                  <label className="flex items-center space-x-2 cursor-pointer bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg border border-amber-100 dark:border-amber-900/30 w-full">
+                    <input 
+                      type="checkbox" 
+                      checked={pickIsOvertime}
+                      onChange={e => setPickIsOvertime(e.target.checked)}
+                      className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                    />
+                    <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{t('overtime')}</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button 
+                  onClick={() => {
+                    setShowPickModal(false);
+                    setSelectedRequest(null);
+                  }}
+                  className="text-gray-500 dark:text-slate-400 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  {t('cancel')}
+                </button>
+                <button 
+                  onClick={handleConfirmPick}
+                  disabled={!pickPart || isSaving}
+                  className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-bold shadow-sm transition-colors flex items-center"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {t('starting')}
+                    </>
+                  ) : (
+                    t('startNow')
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Pause Modal */}
       {showPauseModal && (

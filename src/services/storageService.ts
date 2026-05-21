@@ -1123,7 +1123,8 @@ export const fetchOperationalActivities = async (): Promise<OperationalActivity[
             endTime: a.end_time,
             durationSeconds: a.duration_seconds,
             notes: a.notes,
-            projectId: a.project_id
+            projectId: a.project_id,
+            isFlagged: a.is_flagged
         }));
     } catch (error) {
         console.error("FAILED TO FETCH OPERATIONAL ACTIVITIES", error);
@@ -1185,6 +1186,50 @@ export const deleteOperationalActivity = async (id: string): Promise<AppState> =
         return fetchAppState();
     } catch (error) {
         console.error("FAILED TO DELETE OPERATIONAL ACTIVITY", error);
+        throw error;
+    }
+};
+
+export const normalizeForgottenActivityInDB = async (
+    originalId: string,
+    updatedOriginal: OperationalActivity,
+    newSegments: Omit<OperationalActivity, 'id'>[]
+): Promise<AppState> => {
+    try {
+        // 1. Update the original activity
+        const { error: updateError } = await supabase
+            .from('operational_activities')
+            .update({
+                end_time: updatedOriginal.endTime,
+                duration_seconds: updatedOriginal.durationSeconds,
+                notes: updatedOriginal.notes,
+                is_flagged: true
+            })
+            .eq('id', originalId);
+
+        if (updateError) throw updateError;
+
+        // 2. Insert new segments (if any)
+        if (newSegments.length > 0) {
+            const { error: insertError } = await supabase
+                .from('operational_activities')
+                .insert(newSegments.map(s => ({
+                    user_id: s.userId,
+                    activity_type_id: s.activityTypeId,
+                    activity_name: s.activityName,
+                    start_time: s.startTime,
+                    end_time: s.endTime,
+                    duration_seconds: s.durationSeconds,
+                    notes: s.notes,
+                    project_id: s.projectId,
+                    is_flagged: true
+                })));
+            if (insertError) throw insertError;
+        }
+
+        return fetchAppState();
+    } catch (error) {
+        console.error("FAILED TO NORMALIZE FORGOTTEN ACTIVITY", error);
         throw error;
     }
 };

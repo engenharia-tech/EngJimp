@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { NexusChat } from './nexus/NexusChat';
@@ -44,8 +44,10 @@ import {
   updateProjectRequest,
   deleteProjectRequest,
   seedFebruaryData,
-  addAuditLog
+  addAuditLog,
+  normalizeForgottenActivityInDB
 } from './services/storageService';
+import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -326,6 +328,65 @@ const AppContent: React.FC = () => {
     const interval = setInterval(checkAlerts, 3600000);
     return () => clearInterval(interval);
   }, [data.interruptions, currentUser, addToast]);
+
+  // Auto-normalize forgotten operational activities running past business hours
+  const isNormalizingRef = useRef(false);
+  const normalizedActivityIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!currentUser || data.operationalActivities.length === 0 || isNormalizingRef.current) return;
+
+    const runCleanup = async () => {
+      // Find any running activity for the current user
+      const runningAct = data.operationalActivities.find(a => !a.endTime && a.userId === currentUser.id);
+      if (!runningAct) return;
+
+      // Skip if we already checked/processed this activity ID
+      if (normalizedActivityIdsRef.current.has(runningAct.id)) return;
+
+      const result = getCleanupSegmentsForActivity(runningAct, data.settings, new Date());
+      if (result && result.needsCorrection) {
+        isNormalizingRef.current = true;
+        normalizedActivityIdsRef.current.add(runningAct.id);
+        try {
+          console.log("[Cleanup] Resolving forgotten operational activity running past shift end:", runningAct.activityName);
+          const updatedState = await normalizeForgottenActivityInDB(
+            runningAct.id,
+            result.originalToUpdate,
+            result.newSegmentsToCreate
+          );
+          setData(updatedState);
+          
+          addToast(
+            `Atividade "${runningAct.activityName}" que continuou em execução após o fim do expediente foi ajustada automaticamente e retomada no próximo dia útil.`,
+            "info"
+          );
+
+          addAuditLog({
+            userId: currentUser.id,
+            userName: "Sistema Nexus",
+            action: "UPDATE",
+            entityType: "OPERATIONAL_ACTIVITY",
+            entityId: runningAct.id,
+            entityName: runningAct.activityName,
+            details: `Ajuste automático de atividade esquecida "${runningAct.activityName}": interrompida no final do expediente e retomada no dia seguinte.`
+          });
+        } catch (error) {
+          console.error("[Cleanup] Error adjusting forgotten activity:", error);
+        } finally {
+          isNormalizingRef.current = false;
+        }
+      } else {
+        // No correction needed, mark as checked
+        normalizedActivityIdsRef.current.add(runningAct.id);
+      }
+    };
+
+    runCleanup();
+    // Check periodically for real-time updates / duration tracking
+    const intervalId = setInterval(runCleanup, 60000);
+    return () => clearInterval(intervalId);
+  }, [data.operationalActivities, data.settings, currentUser, addToast]);
 
   // Auto-redirect based on role logic
   useEffect(() => {
