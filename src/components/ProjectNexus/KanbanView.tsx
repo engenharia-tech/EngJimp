@@ -54,9 +54,10 @@ interface KanbanViewProps {
 }
 
 const STATUS_COLUMNS = [
-  { id: GanttTaskStatus.TODO, label: 'ABERTO', color: 'bg-slate-100 text-slate-500' },
-  { id: GanttTaskStatus.IN_PROGRESS, label: 'EM PROJETO', color: 'bg-amber-100 text-amber-600' },
-  { id: GanttTaskStatus.DONE, label: 'FEITO', color: 'bg-blue-100 text-blue-600' }
+  { id: GanttTaskStatus.TODO, label: 'FILA DE SOLICITAÇÕES', color: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700' },
+  { id: GanttTaskStatus.IN_PROGRESS, label: 'EM DESENVOLVIMENTO', color: 'bg-indigo-105 bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30' },
+  { id: GanttTaskStatus.CLOSED, label: 'IMPEDIDO/PAUSADO', color: 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30' },
+  { id: GanttTaskStatus.DONE, label: 'FINALIZADO', color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30' }
 ];
 
 export const KanbanView: React.FC<KanbanViewProps> = ({ state, onUpdateState, onEditTask, onRefresh, currentUser }) => {

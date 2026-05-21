@@ -3,7 +3,7 @@ import { User, UserRole } from '../types';
 import { updateUser } from '../services/storageService';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
-import { User as UserIcon, Mail, Phone, Lock, Save, X, Loader2, Shield } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Lock, Save, X, Loader2, Shield, Fingerprint } from 'lucide-react';
 
 interface UserProfileModalProps {
   user: User;
@@ -23,6 +23,73 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
   const [surname, setSurname] = useState(user.surname || '');
   const [email, setEmail] = useState(user.email || '');
   const [phone, setPhone] = useState(user.phone || '');
+
+  const [biometricEnabled, setBiometricEnabled] = useState(() => {
+    return localStorage.getItem(`biometric_enabled_${user.id}`) === 'true';
+  });
+
+  const handleToggleBiometrics = async (checked: boolean) => {
+    if (!checked) {
+      localStorage.removeItem(`biometric_enabled_${user.id}`);
+      localStorage.removeItem(`biometric_simulated_${user.id}`);
+      setBiometricEnabled(false);
+      addToast('Autenticação biométrica desativada', 'info');
+      return;
+    }
+
+    if (!window.PublicKeyCredential) {
+      addToast('Dispositivo ou navegador não suporta autenticação biométrica (WebAuthn).', 'error');
+      return;
+    }
+
+    try {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const createCredentialOptions: CredentialCreationOptions = {
+        publicKey: {
+          challenge,
+          rp: { name: "JIMP NEXUS Security" },
+          user: {
+            id: new TextEncoder().encode(user.id),
+            name: user.username,
+            displayName: user.name,
+          },
+          pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+          timeout: 10000,
+          authenticatorSelection: { userVerification: "required" },
+        }
+      };
+
+      addToast('Confirme seus dados biométricos no prompt do sistema...', 'info');
+      
+      const credential = await navigator.credentials.create(createCredentialOptions);
+      if (credential) {
+        localStorage.setItem(`biometric_enabled_${user.id}`, 'true');
+        localStorage.removeItem(`biometric_simulated_${user.id}`);
+        setBiometricEnabled(true);
+        addToast('Biometria nativa registrada e ativada com sucesso!', 'success');
+      }
+    } catch (err: any) {
+      console.warn("WebAuthn API error:", err);
+      const isSandboxError = err.name === 'NotAllowedError' || err.message?.includes('secure context') || err.message?.includes('sandboxed') || err.name === 'SecurityError';
+      
+      if (isSandboxError) {
+        const confirmSimulation = window.confirm(
+          "Aviso de Sandbox: O iFrame do ambiente de desenvolvimento impediu o acesso à criptografia do dispositivo. Deseja habilitar a Biometria Simulada de Alta Fidelidade para fins de demonstração?"
+        );
+        if (confirmSimulation) {
+          localStorage.setItem(`biometric_enabled_${user.id}`, 'true');
+          localStorage.setItem(`biometric_simulated_${user.id}`, 'true');
+          setBiometricEnabled(true);
+          addToast('Simulador de Biometria ativado com sucesso para demonstração!', 'success');
+        } else {
+          addToast('Ativação biométrica bloqueada pelas restrições do iFrame.', 'error');
+        }
+      } else {
+        addToast(`Erro ao ativar: ${err.message || err.name}`, 'error');
+      }
+    }
+  };
 
   const handleSave = async () => {
     // Validate current password
@@ -195,6 +262,38 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                         />
                     </div>
                 </div>
+            </div>
+
+            {/* Device Biometrics (WebAuthn / Local Simulation) */}
+            <div className="bg-slate-50 dark:bg-slate-900/40 p-4 rounded-xl border border-gray-200 dark:border-slate-850 space-y-3 mt-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Fingerprint className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                        <div>
+                            <h4 className="text-sm font-bold text-gray-950 dark:text-white leading-tight">
+                                Biometria do Dispositivo
+                            </h4>
+                            <p className="text-xs text-gray-500 dark:text-slate-400">
+                                Desbloquear tela via digital ou reconhecimento facial.
+                            </p>
+                        </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={biometricEnabled}
+                            onChange={e => handleToggleBiometrics(e.target.checked)}
+                            className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-[20px] after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
+                    </label>
+                </div>
+                {biometricEnabled && (
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/20 px-3 py-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>Biometria ativa neste navegador {localStorage.getItem(`biometric_simulated_${user.id}`) === 'true' && '(Modo de Teste Simulado)'}</span>
+                    </div>
+                )}
             </div>
         </div>
 

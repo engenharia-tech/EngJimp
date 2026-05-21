@@ -5,13 +5,19 @@ import './index.css';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { ToastProvider } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { StateProvider } from './contexts/StateContext';
+import { SavingProvider } from './contexts/SavingContext';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <LanguageProvider>
       <ToastProvider>
         <ErrorBoundary>
-          <App />
+          <StateProvider>
+            <SavingProvider>
+              <App />
+            </SavingProvider>
+          </StateProvider>
         </ErrorBoundary>
       </ToastProvider>
     </LanguageProvider>
