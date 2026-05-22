@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { processNexusQuery } from './nexusEngine';
 import { AppState, User } from '../types';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { resolveLocalQueryFallback } from '../utils/localQueryProcessor';
 import { useToast } from '../components/Toast';
 
 interface ChatThread {
@@ -349,7 +350,11 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
     }
 
     try {
-      const response = await processNexusQuery(queryText, appState, currentUser);
+      const historyToSend = targetThread.messages.slice(0, -1).map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content
+      }));
+      const response = await processNexusQuery(queryText, appState, currentUser, historyToSend);
       
       let cleanContent = response;
       let chartData = null;
@@ -384,22 +389,43 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
       setThreads(updatedThreads);
       saveThreadsToLocalStorage(updatedThreads);
     } catch (error: any) {
-      console.error("Nexus IA Error:", error);
-      const updatedThreads = currentThreads.map(t => {
-        if (t.id === targetId) {
-          return {
-            ...t,
-            messages: [...t.messages, {
-              role: 'assistant',
-              content: `⚠️ Falha crítica no núcleo Nexus. Reinicializando sistemas...`,
-              timestamp: new Date()
-            }]
-          };
-        }
-        return t;
-      });
-      setThreads(updatedThreads);
-      saveThreadsToLocalStorage(updatedThreads);
+      console.error("Nexus IA Error, trying local fallback:", error);
+      try {
+        const fallbackText = resolveLocalQueryFallback(queryText, appState, currentUser);
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: fallbackText,
+          timestamp: new Date()
+        };
+        const updatedThreads = currentThreads.map(t => {
+          if (t.id === targetId) {
+            return {
+              ...t,
+              messages: [...t.messages, assistantMessage]
+            };
+          }
+          return t;
+        });
+        setThreads(updatedThreads);
+        saveThreadsToLocalStorage(updatedThreads);
+      } catch (fallbackError) {
+        console.error("Local fallback failed:", fallbackError);
+        const updatedThreads = currentThreads.map(t => {
+          if (t.id === targetId) {
+            return {
+              ...t,
+              messages: [...t.messages, {
+                role: 'assistant',
+                content: `⚠️ Falha crítica no núcleo Nexus: ${error.message || error}`,
+                timestamp: new Date()
+              }]
+            };
+          }
+          return t;
+        });
+        setThreads(updatedThreads);
+        saveThreadsToLocalStorage(updatedThreads);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -444,7 +470,11 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
     }
 
     try {
-      const response = await processNexusQuery(currentTerm, appState, currentUser);
+      const historyToSend = targetThread.messages.slice(0, -1).map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content
+      }));
+      const response = await processNexusQuery(currentTerm, appState, currentUser, historyToSend);
       
       let cleanContent = response;
       let chartData = null;
@@ -479,22 +509,43 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
       setThreads(updatedThreads);
       saveThreadsToLocalStorage(updatedThreads);
     } catch (error: any) {
-      console.error("Nexus IA Error:", error);
-      const updatedThreads = currentThreads.map(t => {
-        if (t.id === targetId) {
-          return {
-            ...t,
-            messages: [...t.messages, {
-              role: 'assistant',
-              content: `⚠️ Falha crítica no núcleo Nexus. Reinicializando sistemas...`,
-              timestamp: new Date()
-            }]
-          };
-        }
-        return t;
-      });
-      setThreads(updatedThreads);
-      saveThreadsToLocalStorage(updatedThreads);
+      console.error("Nexus IA Error, trying local fallback:", error);
+      try {
+        const fallbackText = resolveLocalQueryFallback(currentTerm, appState, currentUser);
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: fallbackText,
+          timestamp: new Date()
+        };
+        const updatedThreads = currentThreads.map(t => {
+          if (t.id === targetId) {
+            return {
+              ...t,
+              messages: [...t.messages, assistantMessage]
+            };
+          }
+          return t;
+        });
+        setThreads(updatedThreads);
+        saveThreadsToLocalStorage(updatedThreads);
+      } catch (fallbackError) {
+        console.error("Local fallback failed:", fallbackError);
+        const updatedThreads = currentThreads.map(t => {
+          if (t.id === targetId) {
+            return {
+              ...t,
+              messages: [...t.messages, {
+                role: 'assistant',
+                content: `⚠️ Falha crítica no núcleo Nexus: ${error.message || error}`,
+                timestamp: new Date()
+              }]
+            };
+          }
+          return t;
+        });
+        setThreads(updatedThreads);
+        saveThreadsToLocalStorage(updatedThreads);
+      }
     } finally {
       setIsLoading(false);
     }

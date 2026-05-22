@@ -259,8 +259,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const sortedUsers = [...filteredUsers].sort((a, b) => a.name.localeCompare(b.name));
     const map = sortedUsers.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
     setUsersMap(map);
-    setAvailableDesigners(sortedUsers.filter(u => u.role !== 'CEO'));
-  }, [data.users]);
+    setAvailableDesigners(sortedUsers.filter(u => u.role !== 'CEO' || u.id === currentUser.id));
+  }, [data.users, currentUser.id]);
 
   const processUserIds = useMemo(() => {
     return new Set(data.users.filter(u => u.role === 'PROCESSOS').map(u => u.id));
@@ -2990,9 +2990,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     </tr>
                   </thead>
                   <tbody>
-                    {advancedWeeklyHeatmap.matrix.length > 0 && advancedWeeklyHeatmap.matrix.some(row => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(row.role)) ? (
+                    {advancedWeeklyHeatmap.matrix.length > 0 && advancedWeeklyHeatmap.matrix.some(row => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(row.role) || row.id === currentUser.id) ? (
                       advancedWeeklyHeatmap.matrix
-                        .filter(row => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(row.role))
+                        .filter(row => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(row.role) || row.id === currentUser.id)
                         .map(row => (
                           <tr key={row.id} className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
                             <td className="py-3 px-4 font-bold text-xs text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-850">

@@ -155,9 +155,21 @@ app.post("/api/gemini/generate", async (req, res) => {
     return res.json({ success: true, text });
   } catch (error: any) {
     console.error("[Gemini API Server Error]:", error);
-    return res.status(500).json({ 
+    const errorStr = (error.message || String(error)).toLowerCase();
+    const isQuotaExceeded = errorStr.includes("quota") || 
+                            errorStr.includes("limit") || 
+                            errorStr.includes("429") || 
+                            errorStr.includes("resource_exhausted") || 
+                            errorStr.includes("exhausted");
+    
+    let userFriendlyError = "Erro ao processar a pergunta com o Gemini.";
+    if (isQuotaExceeded) {
+      userFriendlyError = "⚠️ Limite de Cota do Gemini Excedido (Quota Exceeded). No plano gratuito do Google AI Studio, há um limite diário e por minuto de requisições. Para resolver isso e usar sem interrupções, você pode configurar uma chave de API própria no menu superior de Configurações (ícone de engrenagem) em 'Secrets', ou aguardar alguns instantes antes de reenviar sua mensagem.";
+    }
+
+    return res.status(isQuotaExceeded ? 429 : 500).json({ 
       success: false, 
-      error: "Error processing request with Gemini.",
+      error: userFriendlyError,
       details: error.message || String(error)
     });
   }

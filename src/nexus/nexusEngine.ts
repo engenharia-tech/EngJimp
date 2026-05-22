@@ -62,7 +62,8 @@ Sempre que um usuário perguntar sobre o desempenho, produtividade ou o que um p
 export const processNexusQuery = async (
   query: string, 
   appState: AppState, 
-  currentUser: User
+  currentUser: User,
+  history?: { role: 'user' | 'assistant'; content: string }[]
 ): Promise<string> => {
     // 1. Geração de Contexto Local
     const { 
@@ -217,7 +218,20 @@ dados: ${JSON.stringify(equipePerformace)}
 
   // 2. Lógica de "IA Interna"
   try {
-    const fullPrompt = `${NEXUS_IDENTITY}\n\n${contextData}\n\nPERGUNTA: ${query}`;
+    // Format conversation history if available
+    let historyText = "";
+    if (history && history.length > 0) {
+      historyText = history.map(m => {
+        return m.role === 'user' ? `Usuário: ${m.content}` : `Assistente: ${m.content}`;
+      }).join('\n\n');
+    }
+
+    const userHeader = `[DADOS DE IDENTIFICAÇÃO EM TEMPO REAL]
+Você está respondendo diretamente a: ${currentUser.name} ${currentUser.surname || ''} (ID: ${currentUser.id}, Função: ${currentUser.role}, E-mail: ${currentUser.email || 'Não informado'})
+NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Responda em primeira pessoa quando o usuário referir a 'eu', 'minhas NS', 'minha produtividade', etc.
+[/DADOS DE IDENTIFICAÇÃO EM TEMPO REAL]`;
+
+    const fullPrompt = `${NEXUS_IDENTITY}\n\n${contextData}\n\n${userHeader}\n\n${historyText ? `[CONVERSA ANTERIOR]\n${historyText}\n\n` : ''}Usuário (${currentUser.name}): ${query}\n\nAssistente:`;
     
     // Chamada ao núcleo de processamento
     const response = await askGemini(fullPrompt);
