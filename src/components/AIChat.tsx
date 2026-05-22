@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { askGemini } from '../lib/gemini';
 import { useLanguage } from '../i18n/LanguageContext';
+import { resolveLocalQueryFallback } from '../utils/localQueryProcessor';
 import { AppState, User, InterruptionStatus } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
@@ -283,9 +284,22 @@ ${usersInfo}
     setInput('');
     setIsLoading(true);
 
+    // Store original user query text in temporary variable before we empty the input
+    const originalInput = input;
     try {
       const context = generateContext();
-      const prompt = `${context}\n\nPergunta do Usuário: ${input}`;
+      
+      // Format history up to 10 previous messages to maintain conversation context
+      const historyText = messages.slice(-10).map(m => {
+        return m.role === 'user' ? `Usuário: ${m.content}` : `Assistente: ${m.content}`;
+      }).join('\n\n');
+
+      const userHeader = `[DADOS DE IDENTIFICAÇÃO EM TEMPO REAL]
+Você está respondendo diretamente a: ${currentUser.name} ${currentUser.surname || ''} (ID: ${currentUser.id}, Função: ${currentUser.role}, E-mail: ${currentUser.email || 'Não informado'})
+NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Responda em primeira pessoa quando o usuário referir a 'eu', 'minhas NS', 'minha produtividade', etc.
+[/DADOS DE IDENTIFICAÇÃO EM TEMPO REAL]`;
+
+      const prompt = `${context}\n\n${userHeader}\n\n${historyText ? `[CONVERSA ANTERIOR]\n${historyText}\n\n` : ''}Usuário (${currentUser.name}): ${input}\n\nAssistente:`;
       const response = await askGemini(prompt);
       
       // Extract JSON if present
@@ -294,12 +308,12 @@ ${usersInfo}
       
       const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
       if (jsonMatch) {
-        try {
+         try {
           chartData = JSON.parse(jsonMatch[1]);
           cleanContent = response.replace(jsonMatch[0], '').trim();
-        } catch (e) {
+         } catch (e) {
           console.error("Failed to parse chart JSON", e);
-        }
+         }
       }
 
       const assistantMessage: Message = {
@@ -311,13 +325,24 @@ ${usersInfo}
       
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error: any) {
-      console.error("Chat Error:", error);
-      const errorMessage = error.message || "Erro desconhecido";
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `Desculpe, ocorreu um erro ao processar sua pergunta: ${errorMessage}. Por favor, tente novamente.`,
-        timestamp: new Date()
-      }]);
+      console.error("Chat Error, trying local fallback:", error);
+      try {
+        const fallbackText = resolveLocalQueryFallback(originalInput, appState, currentUser);
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: fallbackText,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      } catch (fallbackError) {
+        console.error("Local fallback error:", fallbackError);
+        const errorMessage = error.message || "Erro desconhecido";
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Desculpe, ocorreu um erro ao processar sua pergunta: ${errorMessage}. Por favor, tente novamente.`,
+          timestamp: new Date()
+        }]);
+      }
     } finally {
       setIsLoading(false);
     }

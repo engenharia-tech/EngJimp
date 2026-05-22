@@ -69,8 +69,19 @@ export const analyzePerformance = async (
     // Use the client-side library that proxies to the server
     const analysis = await askGemini(prompt);
     return analysis;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Error:", error);
-    return "Não foi possível gerar a análise no momento. Verifique sua chave de API no servidor.";
+    const errorMessage = error?.message || String(error);
+    if (
+      errorMessage.includes("Cota") || 
+      errorMessage.includes("Quota") || 
+      errorMessage.includes("429") || 
+      errorMessage.includes("exhausted") || 
+      errorMessage.includes("exceeded") ||
+      errorMessage.includes("Secrets")
+    ) {
+      return `⚠️ **Limite de Cota do Gemini Excedido (Quota Exceeded)**\n\nNo plano gratuito do Google AI Studio, há um limite diário e por minuto de requisições. Para resolver isso e usar sem interrupções, você pode configurar uma chave de API própria no menu superior de Configurações (ícone de engrenagem) em 'Secrets', ou aguardar alguns instantes antes de gerar uma nova análise.`;
+    }
+    return `Não foi possível gerar a análise no momento. Detalhe do erro: ${errorMessage}`;
   }
 };
