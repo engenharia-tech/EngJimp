@@ -1251,7 +1251,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     return filteredProjects
       .filter(p => p.status === 'COMPLETED')
       .map(p => {
-        const hours = parseFloat(((p.durationSeconds || 0) / 3600).toFixed(1));
+        const hours = parseFloat(((p.totalActiveSeconds || p.totalSeconds || 0) / 3600).toFixed(1));
         const interruptionsCount = p.pauses?.length || 0;
         const variationsCount = p.variations?.length || 0;
         return {
@@ -1298,7 +1298,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         
         const weekday = pDate.getDay(); // 0 = Sun, 1 = Mon, ..., 5 = Fri, 6 = Sat
         if (weekday >= 1 && weekday <= 5) {
-          dayHours[weekday - 1] += (proj.durationSeconds || 0) / 3600;
+          dayHours[weekday - 1] += (proj.totalActiveSeconds || proj.totalSeconds || 0) / 3600;
         }
       });
       

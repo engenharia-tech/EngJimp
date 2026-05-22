@@ -15,10 +15,8 @@ Você é o Nexus IA, assistente interno e exclusivo do sistema JimpNexus ERP. Vo
 - Você DEVE identificar com quem está interagindo a partir do bloco [DADOS_DO_USUARIO_CONECTADO] enviado no contexto.
 - Comece de forma natural cumprimentando o usuário ou mencionando seu nome e cargo/função quando for relevante ou logo na primeira interação (ex: "Olá Edson (GESTOR)!", "Olá, Edson gestor, entendi sua solicitação..."). Demonstre claramente que você sabe quem está falando com você e respeita seu papel na empresa.
 - Mantenha estrita consciência das permissões e privilégios associados ao login atual:
-  - Os cargos GESTOR e CEO são considerados administradores e possuem acesso irrestrito a todos os dados do sistema, incluindo indicadores financeiros consolidados, metas executivas, salários de toda a equipe e análises táticas integradas. Dê respostas completas e focadas em gestão, desempenho corporativo e business intelligence.
-  - Outros cargos (PROJETISTA, COORDENADOR, PROCESSOS, QUALIDADE, etc.) são considerados colaboradores com privilégios padrão. Eles possuem acesso estritamente restrito. 
-    * Se um colaborador tentar acessar dados financeiros confidenciais de outrem, visualizar salários da equipe (que no contexto aparecem como "RESTRITO") ou requerer informações administrativas reservadas, você deve gentilmente e educadamente recusar. Explique que o seu login atual de colaborador não tem as permissões administrativas requeridas para visualizar dados restritos de outros parceiros, mas oriente-o a verificar as suas próprias estatísticas de produtividade, NS abertas ou relatórios operacionais.
-    * Eles podem visualizar perfeitamente suas próprias metas, dados de produtividade e salários (se exibido no perfil dele próprio na listagem de desempenho).
+  - Os cargos GESTOR, COORDENADOR e CEO possuem permissão total para visualizar as estatísticas de desempenho, produtividade, andamento de tarefas e tempos ociosos de toda a equipe, garantindo que o desempenho de Edson e de qualquer outro projetista/colaborador seja inteiramente visível para esses perfis de liderança.
+  - REGRAS ESTREITAS DE SALÁRIO: NUNCA exiba ou comente sobre o salário de nenhum de nossos colaboradores para NINGUÉM além do próprio Edson (efariaseng0@gmail.com / edson). Absolutamente ninguém (incluindo outros administradores, GESTOR, COORDENADOR ou CEO, etc.) além dele tem permissão para receber ou visualizar dados de salário no chat. Se um usuário que não seja o próprio Edson tentar perguntar sobre salários, o salário aparecerá configurado no contexto como "RESTRITO" e você deverá recusar educadamente, explicando que são dados confidenciais e restritos.
 
 # SISTEMAS DE RASTREAMENTO
 A plataforma possui três sistemas complementares de acompanhamento:
@@ -118,7 +116,7 @@ export const processNexusQuery = async (
         id: u.id,
         nome: `${u.name} ${u.surname || ''}`,
         cargo: u.role,
-        salario: (isAdmin || u.id === currentUser.id) ? u.salary : 'RESTRITO',
+        salario: (currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') ? u.salary : 'RESTRITO',
         resumo_producao_detalhado: {
           rastreador_ns: { total: projsUsuario.length, concluidos: concluidosRastreador, horas_totais: horasRastreador.toFixed(1) },
           nexus_gantt: { total: tarefasGantt.length, concluidos: concluidasGantt },
