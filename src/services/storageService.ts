@@ -314,7 +314,7 @@ export const fetchAppState = async (): Promise<AppState> => {
         designerId: i.designer_id, startTime: i.start_time, endTime: i.end_time,
         problemType: i.problem_type, responsibleArea: i.responsible_area as InterruptionArea,
         responsiblePerson: i.responsible_person, description: i.description,
-        status: i.status as InterruptionStatus, totalTimeSeconds: i.total_time_seconds, lastActiveAt: i.updated_at
+        status: i.status as InterruptionStatus, totalTimeSeconds: i.total_time_seconds, lastActiveAt: i.updated_at || i.created_at || i.start_time
       }));
     } catch (e) { console.error("Interruptions mapping error:", e); }
 
@@ -986,8 +986,23 @@ export const updateInterruption = async (interruption: InterruptionRecord, skipF
 
     if (error) {
       console.error("SUPABASE ERROR UPDATING INTERRUPTION:", error);
-      throw error;
+      
+      const errMsg = error.message?.toLowerCase() || '';
+      if (errMsg.includes('column') || errMsg.includes('schema cache')) {
+        console.warn("Retrying interruption update without 'updated_at'...");
+        delete payload.updated_at;
+        
+        const { error: retryError } = await supabase
+          .from('interruptions')
+          .update(payload)
+          .eq('id', interruption.id);
+          
+        if (retryError) throw retryError;
+      } else {
+        throw error;
+      }
     }
+    
     if (skipFetch) return null as any;
     return fetchAppState();
   } catch (error) {

@@ -996,7 +996,13 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const onUpdateInterruption = async (interruption: InterruptionRecord, isHeartbeat = false) => {
+  const onUpdateInterruption = async (interruption: any, isHeartbeat = false) => {
+    // If we passed the full AppState from an operation that already saved to DB
+    if (interruption && typeof interruption === 'object' && 'interruptions' in interruption && 'projects' in interruption) {
+      setData(interruption);
+      return;
+    }
+
     // Update locally first
     setData(prev => ({
       ...prev,

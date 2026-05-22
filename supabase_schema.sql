@@ -192,18 +192,18 @@ create table if not exists public.gantt_tasks (
   updated_at timestamptz default now()
 );
 
--- Enable Row Level Security (RLS)
-alter table public.users enable row level security;
-alter table public.settings enable row level security;
-alter table public.projects enable row level security;
-alter table public.issues enable row level security;
-alter table public.innovations enable row level security;
-alter table public.interruption_types enable row level security;
-alter table public.interruptions enable row level security;
-alter table public.activity_types enable row level security;
-alter table public.operational_activities enable row level security;
-alter table public.project_requests enable row level security;
-alter table public.gantt_tasks enable row level security;
+-- Disable Row Level Security (RLS) for custom credential authentication setup
+alter table public.users disable row level security;
+alter table public.settings disable row level security;
+alter table public.projects disable row level security;
+alter table public.issues disable row level security;
+alter table public.innovations disable row level security;
+alter table public.interruption_types disable row level security;
+alter table public.interruptions disable row level security;
+alter table public.activity_types disable row level security;
+alter table public.operational_activities disable row level security;
+alter table public.project_requests disable row level security;
+alter table public.gantt_tasks disable row level security;
 
 -- Tenant Helper Function
 -- NOTE: This function depends on auth.uid(), which is only available if using Supabase Auth.

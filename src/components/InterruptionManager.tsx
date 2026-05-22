@@ -24,7 +24,7 @@ import { calcActiveSeconds } from '../utils/workdayCalc';
 interface InterruptionManagerProps {
   data: AppState;
   currentUser: User;
-  onUpdate: (interruption: InterruptionRecord, isHeartbeat?: boolean) => void;
+  onUpdate: (interruption: any, isHeartbeat?: boolean) => void;
   addToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -297,8 +297,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         }
       }
       resetForm();
-    } catch (err) {
-      addToast(t('saveInterruptionError'), 'error');
+    } catch (err: any) {
+      console.error("Error saving interruption:", err);
+      const detailMsg = err?.message || err?.details || String(err);
+      addToast(`${t('saveInterruptionError')}: ${detailMsg}`, 'error');
     }
   };
 
@@ -358,8 +360,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
               details: `Interrupção no projeto ${interruptionToDelete.projectNs} excluída por ${currentUser.name}`
           });
       }
-    } catch (err) {
-      addToast(t('deleteError'), 'error');
+    } catch (err: any) {
+      console.error("Delete interruption error:", err);
+      const detailMsg = err?.message || String(err);
+      addToast(`${t('deleteError')}: ${detailMsg}`, 'error');
     }
   };
 
@@ -385,8 +389,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           entityName: newTypeName.trim(),
           details: `Novo tipo de interrupção "${newTypeName.trim()}" criado por ${currentUser.name}`
       });
-    } catch (err) {
-      addToast(t('addTypeError'), 'error');
+    } catch (err: any) {
+      console.error("Add item type error:", err);
+      const detailMsg = err?.message || String(err);
+      addToast(`${t('addTypeError')}: ${detailMsg}`, 'error');
     }
   };
 
@@ -408,8 +414,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           entityName: type.name,
           details: `Status do tipo de interrupção "${type.name}" alterado para ${!type.isActive ? 'Ativo' : 'Inativo'} por ${currentUser.name}`
       });
-    } catch (err) {
-      addToast(t('updateStatusError'), 'error');
+    } catch (err: any) {
+      console.error("Update item type status error:", err);
+      const detailMsg = err?.message || String(err);
+      addToast(`${t('updateStatusError')}: ${detailMsg}`, 'error');
     }
   };
 
@@ -594,17 +602,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             
             return (
               <div key={i.id} className={`bg-white dark:bg-black p-5 rounded-xl shadow-sm border ${alert === 'red' ? 'border-red-500' : alert === 'yellow' ? 'border-amber-500' : 'border-gray-100 dark:border-slate-700'} hover:shadow-md transition-all relative group`}>
-                {/* Designer Name Badge */}
-                <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700">
-                  <UserIcon className="w-3 h-3 text-gray-500" />
-                  <span className="text-[10px] font-bold text-gray-600 dark:text-slate-300">
-                    {(() => {
-                      const designer = data.users.find(u => u.id === i.designerId);
-                      return designer ? `${designer.name} ${designer.surname || ''}`.trim() : t('unknown');
-                    })()}
-                  </span>
-                </div>
-
+                
                 {alert && (
                   <div className={`absolute -top-2 -right-2 px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm ${alert === 'red' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'}`}>
                     <AlertTriangle className="w-3 h-3" />
@@ -614,8 +612,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                 
                 <div className="flex flex-col md:flex-row justify-between gap-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                    <div className="flex flex-wrap items-center gap-3 mb-2">
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 ${
                         i.status === InterruptionStatus.OPEN ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                         i.status === InterruptionStatus.WAITING ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
                         i.status === InterruptionStatus.RESOLVED ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
@@ -623,9 +621,21 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                       }`}>
                         {t(i.status.toLowerCase())}
                       </span>
-                      <span className="font-mono font-bold text-black dark:text-white">NS: {i.projectNs}</span>
-                      <span className="text-gray-400 dark:text-slate-500 text-sm">|</span>
-                      <span className="text-gray-900 dark:text-white font-medium">{i.clientName || t('noClientInformed')}</span>
+                      <span className="font-mono font-bold text-black dark:text-white shrink-0">NS: {i.projectNs}</span>
+                      <span className="text-gray-400 dark:text-slate-500 text-sm shrink-0">|</span>
+                      <span className="text-gray-900 dark:text-white font-medium shrink-0">{i.clientName || t('noClientInformed')}</span>
+                      
+                      {/* Designer Name Badge */}
+                      <span className="text-gray-400 dark:text-slate-500 text-sm shrink-0">|</span>
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 shrink-0">
+                        <UserIcon className="w-2.5 h-2.5 text-gray-500" />
+                        <span className="text-[10px] font-bold text-gray-600 dark:text-slate-300">
+                          {(() => {
+                            const designer = data.users.find(u => u.id === i.designerId);
+                            return designer ? `${designer.name} ${designer.surname || ''}`.trim() : t('unknown');
+                          })()}
+                        </span>
+                      </div>
                     </div>
                     
                     <h3 className="text-lg font-bold text-black dark:text-white mb-1">{i.problemType}</h3>
