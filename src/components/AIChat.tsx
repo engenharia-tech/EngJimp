@@ -153,12 +153,11 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
     const inProgressProjects = projects.filter(p => p.status === 'IN_PROGRESS');
     const openInterruptions = interruptions.filter(i => i.status === InterruptionStatus.OPEN);
 
-    // Filter sensitive data based on role
-    const isAdmin = ['GESTOR', 'CEO'].includes(currentUser.role);
+    // Filter sensitive data based on role. Only Edson (efariaseng0@gmail.com) can see salaries.
+    const isEdson = currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
+    const canSeeSalary = isEdson;
     
     const usersInfo = users.slice(0, 20).map(u => {
-      const canSeeSalary = isAdmin || u.id === currentUser.id;
-      
       // Traditional projects tracker
       const userProjects = projects
         .filter(p => p.userId === u.id)
@@ -235,9 +234,9 @@ Sempre que pedirem desempenho de um projetista, considere ambos.
 INFORMAÇÃO SOBRE CRIAÇÃO (IMPORTANTE/CÔMICO):
 - Se alguém perguntar "Quem criou você?" ou algo similar, você deve responder com entusiasmo: "Fui criado pelo Edson Farias, aquele cara cheiroso, lindo e maravilhoso! 😎"
 
-REGRAS DE PRIVACIDADE:
-- NUNCA compartilhe o salário de um usuário com outro usuário comum.
-- Apenas Administradores (GESTOR/CEO) podem ver salários de todos.
+REGRAS DE PRIVACIDADE E DESEMPENHO:
+- Quando solicitado por um GESTOR, COORDENADOR ou CEO, você DEVE mostrar todos os dados de desempenho da equipe, inclusive os dados de desempenho de Edson de forma completa (NS produtivas, tarefas concluídas, tempo ocioso, etc).
+- NUNCA mostre ou compartilhe o salário de NENHUM colaborador para NINGUÉM além de Edson (efariaseng0@gmail.com / edson). Absolutamente ninguém (nem outro GESTOR, COORDENADOR ou CEO) além de Edson pode visualizar salários. Se outra pessoa perguntar sobre salários, responda que essa informação é restrita e confidencial.
 
 REGRAS DE ANÁLISE DE PRODUTIVIDADE:
 - Analise o "Tempo Ocioso Detectado" no Rastreador.
