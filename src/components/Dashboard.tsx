@@ -2990,9 +2990,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     </tr>
                   </thead>
                   <tbody>
-                    {advancedWeeklyHeatmap.matrix.length > 0 && advancedWeeklyHeatmap.matrix.some(row => row.role === 'PROJETISTA' || row.role === 'COORDENADOR') ? (
+                    {advancedWeeklyHeatmap.matrix.length > 0 && advancedWeeklyHeatmap.matrix.some(row => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(row.role)) ? (
                       advancedWeeklyHeatmap.matrix
-                        .filter(row => row.role === 'PROJETISTA' || row.role === 'COORDENADOR')
+                        .filter(row => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(row.role))
                         .map(row => (
                           <tr key={row.id} className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
                             <td className="py-3 px-4 font-bold text-xs text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-850">
