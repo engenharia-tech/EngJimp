@@ -6,31 +6,31 @@
 ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE public.users ADD CONSTRAINT users_role_check CHECK (role IN ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR'));
 
--- 2. Ensure RLS is enabled
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+-- 2. Configure Row Level Security (RLS) Permissively to enable client-side operations
+-- Since we are using Custom Credentials and Custom Auth without Supabase native auth, RLS should be disabled or made fully permissive for all tables.
+ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.projects DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interruptions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.operational_activities DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.innovations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gantt_tasks DISABLE ROW LEVEL SECURITY;
 
--- 3. Fix RLS Policies for Users
--- These policies use session variables (app.user_id, app.user_role) 
--- which must be set by the application after a custom login.
+-- 3. DROP old restrictive policies that were causing update failures
 DROP POLICY IF EXISTS "Users can view all users" ON public.users;
 DROP POLICY IF EXISTS "Users can update their own profile" ON public.users;
 DROP POLICY IF EXISTS "Admins can manage all users" ON public.users;
-
-CREATE POLICY "Users can view all users" ON public.users FOR SELECT USING (true);
-CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (id::text = current_setting('app.user_id', true));
-CREATE POLICY "Admins can manage all users" ON public.users FOR ALL USING (current_setting('app.user_role', true) IN ('GESTOR', 'CEO'));
-
--- 4. Fix RLS Policies for Projects (Ensure GESTOR can delete)
 DROP POLICY IF EXISTS "Admins can delete projects" ON public.projects;
-CREATE POLICY "Admins can delete projects" ON public.projects FOR DELETE USING (current_setting('app.user_role', true) IN ('GESTOR', 'CEO'));
-
--- 5. Fix RLS Policies for Operational Activities
 DROP POLICY IF EXISTS "Users can insert their own activities" ON public.operational_activities;
 DROP POLICY IF EXISTS "Users can update their own activities" ON public.operational_activities;
+DROP POLICY IF EXISTS "Designers can update their interruptions" ON public.interruptions;
+DROP POLICY IF EXISTS "Users can view all interruptions" ON public.interruptions;
+DROP POLICY IF EXISTS "Users can insert interruptions" ON public.interruptions;
 
-CREATE POLICY "Users can insert their own activities" ON public.operational_activities FOR INSERT WITH CHECK (user_id::text = current_setting('app.user_id', true));
-CREATE POLICY "Users can update their own activities" ON public.operational_activities FOR UPDATE USING (user_id::text = current_setting('app.user_id', true));
+-- 4. Re-create permissive policies if you decide to keep RLS enabled:
+-- CREATE POLICY "Permissive All users" ON public.users FOR ALL USING (true);
+-- CREATE POLICY "Permissive All projects" ON public.projects FOR ALL USING (true);
+-- CREATE POLICY "Permissive All interruptions" ON public.interruptions FOR ALL USING (true);
+-- CREATE POLICY "Permissive All activities" ON public.operational_activities FOR ALL USING (true);
 
 -- 6. Reload schema cache
 NOTIFY pgrst, 'reload config';
