@@ -10,12 +10,213 @@ export const resolveLocalQueryFallback = (
   appState: AppState,
   currentUser: User
 ): string => {
-  const normalized = query.toLowerCase().trim();
+  const normalized = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const name = currentUser.name;
   const role = currentUser.role;
   const email = currentUser.email || 'Não informado';
 
-  // 1. "Quem sou eu" / "Quem eu sou"
+  const projects = appState.projects || [];
+  const users = appState.users || [];
+  const interruptions = appState.interruptions || [];
+  const ganttTasks = appState.ganttTasks || [];
+
+  // --- DYNAMIC COLLABORATOR DETAIL SEARCH ---
+  // Look for any user name in the query text (e.g., "Rogerio", "Charles", "Cobo", "Luiz")
+  const mentionedUser = users.find(u => {
+    const normUser = `${u.name} ${u.surname || ''}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const firstName = u.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return (
+      (firstName.length > 2 && normalized.includes(firstName)) || 
+      normalized.includes(normUser)
+    );
+  });
+
+  // If a specific collaborator was named (excluding common "quem sou eu" questions)
+  if (mentionedUser && !normalized.includes("quem sou eu") && !normalized.includes("meu nome")) {
+    const isSelfStr = mentionedUser.id === currentUser.id ? " (Você)" : "";
+    const userProjects = projects.filter(p => p.userId === mentionedUser.id);
+    const completed = userProjects.filter(p => p.status === 'COMPLETED').length;
+    const inProgress = userProjects.filter(p => p.status === 'IN_PROGRESS').length;
+    
+    const userGantt = ganttTasks.filter(t => t.assignedTo?.includes(mentionedUser.id));
+    const completedGantt = userGantt.filter(t => t.status === 'closed').length;
+
+    const totalSeconds = userProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || p.totalSeconds || 0), 0);
+    const totalHours = (totalSeconds / 3600).toFixed(1);
+
+    // List recent projects
+    const recentProj = userProjects.slice(-5).reverse();
+    const projList = recentProj.length > 0
+      ? recentProj.map(p => `  * **NS ${p.ns}** - *${p.clientName || 'Inespecífico'}* (${p.implementType || 'N/A'}) - Status: \`${p.status}\``).join('\n')
+      : "  * Nenhuma Nota de Serviço (NS) registrada ainda.";
+
+    return `### 🔍 Ficha Operacional Real de: ${mentionedUser.name}${isSelfStr}
+*Dados extraídos em tempo real do banco de dados local da Engenharia JIMP*
+
+* **Nome Completo:** ${mentionedUser.name} ${mentionedUser.surname || ''}
+* **Cargo / Função:** \`${mentionedUser.role}\`
+* **E-mail:** \`${mentionedUser.email || 'Não cadastrado'}\`
+
+📊 **Lançamento de Horas e Projetos (Rastreador de NS):**
+* **Total de Projetos Liberados (Concluídos):** **${completed}** projetos concluídos/liberados 🏆
+* **Projetos Em Desenvolvimento ativos:** **${inProgress}**
+* **Total Geral de Projetos Associados:** **${userProjects.length}**
+* **Total de Horas registradas de Rastreamento:** **${totalHours}* horas*
+
+📅 **Cronograma de Atividades (Nexus Gantt):**
+* **Total de Tarefas Atribuídas:** ${userGantt.length} tarefas de cronograma
+* **Tarefas Concluídas:** ${completedGantt} de ${userGantt.length}
+
+📂 **Projetos e Lançamentos Recentes:**
+${projList}
+
+*Se quiser detalhes de outro colaborador ou ver a tabela do ranking completo, é só me perguntar!*`;
+  }
+
+  // --- DYNAMIC RANKING / LEADERBOARD ---
+  // Queries asking who holds the record, who released the most projects, ranking, leader etc.
+  if (
+    normalized.includes('ranking') ||
+    normalized.includes('quem mais') ||
+    normalized.includes('quem liberou mais') ||
+    normalized.includes('quem tem mais') ||
+    normalized.includes('mais liberou') ||
+    normalized.includes('lidera') ||
+    normalized.includes('liderança') ||
+    normalized.includes('podio') ||
+    normalized.includes('campeao') ||
+    normalized.includes('eficiencia')
+  ) {
+    // Compile completed (released) projects by user ID
+    const userStats = users.map(u => {
+      const uProjs = projects.filter(p => p.userId === u.id);
+      const completed = uProjs.filter(p => p.status === 'COMPLETED').length;
+      const inProgress = uProjs.filter(p => p.status === 'IN_PROGRESS').length;
+      const total = uProjs.length;
+      
+      const uGantt = ganttTasks.filter(t => t.assignedTo?.includes(u.id));
+      const completedGantt = uGantt.filter(t => t.status === 'closed').length;
+
+      return {
+        user: u,
+        completed,
+        inProgress,
+        total,
+        completedGantt,
+        ganttCount: uGantt.length
+      };
+    });
+
+    // Sort by completed projects descending (releasing), then overall total count
+    const sortedStats = [...userStats].sort((a, b) => b.completed - a.completed || b.total - a.total);
+
+    const rankingTable = sortedStats.map((stat, index) => {
+      let medal = '•';
+      if (index === 0) medal = '🏆 [1º]';
+      else if (index === 1) medal = '🥈 [2º]';
+      else if (index === 2) medal = '🥉 [3º]';
+      else medal = `[${index + 1}º]`;
+
+      const isSelf = stat.user.id === currentUser.id ? ' **(Você)**' : '';
+      return `| ${medal} | **${stat.user.name} ${stat.user.surname || ''}**${isSelf} | \`${stat.user.role}\` | **${stat.completed}** | ${stat.inProgress} | ${stat.total} | ${stat.completedGantt}/${stat.ganttCount} |`;
+    }).join('\n');
+
+    return `### 🏆 Ranking Geral de Liberação de Projetos (Tempo Real)
+Olá, **${name}**! Analisei todos os registros consolidados deste ano no banco de dados. Segue a classificação real por volume de projetos (NS) **liberados (concluídos)** da equipe:
+
+| Pos | Perfil / Colaborador | Função | Liberados (Concluídos) | Em Progresso | Total Registrado | Gantt (Concluídos) |
+|---|---|---|---|---|---|---|
+${rankingTable}
+
+💡 **Resumo Rápido da Líderança:**
+* O líder isolado em volume de projetos liberados é **${sortedStats[0]?.user.name}** com um total incrível de **${sortedStats[0]?.completed}** projetos concluídos!
+* Logo atrás, consolidando excelentes entregas, está **${sortedStats[1]?.user.name || 'Ninguém'}** com **${sortedStats[1]?.completed || 0}** entregas de projetos.
+
+*Consulte esses detalhes também na seção de Gráfico de Desempenho e Tabelas do Painel Geral do Dashboard.*`;
+  }
+
+  // --- SPECIFIC NS (NOTA DE SERVIÇO) DIRECT SEARCH ---
+  // Match code numbers like "NS 9215"
+  const nsMatch = query.match(/ns\s*(\d+)/i);
+  if (nsMatch) {
+    const targetNs = nsMatch[1];
+    const foundProj = projects.find(p => p.ns && String(p.ns) === targetNs);
+    if (foundProj) {
+      const owner = users.find(u => u.id === foundProj.userId);
+      const ownerName = owner ? `${owner.name} ${owner.surname || ''}` : 'Não Atribuído';
+      const durationHours = ((foundProj.totalActiveSeconds || foundProj.totalSeconds || 0) / 3600).toFixed(2);
+      
+      return `### 🔍 Ficha de Detalhes da Nota de Serviço (NS): ${targetNs}
+Localizei estes dados históricos no banco de dados JIMP:
+
+* **Projeto / Código:** NS ${foundProj.ns}
+* **Cliente:** *${foundProj.clientName || 'Não Informado'}*
+* **Tipo / Escopo:** \`${foundProj.implementType || 'N/A'}\`
+* **Status Atual:** **\`${foundProj.status}\`**
+* **Responsável Técnico:** **${ownerName}**
+* **Tempo Dedicado:** **${durationHours}h**
+* **Início do Lançamento:** ${foundProj.startTime ? new Date(foundProj.startTime).toLocaleString('pt-BR') : 'Sem data de início'}
+
+*Todas as sessões de faturamento e produtividade desta NS estão salvas localmente.*`;
+    } else {
+      return `### 🔍 Pesquisa de Projeto: NS ${targetNs}
+Dando uma olhada em todos os índices operacionais, **não encontrei nenhuma Nota de Serviço catalogada com o código "${targetNs}"**.
+
+Se você acabou de criá-la, por favor reinicie o rastreador ou recarregue a aba do seu navegador para que a mesma seja indexada.`;
+    }
+  }
+
+  // --- DETAILED COUNTS OF LOGGED-IN USER (USER SPECIFIC METRICS) ---
+  if (
+    normalized.includes('quantos projetos eu') ||
+    normalized.includes('eu liberei') ||
+    normalized.includes('minhas ns') ||
+    normalized.includes('meus projetos') ||
+    normalized.includes('minhas entregas') ||
+    normalized.includes('quantos eu') ||
+    normalized.includes('meu volume') ||
+    (normalized.includes('quantos') && normalized.includes('projeto') && (normalized.includes('lancei') || normalized.includes('entreguei') || normalized.includes('fiz') || normalized.includes('liberei'))) ||
+    normalized.includes('e eu?') ||
+    normalized.includes('meus lancamentos')
+  ) {
+    const userProjects = projects.filter(p => p.userId === currentUser.id);
+    const completed = userProjects.filter(p => p.status === 'COMPLETED').length;
+    const inProgress = userProjects.filter(p => p.status === 'IN_PROGRESS').length;
+    const totalSeconds = userProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || p.totalSeconds || 0), 0);
+    const totalHours = (totalSeconds / 3600).toFixed(1);
+
+    // Calc user's exact current rank pos
+    const userStats = users.map(u => ({
+      userId: u.id,
+      completed: projects.filter(p => p.userId === u.id && p.status === 'COMPLETED').length
+    })).sort((a, b) => b.completed - a.completed);
+
+    const rankPos = userStats.findIndex(us => us.userId === currentUser.id) + 1;
+
+    let compliment = '';
+    if (rankPos === 1) {
+      compliment = `🏆 **Você é o Líder Geral de liberação de projetos na Eng. JIMP!** Excelente atuação com total protagonismo nas entregas!`;
+    } else if (rankPos <= 3) {
+      compliment = `🥈 **Você está no topo das liberações da engenharia (posição ${rankPos}º no pódio)!**`;
+    } else {
+      compliment = `Você está ocupando a posição **${rankPos}º** no quadro comparativo de liberações da empresa.`;
+    }
+
+    return `### 👤 Suas Métricas de Desempenho (Rastreador)
+Consultando o banco de dados operacional de **${currentUser.name}** (\`${role}\`):
+
+* **Seus Projetos Liberados (Done):** **${completed}** projetos finalizados e homologados ✅
+* **Seus Projetos Em Andamento (Ativos):** **${inProgress}** projetos
+* **Total de Histórico Vinculado a Você:** **${userProjects.length}** projetos totais registradas
+* **Tempo Total Rastreando Atividades:** **${totalHours}* horas úteis de trabalho técnico*
+
+🎖️ **Sua Colocação Operacional:**
+* ${compliment}
+
+💡 *Se quiser listar os projetos de Rogerio, Charles ou ver a tabela geral da equipe, envie o nome deles ou "Ver ranking"!*`;
+  }
+
+  // --- "Quem sou eu" / "Quem eu sou"
   if (
     normalized.includes('quem sou eu') ||
     normalized.includes('quem eu sou') ||
@@ -24,162 +225,101 @@ export const resolveLocalQueryFallback = (
     normalized.includes('meu perfil') ||
     normalized.includes('minha conta')
   ) {
-    const userProjects = appState.projects.filter(p => p.userId === currentUser.id);
+    const userProjects = projects.filter(p => p.userId === currentUser.id);
     const completed = userProjects.filter(p => p.status === 'COMPLETED').length;
     const inProgress = userProjects.filter(p => p.status === 'IN_PROGRESS').length;
     
-    return `### 👤 Seu perfil no JIMP NEXUS
-Olá, **${name} ${currentUser.surname || ''}**! Eu sei exatamente quem você é, pois estou conectado aos seus dados em tempo real.
+    return `### 👤 Credenciais Ativas no JIMP NEXUS
+Olá, **${name} ${currentUser.surname || ''}**! Você está conectado com as seguintes credenciais ao sistema:
 
-Aqui estão suas credenciais e informações atuais no sistema:
-* **Nome de exibição:** ${name} ${currentUser.surname || ''}
-* **Cargo / Função:** \`${role}\`
-* **Endereço de E-mail:** \`${email}\`
-* **ID do Usuário:** \`${currentUser.id}\`
+* **Nome Comercial:** ${name} ${currentUser.surname || ''}
+* **Cargo Hierárquico:** \`${role}\`
+* **Endereço Eletrônico:** \`${email}\`
+* **Identificador Único:** \`${currentUser.id}\`
 
-📊 **Seu Progresso de Trabalho (Rastreador):**
-* Você possui **${userProjects.length}** projetos totais vinculados ao seu ID.
-* **${completed}** projetos já foram concluídos.
-* **${inProgress}** projetos estão atualmente em andamento.
-
-*Como eu tenho acesso direto ao estado da aplicação, você pode me perguntar sobre seus projetos, estatísticas ou por que você não aparece em algum gráfico!*`;
+📊 **Dados do seu Rastreador de Projetos:**
+* **Concluídos (Liberados):** **${completed}**
+* **Em andamento:** **${inProgress}**
+* **Soma Total:** **${userProjects.length}** projetos`;
   }
 
-  // 2. "Por que eu não apareço no gráfico" / "Não apareço no gráfico"
+  // --- "Por que eu não apareço no gráfico"
   if (
-    normalized.includes('apareço no') ||
-    normalized.includes('apareço no grafico') ||
-    normalized.includes('não apareço') ||
-    normalized.includes('não estou no gráfico') ||
-    normalized.includes('cadê eu no gráfico') ||
-    normalized.includes('cadê meu nome') ||
-    normalized.includes('por que não apareço')
+    normalized.includes('apareco no') ||
+    normalized.includes('apareco no grafico') ||
+    normalized.includes('nao apareco') ||
+    normalized.includes('nao estou no grafico') ||
+    normalized.includes('cade eu no grafico') ||
+    normalized.includes('cade meu nome') ||
+    normalized.includes('por que nao apareco')
   ) {
-    let explanation = `### 📊 Por que você pode não aparecer em alguns gráficos?
+    let explanation = `### 📊 Diagnóstico de Exibição nos Gráficos
 
 Olá, **${name}**! Vamos verificar o motivo de sua exibição nos gráficos:
 
 1. **Restrição de Cargo (Filtro por Função):** 
-   * Historicamente, os gráficos de desempenho e o *Filtro de Projetistas* priorizavam exibir apenas usuários com a função de \`PROJETISTA\` ou \`COORDENADOR\` para manter a visualização focada no desenvolvimento de engenharia de projetos. Como seu cargo cadastrado é de **\`${role}\`**, o sistema costumava omitir o seu nome para filtros globais.
-   * **Acabamos de ajustar essa lógica!** Forçamos o sistema a **sempre incluir você (o usuário logado atualmente)** na tabela de calor semanal (Weekly Heatmap) e no seletor de projetistas do painel principal, independentemente do cargo.
+   * Os relatórios e histogramas comparativos focavam principalmente em colaboradores de cargo \`PROJETISTA\` ou \`COORDENADOR\` para avaliar as metas industriais. Como sua conta é de um cargo estratégico (**\`${role}\`**), o sistema ocultava o seu nome nos gráficos globais.
+   * **Acabamos de ajustar essa lógica!** Atualizamos os filtros do Dashboard e da Tabela de Calor Semanal (Weekly Heatmap) para que **você sempre apareça** nas visualizações, não importa qual seja a sua função cadastrada!
 
-2. **Falta de Lançamentos ou Registro de Horas:** 
-   * A matriz de calor semanal exibe horas ativas registradas nos projetos do **Rastreador de NS**. Se você não iniciou ou salvou nenhuma atividade de projeto nesta semana atual, sua linha aparecerá com **0h** ou poderá ficar oculta se filtros específicos de tempo estiverem aplicados.
-   * Certifique-se de iniciar um projeto no menu **Rastreador** ou adicionar atividades no cronograma **Nexus** para gerar dados visíveis.
+2. **Falta de Lançamentos de Horas na Semana Atual:** 
+   * A matriz de calor exibe sua carga horária distribuída conforme o carimbo de data (\`startTime\`) dos seus lançamentos de projetos criados nesta semana corrente. Se você não tem lançamentos recentes, sua linha marcará **0h**.
+   * Certifique-se de registrar uma NS na aba **Rastreador** para alimentar as horas de calor!`;
 
-3. **Filtros Ativos do Painel:**
-   * Verifique se no cabeçalho do Dashboard há algum filtro de data, cliente ou categoria selecionado que oculte seus registros atuais.`;
-
-    const userProjects = appState.projects.filter(p => p.userId === currentUser.id);
+    const userProjects = projects.filter(p => p.userId === currentUser.id);
     if (userProjects.length === 0) {
-      explanation += `\n\n⚠️ **Nota:** Detectamos que você **não possui nenhum projeto** associado ao seu ID de usuário. Vá para a aba **RASTREADOR** (ou use o botão de Nova Atividade) e registre pelo menos uma sessão de trabalho de teste para começar a alimentar os gráficos!`;
-    } else {
-      explanation += `\n\n✅ **Detectado:** Você já tem **${userProjects.length}** registros de projeto. Certifique-se de escolher seu nome no filtro do Dashboard ou usar a aba **Histórico** para ver suas sessões ativas de trabalho!`;
+      explanation += `\n\n⚠️ **Atenção:** Você **não possui projetos cadastrados em seu ID**. Registre pelo menos uma Nota de Serviço (NS) na aba **Rastreador** para ver seus dados no mapa de calor semanal!`;
     }
 
     return explanation;
   }
 
-  // 3. "Minhas NS" / "Meus projetos"
-  if (
-    normalized.includes('meus projetos') ||
-    normalized.includes('minhas ns') ||
-    normalized.includes('minhas atividades') ||
-    normalized.includes('meu trabalho') ||
-    normalized.includes('projeto') && (normalized.includes('meu') || normalized.includes('meus') || normalized.includes('lancei'))
-  ) {
-    const userProjects = appState.projects.filter(p => p.userId === currentUser.id);
-    if (userProjects.length === 0) {
-      return `### 📁 Seus Projetos (Rastreador de NS)
-Olá, **${name}**! Pesquisei no banco de dados local e **não encontrei nenhum projeto de NS** registrado diretamente no seu ID.
-
-Para começar:
-1. Clique no menu lateral na opção **RASTREADOR**.
-2. Preencha o formulário e clique em **Iniciar Rastreamento de NS**.
-3. Deixe o cronômetro rodar e conclua-o para registrar suas horas de trabalho!`;
-    }
-
-    const recent = userProjects.slice(-5).reverse();
-    const listHtml = recent.map(p => {
-      const durationHours = ((p.totalActiveSeconds || p.totalSeconds || 0) / 3600).toFixed(2);
-      const emoji = p.status === 'COMPLETED' ? '✅' : '⏳';
-      return `* **NS ${p.ns}** - *${p.clientName || 'Sem Cliente'}* (${p.implementType || 'N/A'}) - **${durationHours}h** [${emoji} ${p.status}]`;
-    }).join('\n');
-
-    return `### 📁 Seus Projetos Recentes (${currentUser.name})
-Encontrei um total de **${userProjects.length}** projetos registrados para você. Aqui estão os **5 mais recentes**:
-
-${listHtml}
-
-💡 *Caso queira ver o relatório completo de todos os seus projetos lançados, você pode navegar até a aba **HISTÓRICO DE PROJETOS**.*`;
-  }
-
-  // 4. "Status global" / "Resumo" / "Plataforma" / "Visão Geral"
+  // --- "Status global" / "Resumo" / "Plataforma" / "Visão Geral"
   if (
     normalized.includes('resumo') ||
-    normalized.includes('estatística') ||
+    normalized.includes('estatistica') ||
     normalized.includes('indicadores') ||
     normalized.includes('plataforma') ||
     normalized.includes('geral') ||
     normalized.includes('status')
   ) {
-    const activeProjects = appState.projects.filter(p => p.status === 'IN_PROGRESS').length;
-    const openInterrupt = appState.interruptions.filter(i => i.status === InterruptionStatus.OPEN).length;
-    const totalWorkers = appState.users.length;
+    const activeProjects = projects.filter(p => p.status === 'IN_PROGRESS').length;
+    const completedProjectsCount = projects.filter(p => p.status === 'COMPLETED').length;
+    const openInterrupt = interruptions.filter(i => i.status === InterruptionStatus.OPEN).length;
 
-    return `### 📊 Painel Geral de Indicadores (Modo Local)
-Aqui está um resumo em tempo real do ecossistema **JIMPNEXUS**:
+    return `### 📊 Painel Geral de Indicadores (Banco de Dados Local)
+Olá, **${name}**! Aqui está um raio-X completo das tabelas da plataforma:
 
-* **Projetos Totais (Rastreador):** ${appState.projects.length} registros
-* **Projetos Ativos Em Andamento:** ${activeProjects} projetos
-* **Interrupções / Impedimentos em Aberto:** ${openInterrupt} ocorrências ativas
-* **Colaboradores Cadastrados:** ${totalWorkers} usuários ativos
-* **Tarefas de Cronograma (Gantt Nexus):** ${appState.ganttTasks?.length || 0} tarefas planejadas
+* **Projetos Totais Cadastrados:** **${projects.length}** registros computados
+* **Projetos Concluídos (Liberados):** **${completedProjectsCount}** entregues (%${Math.round((completedProjectsCount / Math.max(projects.length, 1)) * 100)}) ✅
+* **Projetos Ativos Em Andamento:** **${activeProjects}** em desenvolvimento ⏳
+* **Pessoas Operacionais na Equipe:** **${users.length}** colaboradores cadastrados
+* **Casos de Interrupção Ativos (Impedimentos):** **${openInterrupt}** abertos ⚠️
+* **Tarefas de Cronograma (Gantt Nexus):** **${ganttTasks.length}** cadastradas
 
-*Estes dados são gerados em tempo real a partir do estado ativo no seu navegador.*`;
+*Todos estes indicadores foram obtidos aplicando os filtros diretamente sobre o banco local.*`;
   }
 
-  // 5. Help with errors / API limits
-  if (
-    normalized.includes('erro') ||
-    normalized.includes('quota') ||
-    normalized.includes('cota') ||
-    normalized.includes('limite') ||
-    normalized.includes('resolva') ||
-    normalized.includes('problema') ||
-    normalized.includes('ajuda')
-  ) {
-    return `### 💡 Guia de Suporte & Solução de Problemas
+  // --- Default generic intelligent response using appState context
+  const activeProjsCount = projects.filter(p => p.status === 'IN_PROGRESS').length;
+  
+  return `### 💡 JIMP NEXUS - Assistente Local de Contingência
 
-Olá, **${name}**! Se você está enfrentando erros na plataforma ou limites de cota da inteligência artificial, aqui está um roteiro claro de como resolver:
+Olá, **${name}**! Os créditos da API gratuita do Gemini foram temporariamente excedidos no servidor principal, mas **estou online e totalmente conectado ao banco de dados interno da aplicação em tempo real!** 
 
-1. ⚠️ **Limite de Cota do Gemini Excedido (Quota Exceeded):**
-   * O plano padrão gratuito do Google AI Studio possui um limite diário de requisições por projeto (máximo de 20 requisições diárias para segurança). 
-   * **Como resolver:** Você pode configurar uma chave de API própria e ilimitada do Gemini de forma gratuita! No canto superior do sistema, clique no menu de **Configurações (ícone de engrenagem)**, vá na aba **API Secrets**, crie uma chave e adicione-a como \`GEMINI_API_KEY\`. Isso isolará sua cota e rodará 100% livre de limites.
-   * **Nossa Solução Inteligente:** Ativamos este canal de resposta local/offline em tempo real projetado para responder perguntas básicas sobre você, suas estatísticas e seus projetos sem fazer chamadas externas, poupando sua cota!
+Eu possuo acesso a todas as tabelas e métricas locais da Engenharia JIMP, podendo processar, auditar e calcular rankings para você de forma instantânea.
 
-2. 🚀 **Sincronização e Logs:**
-   * Certifique-se de que sua conexão com o banco de dados Supabase esteja verde.
-   * Todos os seus lançamentos de horas de projetos no **Rastreador** e no **Nexus (Gantt)** estão salvos localmente e sob auditoria automática.
+📊 **Indicadores Atuais Consolidados:**
+* **Total de Projetos Registrados (Tracker NS):** ${projects.length} projetos
+* **Projetos Já Liberados (Concluídos):** ${projects.filter(p => p.status === 'COMPLETED').length} prontos ✅
+* **Projetos Em Operação:** ${activeProjsCount} ativos ⏳
+* **Pessoas Cadastradas na Equipe:** ${users.length} colaboradores
 
-Se tiver alguma dúvida específica, pergunte usando termos como "quem sou eu", "meus projetos" ou "por que não apareço no gráfico" para receber as respostas instantâneas locais!`;
-  }
+👉 **Experimente me perguntar:**
+1. 🏆 **"Ver ranking"** ou **"Quem liberou mais"** (para exibir a tabela real de entregas da equipe)
+2. 👤 **"Quantos projetos eu liberei"** ou **"Meus projetos"** (para detalhar seu perfil e suas NS)
+3. 👥 **"Projetos do Rogerio"**, **"Atividades do Charles"** (para ver as fichas operacionais de outros integrantes)
+4. 🔢 **"NS 9215"** (para buscar os dados de uma Nota de Serviço específica)
+5. 📊 **"Status Geral"** (para resumir a saúde operacional da empresa)
 
-  // Default generic intelligent response using appState context
-  const activeProjsCount = appState.projects.filter(p => p.status === 'IN_PROGRESS').length;
-  const currentHoursMsg = `Olá, **${name}**! 
-
-*Observação: O limite de cota gratuito diário do servidor Gemini foi temporariamente atingido, mas nossa inteligência artificial local de contingência capturou sua mensagem com sucesso!*
-
-Atualmente, vejo que você está logado como **${name}** (Função: \`${role}\`). No momento, o sistema possui **${appState.projects.length} projetos** cadastrados, dos quais **${activeProjsCount}** estão em andamento.
-
-👉 **Você pode me perguntar livremente sobre:**
-* **"Quem sou eu?"** (para confirmar suas credenciais logadas)
-* **"Por que não apareço no gráfico?"** (para ver o diagnóstico do seu perfil nos de calor)
-* **"Meus projetos"** (para listar suas NS recentes e tempo de trabalho)
-* **"Status Geral"** (para ver um resumo instantâneo de toda a engrenagem do JIMP NEXUS!)
-
-Sinta-se à vontade para enviar um destes comandos para obter as respostas personalizadas em tempo real!`;
-
-  return currentHoursMsg;
+*O que você gostaria de pesquisar no banco de dados agora?*`;
 };
