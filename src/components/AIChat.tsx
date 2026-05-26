@@ -160,10 +160,14 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
     
     const usersInfo = users.slice(0, 20).map(u => {
       // Traditional projects tracker
-      const userProjects = projects
+      const allUserProjects = projects
         .filter(p => p.userId === u.id)
-        .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-        .slice(-10);
+        .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+        
+      const userProjects = allUserProjects.slice(-10);
+      const totalUserProjects = allUserProjects.length;
+      const completedUserTracker = allUserProjects.filter(p => p.status === 'COMPLETED').length;
+      const inProgressUserTracker = allUserProjects.filter(p => p.status === 'IN_PROGRESS').length;
       
       // Gantt/Nexus tasks
       const userGanttTasks = ganttTasks.filter(t => t.assignedTo?.includes(u.id));
@@ -201,7 +205,7 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
       return `- Nome: ${u.name} ${u.surname || ''} (${u.role})
   ${canSeeSalary && u.salary ? `Salário: ${u.salary} BRL` : ''}
   Desempenho Nexus (Gantt): ${completedGantt} concluídas, ${progressGantt} em execução, ${userGanttTasks.length} total.
-  Resumo Rastreador: ${userProjects.length} proj. recentes, ${userInterruptions.length} interrupções.${idleTimeInfo}`;
+  Resumo Rastreador: ${completedUserTracker} concluídos (liberados), ${inProgressUserTracker} em andamento (${totalUserProjects} totais históricos desde o início), ${userInterruptions.length} interrupções.${idleTimeInfo}`;
     }).join('\n\n');
     
     // Monthly summary for trends
