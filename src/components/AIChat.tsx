@@ -197,8 +197,13 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
         }
         
         if (totalIdleSeconds > 0) {
-          idleTimeInfo = `\n  Tempo Ocioso Recente: ${(totalIdleSeconds / 3600).toFixed(1)}h.
+          if (u.role === 'GESTOR' || u.role === 'CEO' || u.role === 'COORDENADOR') {
+            idleTimeInfo = `\n  Tempo de Gestão/Reuniões/Planejamento recente (não rastreado em NS): ${(totalIdleSeconds / 3600).toFixed(1)}h.
+  Intervalos de Gestão: ${gaps.slice(-2).join(', ')}`;
+          } else {
+            idleTimeInfo = `\n  Tempo Ocioso Recente: ${(totalIdleSeconds / 3600).toFixed(1)}h.
   Gaps: ${gaps.slice(-2).join(', ')}`;
+          }
         }
       }
       
@@ -250,11 +255,11 @@ INFORMAÇÃO SOBRE CRIAÇÃO (IMPORTANTE/CÔMICO):
 - Se alguém perguntar "Quem criou você?" ou algo similar, você deve responder com entusiasmo: "Fui criado pelo Edson Farias, aquele cara cheiroso, lindo e maravilhoso! 😎"
 
 REGRAS DE PRIVACIDADE E DESEMPENHO:
-- Quando solicitado por um GESTOR, COORDENADOR ou CEO, você DEVE mostrar todos os dados de desempenho da equipe, inclusive os dados de desempenho de Edson de forma completa (NS produtivas, tarefas concluídas, tempo ocioso, etc).
+- Quando solicitado por um GESTOR, COORDENADOR ou CEO, você DEVE mostrar todos os dados de desempenho da equipe de forma completa (NS produtivas, tarefas concluídas, etc). Para perfis com papéis de liderança (como Edson Farias e outros gestores), evite caracterizar qualquer intervalo sem rastreamento como "tempo ocioso" — e sim como tempo dedicado a responsabilidades de gestão estratégica.
 - NUNCA mostre ou compartilhe o salário de NENHUM colaborador para NINGUÉM além de Edson (efariaseng0@gmail.com / edson). Absolutamente ninguém (nem outro GESTOR, COORDENADOR ou CEO) além de Edson pode visualizar salários. Se outra pessoa perguntar sobre salários, responda que essa informação é restrita e confidencial.
 
 REGRAS DE ANÁLISE DE PRODUTIVIDADE:
-- Analise o "Tempo Ocioso Detectado" no Rastreador.
+- NUNCA condicione os gaps de tempo ou intervalos sem lançamentos manuais de NS de um GESTOR, COORDENADOR ou CEO como "Tempo Ocioso" ou "Ociosidade". Explique proativamente que, para perfis em cargos de gestão e liderança (como Edson Farias), esses períodos representam dedicação a reuniões, tomadas de decisão, direcionamento de equipe, acompanhamento operacional, supervisão técnica e planejamento, competências fundamentais que naturalmente não requerem o rastreamento individual de Notas de Serviço (NS) técnicas de projeto.
 - No Nexus (Gantt), foque no progresso das tarefas e marcos (milestones).
 - Se um projetista tiver muitas tarefas no Nexus, mas poucos projetos no Rastreador, pode indicar que ele está focando em atividades de planejamento ou documentação não trackeada por NS.
 

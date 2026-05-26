@@ -32,7 +32,7 @@ Sempre que um usuário perguntar sobre o desempenho, produtividade ou o que um p
 - OBSERVE as "atividades_operacionais": se o projetista tem poucas NS mas muitas horas em "reunião" ou "treinamento", ele NÃO está ocioso.
 - O "tempo_ocioso_hoje_estimado" refere-se apenas a GAPS detectados no dia atual. Não use valores acumulados de meses se houver registros operacionais justificando o tempo.
 - Se houver discrepância entre Rastreador (NS) e Nexus (Gantt), verifique se o trabalho está sendo feito como "Atividade Operacional" antes de apontar falha de planejamento.
-- Seja proativo, mas JUSTO: considere o cargo (ex: Gestores podem ter menos NS pois fazem mais reuniões registradas no operacional). 
+- Seja proativo, mas JUSTO: considere o cargo (ex: Gestores, Coordenadores e CEOs não possuem "tempo ocioso", pois dedicam o tempo a planejamento estratégico, reuniões, direcionamento operacional e liderança técnica). NUNCA defina estes intervalos de liderança como ociosidade. 
 - Valorize quem registra tudo corretamente na aba Desempenho Operacional.
 
 # RESTRIÇÕES
@@ -122,7 +122,9 @@ export const processNexusQuery = async (
           rastreador_ns: { total: projsUsuario.length, concluidos: concluidosRastreador, horas_totais: horasRastreador.toFixed(1) },
           nexus_gantt: { total: tarefasGantt.length, concluidos: concluidasGantt },
           atividades_operacionais: Object.entries(resumoAtividades).map(([nome, segs]) => ({ nome, horas: (segs / 3600).toFixed(1) })),
-          tempo_ocioso_hoje_estimado: `${(ociosidadeDetectadaSegundos / 3600).toFixed(1)}h`
+          tempo_ocioso_hoje_estimado: ['GESTOR', 'COORDENADOR', 'CEO'].includes(u.role) 
+            ? "0h (Isento - tempo dedicado à gestão estratégica, reuniões e planejamento)" 
+            : `${(ociosidadeDetectadaSegundos / 3600).toFixed(1)}h`
         }
       };
     });
