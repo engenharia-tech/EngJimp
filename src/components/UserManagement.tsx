@@ -773,6 +773,11 @@ UPDATE public.innovations SET calculation_type = 'RECURRING_MONTHLY' WHERE calcu
 UPDATE public.innovations SET calculation_type = 'ONE_TIME' WHERE calculation_type IN ('VALOR ÚNICO / FIXO', 'ONE TIME', 'ONE_TIME');
 UPDATE public.innovations SET calculation_type = 'ADD_EXPENSE' WHERE calculation_type IN ('ADICIONAR GASTO', 'ADD EXPENSE', 'ADD_EXPENSE');
 
+-- Qualquer método de cálculo remanescente ou NULL que não bata vira 'RECURRING_MONTHLY' para evitar erro fatal
+UPDATE public.innovations 
+SET calculation_type = 'RECURRING_MONTHLY' 
+WHERE calculation_type IS NULL OR calculation_type NOT IN ('PER_UNIT', 'RECURRING_MONTHLY', 'ONE_TIME', 'ADD_EXPENSE', 'POR UNIDADE PRODUZIDA', 'RECORRENTE (MENSUAL)', 'VALOR ÚNICO / FIXO', 'ADICIONAR GASTO');
+
 -- 6. REATIVAR CONSTRAINTS DE INOVAÇÕES
 ALTER TABLE public.innovations ADD CONSTRAINT innovations_type_check 
 CHECK (type IN ('NEW_PROJECT', 'PRODUCT_IMPROVEMENT', 'PROCESS_OPTIMIZATION', 'NOVO PROJETO', 'MELHORIA DE PRODUTO', 'OTIMIZAÇÃO DE PROCESSOS'));
@@ -832,7 +837,47 @@ CREATE POLICY "Permissive Gantt Select" ON public.gantt_tasks FOR SELECT USING (
 DROP POLICY IF EXISTS "Permissive Gantt All" ON public.gantt_tasks;
 CREATE POLICY "Permissive Gantt All" ON public.gantt_tasks FOR ALL USING (true);
 
--- 8. Recarregar Schema
+-- 9. Desativar RLS para Tabelas Operacionais para compatibilidade total com login customizado
+ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.settings DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.projects DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.issues DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.innovations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interruption_types DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interruptions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_types DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.operational_activities DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_requests DISABLE ROW LEVEL SECURITY;
+
+-- Políticas de Fallback Permissivas caso o usuário reabilite RLS manualmente
+DROP POLICY IF EXISTS "Permissive Select Projects" ON public.projects;
+DROP POLICY IF EXISTS "Permissive Insert Projects" ON public.projects;
+DROP POLICY IF EXISTS "Permissive Update Projects" ON public.projects;
+DROP POLICY IF EXISTS "Permissive Delete Projects" ON public.projects;
+CREATE POLICY "Permissive Select Projects" ON public.projects FOR SELECT USING (true);
+CREATE POLICY "Permissive Insert Projects" ON public.projects FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permissive Update Projects" ON public.projects FOR UPDATE USING (true);
+CREATE POLICY "Permissive Delete Projects" ON public.projects FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "Permissive Select Operational Activities" ON public.operational_activities;
+DROP POLICY IF EXISTS "Permissive Insert Operational Activities" ON public.operational_activities;
+DROP POLICY IF EXISTS "Permissive Update Operational Activities" ON public.operational_activities;
+DROP POLICY IF EXISTS "Permissive Delete Operational Activities" ON public.operational_activities;
+CREATE POLICY "Permissive Select Operational Activities" ON public.operational_activities FOR SELECT USING (true);
+CREATE POLICY "Permissive Insert Operational Activities" ON public.operational_activities FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permissive Update Operational Activities" ON public.operational_activities FOR UPDATE USING (true);
+CREATE POLICY "Permissive Delete Operational Activities" ON public.operational_activities FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "Permissive Select Interruptions" ON public.interruptions;
+DROP POLICY IF EXISTS "Permissive Insert Interruptions" ON public.interruptions;
+DROP POLICY IF EXISTS "Permissive Update Interruptions" ON public.interruptions;
+DROP POLICY IF EXISTS "Permissive Delete Interruptions" ON public.interruptions;
+CREATE POLICY "Permissive Select Interruptions" ON public.interruptions FOR SELECT USING (true);
+CREATE POLICY "Permissive Insert Interruptions" ON public.interruptions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permissive Update Interruptions" ON public.interruptions FOR UPDATE USING (true);
+CREATE POLICY "Permissive Delete Interruptions" ON public.interruptions FOR DELETE USING (true);
+
+-- 10. Recarregar Schema
 NOTIFY pgrst, 'reload config';`}
                         </div>
                     </div>

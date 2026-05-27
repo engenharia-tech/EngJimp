@@ -34,6 +34,7 @@ import {
   deleteInnovation,
   addInterruption,
   updateInterruption,
+  deleteInterruption,
   updateSettings,
   addOperationalActivity,
   updateOperationalActivity,
@@ -519,8 +520,14 @@ const AppContent: React.FC = () => {
     if (!currentUser || data.operationalActivities.length === 0 || isNormalizingRef.current) return;
 
     const runCleanup = async () => {
-      // Find any running activity for the current user
-      const runningAct = data.operationalActivities.find(a => !a.endTime && a.userId === currentUser.id);
+      // Find any running activity for any user that needs correction
+      const runningAct = data.operationalActivities.find(a => {
+        if (a.endTime) return false;
+        if (normalizedActivityIdsRef.current.has(a.id)) return false;
+        
+        const result = getCleanupSegmentsForActivity(a, data.settings, new Date());
+        return result && result.needsCorrection;
+      });
       if (!runningAct) return;
 
       // Skip if we already checked/processed this activity ID
@@ -531,7 +538,7 @@ const AppContent: React.FC = () => {
         isNormalizingRef.current = true;
         normalizedActivityIdsRef.current.add(runningAct.id);
         try {
-          console.log("[Cleanup] Resolving forgotten operational activity running past shift end:", runningAct.activityName);
+          console.log("[Cleanup] Resolving forgotten operational activity running past shift end for user:", runningAct.userId, runningAct.activityName);
           const updatedState = await normalizeForgottenActivityInDB(
             runningAct.id,
             result.originalToUpdate,
@@ -539,19 +546,22 @@ const AppContent: React.FC = () => {
           );
           setData(updatedState);
           
+          const targetUserObj = data.users.find(u => u.id === runningAct.userId);
+          const targetUserName = targetUserObj ? `${targetUserObj.name} ${targetUserObj.surname || ''}` : "Colaborador";
+
           addToast(
-            `Atividade "${runningAct.activityName}" que continuou em execução após o fim do expediente foi ajustada automaticamente e retomada no próximo dia útil.`,
+            `Atividade "${runningAct.activityName}" do colaborador ${targetUserName} que continuou em execução após o fim do expediente fora do horário comercial foi ajustada automaticamente e dividida de acordo com a jornada de trabalho.`,
             "info"
           );
 
           addAuditLog({
-            userId: currentUser.id,
+            userId: runningAct.userId,
             userName: "Sistema Nexus",
             action: "UPDATE",
             entityType: "OPERATIONAL_ACTIVITY",
             entityId: runningAct.id,
             entityName: runningAct.activityName,
-            details: `Ajuste automático de atividade esquecida "${runningAct.activityName}": interrompida no final do expediente e retomada no dia seguinte.`
+            details: `Ajuste automático de atividade esquecida de ${targetUserName} "${runningAct.activityName}": interrompida no final do expediente e dividida conforme jornada de trabalho.`
           });
         } catch (error) {
           console.error("[Cleanup] Error adjusting forgotten activity:", error);
@@ -1127,6 +1137,63 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const onDeleteInterruption = async (id: string) => {
+    try {
+      const interruptionToDelete = data.interruptions.find(i => i.id === id);
+      const updatedData = await deleteInterruption(id);
+      setData(updatedData);
+      addToast(t('interruptionDeletedSuccess' as any) || 'Interrupção excluída com sucesso!', 'success');
+
+      if (interruptionToDelete) {
+          addAuditLog({
+              userId: currentUser?.id,
+              userName: currentUser?.name,
+              action: 'DELETE',
+              entityType: 'INTERRUPTION' as any,
+              entityId: id,
+              entityName: interruptionToDelete.description,
+              details: `Interrupção "${interruptionToDelete.description}" excluída por ${currentUser?.name}`
+          });
+      }
+    } catch (e: any) {
+      console.error("Failed to delete interruption:", e);
+      addToast(t('errorDeletingInterruption' as any) || 'Erro ao excluir interrupção', 'error');
+    }
+  };
+
+  const onDeleteProjectFromPerformance = async (id: string) => {
+    try {
+      const projectToDelete = data.projects.find(p => p.id === id);
+      const updatedData = await deleteProject(id, projectToDelete?.ns);
+      
+      // Optimistic update
+      setData(prev => ({
+          ...prev,
+          projects: prev.projects.filter(p => p.id !== id)
+      }));
+      
+      setData(updatedData);
+      addToast(t('projectDeletedSuccess'), 'success');
+
+      // Audit Log
+      if (projectToDelete) {
+          addAuditLog({
+              userId: currentUser?.id,
+              userName: currentUser?.name,
+              action: 'DELETE',
+              entityType: 'PROJECT',
+              entityId: projectToDelete.id,
+              entityName: projectToDelete.ns || projectToDelete.name,
+              details: `Lançamento de projeto "${projectToDelete.ns || projectToDelete.name}" excluído via Desempenho Operacional por ${currentUser?.name}`
+          });
+      }
+    } catch (e: any) {
+      console.error("Failed to delete project:", e);
+      addToast(`Erro ao excluir o lançamento do projeto: ${e.message || 'Erro desconhecido'}`, 'error');
+      throw e;
+    }
+  };
+
   const onAddActivityType = async (type: any) => {
     try {
       const updatedData = await addActivityType(type);
@@ -1637,7 +1704,9 @@ const AppContent: React.FC = () => {
               onUpdateActivityType={onUpdateActivityType}
               onDeleteActivityType={onDeleteActivityType}
               onUpdateProject={handleProjectUpdate}
+              onDeleteProject={onDeleteProjectFromPerformance}
               onUpdateInterruption={onUpdateInterruption}
+              onDeleteInterruption={onDeleteInterruption}
               settings={data.settings}
               onUpdateSettings={handleUpdateSettings}
               onRefresh={handleRefresh}

@@ -51,6 +51,13 @@ import { ptBR, es, enUS } from 'date-fns/locale';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useToast } from './Toast';
 
+const getOriginalId = (idString: string): string => {
+  if (!idString) return '';
+  const uuidRegex = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
+  const match = idString.match(uuidRegex);
+  return match ? match[1] : idString;
+};
+
 interface OperationalPerformanceProps {
   activities: OperationalActivity[];
   activityTypes: ActivityType[];
@@ -66,7 +73,9 @@ interface OperationalPerformanceProps {
   onUpdateActivityType: (type: ActivityType) => Promise<void>;
   onDeleteActivityType: (id: string) => Promise<void>;
   onUpdateProject: (project: ProjectSession) => Promise<void>;
+  onDeleteProject?: (id: string) => Promise<void>;
   onUpdateInterruption: (interruption: InterruptionRecord) => Promise<void>;
+  onDeleteInterruption?: (id: string) => Promise<void>;
   settings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -87,7 +96,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   onUpdateActivityType,
   onDeleteActivityType,
   onUpdateProject,
+  onDeleteProject,
   onUpdateInterruption,
+  onDeleteInterruption,
   settings,
   onUpdateSettings,
   onRefresh
@@ -119,6 +130,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [gapName, setGapName] = useState('');
   const [gapIsFlagged, setGapIsFlagged] = useState(false);
   const [selectedTimelineItem, setSelectedTimelineItem] = useState<any | null>(null);
+  const [timelineItemToDelete, setTimelineItemToDelete] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
@@ -259,7 +271,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
             const newActivity: OperationalActivity = {
               id: crypto.randomUUID(),
-              userId: currentUser.id,
+              userId: selectedUserId,
               activityTypeId: folgaType.id,
               activityName: folgaType.name,
               startTime: startTime.toISOString(),
@@ -684,7 +696,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
     const newActivity: OperationalActivity = {
       id: crypto.randomUUID(),
-      userId: currentUser.id,
+      userId: selectedUserId,
       activityTypeId: typeId,
       activityName: type.name,
       startTime: new Date().toISOString(),
@@ -727,21 +739,27 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const handleDeleteTimelineItem = async (item: any) => {
     try {
       setIsSaving(true);
-      const originalId = item.id.replace(/-before$|-after$|-seg-\d+$/, '');
+      const originalId = getOriginalId(item.id);
 
       if (item.type === 'activity') {
         await onDeleteActivity(originalId);
+      } else if (item.type === 'project' && onDeleteProject) {
+        await onDeleteProject(originalId);
       } else if (item.type === 'interruption') {
-        // Find the interruption
-        const interruption = interruptions.find(i => i.id === originalId);
-        if (interruption) {
-          await onUpdateInterruption({
-            ...interruption,
-            status: 'COMPLETED' as any, // Or actually delete if possible, but usually we just finish it or remove project link
-            projectId: undefined,
-            projectNs: undefined
-          });
-          // If we want to fully remove it from timeline we might need a separate delete function
+        if (onDeleteInterruption) {
+          await onDeleteInterruption(originalId);
+        } else {
+          // Find the interruption
+          const interruption = interruptions.find(i => i.id === originalId);
+          if (interruption) {
+            await onUpdateInterruption({
+              ...interruption,
+              status: 'COMPLETED' as any, // Or actually delete if possible, but usually we just finish it or remove project link
+              projectId: undefined,
+              projectNs: undefined
+            });
+            // If we want to fully remove it from timeline we might need a separate delete function
+          }
         }
       } else if (item.type === 'pause') {
         // Find the project and remove the pause
@@ -796,9 +814,14 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       // Update existing
       const newStartTime = updateTimeInISO(isEditingActivity.startTime, editStartTime);
       const newEndTime = updateTimeInISO(isEditingActivity.endTime, editEndTime);
-      const durationSeconds = differenceInSeconds(parseISO(newEndTime), parseISO(newStartTime));
+      const isOvertimeOnActivity = parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6;
+      const durationSeconds = calcActiveSeconds(newStartTime, newEndTime, settings, isOvertimeOnActivity);
 
-      if (durationSeconds <= 0) {
+      if (durationSeconds <= 0 && differenceInSeconds(parseISO(newEndTime), parseISO(newStartTime)) > 0) {
+        addToast(t('errorInvalidDuration') || 'O período selecionado está fora do horário de trabalho configurado ou o funcionário não estava em hora extra.', 'error');
+        setIsSaving(false);
+        return;
+      } else if (durationSeconds <= 0) {
         addToast(t('errorInvalidDuration') || 'A hora de término deve ser após a hora de início.', 'error');
         setIsSaving(false);
         return;
@@ -814,7 +837,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           durationSeconds,
           notes: gapNotes,
           isFlagged: gapIsFlagged,
-          isOvertime: parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6
+          isOvertime: isOvertimeOnActivity
         });
         setIsEditingActivity(null);
         setSelectedActivityType('');
@@ -832,9 +855,14 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       // Create new from gap
       const newStartTime = updateTimeInISO(isEditingGap.start, editStartTime);
       const newEndTime = updateTimeInISO(isEditingGap.end, editEndTime);
-      const durationSeconds = differenceInSeconds(parseISO(newEndTime), parseISO(newStartTime));
+      const isOvertimeOnActivity = parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6;
+      const durationSeconds = calcActiveSeconds(newStartTime, newEndTime, settings, isOvertimeOnActivity);
 
-      if (durationSeconds <= 0) {
+      if (durationSeconds <= 0 && differenceInSeconds(parseISO(newEndTime), parseISO(newStartTime)) > 0) {
+        addToast(t('errorInvalidDuration') || 'O período selecionado está fora do horário de trabalho configurado ou o funcionário não estava em hora extra.', 'error');
+        setIsSaving(false);
+        return;
+      } else if (durationSeconds <= 0) {
         addToast(t('errorInvalidDuration') || 'A hora de término deve ser após a hora de início.', 'error');
         setIsSaving(false);
         return;
@@ -842,7 +870,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
       const newActivity: OperationalActivity = {
         id: crypto.randomUUID(),
-        userId: currentUser.id,
+        userId: selectedUserId,
         activityTypeId: type.id,
         activityName: gapName || type.name,
         startTime: newStartTime,
@@ -850,7 +878,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         durationSeconds,
         notes: gapNotes,
         isFlagged: gapIsFlagged,
-        isOvertime: parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6
+        isOvertime: isOvertimeOnActivity
       };
 
       try {
@@ -874,7 +902,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           }
         } else if (selectedTimelineItem && selectedTimelineItem.type === 'interruption') {
           // If filling an interruption, we could complete it
-          const interruptionId = selectedTimelineItem.id.replace(/-before$|-after$/, '');
+          const interruptionId = getOriginalId(selectedTimelineItem.id);
           const interruption = interruptions.find(i => i.id === interruptionId);
           if (interruption) {
             await onUpdateInterruption({
@@ -1303,7 +1331,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                       setEditStartTime(startTimeStr);
                       setEditEndTime(endTimeStr);
 
-                      const originalId = (item.id || '').replace(/-before$|-after$|-seg-\d+$/, '');
+                      const originalId = getOriginalId(item.id || '');
 
                       if (item.type === 'activity') {
                         const activity = activities.find(a => a.id === originalId);
@@ -1343,9 +1371,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm(t('confirmDeletion'))) {
-                              handleDeleteTimelineItem(item);
-                            }
+                            setTimelineItemToDelete(item);
                           }}
                           className="absolute -right-2 -top-2 p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full opacity-0 group-hover/item:opacity-100 transition-all hover:scale-110 shadow-sm z-20"
                           title={t('delete')}
@@ -1356,7 +1382,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
-                          {item.type === 'activity' && activities.find(a => a.id === item.id)?.isFlagged && (
+                          {item.type === 'activity' && activities.find(a => a.id === getOriginalId(item.id))?.isFlagged && (
                             <Flag size={14} className="text-red-500 fill-red-500" />
                           )}
                           <span className={`text-sm font-bold uppercase tracking-wider ${
@@ -1613,6 +1639,42 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                 className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-600/20"
               >
                 {t('add')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {timelineItemToDelete && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-gray-200 dark:border-slate-700 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-red-500 mb-4">
+              <AlertCircle className="w-8 h-8 flex-shrink-0" />
+              <h3 className="text-lg font-extrabold uppercase tracking-wider text-slate-800 dark:text-white">
+                {t('confirmDeletion') || 'Confirmar Exclusão'}
+              </h3>
+            </div>
+            
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">
+              Deseja realmente excluir a atividade <strong className="text-red-500 uppercase">{timelineItemToDelete.name}</strong>? Esta ação é permanente e não poderá ser desfeita.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setTimelineItemToDelete(null)}
+                className="flex-1 py-3 text-sm font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-xl transition-all uppercase border border-transparent hover:border-gray-200 dark:hover:border-slate-600"
+              >
+                {t('cancel') || 'Cancelar'}
+              </button>
+              <button
+                onClick={async () => {
+                  const item = timelineItemToDelete;
+                  setTimelineItemToDelete(null);
+                  await handleDeleteTimelineItem(item);
+                }}
+                className="flex-1 py-3 text-sm bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-600/20 uppercase"
+              >
+                {t('delete') || 'Excluir'}
               </button>
             </div>
           </div>

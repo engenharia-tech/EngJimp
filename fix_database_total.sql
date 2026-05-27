@@ -40,6 +40,11 @@ UPDATE public.innovations SET calculation_type = 'RECURRING_MONTHLY' WHERE calcu
 UPDATE public.innovations SET calculation_type = 'ONE_TIME' WHERE calculation_type IN ('VALOR ÚNICO / FIXO', 'ONE TIME', 'ONE_TIME');
 UPDATE public.innovations SET calculation_type = 'ADD_EXPENSE' WHERE calculation_type IN ('ADICIONAR GASTO', 'ADD EXPENSE', 'ADD_EXPENSE');
 
+-- Qualquer método de cálculo remanescente ou NULL que não bata vira 'RECURRING_MONTHLY' para evitar erro fatal
+UPDATE public.innovations 
+SET calculation_type = 'RECURRING_MONTHLY' 
+WHERE calculation_type IS NULL OR calculation_type NOT IN ('PER_UNIT', 'RECURRING_MONTHLY', 'ONE_TIME', 'ADD_EXPENSE', 'POR UNIDADE PRODUZIDA', 'RECORRENTE (MENSUAL)', 'VALOR ÚNICO / FIXO', 'ADICIONAR GASTO');
+
 -- 6. REATIVAR CONSTRAINTS DE INOVAÇÕES (Com suporte a múltiplos idiomas e chaves técnicas)
 ALTER TABLE public.innovations ADD CONSTRAINT innovations_type_check 
 CHECK (type IN ('NEW_PROJECT', 'PRODUCT_IMPROVEMENT', 'PROCESS_OPTIMIZATION', 'NOVO PROJETO', 'MELHORIA DE PRODUTO', 'OTIMIZAÇÃO DE PROCESSOS'));
@@ -72,7 +77,7 @@ CREATE TABLE IF NOT EXISTS public.gantt_tasks (
   tenant_id uuid
 );
 
--- Habilitar RLS para Gantt
+-- Habilitar RLS para Gantt como redundância permissiva
 ALTER TABLE public.gantt_tasks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Permissive Gantt Select" ON public.gantt_tasks;
 CREATE POLICY "Permissive Gantt Select" ON public.gantt_tasks FOR SELECT USING (true);
@@ -92,39 +97,52 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   details text
 );
 
--- Habilitar RLS para Audit Logs
+-- Habilitar RLS para Audit Logs como redundância permissiva
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Permissive Audit Select" ON public.audit_logs;
 CREATE POLICY "Permissive Audit Select" ON public.audit_logs FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Permissive Audit Insert" ON public.audit_logs;
 CREATE POLICY "Permissive Audit Insert" ON public.audit_logs FOR INSERT WITH CHECK (true);
 
--- 9. Corrigir RLS Geral
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+-- 9. Desativar RLS para Tabelas Operacionais para compatibilidade total com login customizado
+ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.settings DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.projects DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.issues DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.innovations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interruption_types DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interruptions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_types DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.operational_activities DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_requests DISABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Users can view all users" ON public.users;
-CREATE POLICY "Users can view all users" ON public.users FOR SELECT USING (true);
+-- Políticas de Fallback Permissivas caso o usuário reabilite RLS manualmente
+DROP POLICY IF EXISTS "Permissive Select Projects" ON public.projects;
+DROP POLICY IF EXISTS "Permissive Insert Projects" ON public.projects;
+DROP POLICY IF EXISTS "Permissive Update Projects" ON public.projects;
+DROP POLICY IF EXISTS "Permissive Delete Projects" ON public.projects;
+CREATE POLICY "Permissive Select Projects" ON public.projects FOR SELECT USING (true);
+CREATE POLICY "Permissive Insert Projects" ON public.projects FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permissive Update Projects" ON public.projects FOR UPDATE USING (true);
+CREATE POLICY "Permissive Delete Projects" ON public.projects FOR DELETE USING (true);
 
--- 8. Tabela de Logs de Auditoria (Audit Log)
-CREATE TABLE IF NOT EXISTS public.audit_logs (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id uuid,
-  user_name text,
-  action text NOT NULL,
-  entity_type text NOT NULL,
-  entity_id text,
-  entity_name text,
-  timestamp timestamptz DEFAULT now(),
-  details text
-);
+DROP POLICY IF EXISTS "Permissive Select Operational Activities" ON public.operational_activities;
+DROP POLICY IF EXISTS "Permissive Insert Operational Activities" ON public.operational_activities;
+DROP POLICY IF EXISTS "Permissive Update Operational Activities" ON public.operational_activities;
+DROP POLICY IF EXISTS "Permissive Delete Operational Activities" ON public.operational_activities;
+CREATE POLICY "Permissive Select Operational Activities" ON public.operational_activities FOR SELECT USING (true);
+CREATE POLICY "Permissive Insert Operational Activities" ON public.operational_activities FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permissive Update Operational Activities" ON public.operational_activities FOR UPDATE USING (true);
+CREATE POLICY "Permissive Delete Operational Activities" ON public.operational_activities FOR DELETE USING (true);
 
--- Habilitar RLS para Audit Logs
-ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Permissive Audit Select" ON public.audit_logs;
-CREATE POLICY "Permissive Audit Select" ON public.audit_logs FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Permissive Audit Insert" ON public.audit_logs;
-CREATE POLICY "Permissive Audit Insert" ON public.audit_logs FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Permissive Select Interruptions" ON public.interruptions;
+DROP POLICY IF EXISTS "Permissive Insert Interruptions" ON public.interruptions;
+DROP POLICY IF EXISTS "Permissive Update Interruptions" ON public.interruptions;
+DROP POLICY IF EXISTS "Permissive Delete Interruptions" ON public.interruptions;
+CREATE POLICY "Permissive Select Interruptions" ON public.interruptions FOR SELECT USING (true);
+CREATE POLICY "Permissive Insert Interruptions" ON public.interruptions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permissive Update Interruptions" ON public.interruptions FOR UPDATE USING (true);
+CREATE POLICY "Permissive Delete Interruptions" ON public.interruptions FOR DELETE USING (true);
 
--- 9. Recarregar Cache do PostgREST
+-- 10. Recarregar Cache do PostgREST
 NOTIFY pgrst, 'reload config';
