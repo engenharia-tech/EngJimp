@@ -112,6 +112,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     return isNaN(parsed) ? 0 : parsed;
   };
 
+  const canRegister = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'PROJETISTA'].includes(currentUser.role);
   const canManage = ['GESTOR', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
   const canDelete = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
 
@@ -524,7 +525,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
               </select>
           </div>
 
-          {canManage && (
+          {canRegister && (
               <button 
                 onClick={() => {
                     setEditingInnovation(null);
@@ -1157,6 +1158,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     <RotateCcw className="w-4 h-4" />
                                 </button>
                              )}
+                           </>
+                        )}
+                        {(canManage || inv.authorId === currentUser.id) && (
+                           <>
                              <button 
                                 onClick={() => setEditingInnovation(inv)}
                                 className="p-1 text-amber-600 dark:text-amber-400"
@@ -1265,15 +1270,18 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             <Eye className="w-4 h-4" />
                         </button>
 
+                        {(canManage || inv.authorId === currentUser.id) && (
+                            <button 
+                                onClick={() => setEditingInnovation(inv)}
+                                title={t('editInnovation')}
+                                className="p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-black rounded transition"
+                            >
+                                <Edit className="w-4 h-4" />
+                            </button>
+                        )}
+
                         {canManage && (
                             <>
-                                <button 
-                                    onClick={() => setEditingInnovation(inv)}
-                                    title={t('editInnovation')}
-                                    className="p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-black rounded transition"
-                                >
-                                    <Edit className="w-4 h-4" />
-                                </button>
 
                                 {inv.status === 'PENDING' && (
                                     <>
@@ -1327,16 +1335,17 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                         <RotateCcw className="w-4 h-4" />
                                     </button>
                                 )}
-                                {canDelete && (
-                                    <button 
-                                        onClick={() => setDeleteConfirmationId(inv.id)}
-                                        title={t('delete')}
-                                        className="p-1.5 text-gray-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-black rounded transition ml-2"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                )}
                             </>
+                        )}
+
+                        {(canDelete || inv.authorId === currentUser.id) && (
+                            <button 
+                                onClick={() => setDeleteConfirmationId(inv.id)}
+                                title={t('delete')}
+                                className="p-1.5 text-gray-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-black rounded transition ml-2"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
                         )}
                     </div>
                 </td>
