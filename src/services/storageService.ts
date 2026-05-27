@@ -733,26 +733,13 @@ export const deleteProject = async (id: string, ns?: string): Promise<AppState> 
     if (opError) console.warn("Warning deleting operational_activities:", opError);
 
     // 4. Delete the project
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('projects')
       .delete()
-      .eq('id', id)
-      .select();
+      .eq('id', id);
 
     if (error) {
       throw new Error(`Erro Supabase: ${error.message}`);
-    }
-
-    if (!data || data.length === 0) {
-      // If we are here, it means no row was returned.
-      // It could be RLS, or it could be that the row doesn't exist.
-      // Let's check if it exists
-      const { count } = await supabase.from('projects').select('*', { count: 'exact', head: true }).eq('id', id);
-      if (count === 0) {
-          // It's already gone, so success!
-          return fetchAppState();
-      }
-      throw new Error("O projeto não foi excluído. Verifique as permissões (RLS) ou se há vínculos pendentes.");
     }
 
     return fetchAppState();
@@ -894,24 +881,13 @@ export const updateInnovation = async (innovation: InnovationRecord): Promise<Ap
 
 export const deleteInnovation = async (id: string): Promise<AppState> => {
   try {
-    const { error, data } = await supabase
+    const { error } = await supabase
       .from('innovations')
       .delete()
-      .eq('id', id)
-      .select();
+      .eq('id', id);
 
     if (error) {
         throw new Error(`Erro Supabase: ${error.message}`);
-    }
-
-    if (!data || data.length === 0) {
-        // Check if it exists
-        const { count } = await supabase.from('innovations').select('*', { count: 'exact', head: true }).eq('id', id);
-        if (count === 0) {
-            // Already gone
-            return fetchAppState();
-        }
-        throw new Error("A inovação não foi excluída. Verifique as permissões (RLS).");
     }
 
     return fetchAppState();

@@ -68,12 +68,18 @@ export function getCleanupSegmentsForActivity(
   for (const d of days) {
     const isStartDay = (d.getFullYear() === start.getFullYear() && d.getMonth() === start.getMonth() && d.getDate() === start.getDate());
     const isToday = (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate());
-    const isWorkday = workdays.includes(d.getDay());
+    const isWorkday = workdays.includes(d.getDay()) || !!act.isOvertime;
 
     if (isStartDay) {
       // The starting day: it always has a segment, even if it was a weekend
+      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
       const endOfShift = new Date(d);
-      endOfShift.setHours(weH, weM, 0, 0);
+      if (isWeekend && !act.isOvertime) {
+        // If it started on a weekend with no overtime allowed, end it immediately at start time.
+        endOfShift.setTime(start.getTime());
+      } else {
+        endOfShift.setHours(weH, weM, 0, 0);
+      }
 
       calculatedSegments.push({
         startTime: start,
@@ -128,7 +134,7 @@ export function getCleanupSegmentsForActivity(
     ...act,
     isFlagged: true,
     endTime: origEndISO,
-    durationSeconds: origEndISO ? calcActiveSeconds(act.startTime, origEndISO, settings, false) : 0,
+    durationSeconds: origEndISO ? calcActiveSeconds(act.startTime, origEndISO, settings, !!act.isOvertime) : 0,
     notes: (act.notes ? act.notes + " | " : "") + firstSeg.notes
   };
 
@@ -136,7 +142,7 @@ export function getCleanupSegmentsForActivity(
   const newSegmentsToCreate = calculatedSegments.slice(1).map(seg => {
     const startStr = seg.startTime.toISOString();
     const endStr = seg.endTime ? seg.endTime.toISOString() : null;
-    const duration = endStr ? calcActiveSeconds(startStr, endStr, settings, false) : 0;
+    const duration = endStr ? calcActiveSeconds(startStr, endStr, settings, !!act.isOvertime) : 0;
 
     return {
       userId: act.userId,
