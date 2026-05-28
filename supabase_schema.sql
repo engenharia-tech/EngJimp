@@ -204,6 +204,36 @@ alter table public.activity_types disable row level security;
 alter table public.operational_activities disable row level security;
 alter table public.project_requests disable row level security;
 alter table public.gantt_tasks disable row level security;
+alter table public.seo_keywords disable row level security;
+alter table public.seo_metrics disable row level security;
+alter table public.seo_tasks disable row level security;
+
+-- SEO Tables
+create table if not exists public.seo_keywords (
+  id text primary key,
+  keyword text not null,
+  rank integer not null default 0,
+  volume integer not null default 0,
+  difficulty integer not null default 50,
+  last_updated text not null,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.seo_metrics (
+  date text primary key,
+  domain_authority integer not null default 0,
+  organic_traffic integer not null default 0,
+  backlinks integer not null default 0,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.seo_tasks (
+  id text primary key,
+  title text not null,
+  status text not null default 'TODO',
+  priority text not null default 'MEDIUM',
+  created_at timestamptz default now()
+);
 
 -- Tenant Helper Function
 -- NOTE: This function depends on auth.uid(), which is only available if using Supabase Auth.

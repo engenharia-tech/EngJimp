@@ -235,6 +235,43 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     });
   }, [interruptions, selectedDate, selectedUserId, viewMode]);
 
+  // For the global/engineering tab, we need all projects and interruptions for the period (unfiltered by single user)
+  const engineeringProjects = useMemo(() => {
+    return projects.filter(p => {
+      const projectStart = parseISO(p.startTime);
+      const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
+
+      if (viewMode === 'day') {
+        const start = startOfDay(selectedDate);
+        const end = endOfDay(selectedDate);
+        return projectStart <= end && projectEnd >= start;
+      } else if (viewMode === 'month') {
+        return projectStart.getMonth() === selectedDate.getMonth() && 
+               projectStart.getFullYear() === selectedDate.getFullYear();
+      } else {
+        return projectStart.getFullYear() === selectedDate.getFullYear();
+      }
+    });
+  }, [projects, selectedDate, viewMode]);
+
+  const engineeringInterruptions = useMemo(() => {
+    return (interruptions || []).filter(i => {
+      const start = parseISO(i.startTime);
+      const end = i.endTime ? parseISO(i.endTime) : new Date();
+
+      if (viewMode === 'day') {
+        const dayStart = startOfDay(selectedDate);
+        const dayEnd = endOfDay(selectedDate);
+        return start <= dayEnd && end >= dayStart;
+      } else if (viewMode === 'month') {
+        return start.getMonth() === selectedDate.getMonth() && 
+               start.getFullYear() === selectedDate.getFullYear();
+      } else {
+        return start.getFullYear() === selectedDate.getFullYear();
+      }
+    });
+  }, [interruptions, selectedDate, viewMode]);
+
   const currentActivity = useMemo(() => {
     return activities.find(a => !a.endTime && a.userId === selectedUserId);
   }, [activities, selectedUserId]);
@@ -1545,9 +1582,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
       {activeTab === 'engineering' && (
         <EngineeringDashboard 
-          projects={filteredProjects || []}
+          projects={engineeringProjects}
           users={(users || []).filter(u => u?.role === 'PROJETISTA' || u?.role === 'COORDENADOR')}
-          interruptions={filteredInterruptions || []}
+          interruptions={engineeringInterruptions}
           theme={theme}
           t={t}
           viewMode={viewMode}
