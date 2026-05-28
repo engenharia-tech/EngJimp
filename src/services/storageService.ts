@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus, InnovationType, GanttTask, AuditLog } from '../types';
+import { SEOKeyword, SEOMetric, SEOTask, SEOData } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 
@@ -504,9 +505,14 @@ export const fetchAppState = async (): Promise<AppState> => {
       auditLogs = fallbackLogs;
     }
 
-    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, auditLogs, settings };
+    const seoData = await fetchSEOData();
+    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, auditLogs, settings, seoData };
   } catch (error) {
     console.error("FAILED TO LOAD DATA FROM SUPABASE - RETURNING PARTIAL STATE", error);
+    let seoData = { keywords: [], metrics: [], tasks: [] };
+    try {
+      seoData = await fetchSEOData();
+    } catch {}
     return { 
       projects: projects || [], 
       issues: issues || [], 
@@ -519,7 +525,8 @@ export const fetchAppState = async (): Promise<AppState> => {
       users: users || [], 
       ganttTasks: ganttTasks || [], 
       auditLogs: auditLogs || [],
-      settings: settings || { ...defaultState.settings } 
+      settings: settings || { ...defaultState.settings },
+      seoData
     };
   }
 };
@@ -2248,6 +2255,219 @@ export const deleteGanttTask = async (taskId: string): Promise<AppState> => {
   } catch (error) {
     console.error("FAILED TO DELETE GANTT TASK", error);
     throw error;
+  }
+};
+
+const MOCK_METRICS: SEOMetric[] = [
+  { date: '2025-12-01', domainAuthority: 10, organicTraffic: 0, backlinks: 5 },
+  { date: '2025-12-15', domainAuthority: 15, organicTraffic: 110, backlinks: 18 },
+  { date: '2026-01-01', domainAuthority: 18, organicTraffic: 260, backlinks: 35 },
+  { date: '2026-01-15', domainAuthority: 20, organicTraffic: 480, backlinks: 58 },
+  { date: '2026-02-01', domainAuthority: 22, organicTraffic: 790, backlinks: 92 },
+  { date: '2026-02-15', domainAuthority: 24, organicTraffic: 1150, backlinks: 140 },
+  { date: '2026-03-01', domainAuthority: 25, organicTraffic: 1620, backlinks: 210 },
+  { date: '2026-03-15', domainAuthority: 26, organicTraffic: 2100, backlinks: 295 },
+  { date: '2026-04-01', domainAuthority: 27, organicTraffic: 2700, backlinks: 380 },
+  { date: '2026-04-15', domainAuthority: 28, organicTraffic: 3250, backlinks: 460 },
+  { date: '2026-05-01', domainAuthority: 29, organicTraffic: 3750, backlinks: 580 },
+  { date: '2026-05-15', domainAuthority: 30, organicTraffic: 4200, backlinks: 690 },
+  { date: '2026-05-28', domainAuthority: 31, organicTraffic: 4500, backlinks: 810 },
+];
+
+const MOCK_KEYWORDS: SEOKeyword[] = [
+  { id: '1', keyword: 'projeto engenharia mecânica', rank: 3, volume: 1200, difficulty: 45, lastUpdated: '2026-05-20' },
+  { id: '2', keyword: 'gestão de projetos industriais', rank: 4, volume: 850, difficulty: 60, lastUpdated: '2026-05-22' },
+  { id: '3', keyword: 'rastreador de tempo engenharia', rank: 1, volume: 450, difficulty: 30, lastUpdated: '2026-05-28' },
+  { id: '4', keyword: 'otimização de processos fábrica', rank: 9, volume: 320, difficulty: 55, lastUpdated: '2026-05-18' },
+  { id: '5', keyword: 'consultoria engenharia jimp', rank: 2, volume: 150, difficulty: 20, lastUpdated: '2026-05-25' },
+  { id: '6', keyword: 'sistemas de exaustão industrial', rank: 14, volume: 590, difficulty: 72, lastUpdated: '2026-05-24' },
+  { id: '7', keyword: 'maquinas especiais sob medida', rank: 7, volume: 210, difficulty: 42, lastUpdated: '2026-05-26' },
+];
+
+const MOCK_TASKS: SEOTask[] = [
+  { id: '1', title: 'Otimizar meta tags da página inicial e contatos', status: 'DONE', priority: 'HIGH' },
+  { id: '2', title: 'Criar landing page sobre "Otimização de Processos Industriais"', status: 'IN_PROGRESS', priority: 'MEDIUM' },
+  { id: '3', title: 'Corrigir links quebrados apontando para projetos antigos', status: 'TODO', priority: 'HIGH' },
+  { id: '4', title: 'Melhorar velocidade de carregamento Core Web Vitals no mobile', status: 'TODO', priority: 'MEDIUM' },
+  { id: '5', title: 'Adicionar schema markup de Local Business para a sede', status: 'DONE', priority: 'LOW' },
+  { id: '6', title: 'Produzir série de artigos técnicos de engenharia mecânica', status: 'TODO', priority: 'HIGH' },
+];
+
+export const fetchSEOData = async (): Promise<SEOData> => {
+  let keywords: SEOKeyword[] = [];
+  let metrics: SEOMetric[] = [];
+  let tasks: SEOTask[] = [];
+
+  // Try fetching from custom SEO tables first
+  try {
+    const { data: kwData, error: kwError } = await supabase.from('seo_keywords').select('*');
+    if (kwError) throw kwError;
+    if (kwData) {
+      keywords = kwData.map((k: any) => ({
+        id: k.id,
+        keyword: k.keyword,
+        rank: Number(k.rank) || 0,
+        volume: Number(k.volume) || 0,
+        difficulty: Number(k.difficulty) || 50,
+        lastUpdated: k.last_updated
+      }));
+    }
+
+    const { data: mData, error: mError } = await supabase.from('seo_metrics').select('*');
+    if (mError) throw mError;
+    if (mData) {
+      metrics = mData.map((m: any) => ({
+        date: m.date,
+        domainAuthority: Number(m.domain_authority) || 0,
+        organicTraffic: Number(m.organic_traffic) || 0,
+        backlinks: Number(m.backlinks) || 0
+      })).sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    const { data: tData, error: tError } = await supabase.from('seo_tasks').select('*');
+    if (tError) throw tError;
+    if (tData) {
+      tasks = tData.map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status as any,
+        priority: t.priority as any
+      }));
+    }
+
+    // Cache to localStorage
+    if (keywords.length > 0) localStorage.setItem('seo_keywords', JSON.stringify(keywords));
+    if (metrics.length > 0) localStorage.setItem('seo_metrics', JSON.stringify(metrics));
+    if (tasks.length > 0) localStorage.setItem('seo_tasks', JSON.stringify(tasks));
+
+    return { keywords, metrics, tasks };
+
+  } catch (dbError) {
+    console.warn("SEO tables not fully available in Supabase, using settings fallback:", dbError);
+
+    // Fetch from settings table
+    try {
+      const { data: settingsData, error: settingsError } = await supabase
+        .from('settings')
+        .select('*')
+        .in('key', ['seo_keywords', 'seo_metrics', 'seo_tasks']);
+
+      if (!settingsError && settingsData && settingsData.length > 0) {
+        const kwRow = settingsData.find(s => s.key === 'seo_keywords');
+        const mRow = settingsData.find(s => s.key === 'seo_metrics');
+        const tRow = settingsData.find(s => s.key === 'seo_tasks');
+
+        if (kwRow?.value) keywords = JSON.parse(kwRow.value);
+        if (mRow?.value) metrics = JSON.parse(mRow.value);
+        if (tRow?.value) tasks = JSON.parse(tRow.value);
+      }
+    } catch (settingsEx) {
+      console.warn("Settings fetch for SEO error:", settingsEx);
+    }
+
+    // Fallback to localStorage
+    if (keywords.length === 0) {
+      try {
+        const cachedKw = localStorage.getItem('seo_keywords');
+        if (cachedKw) keywords = JSON.parse(cachedKw);
+      } catch {}
+    }
+    if (metrics.length === 0) {
+      try {
+        const cachedM = localStorage.getItem('seo_metrics');
+        if (cachedM) metrics = JSON.parse(cachedM);
+      } catch {}
+    }
+    if (tasks.length === 0) {
+      try {
+        const cachedT = localStorage.getItem('seo_tasks');
+        if (cachedT) tasks = JSON.parse(cachedT);
+      } catch {}
+    }
+
+    // Default to Mocks if still empty
+    if (keywords.length === 0) keywords = [...MOCK_KEYWORDS];
+    if (metrics.length === 0) metrics = [...MOCK_METRICS];
+    if (tasks.length === 0) tasks = [...MOCK_TASKS];
+
+    return { keywords, metrics, tasks };
+  }
+};
+
+export const saveSEOKeywords = async (keywords: SEOKeyword[]): Promise<void> => {
+  localStorage.setItem('seo_keywords', JSON.stringify(keywords));
+
+  try {
+    await supabase.from('seo_keywords').delete().neq('id', 'dummy'); 
+    if (keywords.length > 0) {
+      const inserts = keywords.map(k => ({
+        id: k.id,
+        keyword: k.keyword,
+        rank: k.rank,
+        volume: k.volume,
+        difficulty: k.difficulty,
+        last_updated: k.lastUpdated
+      }));
+      await supabase.from('seo_keywords').insert(inserts);
+    }
+  } catch (e) {
+    console.warn("seo_keywords table insert failed, falling back:", e);
+  }
+
+  try {
+    await supabase.from('settings').upsert({ key: 'seo_keywords', value: JSON.stringify(keywords) }, { onConflict: 'key' });
+  } catch (e) {
+    console.error("Backup to settings table for seo_keywords failed:", e);
+  }
+};
+
+export const saveSEOMetrics = async (metrics: SEOMetric[]): Promise<void> => {
+  localStorage.setItem('seo_metrics', JSON.stringify(metrics));
+
+  try {
+    await supabase.from('seo_metrics').delete().neq('date', 'dummy');
+    if (metrics.length > 0) {
+      const inserts = metrics.map(m => ({
+        date: m.date,
+        domain_authority: m.domainAuthority,
+        organic_traffic: m.organicTraffic,
+        backlinks: m.backlinks
+      }));
+      await supabase.from('seo_metrics').insert(inserts);
+    }
+  } catch (e) {
+    console.warn("seo_metrics table insert failed, falling back:", e);
+  }
+
+  try {
+    await supabase.from('settings').upsert({ key: 'seo_metrics', value: JSON.stringify(metrics) }, { onConflict: 'key' });
+  } catch (e) {
+    console.error("Backup to settings table for seo_metrics failed:", e);
+  }
+};
+
+export const saveSEOTasks = async (tasks: SEOTask[]): Promise<void> => {
+  localStorage.setItem('seo_tasks', JSON.stringify(tasks));
+
+  try {
+    await supabase.from('seo_tasks').delete().neq('id', 'dummy');
+    if (tasks.length > 0) {
+      const inserts = tasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        priority: t.priority
+      }));
+      await supabase.from('seo_tasks').insert(inserts);
+    }
+  } catch (e) {
+    console.warn("seo_tasks table insert failed, falling back:", e);
+  }
+
+  try {
+    await supabase.from('settings').upsert({ key: 'seo_tasks', value: JSON.stringify(tasks) }, { onConflict: 'key' });
+  } catch (e) {
+    console.error("Backup to settings table for seo_tasks failed:", e);
   }
 };
 

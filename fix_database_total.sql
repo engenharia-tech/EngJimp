@@ -116,6 +116,38 @@ ALTER TABLE public.activity_types DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.operational_activities DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.project_requests DISABLE ROW LEVEL SECURITY;
 
+-- 10. Tabelas para Otimização de Busca (SEO)
+CREATE TABLE IF NOT EXISTS public.seo_keywords (
+  id text PRIMARY KEY,
+  keyword text NOT NULL,
+  rank integer NOT NULL DEFAULT 0,
+  volume integer NOT NULL DEFAULT 0,
+  difficulty integer NOT NULL DEFAULT 50,
+  last_updated text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.seo_metrics (
+  date text PRIMARY KEY,
+  domain_authority integer NOT NULL DEFAULT 0,
+  organic_traffic integer NOT NULL DEFAULT 0,
+  backlinks integer NOT NULL DEFAULT 0,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.seo_tasks (
+  id text PRIMARY KEY,
+  title text NOT NULL,
+  status text NOT NULL DEFAULT 'TODO',
+  priority text NOT NULL DEFAULT 'MEDIUM',
+  created_at timestamptz DEFAULT now()
+);
+
+-- Desativar RLS para Tabelas de SEO
+ALTER TABLE public.seo_keywords DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.seo_metrics DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.seo_tasks DISABLE ROW LEVEL SECURITY;
+
 -- Políticas de Fallback Permissivas caso o usuário reabilite RLS manualmente
 DROP POLICY IF EXISTS "Permissive Select Projects" ON public.projects;
 DROP POLICY IF EXISTS "Permissive Insert Projects" ON public.projects;
