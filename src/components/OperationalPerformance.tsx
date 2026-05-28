@@ -356,12 +356,12 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
     const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
 
-    const processItem = (id: string, type: 'activity' | 'project' | 'pause' | 'interruption', name: string, startTime: string, endTime: string | undefined, color: string) => {
+    const processItem = (id: string, type: 'activity' | 'project' | 'pause' | 'interruption', name: string, startTime: string, endTime: string | undefined, color: string, activityTypeId?: string) => {
       const start = parseISO(startTime);
       const end = endTime ? parseISO(endTime) : new Date();
 
       if (viewMode !== 'day') {
-        items.push({ id, type, name, start, end, color });
+        items.push({ id, type, name, start, end, color, activityTypeId });
         return;
       }
 
@@ -403,7 +403,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           name,
           start: clippedStart,
           end: beforeLunchEnd,
-          color
+          color,
+          activityTypeId
         });
       }
 
@@ -416,12 +417,13 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           name,
           start: afterLunchStart,
           end: clippedEnd,
-          color
+          color,
+          activityTypeId
         });
       }
     };
 
-    filteredActivities.forEach(a => processItem(a.id, 'activity', a.activityName, a.startTime, a.endTime, '#3b82f6'));
+    filteredActivities.forEach(a => processItem(a.id, 'activity', a.activityName, a.startTime, a.endTime, '#3b82f6', a.activityTypeId));
     
     filteredProjects.forEach(p => {
       // Find interruptions for this project session
@@ -646,8 +648,12 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       } else if (item.type === 'interruption') {
         dataMap[t('interruptions') || 'Interrupções'] += duration;
       } else {
-        if (dataMap[item.name] !== undefined) {
-          dataMap[item.name] += duration;
+        // Find corresponding category name by its ID
+        const category = activityTypes.find(type => type.id === item.activityTypeId);
+        const categoryName = category ? category.name : item.name;
+
+        if (categoryName && dataMap[categoryName] !== undefined) {
+          dataMap[categoryName] += duration;
         } else {
           const othersKey = t('others') || 'Outros';
           dataMap[othersKey] = (dataMap[othersKey] || 0) + duration;
