@@ -181,8 +181,15 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       } else if (activeProject.status === 'IN_PROGRESS') {
         // If it was in progress but no longer found as in progress in global data
         // (Possibly finished or deleted in another tab)
-        console.log(`[Sync] Active project ${activeProject.ns} no longer in progress globally. Clearing local active state.`);
-        setActiveProject(null);
+        // Prevent race condition: do not clear if the project was started/re-activated in the last 60 seconds
+        const startTimeMs = new Date(activeProject.startTime).getTime();
+        const nowMs = Date.now();
+        const isVeryRecent = (nowMs - startTimeMs) < 60000;
+
+        if (!isVeryRecent) {
+          console.log(`[Sync] Active project ${activeProject.ns} no longer in progress globally. Clearing local active state.`);
+          setActiveProject(null);
+        }
       }
     }
   }, [existingProjects, activeProject?.id, activeProject?.status]);
