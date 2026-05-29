@@ -511,19 +511,16 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         processItem(`${p.id}-seg-${idx}`, 'project', `${t('project')}: ${p.ns || p.projectCode || 'S/N'}`, seg.start.toISOString(), seg.end.toISOString(), '#10b981');
       });
 
-      // Add exclusions as separate items
+      // Add exclusions as separate items (excluding interruptions since they represent stopped/inactive time)
       exclusions.forEach(ex => {
-        processItem(ex.id, ex.type, ex.name, ex.start.toISOString(), ex.end.toISOString(), ex.type === 'pause' ? '#f59e0b' : '#ef4444');
+        if (ex.type !== 'interruption') {
+          processItem(ex.id, ex.type, ex.name, ex.start.toISOString(), ex.end.toISOString(), ex.type === 'pause' ? '#f59e0b' : '#ef4444');
+        }
       });
     });
 
-    // Add remaining interruptions that are NOT linked to projects
-    filteredInterruptions.forEach(i => {
-      const isLinked = filteredProjects.some(p => i.projectId === p.id || i.projectNs === p.ns);
-      if (!isLinked) {
-        processItem(i.id, 'interruption', `${t('interruption')}: ${i.description}`, i.startTime, i.endTime, '#ef4444');
-      }
-    });
+    // Do NOT add remaining interruptions that are NOT linked to projects to the designer's operational activities list
+    // (If it is stopped, it is stopped!)
 
     const rawItems = items.sort((a, b) => a.start.getTime() - b.start.getTime());
 

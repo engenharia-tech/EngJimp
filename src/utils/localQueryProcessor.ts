@@ -41,7 +41,7 @@ export const resolveLocalQueryFallback = (
     const userGantt = ganttTasks.filter(t => t.assignedTo?.includes(mentionedUser.id));
     const completedGantt = userGantt.filter(t => t.status === 'closed').length;
 
-    const totalSeconds = userProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || p.totalSeconds || 0), 0);
+    const totalSeconds = userProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0);
     const totalHours = (totalSeconds / 3600).toFixed(1);
 
     // List recent projects
@@ -144,7 +144,7 @@ ${rankingTable}
     if (foundProj) {
       const owner = users.find(u => u.id === foundProj.userId);
       const ownerName = owner ? `${owner.name} ${owner.surname || ''}` : 'Não Atribuído';
-      const durationHours = ((foundProj.totalActiveSeconds || foundProj.totalSeconds || 0) / 3600).toFixed(2);
+      const durationHours = ((foundProj.totalActiveSeconds || 0) / 3600).toFixed(2);
       
       return `### 🔍 Ficha de Detalhes da Nota de Serviço (NS): ${targetNs}
 Localizei estes dados históricos no banco de dados JIMP:
@@ -182,7 +182,7 @@ Se você acabou de criá-la, por favor reinicie o rastreador ou recarregue a aba
     const userProjects = projects.filter(p => p.userId === currentUser.id);
     const completed = userProjects.filter(p => p.status === 'COMPLETED').length;
     const inProgress = userProjects.filter(p => p.status === 'IN_PROGRESS').length;
-    const totalSeconds = userProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || p.totalSeconds || 0), 0);
+    const totalSeconds = userProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0);
     const totalHours = (totalSeconds / 3600).toFixed(1);
 
     // Calc user's exact current rank pos
