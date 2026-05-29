@@ -41,6 +41,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   const [ns, setNs] = useState('');
   const [client, setClient] = useState('');
   const [problemType, setProblemType] = useState('');
+  const [formDesignerId, setFormDesignerId] = useState('');
   const [area, setArea] = useState<InterruptionArea>(InterruptionArea.COMERCIAL);
   const [responsible, setResponsible] = useState('');
   const [description, setDescription] = useState('');
@@ -57,8 +58,19 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   const [filterNs, setFilterNs] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterArea, setFilterArea] = useState<string>('ALL');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(() => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth(); // 0-indexed
+    return `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth(); // 0-indexed
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  });
 
   // Type Manager State
   const [newTypeName, setNewTypeName] = useState('');
@@ -72,6 +84,22 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
 
   const canManage = currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR';
   const isCEO = currentUser.role === 'CEO';
+  const isEdson = useMemo(() => {
+    const email = currentUser?.email?.trim().toLowerCase();
+    const username = currentUser?.username?.trim().toLowerCase();
+    const name = currentUser?.name?.trim().toLowerCase();
+    return email === 'efariaseng0@gmail.com' || username === 'edson' || name?.includes('edson') || false;
+  }, [currentUser]);
+
+  useEffect(() => {
+    console.log("[InterruptionManager] Current User Evaluation:", {
+      username: currentUser?.username,
+      email: currentUser?.email,
+      name: currentUser?.name,
+      role: currentUser?.role,
+      isEdson
+    });
+  }, [currentUser, isEdson]);
 
   // Helper to format date for input
   const getLocalDate = (iso: string) => {
@@ -215,6 +243,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           projectNs: ns,
           projectId: linkedProject?.id || editingInterruption.projectId,
           clientName: client,
+          designerId: isEdson ? (formDesignerId || editingInterruption.designerId) : editingInterruption.designerId,
           problemType,
           responsibleArea: area,
           responsiblePerson: responsible,
@@ -230,7 +259,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         const newState = await updateInterruption(updated);
         onUpdate(newState);
         addToast(t('interruptionUpdated'), 'success');
-
+ 
         // Audit Log
         addAuditLog({
             userId: currentUser.id,
@@ -247,7 +276,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           projectId: linkedProject?.id,
           projectNs: ns,
           clientName: client,
-          designerId: currentUser.id,
+          designerId: isEdson ? (formDesignerId || currentUser.id) : currentUser.id,
           startTime: startIso,
           endTime: endIso,
           problemType,
@@ -308,6 +337,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     setNs('');
     setClient('');
     setProblemType('');
+    setFormDesignerId(currentUser.id);
     setArea(InterruptionArea.COMERCIAL);
     setResponsible('');
     setDescription('');
@@ -328,6 +358,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     setNs(i.projectNs);
     setClient(i.clientName);
     setProblemType(i.problemType);
+    setFormDesignerId(i.designerId || '');
     setArea(i.responsibleArea);
     setResponsible(i.responsiblePerson);
     setDescription(i.description);
@@ -515,7 +546,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         <div className="flex gap-3">
           {!isCEO && (
             <button 
-              onClick={() => setIsFormOpen(true)}
+              onClick={() => {
+                resetForm();
+                setIsFormOpen(true);
+              }}
               className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-bold flex items-center transition-colors shadow-lg shadow-amber-900/20"
             >
               <Plus className="w-5 h-5 mr-2" />
@@ -723,6 +757,27 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              {isEdson && (
+                <div className="p-3 bg-amber-50 dark:bg-slate-900/40 border border-amber-200 dark:border-slate-700 rounded-xl space-y-1">
+                  <label className="block text-xs font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider">
+                    {t('designerLabel') || 'PROJETISTA:'} * (Apenas Edson pode alterar)
+                  </label>
+                  <select 
+                    value={formDesignerId}
+                    onChange={e => setFormDesignerId(e.target.value)}
+                    className="w-full p-2.5 border border-amber-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-black text-black dark:text-white text-sm"
+                    required
+                  >
+                    <option value="">Selecione o Projetista</option>
+                    {data.users.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} {u.surname || ''} ({u.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-black dark:text-white mb-1">{t('projectNs')} *</label>
