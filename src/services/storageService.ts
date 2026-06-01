@@ -740,13 +740,18 @@ export const deleteProject = async (id: string, ns?: string): Promise<AppState> 
     if (opError) console.warn("Warning deleting operational_activities:", opError);
 
     // 4. Delete the project
-    const { error } = await supabase
+    const { data: deleteData, error } = await supabase
       .from('projects')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select();
 
     if (error) {
       throw new Error(`Erro Supabase: ${error.message}`);
+    }
+
+    if (!deleteData || deleteData.length === 0) {
+      throw new Error("RLS_BLOCK: O banco de dados ignorou o comando de exclusão do Projeto. Isso ocorre devido às Políticas de Segurança (Row Level Security - RLS) ativas em seu Supabase. Para habilitar a exclusão e operações completas, execute no console SQL do Supabase: `ALTER TABLE public.projects DISABLE ROW LEVEL SECURITY;`");
     }
 
     return fetchAppState();
@@ -875,6 +880,7 @@ export const updateInnovation = async (innovation: InnovationRecord): Promise<Ap
         unit_product_cost: innovation.unitProductCost,
         unit_product_value: innovation.unitProductValue,
         status: innovation.status,
+        author_id: innovation.authorId,
       })
       .eq('id', innovation.id);
 
@@ -888,13 +894,18 @@ export const updateInnovation = async (innovation: InnovationRecord): Promise<Ap
 
 export const deleteInnovation = async (id: string): Promise<AppState> => {
   try {
-    const { error } = await supabase
+    const { data: deleteData, error } = await supabase
       .from('innovations')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select();
 
     if (error) {
         throw new Error(`Erro Supabase: ${error.message}`);
+    }
+
+    if (!deleteData || deleteData.length === 0) {
+      throw new Error("RLS_BLOCK: O banco de dados ignorou o comando de exclusão da Inovação. Isso ocorre devido às Políticas de Segurança (Row Level Security - RLS) ativas em seu Supabase. Para habilitar a exclusão e operações completas, execute no console SQL do Supabase: `ALTER TABLE public.innovations DISABLE ROW LEVEL SECURITY;`");
     }
 
     return fetchAppState();
@@ -996,8 +1007,11 @@ export const updateInterruption = async (interruption: InterruptionRecord, skipF
 
 export const deleteInterruption = async (id: string): Promise<AppState> => {
   try {
-    const { error } = await supabase.from('interruptions').delete().eq('id', id);
+    const { data: deleteData, error } = await supabase.from('interruptions').delete().eq('id', id).select();
     if (error) throw error;
+    if (!deleteData || deleteData.length === 0) {
+      throw new Error("RLS_BLOCK: O banco de dados ignorou o comando de exclusão da Interrupção. Isso ocorre devido às Políticas de Segurança (Row Level Security - RLS) ativas em seu Supabase. Para habilitar a exclusão e operações completas, execute no console SQL do Supabase: `ALTER TABLE public.interruptions DISABLE ROW LEVEL SECURITY;`");
+    }
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO DELETE INTERRUPTION", error);
@@ -1051,8 +1065,11 @@ export const updateInterruptionType = async (type: InterruptionType): Promise<Ap
 
 export const deleteInterruptionType = async (id: string): Promise<AppState> => {
     try {
-        const { error } = await supabase.from('interruption_types').delete().eq('id', id);
+        const { data: deleteData, error } = await supabase.from('interruption_types').delete().eq('id', id).select();
         if (error) throw error;
+        if (!deleteData || deleteData.length === 0) {
+            throw new Error("RLS_BLOCK: O banco de dados ignorou o comando de exclusão da Categoria de Interrupção. Isso ocorre devido às Políticas de Segurança (Row Level Security - RLS) ativas em seu Supabase. Para habilitar a exclusão e operações completas, execute no console SQL do Supabase: `ALTER TABLE public.interruption_types DISABLE ROW LEVEL SECURITY;`");
+        }
         return fetchAppState();
     } catch (error) {
         console.error("FAILED TO DELETE INTERRUPTION TYPE", error);
@@ -1108,8 +1125,11 @@ export const updateActivityType = async (type: ActivityType): Promise<AppState> 
 
 export const deleteActivityType = async (id: string): Promise<AppState> => {
     try {
-        const { error } = await supabase.from('activity_types').delete().eq('id', id);
+        const { data: deleteData, error } = await supabase.from('activity_types').delete().eq('id', id).select();
         if (error) throw error;
+        if (!deleteData || deleteData.length === 0) {
+            throw new Error("RLS_BLOCK: O banco de dados ignorou o comando de exclusão do Tipo de Atividade. Isso ocorre devido às Políticas de Segurança (Row Level Security - RLS) ativas em seu Supabase. Para habilitar a exclusão e operações completas, execute no console SQL do Supabase: `ALTER TABLE public.activity_types DISABLE ROW LEVEL SECURITY;`");
+        }
         return fetchAppState();
     } catch (error) {
         console.error("FAILED TO DELETE ACTIVITY TYPE", error);
@@ -1188,8 +1208,11 @@ export const updateOperationalActivity = async (activity: OperationalActivity): 
 
 export const deleteOperationalActivity = async (id: string): Promise<AppState> => {
     try {
-        const { error } = await supabase.from('operational_activities').delete().eq('id', id);
+        const { data: deleteData, error } = await supabase.from('operational_activities').delete().eq('id', id).select();
         if (error) throw error;
+        if (!deleteData || deleteData.length === 0) {
+            throw new Error("RLS_BLOCK: O banco de dados ignorou o comando de exclusão da Atividade Operacional. Isso ocorre devido às Políticas de Segurança (Row Level Security - RLS) ativas em seu Supabase. Para habilitar a exclusão e operações completas, execute no console SQL do Supabase: `ALTER TABLE public.operational_activities DISABLE ROW LEVEL SECURITY;`");
+        }
         return fetchAppState();
     } catch (error) {
         console.error("FAILED TO DELETE OPERATIONAL ACTIVITY", error);
@@ -1362,8 +1385,11 @@ export const updateProjectRequest = async (request: ProjectRequest): Promise<App
 
 export const deleteProjectRequest = async (id: string): Promise<AppState> => {
   try {
-    const { error } = await supabase.from('project_requests').delete().eq('id', id);
+    const { data: deleteData, error } = await supabase.from('project_requests').delete().eq('id', id).select();
     if (error) throw error;
+    if (!deleteData || deleteData.length === 0) {
+      throw new Error("RLS_BLOCK: O banco de dados ignorou o comando de exclusão do Pedido de NS. Isso ocorre devido às Políticas de Segurança (Row Level Security - RLS) ativas em seu Supabase. Para habilitar a exclusão e operações completas, execute no console SQL do Supabase: `ALTER TABLE public.project_requests DISABLE ROW LEVEL SECURITY;`");
+    }
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO DELETE PROJECT REQUEST", error);

@@ -1257,6 +1257,7 @@ ${t('ns')}: ${project.ns}
 ${t('client')}: ${project.clientName || t('notInformed')}
 ${t('projectCode')}: ${project.projectCode || t('notInformed')}
 ${t('designer')}: ${designersStr}
+Liberado por: ${currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : 'SISTEMA'}
 
 ${t('plannedTime')}: ${plannedHours} ${t('hours')}
 ${t('executedTime')}: ${hours} ${t('hours')}
@@ -1296,6 +1297,8 @@ JIMPNEXUS
         bodyLength: body.length
       });
       
+      const userDisplayName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : "JIMPNEXUS";
+
       console.log("Fetching /api/send-email with recipient:", settings.emailTo);
       const response = await fetch('/api/send-email', {
         method: 'POST',
@@ -1303,7 +1306,8 @@ JIMPNEXUS
         body: JSON.stringify({ 
           subject, 
           body,
-          to: settings.emailTo
+          to: settings.emailTo,
+          fromName: `${userDisplayName} - JIMPNEXUS`
         })
       });
 

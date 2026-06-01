@@ -651,8 +651,9 @@ const AppContent: React.FC = () => {
   }), [data.settings, calculatedHourlyRate]);
 
   const handleProjectCreate = async (project: ProjectSession): Promise<AppState | undefined> => {
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
-    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+    const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'];
+    if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionCreate'), 'error');
       return;
     }
@@ -704,8 +705,9 @@ const AppContent: React.FC = () => {
   };
 
   const handleProjectUpdate = async (project: ProjectSession, isHeartbeat = false) => {
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
-    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+    const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'];
+    if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       if (!isHeartbeat) addToast(t('noPermissionEdit'), 'error');
       return;
     }
@@ -783,8 +785,9 @@ const AppContent: React.FC = () => {
 
   const handleProjectDelete = async (id: string) => {
     console.log("handleProjectDelete called for id:", id);
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA'];
-    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+    const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'];
+    if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('onlyManagerDelete'), 'error');
       return;
     }
@@ -833,8 +836,9 @@ const AppContent: React.FC = () => {
   };
 
   const handleInnovationAdd = async (innovation: InnovationRecord) => {
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS'];
-    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+    const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'CEO'];
+    if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionAddInnovation'), 'error');
       return;
     }
@@ -875,8 +879,9 @@ const AppContent: React.FC = () => {
   };
 
   const handleInnovationStatusChange = async (id: string, status: string) => {
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS'];
-    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+    const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'CEO'];
+    if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionChangeInnovationStatus'), 'error');
       return;
     }
@@ -905,8 +910,9 @@ const AppContent: React.FC = () => {
   };
 
   const handleInnovationUpdate = async (innovation: InnovationRecord) => {
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS'];
-    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+    const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'CEO'];
+    if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionEditInnovation'), 'error');
       return;
     }
@@ -939,8 +945,9 @@ const AppContent: React.FC = () => {
   };
 
   const handleInnovationDelete = async (id: string) => {
-    const allowedRoles = ['GESTOR', 'COORDENADOR'];
-    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+    const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'CEO'];
+    if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionDeleteInnovation'), 'error');
       return;
     }
