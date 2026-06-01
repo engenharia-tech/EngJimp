@@ -29,6 +29,45 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
   const { addToast } = useToast();
   const { t } = useLanguage();
 
+  const isEdson = useMemo(() => {
+    const email = currentUser?.email?.trim().toLowerCase();
+    const username = currentUser?.username?.trim().toLowerCase();
+    const name = currentUser?.name?.trim().toLowerCase();
+    return email === 'efariaseng0@gmail.com' || username === 'edson' || (name && name.includes('edson')) || false;
+  }, [currentUser]);
+
+  const isCheckedGeneral = (email: string) => {
+    if (!email) return false;
+    return (formData.emailTo || '').split(',').map(e => e.trim().toLowerCase()).includes(email.trim().toLowerCase());
+  };
+
+  const isCheckedInterruption = (email: string) => {
+    if (!email) return false;
+    return (formData.interruptionEmailTo || '').split(',').map(e => e.trim().toLowerCase()).includes(email.trim().toLowerCase());
+  };
+
+  const toggleUserEmail = (email: string, type: 'general' | 'interruption') => {
+    if (!email || !email.includes('@')) return;
+    const targetField = type === 'general' ? 'emailTo' : 'interruptionEmailTo';
+    const currentList = (formData[targetField] || '')
+      .split(',')
+      .map(e => e.trim())
+      .filter(e => e.length > 0);
+    
+    const index = currentList.findIndex(e => e.toLowerCase() === email.toLowerCase());
+    let nextList: string[];
+    if (index !== -1) {
+      nextList = currentList.filter((_, i) => i !== index);
+    } else {
+      nextList = [...currentList, email.trim().toLowerCase()];
+    }
+    
+    setFormData({
+      ...formData,
+      [targetField]: nextList.join(', ')
+    });
+  };
+
   useEffect(() => {
     const fetchDbStats = async () => {
       const stats = await getDatabaseStats();
@@ -372,87 +411,209 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
           </h3>
           
           <div className="grid grid-cols-1 gap-6">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">{t('defaultRecipients')}</label>
-                {isEditing && (
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      const email = window.prompt(t('enterEmailToAdd' as any) || 'Digite o e-mail:');
-                      if (email && email.includes('@')) {
-                        const current = formData.emailTo ? formData.emailTo.split(',').map(e => e.trim()) : [];
-                        if (!current.includes(email)) {
-                          setFormData({ ...formData, emailTo: [...current, email].join(', ') });
-                        }
-                      }
-                    }}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center"
-                  >
-                    <Mail className="w-3 h-3 mr-1" />
-                    {t('addEmail')}
-                  </button>
-                )}
-              </div>
-              <input
-                type="text"
-                disabled={!isEditing}
-                value={formData.emailTo || ''}
-                onChange={e => setFormData({ ...formData, emailTo: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
-                placeholder="email1@exemplo.com, email2@exemplo.com"
-              />
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {(formData.emailTo || '').split(',').filter(e => e.trim()).map((email, i) => (
-                  <span key={i} className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-medium rounded-full border border-blue-100 dark:border-blue-800 flex items-center">
-                    <Mail className="w-2.5 h-2.5 mr-1" />
-                    {email.trim()}
-                  </span>
-                ))}
-              </div>
-              <p className="text-[10px] text-gray-500 mt-1">{t('emailNotificationDesc')}</p>
-            </div>
+            {isEdson ? (
+              <div className="space-y-6">
+                {/* Informative banner */}
+                <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                  <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-400 mb-1 flex items-center">
+                    <Shield className="w-4 h-4 mr-1.5 text-emerald-600 dark:text-emerald-400" />
+                    Painel de Controle de Notificações por E-mail (Exclusivo Edson)
+                  </h4>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                    Olá Edson! Selecione abaixo quais usuários cadastrados no sistema devem receber as notificações automáticas por e-mail de <strong>Projetos Concluídos</strong> e de <strong>Alertas de Interrupções</strong> (NS Paradas).
+                  </p>
+                </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">{t('recipientsForInterruptions')}</label>
-                {isEditing && (
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      const email = window.prompt(t('enterEmailToAdd' as any) || 'Digite o e-mail:');
-                      if (email && email.includes('@')) {
-                        const current = formData.interruptionEmailTo ? formData.interruptionEmailTo.split(',').map(e => e.trim()) : [];
-                        if (!current.includes(email)) {
-                          setFormData({ ...formData, interruptionEmailTo: [...current, email].join(', ') });
-                        }
-                      }
-                    }}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center"
-                  >
-                    <Mail className="w-3 h-3 mr-1" />
-                    {t('addEmail')}
-                  </button>
-                )}
+                {/* Grid of users with checkbox controls */}
+                <div className="border border-gray-150 dark:border-slate-800 rounded-xl overflow-hidden max-h-96 overflow-y-auto bg-gray-50/55 dark:bg-slate-905/30">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-100/80 dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
+                        <th className="p-3 pl-4">Colaborador</th>
+                        <th className="p-3 text-center w-28">Projeto Concluído</th>
+                        <th className="p-3 text-center w-28">Interrupção (Parada)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-150 dark:divide-slate-800/80">
+                      {users.map((user) => {
+                        const userEmail = user.email?.trim() || '';
+                        const hasEmail = !!userEmail && userEmail.includes('@');
+                        const isCheckedGen = isCheckedGeneral(userEmail);
+                        const isCheckedInt = isCheckedInterruption(userEmail);
+
+                        return (
+                          <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-slate-900/55 transition-colors">
+                            <td className="p-3 pl-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/35 text-blue-700 dark:text-blue-400 flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                                  {(user.name || '?').charAt(0)}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-gray-900 dark:text-slate-200 truncate">
+                                    {user.name} {user.surname || ''}
+                                  </p>
+                                  <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono truncate">
+                                    {user.role} {hasEmail ? `• ${userEmail}` : '• (Sem E-mail Cadastrado)'}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3 text-center">
+                              <input
+                                type="checkbox"
+                                disabled={!isEditing || !hasEmail}
+                                checked={isCheckedGen && hasEmail}
+                                onChange={() => toggleUserEmail(userEmail, 'general')}
+                                className="w-4.5 h-4.5 rounded border-gray-350 text-blue-600 focus:ring-blue-500 dark:bg-slate-900 dark:border-slate-700 disabled:opacity-40"
+                              />
+                            </td>
+                            <td className="p-3 text-center">
+                              <input
+                                type="checkbox"
+                                disabled={!isEditing || !hasEmail}
+                                checked={isCheckedInt && hasEmail}
+                                onChange={() => toggleUserEmail(userEmail, 'interruption')}
+                                className="w-4.5 h-4.5 rounded border-gray-350 text-emerald-605 focus:ring-emerald-500 dark:bg-slate-900 dark:border-slate-700 disabled:opacity-40"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Manual Emails Section */}
+                <div className="space-y-4 pt-4 border-t border-gray-150 dark:border-slate-800">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h5 className="text-xs font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider">Destinatários Adicionais (Projetos Concluídos)</h5>
+                      {isEditing && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const email = window.prompt(t('enterEmailToAdd' as any) || 'Digite o e-mail:');
+                            if (email && email.includes('@')) {
+                              const current = formData.emailTo ? formData.emailTo.split(',').map(e => e.trim()) : [];
+                              if (!current.includes(email)) {
+                                setFormData({ ...formData, emailTo: [...current, email].join(', ') });
+                              }
+                            }
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center"
+                        >
+                          <Mail className="w-3 h-3 mr-1" />
+                          {t('addEmail')}
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      disabled={!isEditing}
+                      value={formData.emailTo || ''}
+                      onChange={e => setFormData({ ...formData, emailTo: e.target.value })}
+                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900 font-mono text-xs"
+                      placeholder="Ex: engenharia@empresa.com, diretoria@empresa.com"
+                    />
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {(formData.emailTo || '').split(',').filter(e => e.trim()).map((email, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-medium rounded-full border border-blue-100 dark:border-blue-800 flex items-center">
+                          <Mail className="w-2.5 h-2.5 mr-1 text-blue-500" />
+                          {email.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h5 className="text-xs font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider">Destinatários Adicionais (Interrupções/Paradas)</h5>
+                      {isEditing && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const email = window.prompt(t('enterEmailToAdd' as any) || 'Digite o e-mail:');
+                            if (email && email.includes('@')) {
+                              const current = formData.interruptionEmailTo ? formData.interruptionEmailTo.split(',').map(e => e.trim()) : [];
+                              if (!current.includes(email)) {
+                                setFormData({ ...formData, interruptionEmailTo: [...current, email].join(', ') });
+                              }
+                            }
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center"
+                        >
+                          <Mail className="w-3 h-3 mr-1" />
+                          {t('addEmail')}
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      disabled={!isEditing}
+                      value={formData.interruptionEmailTo || ''}
+                      onChange={e => setFormData({ ...formData, interruptionEmailTo: e.target.value })}
+                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900 font-mono text-xs"
+                      placeholder="Ex: gestor@empresa.com, comercial@empresa.com"
+                    />
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {(formData.interruptionEmailTo || '').split(',').filter(e => e.trim()).map((email, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-medium rounded-full border border-emerald-100 dark:border-emerald-800 flex items-center">
+                          <Mail className="w-2.5 h-2.5 mr-1 text-emerald-500" />
+                          {email.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <input
-                type="text"
-                disabled={!isEditing}
-                value={formData.interruptionEmailTo || ''}
-                onChange={e => setFormData({ ...formData, interruptionEmailTo: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
-                placeholder="email-interrupcao@exemplo.com"
-              />
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {(formData.interruptionEmailTo || '').split(',').filter(e => e.trim()).map((email, i) => (
-                  <span key={i} className="px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-medium rounded-full border border-emerald-100 dark:border-emerald-800 flex items-center">
-                    <Mail className="w-2.5 h-2.5 mr-1" />
-                    {email.trim()}
-                  </span>
-                ))}
+            ) : (
+              /* Informational / view only lock state for non-Edson users */
+              <div className="p-6 text-center space-y-3 bg-gray-50 dark:bg-slate-900/40 rounded-xl border border-gray-200 dark:border-slate-800">
+                <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+                  <Shield className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-955 dark:text-slate-200">
+                    Acesso Restrito aos Destinatários
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
+                    Apenas o usuário administrador principal (Edson) possui acesso autorizado para gerenciar quais destinatários recebem e-mails de projetos concluídos e paradas.
+                  </p>
+                </div>
+                
+                {/* Show read-only mail listing */}
+                <div className="text-left bg-white dark:bg-black p-4 rounded-xl border border-gray-150 dark:border-slate-800 max-w-md mx-auto pt-3 space-y-2 mt-4">
+                  <div className="text-xs">
+                    <span className="font-bold text-gray-600 dark:text-slate-400 block mb-1">Destinatários Fim de Projeto:</span>
+                    {formData.emailTo ? (
+                      <div className="flex flex-wrap gap-1">
+                        {formData.emailTo.split(',').filter(e => e.trim()).map((e, idx) => (
+                          <span key={idx} className="px-2 py-0.5 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 rounded text-[10px] font-mono">
+                            {e.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 italic text-[11px]">Nenhum configurado</span>
+                    )}
+                  </div>
+                  <div className="text-xs border-t border-gray-100 dark:border-slate-900 pt-2">
+                    <span className="font-bold text-gray-600 dark:text-slate-400 block mb-1">Destinatários Alertas de Interrupção:</span>
+                    {formData.interruptionEmailTo ? (
+                      <div className="flex flex-wrap gap-1">
+                        {formData.interruptionEmailTo.split(',').filter(e => e.trim()).map((e, idx) => (
+                          <span key={idx} className="px-2 py-0.5 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 rounded text-[10px] font-mono">
+                            {e.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 italic text-[11px]">Nenhum configurado</span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <p className="text-[10px] text-gray-500 mt-1">{t('emailInterruptionDesc')}</p>
-            </div>
+            )}
           </div>
 
           <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">

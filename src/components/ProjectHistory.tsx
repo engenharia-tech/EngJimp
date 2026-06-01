@@ -1136,7 +1136,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             ) : (
                 filteredProjects.map((project) => {
                     const user = usersMap[project.userId || ''];
-                    const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
+                    const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
                     const pActiveSeconds = project.totalActiveSeconds;
                     const pInterruptionSeconds = project.interruptionSeconds || 0;
 
@@ -1249,7 +1249,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const pInterruptionSeconds = project.interruptionSeconds || 0;
                 const cost = engineeringHourlyRate * (pActiveSeconds / 3600);
                 
-                const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
+                const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
 
                 return (
                 <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-black/50 transition-colors group">
@@ -1280,7 +1280,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 >
                                     <Edit className="w-4 h-4" />
                                 </button>
-                                {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
+                                {(['GESTOR', 'COORDENADOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
                                     <button 
                                         onClick={() => recalculateSingleProject(project)}
                                         className="text-gray-400 dark:text-slate-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 p-1.5 rounded transition"

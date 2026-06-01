@@ -18,8 +18,8 @@ app.get("/api/health", (req, res) => {
 app.post("/api/send-email", async (req, res) => {
   console.log("[Email API] Received request on", process.env.VERCEL ? 'Vercel' : 'Local');
   try {
-    const { subject, body, to: bodyTo } = req.body;
-    console.log(`[Email API] Request Body: Subject="${subject}", BodyLength=${body?.length}, To=${bodyTo}`);
+    const { subject, body, to: bodyTo, fromName } = req.body;
+    console.log(`[Email API] Request Body: Subject="${subject}", BodyLength=${body?.length}, To=${bodyTo}, FromName=${fromName}`);
     
     if (!subject || !body) {
       return res.status(400).json({ success: false, error: "Assunto ou corpo do e-mail ausente." });
@@ -53,8 +53,11 @@ app.post("/api/send-email", async (req, res) => {
       tls: { rejectUnauthorized: false }
     });
 
+    // Strip out quotes from fromName to avoid header corruption
+    const cleanFromName = fromName ? fromName.replace(/["']/g, '') : "JIMPNEXUS";
+
     const mailPromise = transporter.sendMail({
-      from: `"JIMPNEXUS" <${from}>`,
+      from: `"${cleanFromName}" <${from}>`,
       to,
       subject,
       text: body.replace(/<br>/g, '\n').replace(/<p>/g, '').replace(/<\/p>/g, '\n'),

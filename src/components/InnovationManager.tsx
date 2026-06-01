@@ -20,6 +20,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const [editingInnovation, setEditingInnovation] = useState<InnovationRecord | null>(null);
   const [viewingInnovation, setViewingInnovation] = useState<InnovationRecord | null>(null);
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [authorId, setAuthorId] = useState<string>('');
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
 
   // Filter State
@@ -114,9 +116,16 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  const canRegister = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'PROJETISTA'].includes(currentUser.role);
-  const canManage = ['GESTOR', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
-  const canDelete = ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
+  const isEdson = useMemo(() => {
+    const email = currentUser?.email?.trim().toLowerCase();
+    const username = currentUser?.username?.trim().toLowerCase();
+    const name = currentUser?.name?.trim().toLowerCase();
+    return email === 'efariaseng0@gmail.com' || username === 'edson' || (name && name.includes('edson')) || false;
+  }, [currentUser]);
+
+  const canRegister = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'PROJETISTA', 'CEO'].includes(currentUser.role) || isEdson;
+  const canManage = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'CEO'].includes(currentUser.role) || isEdson;
+  const canDelete = ['GESTOR', 'COORDENADOR', 'CEO'].includes(currentUser.role) || isEdson;
 
   useEffect(() => {
     if (editingInnovation) {
@@ -124,6 +133,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setDescription(editingInnovation.description || '');
         setType(normalizeEnumValue<InnovationType>(editingInnovation.type, InnovationType));
         setCalculationType(normalizeEnumValue<CalculationType>(editingInnovation.calculationType, CalculationType));
+        setAuthorId(editingInnovation.authorId || currentUser.id);
         
         const uSavings = editingInnovation.unitSavings ?? 0;
         const eSavings = editingInnovation.effectiveAnnualSavings ?? 0;
@@ -162,6 +172,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setDescription('');
         setType(InnovationType.PRODUCT_IMPROVEMENT);
         setCalculationType(CalculationType.RECURRING_MONTHLY);
+        setAuthorId(currentUser.id);
         setUnitSavings('');
         setEffectiveAnnualSavings('');
         setQuantity('');
@@ -181,13 +192,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setMatMultiplier('1');
         setMatType('ADD');
     }
-  }, [editingInnovation]);
+  }, [editingInnovation, currentUser]);
 
   useEffect(() => {
     const load = async () => {
       const users = await fetchUsers();
-      const nonProcessUsers = users.filter(u => u.role !== 'PROCESSOS');
-      const map = nonProcessUsers.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
+      setAllUsers(users);
+      const map = users.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
       setUsersMap(map);
     };
     load();
@@ -427,7 +438,8 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             productivityBefore: prodBefore,
             productivityAfter: prodAfter,
             unitProductCost: prodCost,
-            unitProductValue: prodValue
+            unitProductValue: prodValue,
+            authorId: authorId || currentUser.id
         };
         onUpdate(updatedRecord);
         setEditingInnovation(null);
@@ -452,7 +464,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             unitProductValue: prodValue,
 
             status: 'PENDING',
-            authorId: currentUser.id,
+            authorId: authorId || currentUser.id,
             createdAt: new Date().toISOString()
         };
         onAdd(newRecord);
@@ -689,6 +701,25 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   placeholder={t('improvementTitlePlaceholder')}
                   required
                 />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-black dark:text-white mb-1">
+                  {language === 'pt' ? 'Autor / Criador' : (language === 'es' ? 'Autor / Creador' : 'Author / Creator')}
+                </label>
+                <select 
+                  value={authorId}
+                  onChange={e => setAuthorId(e.target.value)}
+                  className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                  required
+                >
+                  <option value="">{language === 'pt' ? 'Selecionar Autor...' : (language === 'es' ? 'Seleccionar Autor...' : 'Select Author...')}</option>
+                  {allUsers.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} {u.surname ? ` ${u.surname}` : ''} ({u.role})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

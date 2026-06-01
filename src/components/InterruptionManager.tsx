@@ -82,14 +82,15 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     onUpdateRef.current = onUpdate;
   }, [onUpdate]);
 
-  const canManage = currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR';
-  const isCEO = currentUser.role === 'CEO';
   const isEdson = useMemo(() => {
     const email = currentUser?.email?.trim().toLowerCase();
     const username = currentUser?.username?.trim().toLowerCase();
     const name = currentUser?.name?.trim().toLowerCase();
-    return email === 'efariaseng0@gmail.com' || username === 'edson' || name?.includes('edson') || false;
+    return email === 'efariaseng0@gmail.com' || username === 'edson' || (name && name.includes('edson')) || false;
   }, [currentUser]);
+
+  const canManage = currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR' || currentUser.role === 'CEO' || isEdson;
+  const isCEO = currentUser.role === 'CEO' && !isEdson;
 
   useEffect(() => {
     console.log("[InterruptionManager] Current User Evaluation:", {
@@ -172,6 +173,11 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       .replace('[DATA_HORA]', dateTime)
       .replace('[MOTIVO]', description || '___')
       .replace('[OUTRAS_PERDAS]', otherLosses || '___');
+    
+    const creatorName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : 'SISTEMA';
+    if (!body.includes('Registrado por:')) {
+      body += `\n\nRegistrado por: ${creatorName}`;
+    }
     
     if (!body.includes('Dúvidas falar com matheus.p')) {
       body += footer;
@@ -310,13 +316,15 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             if (!emailBody || emailBody.trim().length < 10) {
               console.warn("Interruption email body is empty or too short. Skipping email.");
             } else {
+              const userDisplayName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : "JIMPNEXUS";
               fetch('/api/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   subject: t('newInterruptionAlert', { ns }),
                   body: emailBody.replace(/\n/g, '<br>'),
-                  to: data.settings.interruptionEmailTo
+                  to: data.settings.interruptionEmailTo,
+                  fromName: `${userDisplayName} - JIMPNEXUS`
                 })
               });
             }
@@ -709,7 +717,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                       >
                         <Info className="w-4 h-4" />
                       </button>
-                      {!isCEO && (canManage || i.designerId === currentUser.id) && (
+                       {(canManage || i.designerId === currentUser.id) && (
                         <>
                           <button 
                             onClick={() => handleEdit(i)}
