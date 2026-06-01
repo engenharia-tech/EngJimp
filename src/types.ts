@@ -143,6 +143,8 @@ export interface InnovationMaterial {
   name: string;
   cost: number;
   type: 'ADD' | 'REMOVE';
+  unitCost?: number;
+  multiplier?: number;
 }
 
 export interface InnovationMachine {

@@ -52,8 +52,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
   // Material Input State
   const [matName, setMatName] = useState('');
-  const [matCost, setMatCost] = useState('');
+  const [matUnitCost, setMatUnitCost] = useState('');
+  const [matMultiplier, setMatMultiplier] = useState('1');
   const [matType, setMatType] = useState<'ADD' | 'REMOVE'>('ADD');
+  const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
 
   // Machine Input State
   const [macName, setMacName] = useState('');
@@ -173,6 +175,11 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         setProductivityAfter('');
         setUnitProductCost('');
         setUnitProductValue('');
+        setEditingMaterialId(null);
+        setMatName('');
+        setMatUnitCost('');
+        setMatMultiplier('1');
+        setMatType('ADD');
     }
   }, [editingInnovation]);
 
@@ -318,20 +325,59 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   }, [unitSavings, quantity, calculationType, materials, machine, productivityBefore, productivityAfter, unitProductCost, unitProductValue, settings]);
 
   const addMaterial = () => {
-    if (matName.trim() === '' || matCost === '') return;
-    const newMat: InnovationMaterial = {
-        id: crypto.randomUUID(),
+    if (matName.trim() === '' || matUnitCost === '') return;
+    const unitCostNum = safeParse(matUnitCost);
+    const multiplierNum = safeParse(matMultiplier) || 1;
+    const calculatedCost = unitCostNum * multiplierNum;
+
+    if (editingMaterialId) {
+      setMaterials(materials.map(m => m.id === editingMaterialId ? {
+        ...m,
         name: matName.trim(),
-        cost: safeParse(matCost),
+        cost: calculatedCost,
+        unitCost: unitCostNum,
+        multiplier: multiplierNum,
         type: matType
-    };
-    setMaterials([...materials, newMat]);
+      } : m));
+      setEditingMaterialId(null);
+    } else {
+      const newMat: InnovationMaterial = {
+          id: crypto.randomUUID(),
+          name: matName.trim(),
+          cost: calculatedCost,
+          unitCost: unitCostNum,
+          multiplier: multiplierNum,
+          type: matType
+      };
+      setMaterials([...materials, newMat]);
+    }
     setMatName('');
-    setMatCost('');
+    setMatUnitCost('');
+    setMatMultiplier('1');
+    setMatType('ADD');
+  };
+
+  const startEditMaterial = (m: InnovationMaterial) => {
+    setEditingMaterialId(m.id);
+    setMatName(m.name);
+    setMatUnitCost((m.unitCost !== undefined ? m.unitCost : m.cost).toString());
+    setMatMultiplier((m.multiplier !== undefined ? m.multiplier : 1).toString());
+    setMatType(m.type);
+  };
+
+  const cancelEditMaterial = () => {
+    setEditingMaterialId(null);
+    setMatName('');
+    setMatUnitCost('');
+    setMatMultiplier('1');
+    setMatType('ADD');
   };
 
   const removeMaterial = (id: string) => {
     setMaterials(materials.filter(m => m.id !== id));
+    if (editingMaterialId === id) {
+      cancelEditMaterial();
+    }
   };
 
   const updateMachine = (nameOverride?: string, costOverride?: string, yearsOverride?: string) => {
@@ -421,6 +467,28 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
   const formatCurrency = (val: number) => {
     if (val === null || val === undefined || isNaN(val)) return 'R$ 0,00';
     return new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(val);
+  };
+
+  const safeFormatDateTime = (isoString?: string) => {
+    if (!isoString) return '---';
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return '---';
+      return d.toLocaleString(language);
+    } catch {
+      return '---';
+    }
+  };
+
+  const safeFormatDate = (isoString?: string) => {
+    if (!isoString) return '---';
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return '---';
+      return d.toLocaleDateString(language);
+    } catch {
+      return '---';
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -578,14 +646,36 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         </div>
       </div>
 
-      {/* Form */}
+      {/* Form Modal */}
       {showForm && (
-        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-lg border border-blue-100 dark:border-blue-900/30 animate-in fade-in slide-in-from-top-4 duration-300">
-          <h3 className="font-bold text-lg mb-6 text-black dark:text-white flex items-center border-b dark:border-slate-700 pb-4">
-            <Calculator className="w-5 h-5 mr-2 text-blue-600" />
-            {editingInnovation ? t('editInnovation') : t('savingsCalculator')}
-          </h3>
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <div 
+          onClick={() => {
+              setShowForm(false);
+              setEditingInnovation(null);
+          }}
+          className="fixed inset-0 bg-black/50 z-40 overflow-y-auto backdrop-blur-sm flex items-start justify-center p-4 pt-10 cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl border border-blue-100 dark:border-blue-900/30 w-full max-w-4xl max-h-[95vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200 cursor-default"
+          >
+            <div className="flex justify-between items-center border-b dark:border-slate-700 pb-4 mb-6">
+              <h3 className="font-bold text-lg text-black dark:text-white flex items-center">
+                <Calculator className="w-5 h-5 mr-2 text-blue-600" />
+                {editingInnovation ? t('editInnovation') : t('savingsCalculator')}
+              </h3>
+              <button 
+                type="button"
+                onClick={() => {
+                    setShowForm(false);
+                    setEditingInnovation(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-6">
             
             {/* Basic Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -721,7 +811,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     <PlusCircle className="w-4 h-4 mr-2 text-emerald-500" />
                     {t('materialsSection')}
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                     <div className="md:col-span-1">
                         <input 
                             type="text" 
@@ -742,9 +832,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             <span className="absolute left-2 top-2 text-gray-400 dark:text-slate-500 text-xs">{t('currencySymbol')}</span>
                             <input 
                                 type="number" 
-                                placeholder={t('investmentCost')}
-                                value={matCost}
-                                onChange={e => setMatCost(e.target.value)}
+                                placeholder={t('materialUnitValue')}
+                                value={matUnitCost}
+                                onChange={e => setMatUnitCost(e.target.value)}
                                 onKeyDown={e => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
@@ -756,6 +846,21 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         </div>
                     </div>
                     <div className="md:col-span-1">
+                        <input 
+                            type="number" 
+                            placeholder={t('materialMultiplier')}
+                            value={matMultiplier}
+                            onChange={e => setMatMultiplier(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addMaterial();
+                                }
+                            }}
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                        />
+                    </div>
+                    <div className="md:col-span-1">
                         <select 
                             value={matType}
                             onChange={e => setMatType(e.target.value as 'ADD' | 'REMOVE')}
@@ -765,37 +870,61 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             <option value="ADD">{t('addSpend')}</option>
                         </select>
                     </div>
-                    <div className="md:col-span-1">
+                    <div className="md:col-span-1 flex gap-2">
                         <button 
                             type="button"
                             onClick={addMaterial}
-                            disabled={!matName.trim() || matCost === ''}
-                            className={`w-full p-2 rounded-lg flex items-center justify-center font-bold transition-all shadow-sm ${
-                                !matName.trim() || matCost === '' 
+                            disabled={!matName.trim() || matUnitCost === ''}
+                            className={`flex-1 p-2 rounded-lg flex items-center justify-center font-bold transition-all shadow-sm ${
+                                !matName.trim() || matUnitCost === '' 
                                 ? 'bg-gray-200 dark:bg-black text-gray-400 dark:text-slate-500 cursor-not-allowed' 
-                                : matType === 'ADD' 
-                                    ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-200' 
-                                    : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-200'
+                                : editingMaterialId
+                                    ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200'
+                                    : matType === 'ADD' 
+                                        ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-200' 
+                                        : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-200'
                             }`}
                         >
-                            <Plus className="w-4 h-4 mr-1" /> 
-                            {matType === 'ADD' ? t('addExpenseAction') : t('addGainAction')}
+                            {editingMaterialId ? <Check className="w-4 h-4 mr-1" /> : <Plus className="w-4 h-4 mr-1" />} 
+                            {editingMaterialId ? t('saveChanges') : (matType === 'ADD' ? t('addExpenseAction') : t('addGainAction'))}
                         </button>
+                        {editingMaterialId && (
+                            <button
+                                type="button"
+                                onClick={cancelEditMaterial}
+                                className="p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-gray-100 hover:bg-gray-200 dark:bg-black dark:hover:bg-slate-900 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-all flex items-center justify-center min-w-[38px]"
+                                title={t('cancel')}
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 {materials.length > 0 && (
                     <div className="space-y-2">
                         {materials.map(m => (
-                            <div key={m.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-black rounded-lg border border-gray-100 dark:border-slate-700 text-sm">
+                            <div 
+                                key={m.id} 
+                                className={`flex items-center justify-between p-2 rounded-lg border text-sm transition-all ${
+                                    editingMaterialId === m.id
+                                    ? 'border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 shadow-inner'
+                                    : 'bg-gray-50 dark:bg-black border-gray-100 dark:border-slate-700'
+                                }`}
+                            >
                                 <div className="flex items-center">
                                     {m.type === 'REMOVE' ? <TrendingUp className="w-4 h-4 mr-2 text-emerald-500" /> : <TrendingDown className="w-4 h-4 mr-2 text-red-500" />}
                                     <span className="font-medium dark:text-slate-300">{m.name}</span>
                                     <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${m.type === 'REMOVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-black dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-black dark:text-red-400'}`}>
                                         {m.type === 'REMOVE' ? t('removed') : t('added')}
                                     </span>
+                                    {(m.unitCost !== undefined || m.multiplier !== undefined) && (
+                                        <span className="text-[11px] text-gray-500 dark:text-slate-400 ml-3">
+                                            ({formatCurrency(m.unitCost ?? m.cost)} x {m.multiplier ?? 1})
+                                        </span>
+                                    )}
                                 </div>
-                                <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-3">
                                     <div className="text-right">
                                         <div className="font-mono font-bold dark:text-slate-200">
                                             {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost * (calculationType === CalculationType.ONE_TIME || calculationType === CalculationType.ADD_EXPENSE ? 1 : (safeParse(quantity))))}
@@ -806,9 +935,28 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                             </div>
                                         )}
                                     </div>
-                                    <button onClick={() => removeMaterial(m.id)} className="text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400">
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
+                                    <div className="flex items-center gap-1.5 ml-2">
+                                        <button 
+                                            type="button"
+                                            onClick={() => startEditMaterial(m)} 
+                                            className={`p-1.5 rounded-md transition ${
+                                                editingMaterialId === m.id 
+                                                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 font-bold' 
+                                                : 'text-gray-400 dark:text-slate-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-gray-100 dark:hover:bg-slate-900'
+                                            }`}
+                                            title={t('edit')}
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => removeMaterial(m.id)} 
+                                            className="p-1.5 rounded-md text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-slate-900 transition"
+                                            title={t('delete') || 'Excluir'}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -1033,6 +1181,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             </div>
           </form>
         </div>
+      </div>
       )}
 
       {/* List / Cards */}
@@ -1213,7 +1362,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                       </span>
                   </div>
                   <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-slate-500">
-                    <span className="flex items-center"><Calendar className="w-3 h-3 mr-1"/> {new Date(inv.createdAt).toLocaleDateString()}</span>
+                    <span className="flex items-center"><Calendar className="w-3 h-3 mr-1"/> {safeFormatDate(inv.createdAt)}</span>
                     {inv.authorId && (
                       <span className="flex items-center"><UserIcon className="w-3 h-3 mr-1"/> {usersMap[inv.authorId] || '...'}</span>
                     )}
@@ -1367,8 +1516,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
       {/* View Details Modal */}
       {viewingInnovation && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-              <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border dark:border-slate-700">
+          <div 
+            onClick={() => setViewingInnovation(null)}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200 cursor-pointer"
+          >
+              <div 
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border dark:border-slate-700 cursor-default"
+              >
                   <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
                       <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
                           <Info className="w-6 h-6 mr-2 text-blue-600" />
@@ -1424,6 +1579,11 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                                       <span className="flex items-center font-medium dark:text-slate-300">
                                                           {m.type === 'REMOVE' ? <TrendingUp className="w-3 h-3 mr-1 text-emerald-500" /> : <TrendingDown className="w-3 h-3 mr-1 text-red-500" />}
                                                           {m.name}
+                                                          {(m.unitCost !== undefined || m.multiplier !== undefined) && (
+                                                              <span className="text-[10px] text-gray-500 dark:text-slate-400 ml-2">
+                                                                  ({formatCurrency(m.unitCost ?? m.cost)} x {m.multiplier ?? 1})
+                                                              </span>
+                                                          )}
                                                       </span>
                                                       {viewingInnovation.calculationType !== CalculationType.ONE_TIME && viewingInnovation.calculationType !== CalculationType.ADD_EXPENSE && (
                                                           <span className="text-[10px] text-gray-400 dark:text-slate-500 ml-4">
@@ -1532,7 +1692,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                       )}
 
                       <div className="flex items-center justify-between text-xs text-gray-400 dark:text-slate-500 pt-4 border-t dark:border-slate-700">
-                          <span>{t('registeredAt', { date: new Date(viewingInnovation.createdAt).toLocaleString() })}</span>
+                          <span>{t('registeredAt', { date: safeFormatDateTime(viewingInnovation.createdAt) })}</span>
                           <span>{t('author', { name: usersMap[viewingInnovation.authorId || ''] || '...' })}</span>
                       </div>
                   </div>
