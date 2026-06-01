@@ -578,8 +578,32 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       }
     }
 
+    if (viewMode === 'day') {
+      const autoLunchStart = new Date(selectedDate);
+      autoLunchStart.setHours(12, 30, 0, 0);
+      const autoLunchEnd = new Date(selectedDate);
+      autoLunchEnd.setHours(13, 30, 0, 0);
+
+      const lunchType = activityTypes.find(t => t.name.toUpperCase() === 'ALMOÇO');
+      const lunchTypeName = lunchType?.name || 'ALMOÇO';
+      const lunchTypeId = lunchType?.id || 'auto-lunch';
+
+      // We only insert auto-lunch if it fits in 24 hours of selectedDate
+      finalItems.push({
+        id: 'auto-lunch',
+        type: 'activity',
+        name: lunchTypeName,
+        start: autoLunchStart,
+        end: autoLunchEnd,
+        color: '#3b82f6',
+        activityTypeId: lunchTypeId
+      });
+
+      finalItems.sort((a, b) => a.start.getTime() - b.start.getTime());
+    }
+
     return finalItems;
-  }, [filteredActivities, filteredProjects, filteredInterruptions, selectedDate, viewMode, settings, t]);
+  }, [filteredActivities, filteredProjects, filteredInterruptions, selectedDate, viewMode, settings, activityTypes, t]);
 
   // Find gaps in the timeline respecting workday settings
   const gaps = useMemo(() => {
@@ -1407,7 +1431,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                     }}
                     >
                       {/* Direct Delete Button */}
-                      {!item.isGap && canEditCurrent && (
+                      {!item.isGap && canEditCurrent && item.id !== 'auto-lunch' && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
