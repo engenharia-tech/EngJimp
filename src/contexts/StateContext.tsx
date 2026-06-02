@@ -69,13 +69,22 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return 'light';
     }
   });
-  const [isLocked, setIsLocked] = useState(() => {
+  const [isLocked, setIsLockedState] = useState(() => {
     try {
-      return sessionStorage.getItem('nexus_user') !== null;
+      return sessionStorage.getItem('nexus_locked') === 'true';
     } catch {
       return false;
     }
   });
+
+  const setIsLocked = useCallback((locked: boolean) => {
+    setIsLockedState(locked);
+    if (locked) {
+      sessionStorage.setItem('nexus_locked', 'true');
+    } else {
+      sessionStorage.removeItem('nexus_locked');
+    }
+  }, []);
 
   const setCurrentUser = useCallback((user: User | null) => {
     setCurrentUserState(user);
@@ -86,6 +95,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
       sessionStorage.removeItem('nexus_user');
       localStorage.removeItem('nexus_user');
+      sessionStorage.removeItem('nexus_locked');
     }
   }, []);
 
