@@ -287,6 +287,9 @@ const AppContent: React.FC = () => {
       return;
     }
 
+    // Reset last active timestamp on login OR component mount/active state transitions
+    lastActiveRef.current = Date.now();
+
     const handleActivity = () => {
       lastActiveRef.current = Date.now();
       setWarningCountdown(null);
