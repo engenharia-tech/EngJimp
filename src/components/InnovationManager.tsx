@@ -957,12 +957,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <div className="text-right">
-                                        <div className="font-mono font-bold dark:text-slate-200">
-                                            {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost * (calculationType === CalculationType.ONE_TIME || calculationType === CalculationType.ADD_EXPENSE ? 1 : (safeParse(quantity))))}
+                                        <div className="font-mono font-bold text-gray-900 dark:text-white">
+                                            {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost)}
                                         </div>
                                         {calculationType !== CalculationType.ONE_TIME && calculationType !== CalculationType.ADD_EXPENSE && (
                                             <div className="text-[10px] text-gray-400 dark:text-slate-500">
-                                                {formatCurrency(m.cost)} x {quantity || 0} {t('unitsAbbr')}
+                                                Projeção Anual: {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost * (safeParse(quantity)))} / ano ({quantity || 0} {t('unitsAbbr')})
                                             </div>
                                         )}
                                     </div>
@@ -1618,12 +1618,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                                       </span>
                                                       {viewingInnovation.calculationType !== CalculationType.ONE_TIME && viewingInnovation.calculationType !== CalculationType.ADD_EXPENSE && (
                                                           <span className="text-[10px] text-gray-400 dark:text-slate-500 ml-4">
-                                                              {formatCurrency(m.cost)} x {viewingInnovation.quantity} {t('unitsAbbr')}
+                                                              Projeção Anual: {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost * viewingInnovation.quantity)} / ano ({viewingInnovation.quantity} {t('unitsAbbr')})
                                                           </span>
                                                       )}
                                                   </div>
                                                   <span className={`font-bold ${m.type === 'REMOVE' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                                                      {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost * (viewingInnovation.calculationType === CalculationType.ONE_TIME || viewingInnovation.calculationType === CalculationType.ADD_EXPENSE ? 1 : viewingInnovation.quantity))}
+                                                      {m.type === 'REMOVE' ? '+' : '-'}{formatCurrency(m.cost)}
                                                   </span>
                                               </div>
                                           ))}

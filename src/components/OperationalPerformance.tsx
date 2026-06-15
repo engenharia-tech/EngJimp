@@ -5,6 +5,7 @@ import {
   Clock, 
   Plus, 
   Trash2, 
+  Check,
   CheckCircle2, 
   AlertCircle,
   BarChart3,
@@ -13,6 +14,7 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Activity,
   RefreshCw,
   Flag,
@@ -109,6 +111,20 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [viewMode, setViewMode] = useState<'day' | 'month' | 'year'>('day');
   const [selectedUserId, setSelectedUserId] = useState<string>(currentUser.id);
   const [activeTab, setActiveTab] = useState<'tracker' | 'dashboard' | 'engineering' | 'management'>('tracker');
+  const [isUserSelectorOpen, setIsUserSelectorOpen] = useState(false);
+  const userSelectorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userSelectorRef.current && !userSelectorRef.current.contains(event.target as Node)) {
+        setIsUserSelectorOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const canEditOthers = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role);
   const canEditCurrent = selectedUserId === currentUser.id || (canEditOthers && selectedUserId !== 'ALL');
@@ -1089,20 +1105,88 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
             <RefreshCw size={20} />
           </button>
           {canEditOthers && (
-            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-1 px-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-              <UserCog size={18} className="text-gray-400" />
-              <select
-                value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-                className="bg-transparent border-none text-sm font-medium focus:ring-0 outline-none min-w-[150px]"
+            <div className="relative" ref={userSelectorRef}>
+              <button
+                type="button"
+                onClick={() => setIsUserSelectorOpen(!isUserSelectorOpen)}
+                className={`flex items-center gap-2 p-2 px-4 rounded-xl shadow-sm border transition-all text-sm font-semibold cursor-pointer select-none ${
+                  theme === 'dark'
+                    ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700'
+                    : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'
+                }`}
               >
-                {canEditOthers && (
-                  <option value="ALL">EQUIPE COMPLETA</option>
-                )}
-                {filteredUsers.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} ({t(u.role.toLowerCase() as any)})</option>
-                ))}
-              </select>
+                <UserCog size={18} className="text-gray-400" />
+                <span>
+                  {selectedUserId === 'ALL'
+                    ? 'EQUIPE COMPLETA'
+                    : (() => {
+                        const u = filteredUsers.find(x => x.id === selectedUserId);
+                        return u ? `${u.name} (${t(u.role.toLowerCase() as any)})` : 'Selecione...';
+                      })()}
+                </span>
+                <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${isUserSelectorOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isUserSelectorOpen && (
+                <div
+                  className={`absolute right-0 mt-2 w-72 rounded-xl shadow-2xl border z-[99] py-1 max-h-80 overflow-y-auto ${
+                    theme === 'dark'
+                      ? 'bg-slate-950 border-slate-800 text-white shadow-black/80'
+                      : 'bg-white border-gray-200 text-gray-800'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUserId('ALL');
+                      setIsUserSelectorOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2.5 text-sm font-bold transition-colors border-b flex justify-between items-center ${
+                      theme === 'dark'
+                        ? 'border-slate-800/60 hover:bg-slate-900 text-slate-200'
+                        : 'border-gray-100 hover:bg-gray-50 text-gray-700'
+                    } ${selectedUserId === 'ALL' ? (theme === 'dark' ? 'bg-blue-600/10 text-blue-400 border-l-4 border-blue-500 pl-3' : 'bg-blue-50 text-blue-600 border-l-4 border-blue-600 pl-3') : ''}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {selectedUserId === 'ALL' && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
+                      <span>EQUIPE COMPLETA</span>
+                    </span>
+                    <span className="text-[10px] uppercase font-bold text-slate-400">TODOS</span>
+                  </button>
+                  <div className="py-1">
+                    {filteredUsers.map(u => {
+                      const isSelected = selectedUserId === u.id;
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserId(u.id);
+                            setIsUserSelectorOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between ${
+                            theme === 'dark'
+                              ? 'hover:bg-slate-900 text-slate-300'
+                              : 'hover:bg-gray-50 text-gray-700'
+                          } ${isSelected ? (theme === 'dark' ? 'bg-blue-600/10 text-blue-400 font-bold border-l-4 border-blue-500 pl-3' : 'bg-blue-50 text-blue-600 font-bold border-l-4 border-blue-600 pl-3') : ''}`}
+                        >
+                          <span className="flex items-center gap-2 truncate pr-2">
+                            {isSelected && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
+                            <span className="truncate">{u.name}</span>
+                          </span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-bold shrink-0 ${
+                            theme === 'dark' 
+                              ? 'bg-slate-800 text-slate-400' 
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {t(u.role.toLowerCase() as any)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

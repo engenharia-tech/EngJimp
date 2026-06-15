@@ -309,13 +309,13 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
             <select
               value={selectedPeriod}
               onChange={(e) => setSelectedPeriod(e.target.value as any)}
-              className="px-3 py-1.5 bg-transparent border-none text-xs font-bold focus:ring-0 outline-none cursor-pointer text-gray-600 dark:text-slate-300"
+              className="px-3 py-1.5 bg-gray-100 dark:bg-slate-900 border-none text-xs font-bold focus:ring-0 outline-none cursor-pointer text-gray-600 dark:text-slate-300"
             >
-              <option value="7d">{t('last7Days')}</option>
-              <option value="30d">{t('last30Days')}</option>
-              <option value="currentMonth">{t('currentMonth')}</option>
-              <option value="lastMonth">{t('lastMonth')}</option>
-              <option value="year">{t('currentYear')}</option>
+              <option value="7d" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('last7Days')}</option>
+              <option value="30d" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('last30Days')}</option>
+              <option value="currentMonth" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('currentMonth')}</option>
+              <option value="lastMonth" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('lastMonth')}</option>
+              <option value="year" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('currentYear')}</option>
             </select>
           </div>
 
@@ -346,11 +346,11 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
             <select
               value={selectedDesignerId}
               onChange={(e) => setSelectedDesignerId(e.target.value)}
-              className="p-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500"
+              className="p-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-white"
             >
-              <option value="ALL">{t('allDesigners')}</option>
+              <option value="ALL" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('allDesigners')}</option>
               {designers.map(d => (
-                <option key={d.id} value={d.id}>{d.name}</option>
+                <option key={d.id} value={d.id} className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{d.name}</option>
               ))}
             </select>
           )}
