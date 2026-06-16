@@ -14,6 +14,13 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Endpoint to get client IP
+app.get("/api/ip", (req, res) => {
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
+  const clientIp = typeof ip === "string" ? ip.split(",")[0].trim() : Array.isArray(ip) ? ip[0] : ip;
+  res.json({ ip: clientIp });
+});
+
 // API Route for sending email
 app.post("/api/send-email", async (req, res) => {
   console.log("[Email API] Received request on", process.env.VERCEL ? 'Vercel' : 'Local');

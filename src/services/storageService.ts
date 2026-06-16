@@ -472,7 +472,8 @@ export const fetchAppState = async (): Promise<AppState> => {
         entityId: l.entity_id,
         entityName: l.entity_name,
         timestamp: l.timestamp,
-        details: l.details
+        details: l.details,
+        ipAddress: l.ip_address || undefined
       }));
 
       // Mesclar logs do Supabase e do localStorage removendo duplicados
@@ -2219,10 +2220,56 @@ export const updateGanttTask = async (task: GanttTask): Promise<AppState> => {
   }
 };
 
+let cachedClientIp: string | null = null;
+let isFetchingClientIp = false;
+
+export const fetchClientIp = async (): Promise<string> => {
+  if (cachedClientIp) return cachedClientIp;
+  if (isFetchingClientIp) {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        if (cachedClientIp) {
+          clearInterval(interval);
+          resolve(cachedClientIp);
+        } else if (attempts > 20) {
+          clearInterval(interval);
+          resolve("Detectando...");
+        }
+      }, 100);
+    });
+  }
+
+  isFetchingClientIp = true;
+  try {
+    const response = await fetch("/api/ip");
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.ip) {
+        cachedClientIp = data.ip;
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to fetch client IP from /api/ip:", error);
+  } finally {
+    isFetchingClientIp = false;
+  }
+  return cachedClientIp || "Desconhecido";
+};
+
+// Trigger pre-fetching of IP address on client startup
+if (typeof window !== "undefined") {
+  fetchClientIp().catch(() => {});
+}
+
 export const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Promise<void> => {
   try {
     const timestamp = new Date().toISOString();
     const id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11);
+    
+    // Obter o IP do cliente (usando cache pré-buscado se disponível)
+    const ipAddress = await fetchClientIp();
 
     // 1. Gravar no cache local (localStorage) como fallback imediato
     try {
@@ -2238,7 +2285,8 @@ export const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Prom
         entityId: log.entityId,
         entityName: log.entityName,
         timestamp,
-        details: log.details
+        details: log.details,
+        ipAddress
       };
 
       // Limitar a no máximo 200 logs locais para economizar espaço
@@ -2257,7 +2305,8 @@ export const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Prom
       entity_id: log.entityId,
       entity_name: log.entityName,
       details: log.details,
-      timestamp
+      timestamp,
+      ip_address: ipAddress
     }]);
 
     if (error) {

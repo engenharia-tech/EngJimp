@@ -364,6 +364,7 @@ export interface AuditLog {
   entityName: string;
   timestamp: string; // ISO string
   details?: string;
+  ipAddress?: string;
 }
 
 export interface AppState {
