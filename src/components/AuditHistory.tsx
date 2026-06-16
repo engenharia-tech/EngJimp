@@ -30,8 +30,12 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   entity_id text,
   entity_name text,
   timestamp timestamptz DEFAULT now(),
-  details text
+  details text,
+  ip_address text
 );
+
+-- Garantir que a coluna de IP existe se a tabela já foi criada anteriormente
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS ip_address text;
 
 -- Habilitar RLS para Audit Logs
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
@@ -124,13 +128,14 @@ NOTIFY pgrst, 'reload config';`;
         <button 
           onClick={() => {
             const csv = [
-              ['Timestamp', 'User', 'Action', 'EntityType', 'EntityName', 'Details'].join(','),
+              ['Timestamp', 'User', 'Action', 'EntityType', 'EntityName', 'IP Address', 'Details'].join(','),
               ...filteredLogs.map(l => [
                 l.timestamp,
                 l.userName,
                 l.action,
                 l.entityType,
                 l.entityName,
+                l.ipAddress || '',
                 `"${l.details || ''}"`
               ].join(','))
             ].join('\n');
@@ -203,6 +208,9 @@ NOTIFY pgrst, 'reload config';`;
                 <th className="px-4 py-3 font-semibold cursor-pointer" onClick={() => handleSort('entityType')}>
                   <div className="flex items-center">{t('entity')} <SortIcon columnKey="entityType" /></div>
                 </th>
+                <th className="px-4 py-3 font-semibold cursor-pointer" onClick={() => handleSort('ipAddress')}>
+                  <div className="flex items-center">IP <SortIcon columnKey="ipAddress" /></div>
+                </th>
                 <th className="px-4 py-3 font-semibold">{t('details')}</th>
               </tr>
             </thead>
@@ -240,6 +248,11 @@ NOTIFY pgrst, 'reload config';`;
                       </span>
                     </div>
                   </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${theme === 'dark' ? 'bg-slate-800/50 text-slate-300 border border-slate-800' : 'bg-gray-100 text-gray-600 border border-gray-150'}`}>
+                      {log.ipAddress || '—'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">
                     <p className={`text-xs italic ${theme === 'dark' ? 'text-slate-500' : 'text-gray-500'} max-w-xs truncate`} title={log.details}>
                       {log.details || '-'}
@@ -249,7 +262,7 @@ NOTIFY pgrst, 'reload config';`;
               ))}
               {filteredLogs.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
                     <History className="w-8 h-8 mx-auto mb-2 opacity-20" />
                     <p>{t('noLogsFound')}</p>
                   </td>

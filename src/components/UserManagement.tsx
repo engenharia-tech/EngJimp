@@ -820,8 +820,12 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   entity_id text,
   entity_name text,
   timestamp timestamptz DEFAULT now(),
-  details text
+  details text,
+  ip_address text
 );
+
+-- Garantir que a coluna de IP existe se a tabela já foi criada anteriormente
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS ip_address text;
 
 -- Habilitar RLS para Audit Logs
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
