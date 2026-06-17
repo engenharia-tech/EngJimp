@@ -1285,7 +1285,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   const advancedWeeklyHeatmap = useMemo(() => {
     const daysName = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
-    const designers = data.users || [];
+    const designers = (data.users || []).filter(u => ['PROJETISTA', 'COORDENADOR'].includes(u.role));
     
     const matrix = designers.map(user => {
       const dayHours = [0, 0, 0, 0, 0]; // Seg to Sex
@@ -2990,9 +2990,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     </tr>
                   </thead>
                   <tbody>
-                    {advancedWeeklyHeatmap.matrix.length > 0 && advancedWeeklyHeatmap.matrix.some(row => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(row.role) || row.id === currentUser.id) ? (
+                    {advancedWeeklyHeatmap.matrix.length > 0 && advancedWeeklyHeatmap.matrix.some(row => ['PROJETISTA', 'COORDENADOR'].includes(row.role)) ? (
                       advancedWeeklyHeatmap.matrix
-                        .filter(row => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(row.role) || row.id === currentUser.id)
+                        .filter(row => ['PROJETISTA', 'COORDENADOR'].includes(row.role))
                         .map(row => (
                           <tr key={row.id} className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
                             <td className="py-3 px-4 font-bold text-xs text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-850">
