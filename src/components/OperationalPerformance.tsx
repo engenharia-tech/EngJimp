@@ -615,22 +615,37 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       const autoLunchEnd = new Date(selectedDate);
       autoLunchEnd.setHours(13, 30, 0, 0);
 
-      const lunchType = activityTypes.find(t => t.name.toUpperCase() === 'ALMOÇO');
-      const lunchTypeName = lunchType?.name || 'ALMOÇO';
-      const lunchTypeId = lunchType?.id || 'auto-lunch';
-
-      // We only insert auto-lunch if it fits in 24 hours of selectedDate
-      finalItems.push({
-        id: 'auto-lunch',
-        type: 'activity',
-        name: lunchTypeName,
-        start: autoLunchStart,
-        end: autoLunchEnd,
-        color: '#3b82f6',
-        activityTypeId: lunchTypeId
+      // Verify if there is any ongoing or logged project/activity marked as Overtime (isOvertime) that overlaps with lunch on this day
+      const hasOvertimeDuringLunch = filteredProjects.some(p => {
+        if (!p.isOvertime) return false;
+        const pStart = parseISO(p.startTime);
+        const pEnd = p.endTime ? parseISO(p.endTime) : new Date();
+        return pStart < autoLunchEnd && pEnd > autoLunchStart;
+      }) || filteredActivities.some(a => {
+        if (!a.isOvertime) return false;
+        const aStart = parseISO(a.startTime);
+        const aEnd = a.endTime ? parseISO(a.endTime) : new Date();
+        return aStart < autoLunchEnd && aEnd > autoLunchStart;
       });
 
-      finalItems.sort((a, b) => a.start.getTime() - b.start.getTime());
+      if (!hasOvertimeDuringLunch) {
+        const lunchType = activityTypes.find(t => t.name.toUpperCase() === 'ALMOÇO');
+        const lunchTypeName = lunchType?.name || 'ALMOÇO';
+        const lunchTypeId = lunchType?.id || 'auto-lunch';
+
+        // We only insert auto-lunch if it fits in 24 hours of selectedDate
+        finalItems.push({
+          id: 'auto-lunch',
+          type: 'activity',
+          name: lunchTypeName,
+          start: autoLunchStart,
+          end: autoLunchEnd,
+          color: '#3b82f6',
+          activityTypeId: lunchTypeId
+        });
+
+        finalItems.sort((a, b) => a.start.getTime() - b.start.getTime());
+      }
     }
 
     return finalItems;
