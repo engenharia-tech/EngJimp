@@ -145,6 +145,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [gapNotes, setGapNotes] = useState('');
   const [gapName, setGapName] = useState('');
   const [gapIsFlagged, setGapIsFlagged] = useState(false);
+  const [gapIsOvertime, setGapIsOvertime] = useState(false);
   const [selectedTimelineItem, setSelectedTimelineItem] = useState<any | null>(null);
   const [timelineItemToDelete, setTimelineItemToDelete] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -372,7 +373,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
     const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
 
-    const processItem = (id: string, type: 'activity' | 'project' | 'pause' | 'interruption', name: string, startTime: string, endTime: string | undefined, color: string, activityTypeId?: string) => {
+    const processItem = (id: string, type: 'activity' | 'project' | 'pause' | 'interruption', name: string, startTime: string, endTime: string | undefined, color: string, activityTypeId?: string, isOvertime: boolean = false) => {
       const start = parseISO(startTime);
       const end = endTime ? parseISO(endTime) : new Date();
 
@@ -393,16 +394,30 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       const isOngoing = !endTime;
       if (overlapStart >= overlapEnd && !isOngoing) return;
 
-      // Further clip to work hours
+      // Further clip to work hours. For overtime, we use the entire day (just like weekends)
       const workStart = new Date(selectedDate);
-      workStart.setHours(isWeekend ? 0 : wsH, isWeekend ? 0 : wsM, 0, 0);
+      workStart.setHours(isWeekend || isOvertime ? 0 : wsH, isWeekend || isOvertime ? 0 : wsM, 0, 0);
       const workEnd = new Date(selectedDate);
-      workEnd.setHours(isWeekend ? 23 : weH, isWeekend ? 59 : weM, 59, 999);
+      workEnd.setHours(isWeekend || isOvertime ? 23 : weH, isWeekend || isOvertime ? 59 : weM, 59, 999);
 
       const clippedStart = overlapStart < workStart ? workStart : overlapStart;
       const clippedEnd = overlapEnd > workEnd ? workEnd : overlapEnd;
 
       if (clippedStart >= clippedEnd) return;
+
+      // If it's overtime, we don't split it by lunch break
+      if (isOvertime) {
+        items.push({
+          id,
+          type,
+          name,
+          start: clippedStart,
+          end: clippedEnd,
+          color,
+          activityTypeId
+        });
+        return;
+      }
 
       // Split by lunch break
       const lunchStart = new Date(selectedDate);
@@ -439,7 +454,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       }
     };
 
-    filteredActivities.forEach(a => processItem(a.id, 'activity', a.activityName, a.startTime, a.endTime, '#3b82f6', a.activityTypeId));
+    filteredActivities.forEach(a => processItem(a.id, 'activity', a.activityName, a.startTime, a.endTime, '#3b82f6', a.activityTypeId, !!a.isOvertime));
     
     filteredProjects.forEach(p => {
       // Find interruptions for this project session
@@ -524,13 +539,13 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
       // Add productive segments
       segments.forEach((seg, idx) => {
-        processItem(`${p.id}-seg-${idx}`, 'project', `${t('project')}: ${p.ns || p.projectCode || 'S/N'}`, seg.start.toISOString(), seg.end.toISOString(), '#10b981');
+        processItem(`${p.id}-seg-${idx}`, 'project', `${t('project')}: ${p.ns || p.projectCode || 'S/N'}`, seg.start.toISOString(), seg.end.toISOString(), '#10b981', undefined, !!p.isOvertime);
       });
 
       // Add exclusions as separate items (excluding interruptions since they represent stopped/inactive time)
       exclusions.forEach(ex => {
         if (ex.type !== 'interruption') {
-          processItem(ex.id, ex.type, ex.name, ex.start.toISOString(), ex.end.toISOString(), ex.type === 'pause' ? '#f59e0b' : '#ef4444');
+          processItem(ex.id, ex.type, ex.name, ex.start.toISOString(), ex.end.toISOString(), ex.type === 'pause' ? '#f59e0b' : '#ef4444', undefined, !!p.isOvertime);
         }
       });
     });
@@ -750,21 +765,23 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6'];
 
-  const updateTimeInISO = (isoString: string | undefined, timeStr: string) => {
+  const updateTimeInISO = (isoString: string | undefined | null, timeStr: string, referenceIsoString?: string) => {
     try {
-      const date = isoString ? parseISO(isoString) : new Date();
+      const date = isoString 
+        ? parseISO(isoString) 
+        : (referenceIsoString ? parseISO(referenceIsoString) : new Date());
       const [hours, minutes] = timeStr.split(':').map(Number);
-      if (isNaN(hours) || isNaN(minutes)) return isoString || new Date().toISOString();
+      if (isNaN(hours) || isNaN(minutes)) return isoString || (referenceIsoString || new Date().toISOString());
       
       const newDate = new Date(date);
       newDate.setHours(hours, minutes, 0, 0);
       return newDate.toISOString();
     } catch (e) {
-      return isoString || new Date().toISOString();
+      return isoString || (referenceIsoString || new Date().toISOString());
     }
   };
 
-  const handleStartActivity = async (typeId: string) => {
+  const handleStartActivity = async (typeId: string, isOvertime: boolean = false) => {
     if (typeId.startsWith('temp-')) {
       const msg = t('errorSeedingActivityTypes');
       addToast(msg === 'errorSeedingActivityTypes' ? 'ERRO: Banco de dados não configurado. Vá em "Gestão de Equipe" e rode a correção SQL.' : msg, 'error');
@@ -782,8 +799,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       startTime: new Date().toISOString(),
       durationSeconds: 0,
       isFlagged: false,
-      notes: '',
-      projectId: undefined
+      notes: isOvertime ? 'Registrado como Hora Extra.' : '',
+      projectId: undefined,
+      isOvertime: isOvertime
     };
 
     try {
@@ -893,8 +911,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     if (isEditingActivity) {
       // Update existing
       const newStartTime = updateTimeInISO(isEditingActivity.startTime, editStartTime);
-      const newEndTime = updateTimeInISO(isEditingActivity.endTime, editEndTime);
-      const isOvertimeOnActivity = parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6;
+      const newEndTime = updateTimeInISO(isEditingActivity.endTime, editEndTime, isEditingActivity.startTime);
+      const isOvertimeOnActivity = parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6 || gapIsOvertime;
       const durationSeconds = calcActiveSeconds(newStartTime, newEndTime, settings, isOvertimeOnActivity);
 
       if (durationSeconds <= 0 && differenceInSeconds(parseISO(newEndTime), parseISO(newStartTime)) > 0) {
@@ -905,6 +923,16 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         addToast(t('errorInvalidDuration') || 'A hora de término deve ser após a hora de início.', 'error');
         setIsSaving(false);
         return;
+      }
+
+      // Synchronize [HORA_EXTRA] tag in notes for database-agnostic persistent overtime detection
+      let finalNotes = gapNotes || '';
+      if (isOvertimeOnActivity) {
+        if (!finalNotes.includes('[HORA_EXTRA]')) {
+          finalNotes = `[HORA_EXTRA] ${finalNotes}`.trim();
+        }
+      } else {
+        finalNotes = finalNotes.replace('[HORA_EXTRA]', '').trim();
       }
 
       try {
@@ -915,7 +943,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           startTime: newStartTime,
           endTime: newEndTime,
           durationSeconds,
-          notes: gapNotes,
+          notes: finalNotes,
           isFlagged: gapIsFlagged,
           isOvertime: isOvertimeOnActivity
         });
@@ -924,6 +952,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         setGapName('');
         setGapNotes('');
         setGapIsFlagged(false);
+        setGapIsOvertime(false);
         addToast(t('saved') || 'Gravado com sucesso!', 'success');
         if (onRefresh) await onRefresh();
       } catch (error) {
@@ -934,8 +963,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     } else if (isEditingGap) {
       // Create new from gap
       const newStartTime = updateTimeInISO(isEditingGap.start, editStartTime);
-      const newEndTime = updateTimeInISO(isEditingGap.end, editEndTime);
-      const isOvertimeOnActivity = parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6;
+      const newEndTime = updateTimeInISO(isEditingGap.end, editEndTime, isEditingGap.start);
+      const isOvertimeOnActivity = parseISO(newStartTime).getDay() === 0 || parseISO(newStartTime).getDay() === 6 || gapIsOvertime;
       const durationSeconds = calcActiveSeconds(newStartTime, newEndTime, settings, isOvertimeOnActivity);
 
       if (durationSeconds <= 0 && differenceInSeconds(parseISO(newEndTime), parseISO(newStartTime)) > 0) {
@@ -948,6 +977,16 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return;
       }
 
+      // Synchronize [HORA_EXTRA] tag in notes for database-agnostic persistent overtime detection
+      let finalNotes = gapNotes || '';
+      if (isOvertimeOnActivity) {
+        if (!finalNotes.includes('[HORA_EXTRA]')) {
+          finalNotes = `[HORA_EXTRA] ${finalNotes}`.trim();
+        }
+      } else {
+        finalNotes = finalNotes.replace('[HORA_EXTRA]', '').trim();
+      }
+
       const newActivity: OperationalActivity = {
         id: crypto.randomUUID(),
         userId: selectedUserId,
@@ -956,7 +995,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         startTime: newStartTime,
         endTime: newEndTime,
         durationSeconds,
-        notes: gapNotes,
+        notes: finalNotes,
         isFlagged: gapIsFlagged,
         isOvertime: isOvertimeOnActivity
       };
@@ -1000,6 +1039,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         setGapName('');
         setGapNotes('');
         setGapIsFlagged(false);
+        setGapIsOvertime(false);
         addToast(t('saved') || 'Gravado com sucesso!', 'success');
         if (onRefresh) await onRefresh();
       } catch (error) {
@@ -1019,6 +1059,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       setSelectedActivityType('');
       setGapNotes('');
       setGapIsFlagged(false);
+      setGapIsOvertime(false);
       addToast(t('activityDeletedSuccess') || 'Atividade excluída com sucesso.', 'success');
     } catch (error) {
       // Error handled in App.tsx
@@ -1062,9 +1103,18 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const toggleFlag = async (activity: OperationalActivity) => {
     if (!canEditCurrent) return;
+    const nextFlagged = !activity.isFlagged;
+    const start = new Date(activity.startTime);
+    const isOvertimeOnActivity = start.getDay() === 0 || start.getDay() === 6 || nextFlagged;
+    const durationSeconds = activity.endTime 
+      ? calcActiveSeconds(activity.startTime, activity.endTime, settings, isOvertimeOnActivity)
+      : activity.durationSeconds;
+
     await onUpdateActivity({
       ...activity,
-      isFlagged: !activity.isFlagged
+      isFlagged: nextFlagged,
+      isOvertime: isOvertimeOnActivity,
+      durationSeconds
     });
 
     // Audit Log
@@ -1394,6 +1444,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                   theme={theme}
                   t={t}
                   settings={settings}
+                  currentUser={currentUser}
                 />
               </div>
             </div>
@@ -1490,6 +1541,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                           setGapName(activity.activityName);
                           setGapNotes(activity.notes || '');
                           setGapIsFlagged(activity.isFlagged || false);
+                          setGapIsOvertime(activity.isOvertime || false);
                         } else {
                           // Fallback for safety
                           setIsEditingGap({ 
@@ -1500,6 +1552,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                           setSelectedActivityType('');
                           setGapName('');
                           setGapNotes(item.name || '');
+                          setGapIsOvertime(item.isOvertime || false);
                         }
                       } else if (item.isGap || item.type === 'interruption' || item.type === 'pause' || item.type === 'project') {
                         setIsEditingGap({ 
@@ -1511,6 +1564,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         setGapName(item.name || '');
                         setGapNotes(item.name || '');
                         setGapIsFlagged(false);
+                        setGapIsOvertime(item.isOvertime || false);
                       }
                     }}
                     >
@@ -1700,6 +1754,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           t={t}
           viewMode={viewMode}
           selectedDate={selectedDate}
+          currentUser={currentUser}
         />
       )}
 
@@ -1934,17 +1989,31 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                   placeholder={t('notesPlaceholder')}
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="gapIsFlagged"
-                  checked={gapIsFlagged}
-                  onChange={(e) => setGapIsFlagged(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                />
-                <label htmlFor="gapIsFlagged" className="text-sm font-medium text-gray-700 dark:text-slate-300">
-                  {t('flagActivity') || 'Sinalizar esta atividade'}
-                </label>
+              <div className="flex flex-col gap-2 p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="gapIsOvertime"
+                    checked={gapIsOvertime}
+                    onChange={(e) => setGapIsOvertime(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="gapIsOvertime" className="text-xs font-extrabold text-gray-700 dark:text-slate-300 uppercase tracking-wider">
+                    {t('overtimeMode') || 'MODO HORA EXTRA'}
+                  </label>
+                </div>
+                <div className="flex items-center gap-2 border-t border-gray-200 dark:border-slate-700 pt-2">
+                  <input
+                    type="checkbox"
+                    id="gapIsFlagged"
+                    checked={gapIsFlagged}
+                    onChange={(e) => setGapIsFlagged(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="gapIsFlagged" className="text-xs font-extrabold text-gray-700 dark:text-slate-300 uppercase tracking-wider">
+                    {t('flagActivity') || 'Sinalizar esta atividade'}
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -1957,6 +2026,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                   setSelectedActivityType('');
                   setGapNotes('');
                   setGapIsFlagged(false);
+                  setGapIsOvertime(false);
                 }}
                 className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 dark:hover:bg-slate-700 rounded-xl transition-all"
               >
@@ -1980,14 +2050,16 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 const CurrentActivityTracker: React.FC<{
   currentActivity: OperationalActivity | undefined;
   activityTypes: ActivityType[];
-  onStartActivity: (typeId: string) => Promise<void>;
+  onStartActivity: (typeId: string, isOvertime?: boolean) => Promise<void>;
   onStopActivity: (activity: OperationalActivity) => Promise<void>;
   canEditCurrent: boolean;
   theme: 'light' | 'dark';
   t: any;
   settings: AppSettings;
-}> = ({ currentActivity, activityTypes, onStartActivity, onStopActivity, canEditCurrent, theme, t, settings }) => {
+  currentUser: User;
+}> = ({ currentActivity, activityTypes, onStartActivity, onStopActivity, canEditCurrent, theme, t, settings, currentUser }) => {
   const [selectedType, setSelectedType] = useState('');
+  const [isOvertimeSelect, setIsOvertimeSelect] = useState(false);
 
   useEffect(() => {
     if (!selectedType && activityTypes.length > 0) {
@@ -1996,14 +2068,25 @@ const CurrentActivityTracker: React.FC<{
     }
   }, [activityTypes, selectedType]);
 
+  // Check if the current user is Edson or GESTOR/CEO
+  const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
+  const isOvertimeAllowed = currentUser?.role === 'GESTOR' || currentUser?.role === 'CEO' || isEdson;
+
   if (currentActivity) {
     return (
       <div className="space-y-4">
         <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-xl">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-              {t('ongoing') || 'EM ANDAMENTO'}
-            </span>
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              {currentActivity.isOvertime && (
+                <span className="px-2 py-0.5 text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded border border-amber-300 animate-pulse uppercase">
+                  Hora Extra
+                </span>
+              )}
+              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                {t('ongoing') || 'EM ANDAMENTO'}
+              </span>
+            </div>
             <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-mono font-bold">
               <Clock size={14} className="animate-pulse" />
               <Timer startTime={currentActivity.startTime} settings={settings} isOvertime={currentActivity.isOvertime} />
@@ -2049,9 +2132,32 @@ const CurrentActivityTracker: React.FC<{
         </select>
       </div>
 
+      {isOvertimeAllowed && (
+        <label className="flex items-center gap-3 p-3 bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 rounded-xl cursor-pointer hover:border-amber-500/40 transition-colors">
+          <input
+            type="checkbox"
+            checked={isOvertimeSelect}
+            onChange={(e) => setIsOvertimeSelect(e.target.checked)}
+            className="w-4 h-4 text-amber-600 border-gray-300 dark:border-slate-700 rounded focus:ring-amber-500 focus:ring-offset-0 cursor-pointer"
+          />
+          <div className="flex flex-col">
+            <span className="text-xs font-extrabold text-amber-800 dark:text-amber-400 uppercase tracking-wider">
+              Registrar como Hora Extra
+            </span>
+            <span className="text-[10px] text-amber-700/80 dark:text-amber-400/60 leading-none mt-0.5">
+              Evita que a atividade seja interrompida pelo corte comercial automático
+            </span>
+          </div>
+        </label>
+      )}
+
       {canEditCurrent && (
         <button
-          onClick={() => onStartActivity(selectedType)}
+          onClick={() => {
+            onStartActivity(selectedType, isOvertimeSelect);
+            // Reset overtime checkbox on start
+            setIsOvertimeSelect(false);
+          }}
           disabled={!selectedType}
           className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 group uppercase"
         >
@@ -2100,7 +2206,8 @@ const EngineeringDashboard: React.FC<{
   t: any;
   viewMode: 'day' | 'month' | 'year';
   selectedDate: Date;
-}> = ({ projects, users, interruptions, theme, t, viewMode, selectedDate }) => {
+  currentUser: User;
+}> = ({ projects, users, interruptions, theme, t, viewMode, selectedDate, currentUser }) => {
   const stats = useMemo(() => {
     const drafters = (users || []).filter(u => ['PROJETISTA', 'GESTOR', 'COORDENADOR'].includes(u?.role));
     const drafterCount = drafters.length || 1;
@@ -2108,7 +2215,22 @@ const EngineeringDashboard: React.FC<{
     // Filter projects for these users and period
     const relevantProjects = projects || [];
 
-    const totalActiveSeconds = relevantProjects.reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0);
+    const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
+    const isGestor = currentUser.role === 'GESTOR' || isEdson;
+
+    // Overtime analysis
+    const overtimeHours = relevantProjects
+      .filter(p => p?.isOvertime)
+      .reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0) / 3600;
+
+    const totalActiveSeconds = isGestor 
+      ? relevantProjects.reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0)
+      : relevantProjects.reduce((acc, p) => {
+          // Exclude overtime projects entirely from total working hours calculations for non-gestors
+          if (p?.isOvertime) return acc;
+          return acc + (p?.totalActiveSeconds || 0);
+        }, 0);
+
     const totalHours = totalActiveSeconds / 3600;
     
     // Calculate per capita index
@@ -2117,6 +2239,8 @@ const EngineeringDashboard: React.FC<{
     // Average time by project type/part
     const typeGroups: Record<string, { total: number; count: number }> = {};
     relevantProjects.forEach(p => {
+      // Exclude overtime projects for non-gestors
+      if (!isGestor && p?.isOvertime) return;
       const type = String(p?.implementType || p?.type || t('notInformed') || 'Não Informado');
       if (!typeGroups[type]) typeGroups[type] = { total: 0, count: 0 };
       typeGroups[type].total += (p?.totalActiveSeconds || 0);
@@ -2129,16 +2253,11 @@ const EngineeringDashboard: React.FC<{
       count: g.count
     })).sort((a, b) => b.avgHours - a.avgHours);
 
-    // Overtime analysis
-    const overtimeHours = relevantProjects
-      .filter(p => p?.isOvertime)
-      .reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0) / 3600;
-
-    const normalHours = totalHours - overtimeHours;
+    const normalHours = isGestor ? (totalHours - overtimeHours) : totalHours;
 
     // Efficiency by user
     const userStats = (users || []).map(u => {
-      const uProjects = relevantProjects.filter(p => p?.userId === u?.id);
+      const uProjects = relevantProjects.filter(p => p?.userId === u?.id && (isGestor || !p?.isOvertime));
       const uHours = uProjects.reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0) / 3600;
       const uCount = uProjects.length;
       return {
@@ -2153,13 +2272,13 @@ const EngineeringDashboard: React.FC<{
     return {
       totalHours: Number(totalHours.toFixed(1)),
       indexPerCapita: Number(indexPerCapita.toFixed(2)),
-      overtimeHours: Number(overtimeHours.toFixed(1)),
+      overtimeHours: isGestor ? Number(overtimeHours.toFixed(1)) : 0,
       normalHours: Number(normalHours.toFixed(1)),
       averageByType,
       userStats,
       drafterCount
     };
-  }, [projects, users, t]);
+  }, [projects, users, t, currentUser]);
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -2192,18 +2311,20 @@ const EngineeringDashboard: React.FC<{
           <p className="text-xs text-gray-400 mt-1 uppercase">Horas Líquidas</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400">
-              <AlertCircle size={20} />
+        {(currentUser.role === 'GESTOR' || currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson') && (
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400">
+                <AlertCircle size={20} />
+              </div>
+              <p className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-tight">Horas Extras</p>
             </div>
-            <p className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-tight">Horas Extras</p>
+            <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+              {stats.overtimeHours}h
+            </p>
+            <p className="text-xs text-gray-400 mt-1 uppercase">Fora do Expediente</p>
           </div>
-          <p className={`text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-            {stats.overtimeHours}h
-          </p>
-          <p className="text-xs text-gray-400 mt-1 uppercase">Fora do Expediente</p>
-        </div>
+        )}
 
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
           <div className="flex items-center gap-3 mb-2">

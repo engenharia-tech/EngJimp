@@ -265,7 +265,7 @@ export const fetchAppState = async (): Promise<AppState> => {
         notes: p.notes,
         userId: p.user_id,
         estimatedSeconds: p.estimated_seconds || 0,
-        isOvertime: p.is_overtime,
+        isOvertime: (p.is_overtime !== undefined && p.is_overtime !== null) ? !!p.is_overtime : !!(p.notes && (p.notes.includes('Hora Extra') || p.notes.includes('[HORA_EXTRA]'))),
         lastActiveAt: p.updated_at
       }));
     } catch (e) { console.error("Projects mapping error:", e); }
@@ -322,11 +322,23 @@ export const fetchAppState = async (): Promise<AppState> => {
     interruptionTypes = (interruptionTypesRes.data || []).map((t: any) => ({ id: t.id, name: t.name, isActive: t.is_active }));
 
     try {
-      operationalActivities = (operationalActivitiesRes.data || []).map((a: any) => ({
-        id: a.id, userId: a.user_id, activityTypeId: a.activity_type_id, activityName: a.activity_name,
-        startTime: a.start_time, endTime: a.end_time, durationSeconds: a.duration_seconds,
-        notes: a.notes, projectId: a.project_id, isFlagged: a.is_flagged, isOvertime: a.is_overtime
-      }));
+      operationalActivities = (operationalActivitiesRes.data || []).map((a: any) => {
+        const hasOvertimeNotes = a.notes && (a.notes.includes('Hora Extra') || a.notes.includes('[HORA_EXTRA]'));
+        const checkOvertime = (a.is_overtime !== undefined && a.is_overtime !== null) ? !!a.is_overtime : !!hasOvertimeNotes;
+        return {
+          id: a.id,
+          userId: a.user_id,
+          activityTypeId: a.activity_type_id,
+          activityName: a.activity_name,
+          startTime: a.start_time,
+          endTime: a.end_time,
+          durationSeconds: a.duration_seconds,
+          notes: a.notes,
+          projectId: a.project_id,
+          isFlagged: a.is_flagged,
+          isOvertime: checkOvertime
+        };
+      });
     } catch (e) { console.error("OperationalActivities mapping error:", e); }
 
     try {
@@ -1162,7 +1174,7 @@ export const fetchOperationalActivities = async (): Promise<OperationalActivity[
 
 export const addOperationalActivity = async (activity: OperationalActivity): Promise<AppState> => {
     try {
-        const { error } = await supabase.from('operational_activities').insert([{
+        const payload: any = {
             user_id: activity.userId,
             activity_type_id: activity.activityTypeId,
             activity_name: activity.activityName,
@@ -1171,11 +1183,20 @@ export const addOperationalActivity = async (activity: OperationalActivity): Pro
             duration_seconds: activity.durationSeconds || 0,
             notes: activity.notes || null,
             project_id: activity.projectId || null,
-            is_flagged: activity.isFlagged || false
-        }]);
+            is_flagged: activity.isFlagged || false,
+            is_overtime: activity.isOvertime || false
+        };
+        const { error } = await supabase.from('operational_activities').insert([payload]);
         if (error) {
-            console.error("SUPABASE ERROR ADDING ACTIVITY:", error);
-            throw error;
+            const errMsg = (error.message || '').toLowerCase();
+            if (errMsg.includes('is_overtime') || error.code === 'PGRST102') {
+                console.warn("[storageService] Table operational_activities might be missing is_overtime column. Retrying without it...");
+                delete payload.is_overtime;
+                const { error: retryError } = await supabase.from('operational_activities').insert([payload]);
+                if (retryError) throw retryError;
+            } else {
+                throw error;
+            }
         }
         return fetchAppState();
     } catch (error) {
@@ -1186,20 +1207,35 @@ export const addOperationalActivity = async (activity: OperationalActivity): Pro
 
 export const updateOperationalActivity = async (activity: OperationalActivity): Promise<AppState> => {
     try {
+        const payload: any = {
+            activity_type_id: activity.activityTypeId,
+            activity_name: activity.activityName,
+            start_time: activity.startTime,
+            end_time: activity.endTime || null,
+            duration_seconds: activity.durationSeconds || 0,
+            notes: activity.notes || null,
+            project_id: activity.projectId || null,
+            is_flagged: activity.isFlagged || false,
+            is_overtime: activity.isOvertime || false
+        };
         const { error } = await supabase
             .from('operational_activities')
-            .update({
-                activity_type_id: activity.activityTypeId,
-                activity_name: activity.activityName,
-                start_time: activity.startTime,
-                end_time: activity.endTime || null,
-                duration_seconds: activity.durationSeconds || 0,
-                notes: activity.notes || null,
-                project_id: activity.projectId || null,
-                is_flagged: activity.isFlagged || false
-            })
+            .update(payload)
             .eq('id', activity.id);
-        if (error) throw error;
+        if (error) {
+            const errMsg = (error.message || '').toLowerCase();
+            if (errMsg.includes('is_overtime') || error.code === 'PGRST102') {
+                console.warn("[storageService] Table operational_activities might be missing is_overtime column on update. Retrying without it...");
+                delete payload.is_overtime;
+                const { error: retryError } = await supabase
+                    .from('operational_activities')
+                    .update(payload)
+                    .eq('id', activity.id);
+                if (retryError) throw retryError;
+            } else {
+                throw error;
+            }
+        }
         return fetchAppState();
     } catch (error) {
         console.error("FAILED TO UPDATE OPERATIONAL ACTIVITY", error);
@@ -1228,34 +1264,65 @@ export const normalizeForgottenActivityInDB = async (
 ): Promise<AppState> => {
     try {
         // 1. Update the original activity
+        const updatePayload: any = {
+            end_time: updatedOriginal.endTime,
+            duration_seconds: updatedOriginal.durationSeconds,
+            notes: updatedOriginal.notes,
+            is_flagged: true,
+            is_overtime: updatedOriginal.isOvertime || false
+        };
         const { error: updateError } = await supabase
             .from('operational_activities')
-            .update({
-                end_time: updatedOriginal.endTime,
-                duration_seconds: updatedOriginal.durationSeconds,
-                notes: updatedOriginal.notes,
-                is_flagged: true
-            })
+            .update(updatePayload)
             .eq('id', originalId);
 
-        if (updateError) throw updateError;
+        if (updateError) {
+            const errMsg = (updateError.message || '').toLowerCase();
+            if (errMsg.includes('is_overtime') || updateError.code === 'PGRST102') {
+                delete updatePayload.is_overtime;
+                const { error: retryUpdateError } = await supabase
+                    .from('operational_activities')
+                    .update(updatePayload)
+                    .eq('id', originalId);
+                if (retryUpdateError) throw retryUpdateError;
+            } else {
+                throw updateError;
+            }
+        }
 
         // 2. Insert new segments (if any)
         if (newSegments.length > 0) {
+            const mappedSegments = newSegments.map(s => ({
+                user_id: s.userId,
+                activity_type_id: s.activityTypeId,
+                activity_name: s.activityName,
+                start_time: s.startTime,
+                end_time: s.endTime,
+                duration_seconds: s.durationSeconds,
+                notes: s.notes,
+                project_id: s.projectId,
+                is_flagged: true,
+                is_overtime: s.isOvertime || false
+            }));
             const { error: insertError } = await supabase
                 .from('operational_activities')
-                .insert(newSegments.map(s => ({
-                    user_id: s.userId,
-                    activity_type_id: s.activityTypeId,
-                    activity_name: s.activityName,
-                    start_time: s.startTime,
-                    end_time: s.endTime,
-                    duration_seconds: s.durationSeconds,
-                    notes: s.notes,
-                    project_id: s.projectId,
-                    is_flagged: true
-                })));
-            if (insertError) throw insertError;
+                .insert(mappedSegments);
+            if (insertError) {
+                const errMsg = (insertError.message || '').toLowerCase();
+                if (errMsg.includes('is_overtime') || insertError.code === 'PGRST102') {
+                    const fallbackSegments = mappedSegments.map((s: any) => {
+                        const copy = { ...s };
+                        delete copy.is_overtime;
+                        return copy;
+                    });
+                    const { error: retryInsertError } = await supabase
+                        .from('operational_activities')
+                        .insert(fallbackSegments);
+                    if (retryInsertError) throw retryInsertError;
+                } else {
+                    throw insertError;
+                }
+            }
         }
 
         return fetchAppState();

@@ -27,6 +27,34 @@ interface DashboardProps {
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#ec4899'];
 
+const CustomHoursTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const hoursData = payload.find((p: any) => p.dataKey === 'horas');
+    const percentData = payload.find((p: any) => p.dataKey === 'percentage');
+    return (
+      <div className="bg-white dark:bg-stone-900 border border-gray-100 dark:border-slate-800 p-3 rounded-xl shadow-lg space-y-1">
+        <p className="text-xs font-black text-black dark:text-white uppercase tracking-wide border-b border-gray-100 dark:border-slate-800 pb-1 mb-1">{label}</p>
+        {hoursData && (
+          <p className="text-xs text-amber-500 font-mono flex justify-between gap-4">
+            <span>Horas em Projeto:</span> <span className="font-bold">{hoursData.value}h</span>
+          </p>
+        )}
+        {percentData && (
+          <p className="text-xs text-blue-500 font-mono flex justify-between gap-4">
+            <span>% de Utilização:</span> <span className="font-bold">{percentData.value}%</span>
+          </p>
+        )}
+        {hoursData?.payload?.capacityBase && (
+          <p className="text-[10px] text-gray-500 dark:text-slate-500 italic mt-1 border-t border-gray-50 dark:border-slate-900/50 pt-1">
+            Capacidade Líquida (8.8h / dia útil): {hoursData.payload.capacityBase}h
+          </p>
+        )}
+      </div>
+    );
+  }
+  return null;
+};
+
 const MultiSelect: React.FC<{
   label: string;
   options: string[];
@@ -221,8 +249,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [selectedSuspensions, setSelectedSuspensions] = useState<string[]>([]);
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [nsFilterByPeriod, setNsFilterByPeriod] = useState<boolean>(false);
+  const [selectedEdsonDay, setSelectedEdsonDay] = useState<number | null>(null);
+  const [selectedEdsonAnalyticsUser, setSelectedEdsonAnalyticsUser] = useState<string>('ALL');
+  const [projectTimeSearchQuery, setProjectTimeSearchQuery] = useState<string>('');
+  const [projectTimePage, setProjectTimePage] = useState<number>(0);
 
-  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts']);
+  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table']);
 
   // Helper to normalize strings for comparison (remove accents and uppercase)
   const normalize = (str: string) => 
@@ -321,7 +353,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const filteredProjects = useMemo(() => {
     return data.projects.filter(p => {
       // Exclude data from 'PROCESSOS' users
-      if (p.userId && processUserIds.has(p.userId)) {
+      const isSomeEdson = p.userId ? (() => {
+        const u = data.users.find(x => x.id === p.userId);
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+      })() : false;
+
+      if (p.userId && processUserIds.has(p.userId) && !isSomeEdson) {
         return false;
       }
 
@@ -435,7 +472,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const filteredInterruptions = useMemo(() => {
     return data.interruptions.filter(i => {
       // Exclude data from 'PROCESSOS' users
-      if (i.designerId && processUserIds.has(i.designerId)) {
+      const isSomeEdson = i.designerId ? (() => {
+        const u = data.users.find(x => x.id === i.designerId);
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+      })() : false;
+
+      if (i.designerId && processUserIds.has(i.designerId) && !isSomeEdson) {
         return false;
       }
 
@@ -542,7 +584,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     const yearlyProjects = data.projects.filter(p => {
        // Apply same logic as filteredProjects but for the whole year
-       if (p.userId && processUserIds.has(p.userId)) return false;
+       const isSomeEdson = p.userId ? (() => {
+         const u = data.users.find(x => x.id === p.userId);
+         return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+       })() : false;
+
+       if (p.userId && processUserIds.has(p.userId) && !isSomeEdson) return false;
        
        // Role-based filtering: Designers only see their own data
        if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
@@ -755,7 +802,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     // Processar Atividades Operacionais (que já são produtivas por natureza)
     data.operationalActivities.forEach(a => {
         // Exclude data from 'PROCESSOS' users
-        if (a.userId && processUserIds.has(a.userId)) {
+        const isSomeEdson = a.userId ? (() => {
+            const u = data.users.find(x => x.id === a.userId);
+            return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+        })() : false;
+
+        if (a.userId && processUserIds.has(a.userId) && !isSomeEdson) {
             return;
         }
 
@@ -970,8 +1022,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       // Must be completed
       if (p.status !== 'COMPLETED') return false;
 
+      // Must be assigned to a user who is a PROJETISTA
+      if (!p.userId) return false;
+      const u = data.users.find(x => x.id === p.userId);
+      if (!u || u.role !== 'PROJETISTA') return false;
+
       // Exclude data from 'PROCESSOS' users
-      if (p.userId && processUserIds.has(p.userId)) {
+      const isSomeEdson = (() => {
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+      })();
+
+      if (processUserIds.has(p.userId) && !isSomeEdson) {
         return false;
       }
 
@@ -992,10 +1053,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     });
 
     // 3. Group based on releaseGrouping
+    const designersInTeam = data.users.filter(u => u.role === 'PROJETISTA');
+    const teamSize = designersInTeam.length || 1;
+    const isAll = selectedDesignerForReleases === 'ALL';
+
+    // Helper to calculate working hours in a month for 2026 or fallback
+    const getCapacityForMonth = (monthIndex: number, year: number): number => {
+      // monthIndex is 0-indexed (0 = Jan, 5 = Jun)
+      const holidays2026: Set<string> = new Set([
+        "2026-01-01", // Ano Novo
+        "2026-02-16", // Carnaval
+        "2026-02-17", // Carnaval
+        "2026-04-03", // Sexta-feira Santa
+        "2026-04-21", // Tiradentes
+        "2026-05-01", // Dia do Trabalhador
+        "2026-06-04", // Corpus Christi
+        "2026-06-24", // São João Batista (Padroeiro Garuva)
+      ]);
+
+      let workingDays = 0;
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const d = new Date(year, monthIndex, day);
+        const dayOfWeek = d.getDay(); // 0 = Sunday, 6 = Saturday
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+          const dateString = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          if (!holidays2026.has(dateString)) {
+            workingDays++;
+          }
+        }
+      }
+      return workingDays * 8.8;
+    };
+
     if (releaseGrouping === 'GLOBAL') {
+        const totalCount = designerFiltered.length;
+        const totalHours = designerFiltered.reduce((sum, p) => sum + (p.totalActiveSeconds || 0), 0) / 3600;
+        
+        // Find all unique months in designerFiltered or fallback to Jan-Jun 2026
+        const uniqueMonthKeys = new Set<string>();
+        designerFiltered.forEach(curr => {
+          const d = curr.endTime ? new Date(curr.endTime) : (curr.startTime ? new Date(curr.startTime) : new Date());
+          uniqueMonthKeys.add(`${d.getMonth()}/${d.getFullYear()}`);
+        });
+
+        let globalCapacity = 0;
+        if (uniqueMonthKeys.size > 0) {
+          uniqueMonthKeys.forEach(mKey => {
+            const [mStr, yStr] = mKey.split('/');
+            globalCapacity += getCapacityForMonth(parseInt(mStr), parseInt(yStr));
+          });
+        } else {
+          for (let m = 0; m < 6; m++) {
+            globalCapacity += getCapacityForMonth(m, 2026);
+          }
+        }
+
+        const capacityBase = (isAll ? teamSize : 1) * globalCapacity;
+        const percentage = parseFloat(((totalHours / capacityBase) * 100).toFixed(1));
         return [{
             name: 'Total Global',
-            liberacoes: designerFiltered.length
+            liberacoes: totalCount,
+            horas: parseFloat(totalHours.toFixed(1)),
+            percentage,
+            capacityBase: parseFloat(capacityBase.toFixed(1))
         }];
     }
 
@@ -1011,14 +1132,52 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             key = date.getFullYear().toString();
         }
         
-        acc[key] = (acc[key] || 0) + 1;
+        if (!acc[key]) {
+            acc[key] = { count: 0, hours: 0 };
+        }
+        acc[key].count += 1;
+        acc[key].hours += (curr.totalActiveSeconds || 0) / 3600;
         return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, { count: number; hours: number }>);
 
-    return Object.keys(releasesByPeriod).map(key => ({
-      name: key,
-      liberacoes: releasesByPeriod[key]
-    })).sort((a, b) => {
+    return Object.keys(releasesByPeriod).map(key => {
+      const hours = releasesByPeriod[key].hours;
+      const count = releasesByPeriod[key].count;
+      
+      let capacityBase = 220;
+      if (releaseGrouping === 'MONTHLY') {
+        const [mStr, yStr] = key.split('/');
+        const mIdx = months.indexOf(mStr);
+        const parsedYear = parseInt(yStr);
+        const fullYear = parsedYear < 100 ? parsedYear + 2000 : parsedYear;
+        const singleCapacity = getCapacityForMonth(mIdx !== -1 ? mIdx : 0, fullYear);
+        capacityBase = (isAll ? teamSize : 1) * singleCapacity;
+      } else if (releaseGrouping === 'YEARLY') {
+        const fullYear = parseInt(key);
+        let yearlyCapacity = 0;
+        for (let m = 0; m < 12; m++) {
+          yearlyCapacity += getCapacityForMonth(m, fullYear);
+        }
+        capacityBase = (isAll ? teamSize : 1) * yearlyCapacity;
+      } else {
+        const fullYear = parseInt(key);
+        let yearlyCapacity = 0;
+        for (let m = 0; m < 12; m++) {
+          yearlyCapacity += getCapacityForMonth(m, fullYear);
+        }
+        capacityBase = (isAll ? teamSize : 1) * yearlyCapacity;
+      }
+      
+      const percentage = parseFloat(((hours / capacityBase) * 100).toFixed(1));
+
+      return {
+        name: key,
+        liberacoes: count,
+        horas: parseFloat(hours.toFixed(1)),
+        percentage,
+        capacityBase: parseFloat(capacityBase.toFixed(1))
+      };
+    }).sort((a, b) => {
         if (releaseGrouping === 'MONTHLY') {
             const [mA, yA] = a.name.split('/');
             const [mB, yB] = b.name.split('/');
@@ -1028,6 +1187,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         return a.name.localeCompare(b.name);
     });
   }, [data.projects, processUserIds, currentUser.role, currentUser.id, selectedDesignerForReleases, releaseGrouping, months]);
+
+  // Memo para listagem e pesquisa dinâmica da quantidade de horas por projeto
+  const projectTimeDetails = useMemo(() => {
+    const list = filteredProjects.map(p => {
+      const hours = ((p.totalActiveSeconds || 0) / 3600).toFixed(2);
+      const hoursFormatted = formatDuration(p.totalActiveSeconds || 0);
+      const designerName = p.userId ? (usersMap[p.userId] || p.userId) : t('unknown');
+      return {
+        ...p,
+        hours,
+        hoursFormatted,
+        designerName
+      };
+    });
+
+    if (!projectTimeSearchQuery) return list;
+    const query = projectTimeSearchQuery.toLowerCase();
+    return list.filter(item => 
+      item.ns.toLowerCase().includes(query) ||
+      (item.clientName || '').toLowerCase().includes(query) ||
+      (item.projectCode || '').toLowerCase().includes(query) ||
+      (item.implementType || '').toLowerCase().includes(query) ||
+      (item.designerName || '').toLowerCase().includes(query)
+    );
+  }, [filteredProjects, projectTimeSearchQuery, usersMap, t]);
 
   // 3. Removed: Issue Type Distribution (Pie Chart)
 
@@ -1285,10 +1469,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   const advancedWeeklyHeatmap = useMemo(() => {
     const daysName = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
-    const designers = (data.users || []).filter(u => ['PROJETISTA', 'COORDENADOR'].includes(u.role));
+    const designers = (data.users || []).filter(u => {
+      const isUserEdson = u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'));
+      return ['PROJETISTA', 'COORDENADOR'].includes(u.role) || isUserEdson;
+    });
     
     const matrix = designers.map(user => {
       const dayHours = [0, 0, 0, 0, 0]; // Seg to Sex
+      let overtimeHoursSum = 0;
       
       const userProjects = filteredProjects.filter(p => p.userId === user.id);
       userProjects.forEach(proj => {
@@ -1296,23 +1484,178 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         const pDate = new Date(proj.startTime);
         if (isNaN(pDate.getTime())) return;
         
+        const hours = (proj.totalActiveSeconds || 0) / 3600;
         const weekday = pDate.getDay(); // 0 = Sun, 1 = Mon, ..., 5 = Fri, 6 = Sat
+        
+        // Count weekday normal working hours
         if (weekday >= 1 && weekday <= 5) {
-          dayHours[weekday - 1] += (proj.totalActiveSeconds || 0) / 3600;
+          if (!proj.isOvertime) {
+            dayHours[weekday - 1] += hours;
+          }
+        }
+        
+        // Sum overtime (if explicit flag is set, OR if it's Sunday (0) or Saturday (6))
+        if (proj.isOvertime || weekday === 0 || weekday === 6) {
+          overtimeHoursSum += hours;
         }
       });
+      
+      const normalTotal = dayHours.reduce((acc, h) => acc + h, 0);
+      const grandTotal = normalTotal + overtimeHoursSum;
       
       return {
         id: user.id,
         name: user.name + (user.surname ? ` ${user.surname}` : ''),
         role: user.role,
         hours: dayHours.map(h => parseFloat(h.toFixed(1))),
-        total: parseFloat(dayHours.reduce((acc, h) => acc + h, 0).toFixed(1))
+        overtime: parseFloat(overtimeHoursSum.toFixed(1)),
+        total: parseFloat(grandTotal.toFixed(1))
       };
     });
 
     return { daysName, matrix };
   }, [filteredProjects, data.users]);
+
+  const edsonExtraHoursAnalytics = useMemo(() => {
+    // Determine target users
+    const usersList = data.users || [];
+    
+    // Find Edson specifically just to have his details as fallback or title
+    const edsonUser = usersList.find(u => 
+      u.email === 'efariaseng0@gmail.com' || 
+      u.username === 'edson' || 
+      (u.name && u.name.toLowerCase().includes('edson'))
+    );
+
+    let filteredTargetProjects = data.projects;
+    let filteredTargetOps = data.operationalActivities;
+
+    if (selectedEdsonAnalyticsUser !== 'ALL') {
+      filteredTargetProjects = data.projects.filter(p => p.userId === selectedEdsonAnalyticsUser);
+      filteredTargetOps = data.operationalActivities.filter(a => a.userId === selectedEdsonAnalyticsUser);
+    }
+
+    // Let's analyze June 2026 ("este mês")
+    const targetYear = 2026;
+    const targetMonth = 5; // June is index 5
+    const daysInMonth = 30; // June has 30 days
+
+    // Initialize daily metrics for June 2026
+    const dailyData = Array.from({ length: daysInMonth }, (_, idx) => {
+      const dayNum = idx + 1;
+      return {
+        day: dayNum,
+        overtimeHours: 0,
+        factoryHours: 0,
+        normalHours: 0,
+        descriptions: [] as string[]
+      };
+    });
+
+    const getUserDisplayName = (userId: string | undefined) => {
+      if (!userId) return 'Desconhecido';
+      const found = usersList.find(u => u.id === userId);
+      return found ? `${found.name} ${found.surname || ''}`.trim() : 'Desconhecido';
+    };
+
+    const processItem = (dateStr: string, hours: number, isOvertime: boolean, desc: string, isFactory: boolean, userId?: string) => {
+      if (!dateStr) return;
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return;
+      if (date.getFullYear() === targetYear && date.getMonth() === targetMonth) {
+        const dayIdx = date.getDate() - 1;
+        if (dayIdx >= 0 && dayIdx < daysInMonth) {
+          if (isOvertime) {
+            dailyData[dayIdx].overtimeHours += hours;
+          } else {
+            dailyData[dayIdx].normalHours += hours;
+          }
+          if (isFactory) {
+            dailyData[dayIdx].factoryHours += hours;
+          }
+          
+          let fullDesc = desc;
+          if (selectedEdsonAnalyticsUser === 'ALL' && userId) {
+            fullDesc = `${getUserDisplayName(userId)}: ${desc}`;
+          }
+          dailyData[dayIdx].descriptions.push(`${fullDesc} (${hours.toFixed(1)}h)`);
+        }
+      }
+    };
+
+    filteredTargetProjects.forEach(proj => {
+      if (!proj.startTime) return;
+      const hours = (proj.totalActiveSeconds || 0) / 3600;
+      const pDate = new Date(proj.startTime);
+      const weekday = pDate.getDay();
+      const isOvertime = proj.isOvertime || weekday === 0 || weekday === 6;
+      const desc = `Projeto: ${proj.clientName || 'Engine'} - NS ${proj.ns || ''}`;
+      processItem(proj.startTime, hours, isOvertime, desc, false, proj.userId);
+    });
+
+    filteredTargetOps.forEach(a => {
+      if (!a.startTime) return;
+      const start = new Date(a.startTime);
+      const end = a.endTime ? new Date(a.endTime) : new Date();
+      const hours = Math.max((end.getTime() - start.getTime()) / 3600000, 0);
+      const weekday = start.getDay();
+      const isOvertime = a.isOvertime || a.isFlagged || weekday === 0 || weekday === 6;
+      const isFactory = a.activityName?.toLowerCase().includes('fabrica') || a.activityName?.toLowerCase().includes('fábrica');
+      const desc = `Atividade: ${a.activityName || 'Operacional'}`;
+      processItem(a.startTime, hours, isOvertime, desc, isFactory, a.userId);
+    });
+
+    let monthOvertimeSum = 0;
+    let monthFactorySum = 0;
+    let monthNormalSum = 0;
+    dailyData.forEach(d => {
+      monthOvertimeSum += d.overtimeHours;
+      monthFactorySum += d.factoryHours;
+      monthNormalSum += d.normalHours;
+    });
+
+    let historicOvertimeSum = 0;
+    let historicFactorySum = 0;
+
+    filteredTargetProjects.forEach(proj => {
+      const hours = (proj.totalActiveSeconds || 0) / 3600;
+      const pDate = new Date(proj.startTime);
+      const weekday = pDate.getDay();
+      if (proj.isOvertime || weekday === 0 || weekday === 6) {
+        historicOvertimeSum += hours;
+      }
+    });
+
+    filteredTargetOps.forEach(a => {
+      const start = new Date(a.startTime);
+      const end = a.endTime ? new Date(a.endTime) : new Date();
+      const hours = Math.max((end.getTime() - start.getTime()) / 3600000, 0);
+      const weekday = start.getDay();
+      if (a.isOvertime || a.isFlagged || weekday === 0 || weekday === 6) {
+        historicOvertimeSum += hours;
+      }
+      if (a.activityName?.toLowerCase().includes('fabrica') || a.activityName?.toLowerCase().includes('fábrica')) {
+        historicFactorySum += hours;
+      }
+    });
+
+    let activeUserName = 'Todos os Colaboradores';
+    if (selectedEdsonAnalyticsUser !== 'ALL') {
+      const activeU = usersList.find(u => u.id === selectedEdsonAnalyticsUser);
+      activeUserName = activeU ? `${activeU.name} ${activeU.surname || ''}` : 'Usuário Selecionado';
+    }
+
+    return {
+      dailyData,
+      monthOvertimeSum: parseFloat(monthOvertimeSum.toFixed(1)),
+      monthFactorySum: parseFloat(monthFactorySum.toFixed(1)),
+      monthNormalSum: parseFloat(monthNormalSum.toFixed(1)),
+      historicOvertimeSum: parseFloat(historicOvertimeSum.toFixed(1)),
+      historicFactorySum: parseFloat(historicFactorySum.toFixed(1)),
+      activeUserName,
+      edsonDefaultId: edsonUser?.id || ''
+    };
+  }, [data.projects, data.operationalActivities, data.users, selectedEdsonAnalyticsUser]);
 
   const keyProductsReport = useMemo(() => {
     return PRODUCT_CATEGORIES.filter(cat => cat !== 'Outros').map(category => {
@@ -1385,26 +1728,49 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   };
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'NS', 'Codigo', 'Número de Chassi', 'Tipo', 'Implemento', 'Inicio', 'Fim', 'Tempo Total(s)', 'Status', 'Notas'];
-    const rows = filteredProjects.map(p => [
-      p.id,
-      p.ns,
-      p.projectCode || '',
-      p.chassisNumber || '',
-      p.type,
-      p.implementType || '',
-      p.startTime,
-      p.endTime || '',
-      p.totalActiveSeconds,
-      p.status,
-      `"${(p.notes || '').replace(/"/g, '""')}"`
-    ].join(','));
+    const headers = [
+      'ID', 
+      'NS', 
+      'Código do Projeto', 
+      'Número de Chassi', 
+      'Tipo de Projeto', 
+      'Tipo de Implemento', 
+      'Projetista', 
+      'Início', 
+      'Fim', 
+      'Tempo Produtivo Formatado', 
+      'Tempo Total Ativo (S)', 
+      'Horas Desempenhadas (H)', 
+      'Status', 
+      'Notas'
+    ];
+    const rows = filteredProjects.map(p => {
+      const designerName = p.userId ? (usersMap[p.userId] || p.userId) : 'Não atribuído';
+      const hours = ((p.totalActiveSeconds || 0) / 3600).toFixed(2);
+      const hoursFormatted = formatDuration(p.totalActiveSeconds || 0);
+      return [
+        p.id,
+        p.ns,
+        p.projectCode || '',
+        p.chassisNumber || '',
+        p.type,
+        p.implementType || '',
+        `"${(designerName || '').replace(/"/g, '""')}"`,
+        p.startTime,
+        p.endTime || '',
+        hoursFormatted,
+        p.totalActiveSeconds || 0,
+        hours,
+        p.status,
+        `"${(p.notes || '').replace(/"/g, '""')}"`
+      ].join(',');
+    });
 
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `design_track_export_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute("download", `detalhamento_horas_projetos_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1633,6 +1999,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">Gráficos Avançados</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('project_hours_table')} 
+              onChange={() => setVisibleSections(prev => prev.includes('project_hours_table') ? prev.filter(s => s !== 'project_hours_table') : [...prev, 'project_hours_table'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">Horas por Projeto</span>
           </label>
           {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
             <>
@@ -2642,63 +3017,278 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         
         {/* Removed: Issue Distribution (Pie Chart) */}
 
-        {/* Releases per Month (Bar Chart) */}
+        {/* Releases and Hours Analysis Section */}
             {currentUser.role !== 'PROCESSOS' && visibleSections.includes('releases') && (
-              <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
-              <div className="flex justify-between items-center mb-4">
-                  <div className="flex flex-col">
-                      <h3 className="text-lg font-bold text-black dark:text-white flex items-center uppercase">
-                          <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
-                          {currentUser.role === 'GESTOR' || currentUser.role === 'CEO' ? t('teamReleases') : t('yourPerformance')}
-                      </h3>
-                      {selectedDesignerForReleases !== 'ALL' && (
-                          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7 uppercase">{t('filteredBy')}: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
+              <>
+                {/* Chart 1: Projects Released */}
+                <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                      <div className="flex flex-col">
+                          <h3 className="text-sm font-bold text-black dark:text-white flex items-center uppercase tracking-wide">
+                              <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
+                              {currentUser.role === 'GESTOR' || currentUser.role === 'CEO' ? t('teamReleases') : t('yourPerformance')}
+                          </h3>
+                          {selectedDesignerForReleases !== 'ALL' && (
+                              <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7 uppercase">{t('filteredBy')}: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
+                          )}
+                          <span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold ml-7 uppercase tracking-wider">Quantidade total (Histórico completo)</span>
+                      </div>
+                      <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg self-end sm:self-auto">
+                          <button 
+                              onClick={() => setReleaseGrouping('MONTHLY')}
+                              className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                          >
+                              {t('monthly')}
+                          </button>
+                          <button 
+                              onClick={() => setReleaseGrouping('YEARLY')}
+                              className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${releaseGrouping === 'YEARLY' ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                          >
+                              {t('yearly')}
+                          </button>
+                          <button 
+                              onClick={() => setReleaseGrouping('GLOBAL')}
+                              className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${releaseGrouping === 'GLOBAL' ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                          >
+                              {t('global')}
+                          </button>
+                      </div>
+                  </div>
+                  <div className="h-[250px] w-full mt-4">
+                      {barData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={barData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                          <XAxis dataKey="name" tickLine={false} axisLine={false} style={{fontSize: '11px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
+                          <YAxis allowDecimals={false} tickLine={false} axisLine={false} style={{fontSize: '11px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
+                          <Tooltip 
+                              contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                              itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
+                              labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
+                              cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
+                          />
+                          <Bar dataKey="liberacoes" name="Projetos Liberados" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={releaseGrouping === 'GLOBAL' ? 80 : 35} />
+                          </BarChart>
+                      </ResponsiveContainer>
+                      ) : (
+                      <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
+                          {t('noData')}
+                      </div>
                       )}
                   </div>
-                  <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
-                      <button 
-                          onClick={() => setReleaseGrouping('MONTHLY')}
-                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
-                      >
-                          {t('monthly')}
-                      </button>
-                      <button 
-                          onClick={() => setReleaseGrouping('YEARLY')}
-                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'YEARLY' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
-                      >
-                          {t('yearly')}
-                      </button>
-                      <button 
-                          onClick={() => setReleaseGrouping('GLOBAL')}
-                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${releaseGrouping === 'GLOBAL' ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
-                      >
-                          {t('global')}
-                      </button>
+                </div>
+
+                {/* Chart 2: Hours Performed in Projects */}
+                <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                      <div className="flex flex-col">
+                          <h3 className="text-sm font-bold text-black dark:text-white flex items-center uppercase tracking-wide">
+                              <Clock className="w-5 h-5 mr-2 text-amber-500" />
+                              Horas Desempenhadas em Projetos
+                          </h3>
+                          {selectedDesignerForReleases !== 'ALL' && (
+                              <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7 uppercase">{t('filteredBy')}: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
+                          )}
+                          <span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold ml-7 uppercase tracking-wider">Tempo produtivo (Histórico completo)</span>
+                      </div>
+                      <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg self-end sm:self-auto">
+                          <button 
+                              onClick={() => setReleaseGrouping('MONTHLY')}
+                              className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-slate-800 text-amber-500 dark:text-amber-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                          >
+                              {t('monthly')}
+                          </button>
+                          <button 
+                              onClick={() => setReleaseGrouping('YEARLY')}
+                              className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${releaseGrouping === 'YEARLY' ? 'bg-white dark:bg-slate-800 text-amber-500 dark:text-amber-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                          >
+                              {t('yearly')}
+                          </button>
+                          <button 
+                              onClick={() => setReleaseGrouping('GLOBAL')}
+                              className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${releaseGrouping === 'GLOBAL' ? 'bg-white dark:bg-slate-800 text-amber-500 dark:text-amber-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                          >
+                              {t('global')}
+                          </button>
+                      </div>
                   </div>
-              </div>
-              <div className="h-[250px] w-full">
-                  {barData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={barData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
-                      <XAxis dataKey="name" tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
-                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} style={{fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
-                      <Tooltip 
-                          contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
-                          itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
-                          labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
-                          cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }} 
-                      />
-                      <Bar dataKey="liberacoes" name={t('releases')} fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={releaseGrouping === 'GLOBAL' ? 80 : 40} />
-                      </BarChart>
-                  </ResponsiveContainer>
-                  ) : (
-                  <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
-                      {t('noData')}
+                  <div className="h-[250px] w-full mt-4">
+                      {barData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={barData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                          <XAxis dataKey="name" tickLine={false} axisLine={false} style={{fontSize: '11px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} />
+                          <YAxis yAxisId="left" orientation="left" allowDecimals={true} tickLine={false} axisLine={false} style={{fontSize: '11px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} unit="h" />
+                          <YAxis yAxisId="right" orientation="right" allowDecimals={true} tickLine={false} axisLine={false} style={{fontSize: '11px', fill: theme === 'dark' ? '#94a3b8' : '#64748b'}} unit="%" domain={[0, 'auto']} />
+                          <Tooltip content={<CustomHoursTooltip />} />
+                          <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
+                          <Bar yAxisId="left" dataKey="horas" name="Horas Registradas" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={releaseGrouping === 'GLOBAL' ? 80 : 35} />
+                          <Line yAxisId="right" type="monotone" dataKey="percentage" name="% de Utilização da Capacidade Líquida" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                          </ComposedChart>
+                      </ResponsiveContainer>
+                      ) : (
+                      <div className="h-full flex items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
+                          {t('noData')}
+                      </div>
+                      )}
                   </div>
+                </div>
+              </>
+            )}
+
+            {/* Tabela de Detalhamento de Horas por Projeto - Standalone Section */}
+            {visibleSections.includes('project_hours_table') && (
+              <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 col-span-1 md:col-span-2 space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-black dark:text-white flex items-center uppercase tracking-wide">
+                        <Clock className="w-5 h-5 mr-2 text-blue-500" />
+                        Quantidade de Horas Desempenhadas por Projeto
+                      </h3>
+                      <p className="text-[11px] text-gray-500 dark:text-slate-400">
+                        Consulte e exporte o total de horas produtivas registradas em cada projeto finalizado ou em andamento.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <div className="relative flex-1 sm:flex-initial">
+                        <input
+                          type="text"
+                          placeholder="Buscar por NS, Cliente, Código, Projetista..."
+                          value={projectTimeSearchQuery}
+                          onChange={(e) => {
+                            setProjectTimeSearchQuery(e.target.value);
+                            setProjectTimePage(0);
+                          }}
+                          className="w-full sm:w-64 pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-stone-900 text-black dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <span className="absolute left-2.5 top-2 text-gray-400 dark:text-slate-500">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </span>
+                        {projectTimeSearchQuery && (
+                          <button
+                            onClick={() => {
+                              setProjectTimeSearchQuery('');
+                              setProjectTimePage(0);
+                            }}
+                            className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600 dark:hover:text-white text-xs font-bold"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={handleExportCSV}
+                        className="flex items-center text-[10px] font-black text-gray-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-50 dark:bg-stone-900 border border-gray-200 dark:border-slate-700 px-3 py-2 rounded-lg transition-all shadow-sm uppercase tracking-wider shrink-0"
+                        title="Exportar listagem detalhada de horas para CSV"
+                      >
+                        <Download className="w-3.5 h-3.5 mr-1.5" />
+                        <span>Exportar Horas</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-slate-800">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 dark:bg-stone-900 border-b border-gray-100 dark:border-slate-800">
+                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">N.S. / Código</th>
+                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Cliente</th>
+                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Projetista</th>
+                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Tipo / Implemento</th>
+                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Período</th>
+                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
+                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider text-right">Tempo Realizado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 dark:divide-slate-900">
+                        {projectTimeDetails.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="py-8 text-center text-xs text-gray-400 dark:text-slate-500 italic">
+                              Nenhum projeto encontrado para os filtros e busca atuais.
+                            </td>
+                          </tr>
+                        ) : (
+                          projectTimeDetails.slice(projectTimePage * 10, (projectTimePage + 1) * 10).map((item, idx) => {
+                            const formattedStart = item.startTime ? new Date(item.startTime).toLocaleDateString('pt-BR') : '';
+                            const formattedEnd = item.endTime ? new Date(item.endTime).toLocaleDateString('pt-BR') : '';
+                            return (
+                              <tr key={item.id || idx} className="hover:bg-gray-50/50 dark:hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2.5 px-4">
+                                  <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-blue-600 dark:text-blue-400 font-mono">{item.ns}</span>
+                                    {item.projectCode && (
+                                      <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono mt-0.5">#{item.projectCode}</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-4 text-xs font-bold text-black dark:text-white truncate max-w-[140px]">{item.clientName || '-'}</td>
+                                <td className="py-2.5 px-4 text-xs text-gray-600 dark:text-slate-300 truncate max-w-[120px]" title={item.designerName}>{item.designerName}</td>
+                                <td className="py-2.5 px-4">
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-[10px] font-medium text-black dark:text-white">{item.type}</span>
+                                    {item.implementType && (
+                                      <span className="text-[9px] text-gray-400 dark:text-slate-500 font-medium">{item.implementType}</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-4 text-[10px] text-gray-500 dark:text-slate-400 font-mono">
+                                  <div className="flex flex-col">
+                                    <span>Início: {formattedStart}</span>
+                                    {formattedEnd && <span>Fim: {formattedEnd}</span>}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-4">
+                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-black tracking-wide uppercase ${
+                                    item.status === 'COMPLETED'
+                                      ? 'bg-green-100/80 text-green-700 dark:bg-green-950/30 dark:text-green-400'
+                                      : 'bg-blue-100/80 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
+                                  }`}>
+                                    {item.status === 'COMPLETED' ? 'Finalizado' : 'Em Andamento'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-4 text-right">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-xs font-extrabold text-amber-600 dark:text-amber-400 font-mono">{item.hours}h</span>
+                                    <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono">{item.hoursFormatted}</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Paginação da Tabela */}
+                  {projectTimeDetails.length > 10 && (
+                    <div className="flex justify-between items-center text-xs text-gray-500 dark:text-slate-400 pt-2 border-t border-gray-50 dark:border-slate-900">
+                      <span>
+                        Exibindo de {projectTimePage * 10 + 1} a {Math.min((projectTimePage + 1) * 10, projectTimeDetails.length)} de <strong>{projectTimeDetails.length}</strong> projetos
+                      </span>
+                      <div className="flex gap-1.5">
+                        <button
+                          disabled={projectTimePage === 0}
+                          onClick={() => setProjectTimePage(p => p - 1)}
+                          className="px-2.5 py-1 bg-gray-50 dark:bg-stone-900 border border-gray-200 dark:border-slate-800 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs"
+                        >
+                          Anterior
+                        </button>
+                        <button
+                          disabled={(projectTimePage + 1) * 10 >= projectTimeDetails.length}
+                          onClick={() => setProjectTimePage(p => p + 1)}
+                          className="px-2.5 py-1 bg-gray-50 dark:bg-stone-900 border border-gray-200 dark:border-slate-800 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs"
+                        >
+                          Próximo
+                        </button>
+                      </div>
+                    </div>
                   )}
-              </div>
-              </div>
+                </div>
             )}
 
         {/* Innovations Chart */}
@@ -2986,14 +3576,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       {advancedWeeklyHeatmap.daysName.map(day => (
                         <th key={day} className="py-2.5 px-4 text-center text-[11px] font-black text-slate-400 tracking-wide uppercase border-r border-slate-100 dark:border-slate-850">{day}</th>
                       ))}
+                      {(() => {
+                        const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
+                        const isGestorOrEdson = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser?.role) || isEdson;
+                        return isGestorOrEdson && (
+                          <th className="py-2.5 px-4 text-center text-[11px] font-black text-amber-600 dark:text-amber-400 tracking-wide uppercase border-r border-slate-100 dark:border-slate-850 bg-amber-50/20 dark:bg-amber-950/10">H. Extra</th>
+                        );
+                      })()}
                       <th className="py-2.5 px-4 text-center text-[11px] font-black text-slate-400 tracking-wide uppercase">Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {advancedWeeklyHeatmap.matrix.length > 0 && advancedWeeklyHeatmap.matrix.some(row => ['PROJETISTA', 'COORDENADOR'].includes(row.role)) ? (
-                      advancedWeeklyHeatmap.matrix
-                        .filter(row => ['PROJETISTA', 'COORDENADOR'].includes(row.role))
-                        .map(row => (
+                    {(() => {
+                      const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
+                      const isGestorOrEdson = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser?.role) || isEdson;
+                      
+                      const visibleRows = advancedWeeklyHeatmap.matrix.filter(row => {
+                        const isRowEdson = row.id === 'edson' || row.id === currentUser.id || row.name.toLowerCase().includes('edson');
+                        return ['PROJETISTA', 'COORDENADOR'].includes(row.role) || isRowEdson;
+                      });
+
+                      if (visibleRows.length > 0) {
+                        return visibleRows.map(row => (
                           <tr key={row.id} className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
                             <td className="py-3 px-4 font-bold text-xs text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-850">
                               {row.name}
@@ -3019,23 +3623,286 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                 </td>
                               );
                             })}
+                            {isGestorOrEdson && (
+                              <td className="p-1 border-r border-slate-100 dark:border-slate-850 bg-amber-50/10 dark:bg-amber-950/5">
+                                <div 
+                                  className={`py-2 px-1 text-center text-xs font-extrabold rounded-lg transition-all border border-transparent shadow-xs hover:scale-[1.03] duration-150 ${
+                                    row.overtime > 0 
+                                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200/40' 
+                                      : 'bg-gray-100 dark:bg-slate-900 text-gray-400'
+                                  }`}
+                                  title={`${row.name} - Horas Extras: ${row.overtime}h`}
+                                >
+                                  {row.overtime > 0 ? `${row.overtime}h` : '0h'}
+                                </div>
+                              </td>
+                            )}
                             <td className="py-3 px-4 text-center font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-950/10">
                               {row.total}h
                             </td>
                           </tr>
-                        ))
-                    ) : (
-                      <tr>
-                        <td colSpan={7} className="py-8 text-center text-xs text-gray-400">
-                          Nenhum projetista registrado ou horas de projeto alocadas para esta semana.
-                        </td>
-                      </tr>
-                    )}
+                        ));
+                      } else {
+                        return (
+                          <tr>
+                            <td colSpan={isGestorOrEdson ? 8 : 7} className="py-8 text-center text-xs text-gray-400">
+                              Nenhum projetista registrado ou horas de projeto alocadas para esta semana.
+                            </td>
+                          </tr>
+                        );
+                      }
+                    })()}
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
+
+          {/* 4. Edson's Custom Overtime & Factory Activity Heatmap & Report (Edson Only) */}
+          {(() => {
+            const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
+            if (!isEdson) return null;
+
+            const { dailyData, monthOvertimeSum, monthFactorySum, monthNormalSum, historicOvertimeSum, historicFactorySum, activeUserName } = edsonExtraHoursAnalytics;
+            
+            // June 2026 starts on Monday. Columns will start at Monday.
+            const weekdaysShort = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+            const selectedDayDetails = selectedEdsonDay !== null ? dailyData[selectedEdsonDay - 1] : null;
+
+            return (
+              <div className="bg-slate-50/55 dark:bg-slate-900/40 p-6 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-6 mt-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-100 dark:border-slate-850 pb-4 gap-4">
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-850 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                      Análise de Horas Extras & Fábrica — {activeUserName}
+                    </h4>
+                    <p className="text-[11px] text-gray-400 mt-0.5 uppercase tracking-wide">
+                      Mapeamento exclusivo de intensidade operacional na planta e horas extras (Junho 2026)
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide">Visualizar:</span>
+                      <select
+                        value={selectedEdsonAnalyticsUser}
+                        onChange={(e) => {
+                          setSelectedEdsonAnalyticsUser(e.target.value);
+                          setSelectedEdsonDay(null); // Clear selected day
+                        }}
+                        className="px-3 py-1.5 text-xs bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-800 font-bold uppercase transition-all duration-150 shadow-xs focus:ring-2 focus:ring-amber-500/30 focus:outline-hidden cursor-pointer"
+                      >
+                        <option value="ALL">🌟 Todos os Colaboradores</option>
+                        {data.users.map(u => (
+                          <option key={u.id} value={u.id}>
+                            👤 {u.name} {u.surname || ''} ({u.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 flex-row">
+                      <span className="px-2.5 py-1 text-[10px] font-black uppercase rounded-lg bg-indigo-50/80 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 border border-indigo-100/40">
+                        Normal: {monthNormalSum}h
+                      </span>
+                      <span className="px-2.5 py-1 text-[10px] font-black uppercase rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200/50">
+                        Extras: {monthOvertimeSum}h
+                      </span>
+                      <span className="px-2.5 py-1 text-[10px] font-black uppercase rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200/50">
+                        No Chão: {monthFactorySum}h
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-Layout: Heatmap + Analytical Breakdown */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Heatmap Section - 5 Columns */}
+                  <div className="lg:col-span-5 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-850 shadow-xs flex flex-col justify-between">
+                    <div>
+                      <h5 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3 flex items-center justify-between">
+                        <span>Mapa de Calor: Junho 2026</span>
+                        <span className="text-[9px] text-zinc-400 capitalize font-medium">clique no dia para ver detalhes</span>
+                      </h5>
+                      
+                      {/* Grid Headers */}
+                      <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                        {weekdaysShort.map((day) => (
+                          <div key={day} className="text-[10px] font-black text-slate-450 uppercase py-1">
+                            {day}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Heatmap Grid of Days */}
+                      <div className="grid grid-cols-7 gap-1.5 animate-in fade-in duration-300">
+                        {dailyData.map((d) => {
+                          const dailyTotal = d.overtimeHours + d.factoryHours;
+                          
+                          let bgClass = "bg-gray-100 dark:bg-slate-900/60 text-slate-400 hover:scale-[1.04]";
+                          let borderClass = "border-transparent";
+
+                          if (dailyTotal > 0 && dailyTotal <= 2) {
+                            bgClass = "bg-amber-100/40 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300 hover:scale-[1.04]";
+                            borderClass = "border-amber-200/10";
+                          } else if (dailyTotal > 2 && dailyTotal <= 5) {
+                            bgClass = "bg-amber-300 dark:bg-amber-700 text-amber-900 dark:text-amber-100 font-extrabold hover:scale-[1.04]";
+                            borderClass = "border-amber-400/40";
+                          } else if (dailyTotal > 5) {
+                            bgClass = "bg-amber-600 text-white font-black hover:scale-[1.04] shadow-xs shadow-amber-500/10";
+                            borderClass = "border-amber-800";
+                          }
+
+                          const isSelected = selectedEdsonDay === d.day;
+                          if (isSelected) {
+                            borderClass = "border-indigo-500 ring-2 ring-indigo-500/20 scale-[1.04]";
+                          }
+
+                          return (
+                            <button
+                              key={d.day}
+                              onClick={() => setSelectedEdsonDay(isSelected ? null : d.day)}
+                              className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-semibold border transition-all duration-150 cursor-pointer ${bgClass} ${borderClass}`}
+                              title={`Dia ${d.day}: Extra: ${d.overtimeHours.toFixed(1)}h | Fábrica: ${d.factoryHours.toFixed(1)}h.`}
+                            >
+                              <span className="text-[9px] opacity-70 block mb-0.5">{d.day}</span>
+                              {dailyTotal > 0 && (
+                                <span className="text-[9px] font-extrabold">
+                                  {dailyTotal.toFixed(1)}h
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex items-center gap-3 mt-4 text-[9px] font-black uppercase text-gray-400 justify-center">
+                        <span>Livre (0h)</span>
+                        <div className="w-3 h-3 rounded bg-gray-100 dark:bg-slate-900 border border-slate-200/20" />
+                        <div className="w-3 h-3 rounded bg-amber-100/40 dark:bg-amber-950/20 border border-amber-200/10" />
+                        <div className="w-3 h-3 rounded bg-amber-300 dark:bg-amber-700" />
+                        <div className="w-3 h-3 rounded bg-amber-600" />
+                        <span>Elevado (5h+)</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 border-t border-slate-100 dark:border-slate-900 pt-3 text-[9px] text-gray-450 uppercase italic font-medium">
+                      💡 Junho de 2026 iniciou-se em uma Segunda-feira.
+                    </div>
+                  </div>
+
+                  {/* Day Details or Monthly breakdown - 4 Columns */}
+                  <div className="lg:col-span-4 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-850 shadow-xs flex flex-col justify-between">
+                    <div>
+                      <h5 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3">
+                        {selectedDayDetails ? `Detalhes do Dia ${selectedDayDetails.day} de Junho` : "Selecione um Dia no Mapa"}
+                      </h5>
+
+                      {selectedDayDetails ? (
+                        <div className="space-y-4 animate-in fade-in duration-200">
+                          <div className="grid grid-cols-2 gap-2 text-center">
+                            <div className="bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-850">
+                              <p className="text-[9px] font-black text-slate-400 uppercase">H. Extra</p>
+                              <p className="text-sm font-black text-amber-600 dark:text-amber-400">{selectedDayDetails.overtimeHours.toFixed(1)}h</p>
+                            </div>
+                            <div className="bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-850">
+                              <p className="text-[9px] font-black text-slate-400 uppercase">Fábrica</p>
+                              <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">{selectedDayDetails.factoryHours.toFixed(1)}h</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wide">Apontamentos Realizados:</p>
+                            {selectedDayDetails.descriptions.length > 0 ? (
+                              <ul className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1 no-scrollbar text-xs">
+                                {selectedDayDetails.descriptions.map((desc, idx) => {
+                                  const isFactoryAct = desc.toLowerCase().includes('fabrica') || desc.toLowerCase().includes('fábrica');
+                                  return (
+                                    <li key={idx} className="p-2 rounded bg-slate-50 dark:bg-slate-900/50 border-l-2 border-indigo-500 flex justify-between items-center text-slate-700 dark:text-slate-300">
+                                      <span className="truncate pr-2 font-medium">{desc.split(' (')[0]}</span>
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase shrink-0 ${isFactoryAct ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+                                        {desc.match(/\(([^)]+)\)/)?.[1] || ''}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            ) : (
+                              <p className="text-xs text-slate-400 dark:text-slate-550 italic">Apenas horas de expediente normal sem apontamentos adicionais registrados.</p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-center py-8 text-gray-450 dark:text-slate-500">
+                          <Activity className="w-8 h-8 opacity-25 mb-2 animate-bounce" />
+                          <p className="text-xs max-w-[220px]">Clique em qualquer quadrado com horas no mapa de calor para expor a lista detalhada de apontamentos.</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedDayDetails && (
+                      <button 
+                        onClick={() => setSelectedEdsonDay(null)}
+                        className="w-full mt-4 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-300 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                      >
+                        Limpar Seleção
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Summary / Report Card - 3 Columns */}
+                  <div className="lg:col-span-3 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-850 shadow-xs flex flex-col justify-between space-y-4">
+                    <div>
+                      <h5 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3">
+                        Acumulado Histórico
+                      </h5>
+
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Acumulado Horas Extras</p>
+                          <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight mt-0.5">
+                            {historicOvertimeSum} <span className="text-xs font-normal text-slate-450">horas totais</span>
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Total em Fábrica</p>
+                          <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight mt-0.5">
+                            {historicFactorySum} <span className="text-xs font-normal text-slate-450">horas na planta</span>
+                          </p>
+                        </div>
+
+                        <div className="border-t border-slate-100 dark:border-slate-900 pt-3">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Foco de Atuação</p>
+                          <div className="flex gap-2">
+                            <span className="p-1 px-1.5 rounded bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 text-[8px] font-bold uppercase">
+                              Segurança
+                            </span>
+                            <span className="p-1 px-1.5 rounded bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 text-[8px] font-bold uppercase">
+                              Planta de Fábrica
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-amber-50/15 dark:bg-amber-950/5 p-3 rounded-xl border border-amber-500/10">
+                      <p className="text-[9px] font-black text-amber-600 uppercase tracking-wider">Nota de Engenharia</p>
+                      <p className="text-[10.5px] text-slate-600 dark:text-slate-350 leading-relaxed mt-1">
+                        {selectedEdsonAnalyticsUser === 'ALL' ? (
+                          "Sua equipe demonstra uma presença active e resiliente nos layouts industriais e setups produtivos. O monitoramento centralizado consolida as horas extras acumuladas e o fôlego de execução fabril de toda a planta."
+                        ) : selectedEdsonAnalyticsUser === edsonExtraHoursAnalytics.edsonDefaultId ? (
+                          "Sua significativa presença física em fábrica assegura e agiliza setups e operações de alta complexidade. O banco acumulado realça a dedicação de liderança executiva na planta."
+                        ) : (
+                          `${activeUserName} tem contribuído vigorosamente nas operações listadas acima. O mapa de intensidade revela o engajamento e a dedicação técnica no chão de fábrica e em regimes extraordinários.`
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

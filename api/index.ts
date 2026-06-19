@@ -122,44 +122,76 @@ app.post("/api/gemini/generate", async (req, res) => {
     const targetModel = model || "gemini-3.5-flash";
     let text = "";
 
-    try {
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
+    // Robust generator trying multiple compatible models if the primary one is unreleased or not accessible
+    const modelsToTry = [targetModel, "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"];
+    const uniqueModels = Array.from(new Set(modelsToTry));
+    let lastError: any = null;
+    let success = false;
+
+    for (const currentModel of uniqueModels) {
+      if (success) break;
+      try {
+        console.log(`[Gemini API Server] Attempting generation with model: ${currentModel}`);
+        const ai = new GoogleGenAI({
+          apiKey,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build',
+            }
           }
+        });
+
+        const response = await ai.models.generateContent({
+          model: currentModel,
+          contents: prompt,
+        });
+
+        if (response && response.text) {
+          text = response.text;
+          success = true;
+          console.log(`[Gemini API Server] Generation successful with model (SDK): ${currentModel}`);
+          break;
         }
-      });
+      } catch (sdkError: any) {
+        console.warn(`[Gemini API SDK failed for ${currentModel}]:`, sdkError.message || sdkError);
+        lastError = sdkError;
 
-      const response = await ai.models.generateContent({
-        model: targetModel,
-        contents: prompt,
-      });
+        // Attempt direct REST fetch for this model before trying next model
+        try {
+          console.log(`[Gemini API Server] Attempting REST fallback for model: ${currentModel}`);
+          const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+          const restResponse = await fetch(restUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "aistudio-build"
+            },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }]
+            })
+          });
 
-      text = response.text || '';
-    } catch (sdkError: any) {
-      console.warn("[Gemini API SDK failed, trying direct REST fallback]:", sdkError);
-      
-      const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`;
-      const restResponse = await fetch(restUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "aistudio-build"
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
-      });
-
-      if (!restResponse.ok) {
-        const errText = await restResponse.text();
-        throw new Error(`SDK Error: ${sdkError.message}. REST Fallback Error (Status ${restResponse.status}): ${errText}`);
+          if (restResponse.ok) {
+            const restData: any = await restResponse.json();
+            const restText = restData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (restText) {
+              text = restText;
+              success = true;
+              console.log(`[Gemini API Server] Generation successful with model (REST): ${currentModel}`);
+              break;
+            }
+          } else {
+            const errText = await restResponse.text();
+            console.warn(`[Gemini API REST failed for ${currentModel}]: Status ${restResponse.status}, Error: ${errText}`);
+          }
+        } catch (restError: any) {
+          console.warn(`[Gemini API REST exception for ${currentModel}]:`, restError.message || restError);
+        }
       }
+    }
 
-      const restData: any = await restResponse.json();
-      text = restData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!success) {
+      throw lastError || new Error("Todos os modelos e fallbacks falharam na geração.");
     }
 
     return res.json({ success: true, text });

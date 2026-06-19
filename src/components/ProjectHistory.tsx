@@ -1345,7 +1345,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold text-black dark:text-white bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{getTranslatedType(project.type)}</span>
-                        {project.isOvertime && (
+                        {project.isOvertime && (currentUser?.role === 'GESTOR' || currentUser?.email === 'efariaseng0@gmail.com' || currentUser?.username === 'edson') && (
                           <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-bold rounded border border-amber-200 dark:border-amber-800 uppercase">
                             {t('overtimeAbbr')}
                           </span>

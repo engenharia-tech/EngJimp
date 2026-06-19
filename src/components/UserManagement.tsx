@@ -748,6 +748,7 @@ ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS project_code text;
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS flooring_type text;
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS implement_type text;
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS estimated_seconds integer;
+ALTER TABLE public.operational_activities ADD COLUMN IF NOT EXISTS is_overtime boolean default false;
 
 -- 4. Tabela de Inovações (Garantir colunas novas)
 ALTER TABLE public.innovations ADD COLUMN IF NOT EXISTS productivity_before numeric DEFAULT 0;

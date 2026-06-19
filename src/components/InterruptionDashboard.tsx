@@ -23,8 +23,14 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
     if (filteredInterruptions) {
       return filteredInterruptions;
     }
-    return data.interruptions.filter(i => !processUserIds.has(i.designerId));
-  }, [data.interruptions, processUserIds, filteredInterruptions]);
+    return data.interruptions.filter(i => {
+      const isSomeEdson = i.designerId ? (() => {
+        const u = data.users.find(x => x.id === i.designerId);
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+      })() : false;
+      return !processUserIds.has(i.designerId) || isSomeEdson;
+    });
+  }, [data.interruptions, processUserIds, filteredInterruptions, data.users]);
 
   const [selectedDesigner, setSelectedDesigner] = useState<string | null>(null);
 

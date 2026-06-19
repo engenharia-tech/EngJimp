@@ -391,7 +391,8 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
     } catch (error: any) {
       console.error("Nexus IA Error, trying local fallback:", error);
       try {
-        const fallbackText = resolveLocalQueryFallback(queryText, appState, currentUser);
+        const errorMsg = error?.message || error?.details || String(error);
+        const fallbackText = resolveLocalQueryFallback(queryText, appState, currentUser, errorMsg);
         const assistantMessage: Message = {
           role: 'assistant',
           content: fallbackText,
@@ -511,7 +512,8 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
     } catch (error: any) {
       console.error("Nexus IA Error, trying local fallback:", error);
       try {
-        const fallbackText = resolveLocalQueryFallback(currentTerm, appState, currentUser);
+        const errorMsg = error?.message || error?.details || String(error);
+        const fallbackText = resolveLocalQueryFallback(currentTerm, appState, currentUser, errorMsg);
         const assistantMessage: Message = {
           role: 'assistant',
           content: fallbackText,
