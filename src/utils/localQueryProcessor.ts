@@ -8,7 +8,8 @@ import { AppState, User, InterruptionStatus } from '../types';
 export const resolveLocalQueryFallback = (
   query: string,
   appState: AppState,
-  currentUser: User
+  currentUser: User,
+  sourceError?: string
 ): string => {
   const normalized = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const name = currentUser.name;
@@ -302,9 +303,21 @@ Olá, **${name}**! Aqui está um raio-X completo das tabelas da plataforma:
   // --- Default generic intelligent response using appState context
   const activeProjsCount = projects.filter(p => p.status === 'IN_PROGRESS').length;
   
+  let headerIntro = "";
+  const errLower = (sourceError || "").toLowerCase();
+  if (sourceError && (errLower.includes("not configured") || errLower.includes("missing") || errLower.includes("secrets") || errLower.includes("is not defined"))) {
+    headerIntro = `Identificamos que **a chave de API do Gemini não está configurada no servidor (Secrets)**. Você pode interagir normalmente usando nosso processador local inteligente e integrado ao banco de dados JIMP, ou configurar sua própria chave nas Configurações sob o painel principal!`;
+  } else if (sourceError && (errLower.includes("quota") || errLower.includes("limit") || errLower.includes("exhausted") || errLower.includes("429") || errLower.includes("exceeded"))) {
+    headerIntro = `Os créditos da API gratuita do Gemini foram temporariamente excedidos no servidor principal, mas **estou online e totalmente conectado ao banco de dados interno da aplicação em tempo real!**`;
+  } else if (sourceError) {
+    headerIntro = `Ocorreu uma resposta inesperada da API (${sourceError}). Ativei o **assistente local de contingência JIMP NEXUS** para processar suas perguntas diretamente no banco de dados.`;
+  } else {
+    headerIntro = `O **assistente local de contingência JIMP NEXUS** está ativo e totalmente conectado ao banco de dados interno da aplicação em tempo real!`;
+  }
+  
   return `### 💡 JIMP NEXUS - Assistente Local de Contingência
 
-Olá, **${name}**! Os créditos da API gratuita do Gemini foram temporariamente excedidos no servidor principal, mas **estou online e totalmente conectado ao banco de dados interno da aplicação em tempo real!** 
+Olá, **${name}**! ${headerIntro}
 
 Eu possuo acesso a todas as tabelas e métricas locais da Engenharia JIMP, podendo processar, auditar e calcular rankings para você de forma instantânea.
 

@@ -38,19 +38,28 @@ export function getCleanupSegmentsForActivity(
   const workdayEndLimitOfStartDay = new Date(start);
   workdayEndLimitOfStartDay.setHours(weH, weM, 0, 0);
 
-  // Is "now" past the end of the shift of the start day?
-  // If not, it means the activity is running normally on its starting day and hasn't exceeded the workday end of today yet.
-  if (now.getTime() <= workdayEndLimitOfStartDay.getTime()) {
-    return null; // No cleanup needed yet
-  }
-
-  // We need correction!
-  // We will iterate day-by-day from the start day of the activity through the day of "now"
   const startMidnight = new Date(start);
   startMidnight.setHours(0, 0, 0, 0);
 
   const nowMidnight = new Date(now);
   nowMidnight.setHours(0, 0, 0, 0);
+
+  // If the activity is marked as overtime, or was started after the work shift ended,
+  // do not clean it up as long as we are still on the same calendar day.
+  if (act.isOvertime || start.getTime() >= workdayEndLimitOfStartDay.getTime()) {
+    if (nowMidnight.getTime() <= startMidnight.getTime()) {
+      return null; // Keep running normally on the start day
+    }
+  } else {
+    // Is "now" past the end of the shift of the start day?
+    // If not, it means the activity is running normally on its starting day and hasn't exceeded the workday end of today yet.
+    if (now.getTime() <= workdayEndLimitOfStartDay.getTime()) {
+      return null; // No cleanup needed yet
+    }
+  }
+
+  // We need correction!
+  // We will iterate day-by-day from the start day of the activity through the day of "now"
 
   const days: Date[] = [];
   let current = new Date(startMidnight);
@@ -153,7 +162,8 @@ export function getCleanupSegmentsForActivity(
       durationSeconds: duration,
       notes: seg.notes,
       projectId: act.projectId,
-      isFlagged: true
+      isFlagged: true,
+      isOvertime: act.isOvertime
     };
   });
 

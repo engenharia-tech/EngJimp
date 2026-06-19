@@ -146,9 +146,8 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
   const generateContext = () => {
-    const { projects, interruptions, innovations, users, settings, ganttTasks = [] } = appState;
+    const { projects, interruptions, innovations, users, settings, ganttTasks = [], operationalActivities = [] } = appState;
     
     const completedProjects = projects.filter(p => p.status === 'COMPLETED');
     const inProgressProjects = projects.filter(p => p.status === 'IN_PROGRESS');
@@ -213,7 +212,67 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
   Resumo Rastreador: ${completedUserTracker} concluídos (liberados), ${inProgressUserTracker} em andamento (${totalUserProjects} totais históricos desde o início), ${userInterruptions.length} interrupções.${idleTimeInfo}`;
     }).join('\n\n');
     
-    // Monthly summary for trends
+    // Process detailed monthly hour accumulations (projects + operational activities)
+    // Map of [user_name_or_global][month_YYYY_MM][category_name] = total_hours
+    const userMonthlyHours: Record<string, Record<string, Record<string, number>>> = {};
+    const globalMonthlyHours: Record<string, Record<string, number>> = {};
+
+    projects.forEach(p => {
+      if (!p.userId || !p.startTime) return;
+      const month = p.startTime.substring(0, 7); // YYYY-MM
+      const user = users.find(u => u.id === p.userId);
+      if (!user) return;
+      const userName = `${user.name} ${user.surname || ''}`.trim();
+      const category = p.type || 'OUTROS';
+      const hours = (p.totalActiveSeconds || p.totalSeconds || 0) / 3600;
+      if (hours <= 0) return;
+
+      if (!userMonthlyHours[userName]) userMonthlyHours[userName] = {};
+      if (!userMonthlyHours[userName][month]) userMonthlyHours[userName][month] = {};
+      userMonthlyHours[userName][month][category] = (userMonthlyHours[userName][month][category] || 0) + hours;
+
+      if (!globalMonthlyHours[month]) globalMonthlyHours[month] = {};
+      globalMonthlyHours[month][category] = (globalMonthlyHours[month][category] || 0) + hours;
+    });
+
+    operationalActivities.forEach(act => {
+      if (!act.userId || !act.startTime) return;
+      const month = act.startTime.substring(0, 7); // YYYY-MM
+      const user = users.find(u => u.id === act.userId);
+      if (!user) return;
+      const userName = `${user.name} ${user.surname || ''}`.trim();
+      const category = act.activityName || 'ATIVIDADE OPERACIONAL';
+      const hours = (act.durationSeconds || 0) / 3600;
+      if (hours <= 0) return;
+
+      if (!userMonthlyHours[userName]) userMonthlyHours[userName] = {};
+      if (!userMonthlyHours[userName][month]) userMonthlyHours[userName][month] = {};
+      userMonthlyHours[userName][month][category] = (userMonthlyHours[userName][month][category] || 0) + hours;
+
+      if (!globalMonthlyHours[month]) globalMonthlyHours[month] = {};
+      globalMonthlyHours[month][category] = (globalMonthlyHours[month][category] || 0) + hours;
+    });
+
+    // 1. Compile Global Monthly Hour Summary (all employees combined per month and type)
+    let globalHoursSummary = "DISTRIBUIÇÃO DE HORAS TOTAIS DA EMPRESA POR MÊS E CATEGORIA DE TRABALHO:\n";
+    Object.entries(globalMonthlyHours).sort((a, b) => b[0].localeCompare(a[0])).forEach(([month, categories]) => {
+      const details = Object.entries(categories).map(([cat, h]) => `${cat}: ${h.toFixed(1)}h`).join(', ');
+      const total = Object.values(categories).reduce((sum, h) => sum + h, 0);
+      globalHoursSummary += `- Mês ${month}: Total ${total.toFixed(1)}h [Detalhado: ${details}]\n`;
+    });
+
+    // 2. Compile Individual Monthly Hour Summary
+    let individualHoursSummary = "DISTRIBUIÇÃO DETALHADA DE HORAS DE CADA PROJETISTA/INTEGRANTE POR MÊS E CATEGORIA:\n";
+    Object.entries(userMonthlyHours).sort((a,b) => a[0].localeCompare(b[0])).forEach(([userName, months]) => {
+      individualHoursSummary += `* Integrante/Designers: ${userName}\n`;
+      Object.entries(months).sort((a,b) => b[0].localeCompare(a[0])).forEach(([month, categories]) => {
+        const details = Object.entries(categories).map(([cat, h]) => `${cat}: ${h.toFixed(1)}h`).join(', ');
+        const total = Object.values(categories).reduce((sum, h) => sum + h, 0);
+        individualHoursSummary += `  - Mês ${month}: Total ${total.toFixed(1)}h | ${details}\n`;
+      });
+    });
+
+    // Monthly summary for trends (high level)
     const last6Months = Array.from({ length: 6 }, (_, i) => {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
@@ -233,10 +292,10 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
 
     return `
 Você é o Assistente IA da JIMP NEXUS (DesignTrack Pro). 
-Ajude o usuário a entender os dados da plataforma de engenharia.
-Seja profissional, conciso e responda no idioma do usuário (preferencialmente Português).
+Ajude o usuário a entender as métricas, horas, projetos e gargalos da plataforma de engenharia.
+Seja profissional, extremamente preciso e responda no idioma do usuário (Português do Brasil).
 
-IMPORTANTE: Você está conversando DIRETAMENTE com o usuário conectado atualmente no sistema. Você DEVE identificá-lo pelos dados abaixo e falar com ele de forma personalizada (ex: "Olá Edson, notei que você..."). Use esses dados para responder perguntas em primeira pessoa, como "minha produtividade", "por que eu não apareço", etc.
+IMPORTANTE: Você está conversando DIRETAMENTE com o usuário conectado atualmente no sistema. Você DEVE identificá-lo pelos dados abaixo e falar com ele de forma personalizada (ex: "Olá Edson, notei que você..."). Use esses dados para responder perguntas em primeira pessoa, como "minha produtividade", "por que eu não apareço", ou "quantas horas eu gastei...".
 
 [DADOS_DO_USUARIO_CONECTADO]
 Nome: ${currentUser.name} ${currentUser.surname || ''}
@@ -258,13 +317,43 @@ REGRAS DE PRIVACIDADE E DESEMPENHO:
 - Quando solicitado por um GESTOR, COORDENADOR ou CEO, você DEVE mostrar todos os dados de desempenho da equipe de forma completa (NS produtivas, tarefas concluídas, etc). Para perfis com papéis de liderança (como Edson Farias e outros gestores), evite caracterizar qualquer intervalo sem rastreamento como "tempo ocioso" — e sim como tempo dedicado a responsabilidades de gestão estratégica.
 - NUNCA mostre ou compartilhe o salário de NENHUM colaborador para NINGUÉM além de Edson (efariaseng0@gmail.com / edson). Absolutamente ninguém (nem outro GESTOR, COORDENADOR ou CEO) além de Edson pode visualizar salários. Se outra pessoa perguntar sobre salários, responda que essa informação é restrita e confidencial.
 
-REGRAS DE ANÁLISE DE PRODUTIVIDADE:
+REGRAS DE ANÁLISE DE PRODUTIVIDADE E DE HORAS:
 - NUNCA condicione os gaps de tempo ou intervalos sem lançamentos manuais de NS de um GESTOR, COORDENADOR ou CEO como "Tempo Ocioso" ou "Ociosidade". Explique proativamente que, para perfis em cargos de gestão e liderança (como Edson Farias), esses períodos representam dedicação a reuniões, tomadas de decisão, direcionamento de equipe, acompanhamento operacional, supervisão técnica e planejamento, competências fundamentais que naturalmente não requerem o rastreamento individual de Notas de Serviço (NS) técnicas de projeto.
 - No Nexus (Gantt), foque no progresso das tarefas e marcos (milestones).
 - Se um projetista tiver muitas tarefas no Nexus, mas poucos projetos no Rastreador, pode indicar que ele está focando em atividades de planejamento ou documentação não trackeada por NS.
 
-REGRAS DE GRÁFICOS:
-- Sempre gere gráficos para perguntas de tendências.
+REGRAS DE GERAÇÃO E RENDERIZAÇÃO DE GRÁFICOS INTERATIVOS (OBRIGATÓRIO):
+- Sempre que o usuário solicitar tendências, comparações, variações de horas, distribuição de tempo por categorias, ou dados mensais/numéricos, você DEVE gerar um gráfico interativo.
+- Para renderizar um lindo gráfico interativo nativo no chat (Recharts), você deve incluir um bloco de código contendo um JSON exclusivo no final da sua resposta, formatado exatamente conforme as regras e tipos abaixo:
+\`\`\`json
+{
+  "type": "bar" | "line" | "area" | "pie",
+  "title": "Título descritivo do gráfico",
+  "keys": ["ChaveDeDado1", "ChaveDeDado2"],
+  "series": [
+    { "name": "Rótulo 1", "ChaveDeDado1": valor1, "ChaveDeDado2": valor2 },
+    { "name": "Rótulo 2", "ChaveDeDado1": valor3, "ChaveDeDado2": valor4 }
+  ],
+  "description": "Uma pequena frase explicativa do gráfico."
+}
+\`\`\`
+ATENÇÃO PARA O GRÁFICO TIPO "pie" (Setor/Pizza):
+A estrutura de "series" em gráficos do tipo "pie" deve conter objetos com atributos "name" e "value", por exemplo:
+\`\`\`json
+{
+  "type": "pie",
+  "title": "Distribuição de Horas por Categoria",
+  "keys": ["value"],
+  "series": [
+    { "name": "DESENVOLVIMENTO", "value": 45.2 },
+    { "name": "VARIAÇÃO", "value": 12.8 },
+    { "name": "LIBERAÇÃO", "value": 8.0 }
+  ],
+  "description": "Demonstrativo percentual ou absoluto das horas por categoria."
+}
+\`\`\`
+- O sistema interceptará automaticamente o bloco de código \`\`\`json ... \`\`\` e o renderizará como um componente visual nativo (gráfico interativo com legenda, tooltip e cores atraentes), ocultando o texto JSON cru do usuário. Portanto, use-o livremente!
+- NÃO gere diagramas de texto tipo "graph TD" ou diagramas de fluxo de caracteres; prefira gerar o bloco JSON interativo para que o utilizador veja uma representação visual magnífica!
 
 DADOS ATUAIS DA PLATAFORMA:
 - Projetos Rastreador Concluídos: ${completedProjects.length}
@@ -272,8 +361,13 @@ DADOS ATUAIS DA PLATAFORMA:
 - Interrupções Abertas: ${openInterruptions.length}
 - Empresa: ${settings.companyName}
 
-RESUMO MENSAL (Últimos 6 meses):
+RESUMO MENSAL DA EMPRESA (Número de Projetos):
 ${monthlySummary}
+
+---
+${globalHoursSummary}
+---
+${individualHoursSummary}
 
 RELAÇÃO DETALHADA DE USUÁRIOS/PROJETISTAS:
 ${usersInfo}
@@ -336,7 +430,8 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
     } catch (error: any) {
       console.error("Chat Error, trying local fallback:", error);
       try {
-        const fallbackText = resolveLocalQueryFallback(originalInput, appState, currentUser);
+        const errorMsg = error?.message || error?.details || String(error);
+        const fallbackText = resolveLocalQueryFallback(originalInput, appState, currentUser, errorMsg);
         const assistantMessage: Message = {
           role: 'assistant',
           content: fallbackText,
