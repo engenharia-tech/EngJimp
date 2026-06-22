@@ -254,7 +254,107 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [projectTimeSearchQuery, setProjectTimeSearchQuery] = useState<string>('');
   const [projectTimePage, setProjectTimePage] = useState<number>(0);
 
-  const [visibleSections, setVisibleSections] = useState<string[]>(['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table']);
+  const hasPermissionForSection = (section: string): boolean => {
+    const role = currentUser.role;
+    switch (section) {
+      case 'kpi':
+        return role !== 'PROCESSOS';
+      case 'ranking':
+        return (role === 'CEO' || role === 'GESTOR' || role === 'COORDENADOR') && role !== 'PROCESSOS';
+      case 'innovation':
+        return true;
+      case 'releases':
+        return role !== 'PROCESSOS';
+      case 'ns_analysis':
+        return true;
+      case 'detailed_report':
+        return true;
+      case 'project_hours_table':
+        return true;
+      case 'advanced_charts':
+        return true;
+      case 'interruption_report':
+        return ['GESTOR', 'CEO', 'COORDENADOR'].includes(role);
+      case 'engineering_compliance':
+        return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(role);
+      case 'activities':
+        return role === 'GESTOR';
+      case 'stops':
+        return role === 'GESTOR';
+      default:
+        return true;
+    }
+  };
+
+  const [visibleSections, setVisibleSections] = useState<string[]>(() => {
+    const sections = ['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table', 'activities', 'stops'];
+    const role = currentUser.role;
+    return sections.filter(section => {
+      switch (section) {
+        case 'kpi':
+          return role !== 'PROCESSOS';
+        case 'ranking':
+          return (role === 'CEO' || role === 'GESTOR' || role === 'COORDENADOR') && role !== 'PROCESSOS';
+        case 'innovation':
+          return true;
+        case 'releases':
+          return role !== 'PROCESSOS';
+        case 'ns_analysis':
+          return true;
+        case 'detailed_report':
+          return true;
+        case 'project_hours_table':
+          return true;
+        case 'advanced_charts':
+          return true;
+        case 'interruption_report':
+          return ['GESTOR', 'CEO', 'COORDENADOR'].includes(role);
+        case 'engineering_compliance':
+          return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(role);
+        case 'activities':
+          return role === 'GESTOR';
+        case 'stops':
+          return role === 'GESTOR';
+        default:
+          return true;
+      }
+    });
+  });
+
+  useEffect(() => {
+    const sections = ['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table', 'activities', 'stops'];
+    const role = currentUser.role;
+    setVisibleSections(sections.filter(section => {
+      switch (section) {
+        case 'kpi':
+          return role !== 'PROCESSOS';
+        case 'ranking':
+          return (role === 'CEO' || role === 'GESTOR' || role === 'COORDENADOR') && role !== 'PROCESSOS';
+        case 'innovation':
+          return true;
+        case 'releases':
+          return role !== 'PROCESSOS';
+        case 'ns_analysis':
+          return true;
+        case 'detailed_report':
+          return true;
+        case 'project_hours_table':
+          return true;
+        case 'advanced_charts':
+          return true;
+        case 'interruption_report':
+          return ['GESTOR', 'CEO', 'COORDENADOR'].includes(role);
+        case 'engineering_compliance':
+          return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(role);
+        case 'activities':
+          return role === 'GESTOR';
+        case 'stops':
+          return role === 'GESTOR';
+        default:
+          return true;
+      }
+    }));
+  }, [currentUser.role]);
 
   // Helper to normalize strings for comparison (remove accents and uppercase)
   const normalize = (str: string) => 
@@ -1970,118 +2070,126 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
         <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-3">{t('selectDashboards')}</p>
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-4 gap-y-3">
-          <label className="flex items-center gap-2 cursor-pointer group">
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('kpi') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input 
               type="checkbox" 
-              checked={visibleSections.includes('kpi')} 
-              onChange={() => setVisibleSections(prev => prev.includes('kpi') ? prev.filter(s => s !== 'kpi') : [...prev, 'kpi'])}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={visibleSections.includes('kpi') && hasPermissionForSection('kpi')} 
+              disabled={!hasPermissionForSection('kpi')}
+              onChange={() => hasPermissionForSection('kpi') && setVisibleSections(prev => prev.includes('kpi') ? prev.filter(s => s !== 'kpi') : [...prev, 'kpi'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('totalHours')}</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer group">
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('ranking') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input 
               type="checkbox" 
-              checked={visibleSections.includes('ranking')} 
-              onChange={() => setVisibleSections(prev => prev.includes('ranking') ? prev.filter(s => s !== 'ranking') : [...prev, 'ranking'])}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={visibleSections.includes('ranking') && hasPermissionForSection('ranking')} 
+              disabled={!hasPermissionForSection('ranking')}
+              onChange={() => hasPermissionForSection('ranking') && setVisibleSections(prev => prev.includes('ranking') ? prev.filter(s => s !== 'ranking') : [...prev, 'ranking'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('productivityRankingTitle')}</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer group">
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('innovation') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input 
               type="checkbox" 
-              checked={visibleSections.includes('innovation')} 
-              onChange={() => setVisibleSections(prev => prev.includes('innovation') ? prev.filter(s => s !== 'innovation') : [...prev, 'innovation'])}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={visibleSections.includes('innovation') && hasPermissionForSection('innovation')} 
+              disabled={!hasPermissionForSection('innovation')}
+              onChange={() => hasPermissionForSection('innovation') && setVisibleSections(prev => prev.includes('innovation') ? prev.filter(s => s !== 'innovation') : [...prev, 'innovation'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('innovationStatus')}</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer group">
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('ns_analysis') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input 
               type="checkbox" 
-              checked={visibleSections.includes('ns_analysis')} 
-              onChange={() => setVisibleSections(prev => prev.includes('ns_analysis') ? prev.filter(s => s !== 'ns_analysis') : [...prev, 'ns_analysis'])}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={visibleSections.includes('ns_analysis') && hasPermissionForSection('ns_analysis')} 
+              disabled={!hasPermissionForSection('ns_analysis')}
+              onChange={() => hasPermissionForSection('ns_analysis') && setVisibleSections(prev => prev.includes('ns_analysis') ? prev.filter(s => s !== 'ns_analysis') : [...prev, 'ns_analysis'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('nsAnalysis')}</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer group">
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('detailed_report') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input 
               type="checkbox" 
-              checked={visibleSections.includes('detailed_report')} 
-              onChange={() => setVisibleSections(prev => prev.includes('detailed_report') ? prev.filter(s => s !== 'detailed_report') : [...prev, 'detailed_report'])}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={visibleSections.includes('detailed_report') && hasPermissionForSection('detailed_report')} 
+              disabled={!hasPermissionForSection('detailed_report')}
+              onChange={() => hasPermissionForSection('detailed_report') && setVisibleSections(prev => prev.includes('detailed_report') ? prev.filter(s => s !== 'detailed_report') : [...prev, 'detailed_report'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('detailedReport')}</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer group">
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('advanced_charts') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input 
               type="checkbox" 
-              checked={visibleSections.includes('advanced_charts')} 
-              onChange={() => setVisibleSections(prev => prev.includes('advanced_charts') ? prev.filter(s => s !== 'advanced_charts') : [...prev, 'advanced_charts'])}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={visibleSections.includes('advanced_charts') && hasPermissionForSection('advanced_charts')} 
+              disabled={!hasPermissionForSection('advanced_charts')}
+              onChange={() => hasPermissionForSection('advanced_charts') && setVisibleSections(prev => prev.includes('advanced_charts') ? prev.filter(s => s !== 'advanced_charts') : [...prev, 'advanced_charts'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">Gráficos Avançados</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer group">
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('project_hours_table') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input 
               type="checkbox" 
-              checked={visibleSections.includes('project_hours_table')} 
-              onChange={() => setVisibleSections(prev => prev.includes('project_hours_table') ? prev.filter(s => s !== 'project_hours_table') : [...prev, 'project_hours_table'])}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={visibleSections.includes('project_hours_table') && hasPermissionForSection('project_hours_table')} 
+              disabled={!hasPermissionForSection('project_hours_table')}
+              onChange={() => hasPermissionForSection('project_hours_table') && setVisibleSections(prev => prev.includes('project_hours_table') ? prev.filter(s => s !== 'project_hours_table') : [...prev, 'project_hours_table'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
             />
             <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">Horas por Projeto</span>
           </label>
-          {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
-            <>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input 
-                  type="checkbox" 
-                  checked={visibleSections.includes('activities')} 
-                  onChange={() => setVisibleSections(prev => prev.includes('activities') ? prev.filter(s => s !== 'activities') : [...prev, 'activities'])}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('activitiesByDesigner')}</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input 
-                  type="checkbox" 
-                  checked={visibleSections.includes('stops')} 
-                  onChange={() => setVisibleSections(prev => prev.includes('stops') ? prev.filter(s => s !== 'stops') : [...prev, 'stops'])}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('stopAnalysis')}</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input 
-                  type="checkbox" 
-                  checked={visibleSections.includes('interruption_report')} 
-                  onChange={() => setVisibleSections(prev => prev.includes('interruption_report') ? prev.filter(s => s !== 'interruption_report') : [...prev, 'interruption_report'])}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('interruptionReport')}</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input 
-                  type="checkbox" 
-                  checked={visibleSections.includes('releases')} 
-                  onChange={() => setVisibleSections(prev => prev.includes('releases') ? prev.filter(s => s !== 'releases') : [...prev, 'releases'])}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('teamReleases')}</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input 
-                  type="checkbox" 
-                  checked={visibleSections.includes('engineering_compliance')} 
-                  onChange={() => setVisibleSections(prev => prev.includes('engineering_compliance') ? prev.filter(s => s !== 'engineering_compliance') : [...prev, 'engineering_compliance'])}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('engineeringPerformance')}</span>
-              </label>
-            </>
-          )}
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('activities') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('activities') && hasPermissionForSection('activities')} 
+              disabled={!hasPermissionForSection('activities')}
+              onChange={() => hasPermissionForSection('activities') && setVisibleSections(prev => prev.includes('activities') ? prev.filter(s => s !== 'activities') : [...prev, 'activities'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+            />
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('activitiesByDesigner')}</span>
+          </label>
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('stops') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('stops') && hasPermissionForSection('stops')} 
+              disabled={!hasPermissionForSection('stops')}
+              onChange={() => hasPermissionForSection('stops') && setVisibleSections(prev => prev.includes('stops') ? prev.filter(s => s !== 'stops') : [...prev, 'stops'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+            />
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('stopAnalysis')}</span>
+          </label>
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('interruption_report') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('interruption_report') && hasPermissionForSection('interruption_report')} 
+              disabled={!hasPermissionForSection('interruption_report')}
+              onChange={() => hasPermissionForSection('interruption_report') && setVisibleSections(prev => prev.includes('interruption_report') ? prev.filter(s => s !== 'interruption_report') : [...prev, 'interruption_report'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+            />
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('interruptionReport')}</span>
+          </label>
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('releases') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('releases') && hasPermissionForSection('releases')} 
+              disabled={!hasPermissionForSection('releases')}
+              onChange={() => hasPermissionForSection('releases') && setVisibleSections(prev => prev.includes('releases') ? prev.filter(s => s !== 'releases') : [...prev, 'releases'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+            />
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('teamReleases')}</span>
+          </label>
+          <label className={`flex items-center gap-2 group ${!hasPermissionForSection('engineering_compliance') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input 
+              type="checkbox" 
+              checked={visibleSections.includes('engineering_compliance') && hasPermissionForSection('engineering_compliance')} 
+              disabled={!hasPermissionForSection('engineering_compliance')}
+              onChange={() => hasPermissionForSection('engineering_compliance') && setVisibleSections(prev => prev.includes('engineering_compliance') ? prev.filter(s => s !== 'engineering_compliance') : [...prev, 'engineering_compliance'])}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+            />
+            <span className="text-[11px] sm:text-sm font-medium text-gray-700 dark:text-slate-200 group-hover:text-blue-600 transition-colors uppercase">{t('engineeringPerformance')}</span>
+          </label>
         </div>
       </div>
 
@@ -2355,78 +2463,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           </div>
         )}
 
-      {/* NOVO: Gráfico Horas Realizadas vs Meta Mensal */}
-      {currentUser.role !== 'PROCESSOS' && visibleSections.includes('kpi') && (
-        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[400px]">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-            <div className="flex flex-col">
-                <h3 className="text-lg font-bold text-black dark:text-white flex items-center uppercase">
-                    <Target className="w-5 h-5 mr-2 text-indigo-500" />
-                    {t('hoursVsGoalTitle')}
-                </h3>
-                <p className="text-xs text-black dark:text-white ml-7 opacity-70 uppercase">{t('hoursVsGoalSub')}</p>
-            </div>
-              
-              <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 dark:text-slate-400">{t('goalLabel')}</span>
-                      <input 
-                          type="number" 
-                          value={monthlyGoal}
-                          onChange={(e) => setMonthlyGoal(Number(e.target.value))}
-                          className="w-16 p-1 border dark:border-slate-600 rounded text-sm outline-none focus:ring-1 focus:ring-indigo-500 dark:bg-black dark:text-white"
-                      />
-                  </div>
 
-                  {currentUser.role === 'GESTOR' && (
-                  <select
-                      value={selectedDesignerForChart}
-                      onChange={(e) => setSelectedDesignerForChart(e.target.value)}
-                      className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
-                  >
-                      <option value="ALL">{t('allDesigners')}</option>
-                      {availableDesigners.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                      ))}
-                  </select>
-                  )}
-              </div>
-            </div>
-
-            <div className="h-[250px] sm:h-[300px] w-full">
-              {hoursVsGoalData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={hoursVsGoalData} margin={{ top: 10, right: window.innerWidth < 640 ? 10 : 30, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }} />
-                    <YAxis 
-                      allowDecimals={false} 
-                      tickLine={false} 
-                      axisLine={false} 
-                      style={{ fontSize: '12px', fill: theme === 'dark' ? '#94a3b8' : '#64748b' }}
-                      label={{ value: t('hours'), angle: -90, position: 'insideLeft', style: { fill: theme === 'dark' ? '#64748b' : '#9ca3af', fontSize: '12px' } }}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
-                      itemStyle={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}
-                      labelStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
-                      cursor={{ fill: theme === 'dark' ? '#334155' : '#f3f4f6' }}
-                      formatter={(value: number) => [`${value}h`, '']}
-                    />
-                    <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                    <Bar dataKey="Realizado" name={t('realizedHours')} fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} />
-                    <Line type="monotone" dataKey="Meta" name={t('goal')} stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 text-sm">
-                  <Target className="w-8 h-8 text-gray-200 dark:text-slate-700 mb-2" />
-                  {t('noHoursData')}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
       {/* NOVO: Ranking do Mês (CEO/GESTOR/COORDENADOR) */}
       {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR') && currentUser.role !== 'PROCESSOS' && visibleSections.includes('ranking') && (
