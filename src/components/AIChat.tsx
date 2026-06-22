@@ -464,6 +464,11 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
     // Map of [user_name_or_global][month_YYYY_MM][category_name] = total_hours
     // We aggregate daily first to apply a strict daily limit (max 12h of tracking per day, normalized/scaled down to 10h if exceeded)
     const dailyAccumulator: Record<string, Record<string, Record<string, number>>> = {};
+    const userRoleMap: Record<string, string> = {};
+
+    users.forEach(u => {
+      userRoleMap[`${u.name} ${u.surname || ''}`.trim()] = u.role;
+    });
 
     projects.forEach(p => {
       if (!p.userId || !p.startTime) return;
@@ -509,9 +514,11 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
     });
 
     const userMonthlyHours: Record<string, Record<string, Record<string, number>>> = {};
-    const globalMonthlyHours: Record<string, Record<string, number>> = {};
+    const globalProjetistasMonthlyHours: Record<string, Record<string, number>> = {};
+    const globalManagementMonthlyHours: Record<string, Record<string, number>> = {};
 
     Object.entries(dailyAccumulator).forEach(([userName, dates]) => {
+      const role = userRoleMap[userName] || 'PROJETISTA';
       Object.entries(dates).forEach(([dateStr, categories]) => {
         const month = dateStr.substring(0, 7); // YYYY-MM
         const dailyTotal = Object.values(categories).reduce((sum, h) => sum + h, 0);
@@ -530,28 +537,49 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
           if (!userMonthlyHours[userName][month]) userMonthlyHours[userName][month] = {};
           userMonthlyHours[userName][month][category] = (userMonthlyHours[userName][month][category] || 0) + finalHours;
 
-          if (!globalMonthlyHours[month]) globalMonthlyHours[month] = {};
-          globalMonthlyHours[month][category] = (globalMonthlyHours[month][category] || 0) + finalHours;
+          if (role === 'PROJETISTA') {
+            if (!globalProjetistasMonthlyHours[month]) globalProjetistasMonthlyHours[month] = {};
+            globalProjetistasMonthlyHours[month][category] = (globalProjetistasMonthlyHours[month][category] || 0) + finalHours;
+          } else {
+            if (!globalManagementMonthlyHours[month]) globalManagementMonthlyHours[month] = {};
+            globalManagementMonthlyHours[month][category] = (globalManagementMonthlyHours[month][category] || 0) + finalHours;
+          }
         });
       });
     });
 
-    // 1. Compile Global Monthly Hour Summary (all employees combined per month and type)
-    let globalHoursSummary = "DISTRIBUIÇÃO DE HORAS TOTAIS DA EMPRESA POR MÊS E CATEGORIA DE TRABALHO:\n";
-    Object.entries(globalMonthlyHours).sort((a, b) => b[0].localeCompare(a[0])).forEach(([month, categories]) => {
+    // 1. Compile Global Monthly Hour Summary for Projetistas (Equipe de Projetistas)
+    let globalHoursSummary = "DISTRIBUIÇÃO DE HORAS ÚTEIS DE ENGENHARIA DA EQUIPE DE PROJETISTAS POR MÊS (APENAS categoria de Projetos):\n";
+    Object.entries(globalProjetistasMonthlyHours).sort((a, b) => b[0].localeCompare(a[0])).forEach(([month, categories]) => {
       const details = Object.entries(categories).map(([cat, h]) => `${cat}: ${h.toFixed(1)}h`).join(', ');
       const total = Object.values(categories).reduce((sum, h) => sum + h, 0);
-      globalHoursSummary += `- Mês ${month}: Total ${total.toFixed(1)}h [Detalhado: ${details}]\n`;
+      globalHoursSummary += `- Mês ${month}: Total ${total.toFixed(1)}h [De Projetistas: ${details}]\n`;
     });
 
+    // 1b. Compile Global Monthly Hour Summary for Management/Other activities (Liderança e Processos)
+    let globalManagementHoursSummary = "DISTRIBUIÇÃO DE HORAS DE GESTÃO, REUNIÕES, AULAS E OUTRAS ATIVIDADES OPERACIONAIS DE LIDERANÇA/OUTROS POR MÊS:\n";
+    Object.entries(globalManagementMonthlyHours).sort((a, b) => b[0].localeCompare(a[0])).forEach(([month, categories]) => {
+      const details = Object.entries(categories).map(([cat, h]) => `${cat}: ${h.toFixed(1)}h`).join(', ');
+      const total = Object.values(categories).reduce((sum, h) => sum + h, 0);
+      globalManagementHoursSummary += `- Mês ${month}: Total ${total.toFixed(1)}h [De Liderança/Processos: ${details}]\n`;
+    });
+
+    // Combine them under globalHoursSummary for clear AI intake
+    globalHoursSummary += "\n" + globalManagementHoursSummary;
+
     // 2. Compile Individual Monthly Hour Summary
-    let individualHoursSummary = "DISTRIBUIÇÃO DETALHADA DE HORAS DE CADA PROJETISTA/INTEGRANTE POR MÊS E CATEGORIA:\n";
+    let individualHoursSummary = "DISTRIBUIÇÃO DETALHADA DE HORAS DE CADA PROJETISTA OU GESTOR POR MÊS:\n";
     Object.entries(userMonthlyHours).sort((a,b) => a[0].localeCompare(b[0])).forEach(([userName, months]) => {
-      individualHoursSummary += `* Integrante/Designers: ${userName}\n`;
+      const role = userRoleMap[userName] || 'PROJETISTA';
+      individualHoursSummary += `* Integrante: ${userName} (Cargo/Função: ${role})\n`;
       Object.entries(months).sort((a,b) => b[0].localeCompare(a[0])).forEach(([month, categories]) => {
         const details = Object.entries(categories).map(([cat, h]) => `${cat}: ${h.toFixed(1)}h`).join(', ');
         const total = Object.values(categories).reduce((sum, h) => sum + h, 0);
-        individualHoursSummary += `  - Mês ${month}: Total ${total.toFixed(1)}h | ${details}\n`;
+        if (role === 'PROJETISTA') {
+          individualHoursSummary += `  - Mês ${month} (Apenas Horas e Atividades Úteis): Total ${total.toFixed(1)}h | ${details}\n`;
+        } else {
+          individualHoursSummary += `  - Mês ${month} (Horas de Gestão, Reuniões, Treinamento, Outros): Total ${total.toFixed(1)}h | ${details}\n`;
+        }
       });
     });
 
@@ -606,7 +634,11 @@ REGRAS DE ANÁLISE DE PRODUTIVIDADE E DE HORAS:
   * O total de horas produtivas úteis regulamentares varia entre 176h a 193.6h por mês (com base em 20 ou 22 dias úteis ordinários, descontando feriados normais).
   * O limite mensal máximo regulamentar legal é de 220 horas. Explique proativamente que relatórios que apontavam acumulados discrepantes (como Cobo com 402.7 horas em Maio) decorriam de "trackers que foram esquecidos abertos/rodando continuamente inclusive fora do expediente ou aos finais de semana" ou sessões de testes duplicadas.
   * O assistente agora corrige isso e aplica uma normalização diária inteligente de no máximo 10h-12h por dia, reduzindo o excesso artificial e trazendo os dados para a realidade produtiva tangível e saudável (aproximando as somas reais de 176h a 220h).
-  * REGRA ESSENCIAL DE HORAS ÚTEIS: Para colaboradores com o cargo/papel de "PROJETISTA", as únicas horas consideradas "horas úteis de engenharia" (horas de projetos) são as gastas especificamente em "VARIAÇÃO DE PROJETO" (VARIAÇÃO), "LIBERAÇÃO" e "DESENVOLVIMENTO". Todas as demais horas (como outras categorias e Atividades Operacionais em geral) NÃO entram neste cálculo para a IA ou os dashboards de projetistas. Já para perfis de cargos de liderança ("GESTOR", "COORDENADOR" ou "CEO"), a régua é outra e todas as suas horas registradas e reuniões contam normalmente.
+  * REGRA ESSENCIAL E CRÍTICA DE HORAS ÚTEIS: Para colaboradores com o cargo/papel de "PROJETISTA" (ou ao analisar de forma individual ou em equipe os projetistas), as únicas horas consideradas "horas úteis de engenharia" (horas de projetos) são as gastas especificamente em "VARIAÇÃO DE PROJETO" (ou VARIAÇÃO), "LIBERAÇÃO" e "DESENVOLVIMENTO". 
+  * NENHUMA OUTRA ATIVIDADE pode ser computada ou contemplada para os projetistas. Você está terminantemente proibido de incluir atividades de suporte/liderança (como reuniões, aulas, processos) ou as horas de gestores/CEO (como as horas do Edson, que atua como GESTOR e tem horas registradas como "aula" ou gestão) na análise dos projetistas.
+  * SEPARAR ANÁLISE POR EQUIPE E INDIVÍDUO: Ao ser consultado sobre "projetista" ou "projetistas" de forma geral ou individual, certifique-se de que está olhando apenas colaboradores cuja função/cargo listada nos dados é "PROJETISTA". GESTORES, COORDENADORES, CEO não são projetistas corporativos do ponto de vista de produção. Se uma pessoa com cargo 'PROJETISTA' tiver registros, mostre apenas as suas horas úteis de projetos.
+  * Se o Edson (ou qualquer outro gestor/coordenador com dezenas de horas de aula/gestão) estiver listado, explique claramente que eles exercem papel de liderança operacional de alto nível, e que suas horas de reunião ou aula não fazem parte do escopo de "horas úteis de engenharia de projeto dos projetistas".
+  * Quando o usuário fizer uma pergunta como "Quantas horas o projetista gastou com projeto, liberação, variação e desenvolvimento?", sua resposta deve ser baseada UNICAMENTE nas horas dos profissionais com cargo de PROJETISTA nas 3 categorias elegíveis (Variação, Liberação e Desenvolvimento), sem jamais misturar ou inflar os dados com outras atividades (como aulas) ou com horas de gestores. Exclua do somatório e mencione explicitamente que as aulas do Gestor (como Edson) foram descartadas da conta conforme as diretrizes do sistema.
 - SEMPRE mostre as horas e suas respectivas PERCENTUAL (%) exatas calculadas sobre a soma total daquele período quando o usuário perguntar sobre a distribuição ou variação de atividades (ex: "Desenvolvimento: 120.0h (54.5%)", "Variação: 32.5h (14.8%)", "Liberação: 12.0h (5.5%)", etc.).
 - Os gráficos renderizados no bate-papo trarão, ao lado direito da tela, um painel complementar interativo e elegante relacionando cada cor, categoria ou série de dados com seu respectivo valor e percentual calculados matematicamente. Diga isso ao usuário para orientar a leitura da legenda colorida lateral!
 - NUNCA condicione os gaps de tempo ou intervalos sem lançamentos de NS de um GESTOR, COORDENADOR ou CEO como "Tempo Ocioso" ou "Ociosidade". Esclareça de maneira didática que a função desses profissionais não é "operacionalmente produtiva" (ou seja, de fabricação técnica de desenhos/cálculos), mas sim de alta relevância diretiva. Use termos claros e adequados para se referir a esses períodos, tais como "Planejamento Estratégico", "Coordenação Executiva", "Direcionamento Operacional", "Alinhamento de Equipe", "Supervisão de Diretrizes" e "Mentoria Técnica". Explique que essas responsabilidades fundamentais não exigem o rastreamento individual através de Notas de Serviço (NS) técnicas de projeto.
