@@ -3,7 +3,8 @@ import nodemailer from "nodemailer";
 import { GoogleGenAI } from "@google/genai";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -105,9 +106,9 @@ app.post("/api/send-email", async (req, res) => {
 // API Route for Gemini analysis and chat
 app.post("/api/gemini/generate", async (req, res) => {
   try {
-    const { prompt, model } = req.body;
-    if (!prompt) {
-      return res.status(400).json({ success: false, error: "Prompt is missing." });
+    const { prompt, model, audio } = req.body;
+    if (!prompt && !audio) {
+      return res.status(400).json({ success: false, error: "Prompt or audio is required." });
     }
 
     const rawApiKey = process.env.GEMINI_API_KEY;
@@ -128,6 +129,31 @@ app.post("/api/gemini/generate", async (req, res) => {
     let lastError: any = null;
     let success = false;
 
+    // Construct the parts array for multimodal input
+    const parts: any[] = [];
+    if (audio) {
+      let sanitizedMimeType = audio.mimeType || "audio/webm";
+      if (sanitizedMimeType.includes(";")) {
+        sanitizedMimeType = sanitizedMimeType.split(";")[0];
+      }
+      parts.push({
+        inlineData: {
+          mimeType: sanitizedMimeType,
+          data: audio.data
+        }
+      });
+    }
+    parts.push({
+      text: prompt || "O arquivo de áudio acima é a pergunta/mensagem de voz do usuário. Por favor, ouça-o cuidadosa e atenciosamente, decodifique/entenda a pergunta e responda em formato texto de maneira clara e prestativa em português."
+    });
+
+    const sdkContents = [
+      {
+        role: "user",
+        parts
+      }
+    ];
+
     for (const currentModel of uniqueModels) {
       if (success) break;
       try {
@@ -143,7 +169,7 @@ app.post("/api/gemini/generate", async (req, res) => {
 
         const response = await ai.models.generateContent({
           model: currentModel,
-          contents: prompt,
+          contents: sdkContents,
         });
 
         if (response && response.text) {
@@ -167,7 +193,7 @@ app.post("/api/gemini/generate", async (req, res) => {
               "User-Agent": "aistudio-build"
             },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }]
+              contents: [{ role: "user", parts }]
             })
           });
 

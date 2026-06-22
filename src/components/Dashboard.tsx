@@ -367,6 +367,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         return false;
       }
 
+      // Filter project hours for PROJETISTA: useful hours are VARIATION, DEVELOPMENT, or RELEASE
+      if (p.userId) {
+        const u = data.users.find(x => x.id === p.userId);
+        if (u && u.role === 'PROJETISTA') {
+          const isProjectHour = p.type === ProjectType.VARIATION || p.type === ProjectType.DEVELOPMENT || p.type === ProjectType.RELEASE;
+          if (!isProjectHour) return false;
+        }
+      }
+
       // Filter by selected designer (for roles other than PROJETISTA, which is already restricted)
       if (selectedDesignerForReleases !== 'ALL' && p.userId !== selectedDesignerForReleases) {
         return false;
@@ -809,6 +818,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
         if (a.userId && processUserIds.has(a.userId) && !isSomeEdson) {
             return;
+        }
+
+        // Rule for PROJETISTA role: exclude operational activities from useful hours calculation entirely
+        if (a.userId) {
+            const u = data.users.find(x => x.id === a.userId);
+            if (u && u.role === 'PROJETISTA') {
+                return;
+            }
         }
 
         // Role-based filtering: Designers only see their own data
@@ -1481,6 +1498,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       const userProjects = filteredProjects.filter(p => p.userId === user.id);
       userProjects.forEach(proj => {
         if (!proj.startTime) return;
+
+        // Apply strict engineering hours check for PROJETISTA role
+        if (user.role === 'PROJETISTA') {
+          const isProjectHour = proj.type === ProjectType.VARIATION || proj.type === ProjectType.DEVELOPMENT || proj.type === ProjectType.RELEASE;
+          if (!isProjectHour) return;
+        }
+
         const pDate = new Date(proj.startTime);
         if (isNaN(pDate.getTime())) return;
         
