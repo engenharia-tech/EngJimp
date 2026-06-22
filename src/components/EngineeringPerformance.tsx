@@ -31,7 +31,8 @@ import {
   User, 
   OperationalActivity, 
   InterruptionRecord, 
-  AppSettings 
+  AppSettings,
+  ProjectType
 } from '../types';
 import { 
   format, 
@@ -164,6 +165,10 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
 
         // Add projects
         userProjects.forEach(p => {
+          if (designer.role === 'PROJETISTA') {
+            const isProjectHour = p.type === ProjectType.VARIATION || p.type === ProjectType.DEVELOPMENT || p.type === ProjectType.RELEASE;
+            if (!isProjectHour) return;
+          }
           const start = parseISO(p.startTime);
           // If activity is open, use min(now, workEnd) to avoid counting 24h
           const now = new Date();
@@ -181,6 +186,9 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
 
         // Add operational activities
         userActivities.forEach(a => {
+          if (designer.role === 'PROJETISTA') {
+            return;
+          }
           const start = parseISO(a.startTime);
           const now = new Date();
           const effectiveNow = now > workEnd ? workEnd : now;

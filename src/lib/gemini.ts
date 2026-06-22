@@ -2,7 +2,7 @@
  * Client-side proxy utility to interact with the server-side Gemini endpoint.
  * This keeps API keys safely hidden from the browser.
  */
-export const askGemini = async (prompt: string): Promise<string> => {
+export const askGemini = async (prompt: string, audio?: { mimeType: string; data: string }): Promise<string> => {
   try {
     const response = await fetch("/api/gemini/generate", {
       method: "POST",
@@ -12,6 +12,7 @@ export const askGemini = async (prompt: string): Promise<string> => {
       body: JSON.stringify({
         prompt,
         model: "gemini-3.5-flash",
+        audio,
       }),
     });
 

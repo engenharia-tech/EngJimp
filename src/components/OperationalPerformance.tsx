@@ -2235,14 +2235,40 @@ const EngineeringDashboard: React.FC<{
 
     // Overtime analysis
     const overtimeHours = relevantProjects
-      .filter(p => p?.isOvertime)
+      .filter(p => {
+        if (!p?.isOvertime) return false;
+        if (p?.userId) {
+          const u = (users || []).find(x => x.id === p.userId);
+          if (u && u.role === 'PROJETISTA') {
+            const isProjectHour = p.type === 'VARIAÇÃO' || p.type === 'DESENVOLVIMENTO' || p.type === 'LIBERAÇÃO';
+            if (!isProjectHour) return false;
+          }
+        }
+        return true;
+      })
       .reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0) / 3600;
 
     const totalActiveSeconds = isGestor 
-      ? relevantProjects.reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0)
+      ? relevantProjects.reduce((acc, p) => {
+          if (p?.userId) {
+            const u = (users || []).find(x => x.id === p.userId);
+            if (u && u.role === 'PROJETISTA') {
+              const isProjectHour = p.type === 'VARIAÇÃO' || p.type === 'DESENVOLVIMENTO' || p.type === 'LIBERAÇÃO';
+              if (!isProjectHour) return acc;
+            }
+          }
+          return acc + (p?.totalActiveSeconds || 0);
+        }, 0)
       : relevantProjects.reduce((acc, p) => {
           // Exclude overtime projects entirely from total working hours calculations for non-gestors
           if (p?.isOvertime) return acc;
+          if (p?.userId) {
+            const u = (users || []).find(x => x.id === p.userId);
+            if (u && u.role === 'PROJETISTA') {
+              const isProjectHour = p.type === 'VARIAÇÃO' || p.type === 'DESENVOLVIMENTO' || p.type === 'LIBERAÇÃO';
+              if (!isProjectHour) return acc;
+            }
+          }
           return acc + (p?.totalActiveSeconds || 0);
         }, 0);
 
@@ -2256,6 +2282,13 @@ const EngineeringDashboard: React.FC<{
     relevantProjects.forEach(p => {
       // Exclude overtime projects for non-gestors
       if (!isGestor && p?.isOvertime) return;
+      if (p?.userId) {
+        const u = (users || []).find(x => x.id === p.userId);
+        if (u && u.role === 'PROJETISTA') {
+          const isProjectHour = p.type === 'VARIAÇÃO' || p.type === 'DESENVOLVIMENTO' || p.type === 'LIBERAÇÃO';
+          if (!isProjectHour) return;
+        }
+      }
       const type = String(p?.implementType || p?.type || t('notInformed') || 'Não Informado');
       if (!typeGroups[type]) typeGroups[type] = { total: 0, count: 0 };
       typeGroups[type].total += (p?.totalActiveSeconds || 0);
@@ -2272,7 +2305,15 @@ const EngineeringDashboard: React.FC<{
 
     // Efficiency by user
     const userStats = (users || []).map(u => {
-      const uProjects = relevantProjects.filter(p => p?.userId === u?.id && (isGestor || !p?.isOvertime));
+      const uProjects = relevantProjects.filter(p => {
+        if (p?.userId !== u?.id) return false;
+        if (!isGestor && p?.isOvertime) return false;
+        if (u.role === 'PROJETISTA') {
+          const isProjectHour = p.type === 'VARIAÇÃO' || p.type === 'DESENVOLVIMENTO' || p.type === 'LIBERAÇÃO';
+          if (!isProjectHour) return false;
+        }
+        return true;
+      });
       const uHours = uProjects.reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0) / 3600;
       const uCount = uProjects.length;
       return {

@@ -142,7 +142,25 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   };
 
   const productivityData = useMemo(() => {
-    const filtered = data.projects.filter(p => isProjectInPeriod(p));
+    const filtered = data.projects.filter(p => {
+      if (!isProjectInPeriod(p)) return false;
+
+      // Role-based filtering: Designers only see their own
+      if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
+        return false;
+      }
+
+      // Apply engineering hours category criteria for PROJETISTA role
+      if (p.userId) {
+        const u = data.users.find(x => x.id === p.userId);
+        if (u && u.role === 'PROJETISTA') {
+          const isProjectHour = p.type === ProjectType.VARIATION || p.type === ProjectType.DEVELOPMENT || p.type === ProjectType.RELEASE;
+          if (!isProjectHour) return false;
+        }
+      }
+
+      return true;
+    });
 
     const totalProductiveSeconds = filtered.reduce((acc, curr) => acc + (curr.totalActiveSeconds || 0), 0);
     const totalInterruptionSeconds = filtered.reduce((acc, curr) => acc + (curr.interruptionSeconds || 0), 0);
@@ -178,6 +196,15 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       // Role-based filtering: Designers only see their own
       if (currentUser.role === 'PROJETISTA' && p.userId !== currentUser.id) {
         return false;
+      }
+
+      // Apply engineering hours category criteria for PROJETISTA role
+      if (p.userId) {
+        const u = data.users.find(x => x.id === p.userId);
+        if (u && u.role === 'PROJETISTA') {
+          const isProjectHour = p.type === ProjectType.VARIATION || p.type === ProjectType.DEVELOPMENT || p.type === ProjectType.RELEASE;
+          if (!isProjectHour) return false;
+        }
       }
 
       return true;
