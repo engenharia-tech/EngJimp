@@ -63,7 +63,8 @@ export const processNexusQuery = async (
   query: string, 
   appState: AppState, 
   currentUser: User,
-  history?: { role: 'user' | 'assistant'; content: string }[]
+  history?: { role: 'user' | 'assistant'; content: string }[],
+  audio?: { mimeType: string; data: string }
 ): Promise<string> => {
     // 1. Geração de Contexto Local
     const { 
@@ -82,7 +83,10 @@ export const processNexusQuery = async (
     const equipePerformace = users.map(u => {
       const projsUsuario = projects.filter(p => p.userId === u.id);
       const tarefasGantt = ganttTasks.filter(t => t.assignedTo?.includes(u.id));
-      const atividadesOperacionais = operationalActivities.filter(a => a.userId === u.id);
+      const atividadesOperacionais = operationalActivities.filter(a => {
+        const name = (a.activityName || '').toUpperCase();
+        return a.userId === u.id && !name.includes('FOLGA') && !name.includes('FIM DE SEMANA');
+      });
       
       const concluidosRastreador = projsUsuario.filter(p => p.status === 'COMPLETED').length;
       const concluidasGantt = tarefasGantt.filter(t => t.status === 'done').length;
@@ -162,7 +166,19 @@ export const processNexusQuery = async (
       const mesChave = d.toISOString().substring(0, 7);
       
       const projsMes = projects.filter(p => p.startTime.startsWith(mesChave) && designerIds.has(p.userId));
-      const opsMes = operationalActivities.filter(a => a.startTime.startsWith(mesChave) && designerIds.has(a.userId));
+      const opsMes = operationalActivities.filter(a => {
+        const name = (a.activityName || '').toUpperCase();
+        return (
+          a.startTime.startsWith(mesChave) && 
+          designerIds.has(a.userId) && 
+          !name.includes('FOLGA') && 
+          !name.includes('FIM DE SEMANA') &&
+          !name.includes('AULA') &&
+          !name.includes('AULAS') &&
+          !name.includes('TREINAMENTO') &&
+          !name.includes('CAPACIT')
+        );
+      });
       
       const horasTracker = projsMes.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600;
       const horasOps = opsMes.reduce((acc, a) => acc + (a.durationSeconds || 0), 0) / 3600;
@@ -236,7 +252,7 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
     const fullPrompt = `${NEXUS_IDENTITY}\n\n${contextData}\n\n${userHeader}\n\n${historyText ? `[CONVERSA ANTERIOR]\n${historyText}\n\n` : ''}Usuário (${currentUser.name}): ${query}\n\nAssistente:`;
     
     // Chamada ao núcleo de processamento
-    const response = await askGemini(fullPrompt);
+    const response = await askGemini(fullPrompt, audio);
     
     return response;
   } catch (error: any) {
