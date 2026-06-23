@@ -31,24 +31,30 @@ const CustomHoursTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const hoursData = payload.find((p: any) => p.dataKey === 'horas');
     const percentData = payload.find((p: any) => p.dataKey === 'percentage');
+    const capacityBase = hoursData?.payload?.capacityBase || 0;
+    const projectHours = hoursData?.value || 0;
+    const restHours = hoursData?.payload?.rest !== undefined ? hoursData.payload.rest : (capacityBase > projectHours ? capacityBase - projectHours : 0);
+    const projectPercent = capacityBase > 0 ? parseFloat(((projectHours / capacityBase) * 100).toFixed(1)) : 0;
+    const restPercent = capacityBase > 0 ? parseFloat((Math.max(0, 100 - projectPercent)).toFixed(1)) : 0;
+
     return (
-      <div className="bg-white dark:bg-stone-900 border border-gray-100 dark:border-slate-800 p-3 rounded-xl shadow-lg space-y-1">
+      <div className="bg-white dark:bg-stone-900 border border-gray-100 dark:border-slate-800 p-4 rounded-xl shadow-lg space-y-2 min-w-[240px]">
         <p className="text-xs font-black text-black dark:text-white uppercase tracking-wide border-b border-gray-100 dark:border-slate-800 pb-1 mb-1">{label}</p>
-        {hoursData && (
-          <p className="text-xs text-amber-500 font-mono flex justify-between gap-4">
-            <span>Horas em Projeto:</span> <span className="font-bold">{hoursData.value}h</span>
-          </p>
-        )}
-        {percentData && (
-          <p className="text-xs text-blue-500 font-mono flex justify-between gap-4">
-            <span>% de Utilização:</span> <span className="font-bold">{percentData.value}%</span>
-          </p>
-        )}
-        {hoursData?.payload?.capacityBase && (
-          <p className="text-[10px] text-gray-500 dark:text-slate-500 italic mt-1 border-t border-gray-50 dark:border-slate-900/50 pt-1">
-            Capacidade Líquida (8.8h / dia útil): {hoursData.payload.capacityBase}h
-          </p>
-        )}
+        
+        <p className="text-xs text-amber-500 font-mono flex justify-between gap-4">
+          <span>Horas em Projeto:</span> 
+          <span className="font-bold">{projectHours.toFixed(1)}h ({projectPercent}%)</span>
+        </p>
+
+        <p className="text-xs text-blue-500 font-mono flex justify-between gap-4">
+          <span>Outras Atividades / Tempo Livre:</span> 
+          <span className="font-bold">{restHours.toFixed(1)}h ({restPercent}%)</span>
+        </p>
+
+        <p className="text-[10px] text-gray-500 dark:text-slate-500 italic mt-1 border-t border-gray-50 dark:border-slate-900/50 pt-1 flex justify-between">
+          <span>Capacidade Líquida (8.8h/dia):</span>
+          <span>{capacityBase.toFixed(1)}h</span>
+        </p>
       </div>
     );
   }
@@ -910,6 +916,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     // Processar Atividades Operacionais (que já são produtivas por natureza)
     data.operationalActivities.forEach(a => {
+        // Skip weekend / off-time activities completely to prevent messing up stats
+        const nameUpper = (a.activityName || '').toUpperCase();
+        if (nameUpper.includes('FOLGA') || nameUpper.includes('FIM DE SEMANA')) {
+            return;
+        }
+
+        // Exclude training and classroom hours entirely from overall development/engineering totals
+        if (
+            nameUpper.includes('AULA') || 
+            nameUpper.includes('AULAS') || 
+            nameUpper.includes('TREINAMENTO') || 
+            nameUpper.includes('CAPACIT')
+        ) {
+            return;
+        }
+
         // Exclude data from 'PROCESSOS' users
         const isSomeEdson = a.userId ? (() => {
             const u = data.users.find(x => x.id === a.userId);
@@ -1132,17 +1154,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     });
   }, [filteredProjects, selectedDesignerForChart, monthlyGoal, months]);
 
-  // 2. Bar Chart Data: Releases (Monthly, Yearly or Global)
+  // 2. Bar Chart Data: Releases and Overall Project Hours (Monthly, Yearly or Global)
   const barData = useMemo(() => {
-    // 1. Get all-time completed projects
-    const completedProjectsAllTime = data.projects.filter(p => {
-      // Must be completed
-      if (p.status !== 'COMPLETED') return false;
-
-      // Must be assigned to a user who is a PROJETISTA
+    // 1. Get all-time valid projects of PROJETISTA or the selected user
+    const validProjectsAllTime = data.projects.filter(p => {
       if (!p.userId) return false;
       const u = data.users.find(x => x.id === p.userId);
-      if (!u || u.role !== 'PROJETISTA') return false;
+      if (!u) return false;
 
       // Exclude data from 'PROCESSOS' users
       const isSomeEdson = (() => {
@@ -1158,16 +1176,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         return false;
       }
 
-      return true;
+      const activeDesignerTarget = currentUser.role === 'PROJETISTA' ? currentUser.id : selectedDesignerForReleases;
+      if (activeDesignerTarget !== 'ALL') {
+        return p.userId === activeDesignerTarget;
+      }
+
+      return u.role === 'PROJETISTA';
     });
 
-    // 2. Apply additional selected designer selector (if Gestor/CEO selects one)
-    const designerFiltered = completedProjectsAllTime.filter(p => {
-      if (currentUser.role === 'PROJETISTA') {
-        return p.userId === currentUser.id;
-      }
-      return selectedDesignerForReleases === 'ALL' || p.userId === selectedDesignerForReleases;
-    });
+    // 2. Apply additional selected designer selector (if Gestor/CEO/Coordenador selects one)
+    const designerFiltered = validProjectsAllTime;
 
     // 3. Group based on releaseGrouping
     const designersInTeam = data.users.filter(u => u.role === 'PROJETISTA');
@@ -1204,7 +1222,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     };
 
     if (releaseGrouping === 'GLOBAL') {
-        const totalCount = designerFiltered.length;
+        const completedCount = designerFiltered.filter(p => p.status === 'COMPLETED').length;
         const totalHours = designerFiltered.reduce((sum, p) => sum + (p.totalActiveSeconds || 0), 0) / 3600;
         
         // Find all unique months in designerFiltered or fallback to Jan-Jun 2026
@@ -1228,12 +1246,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
         const capacityBase = (isAll ? teamSize : 1) * globalCapacity;
         const percentage = parseFloat(((totalHours / capacityBase) * 100).toFixed(1));
+        const rest = Math.max(0, capacityBase - totalHours);
+
         return [{
             name: 'Total Global',
-            liberacoes: totalCount,
+            liberacoes: completedCount,
             horas: parseFloat(totalHours.toFixed(1)),
             percentage,
-            capacityBase: parseFloat(capacityBase.toFixed(1))
+            capacityBase: parseFloat(capacityBase.toFixed(1)),
+            rest: parseFloat(rest.toFixed(1))
         }];
     }
 
@@ -1252,7 +1273,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         if (!acc[key]) {
             acc[key] = { count: 0, hours: 0 };
         }
-        acc[key].count += 1;
+        if (curr.status === 'COMPLETED') {
+            acc[key].count += 1;
+        }
         acc[key].hours += (curr.totalActiveSeconds || 0) / 3600;
         return acc;
     }, {} as Record<string, { count: number; hours: number }>);
@@ -1269,13 +1292,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         const fullYear = parsedYear < 100 ? parsedYear + 2000 : parsedYear;
         const singleCapacity = getCapacityForMonth(mIdx !== -1 ? mIdx : 0, fullYear);
         capacityBase = (isAll ? teamSize : 1) * singleCapacity;
-      } else if (releaseGrouping === 'YEARLY') {
-        const fullYear = parseInt(key);
-        let yearlyCapacity = 0;
-        for (let m = 0; m < 12; m++) {
-          yearlyCapacity += getCapacityForMonth(m, fullYear);
-        }
-        capacityBase = (isAll ? teamSize : 1) * yearlyCapacity;
       } else {
         const fullYear = parseInt(key);
         let yearlyCapacity = 0;
@@ -1286,13 +1302,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       }
       
       const percentage = parseFloat(((hours / capacityBase) * 100).toFixed(1));
+      const rest = Math.max(0, capacityBase - hours);
 
       return {
         name: key,
         liberacoes: count,
         horas: parseFloat(hours.toFixed(1)),
         percentage,
-        capacityBase: parseFloat(capacityBase.toFixed(1))
+        capacityBase: parseFloat(capacityBase.toFixed(1)),
+        rest: parseFloat(rest.toFixed(1))
       };
     }).sort((a, b) => {
         if (releaseGrouping === 'MONTHLY') {
@@ -1303,7 +1321,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         }
         return a.name.localeCompare(b.name);
     });
-  }, [data.projects, processUserIds, currentUser.role, currentUser.id, selectedDesignerForReleases, releaseGrouping, months]);
+  }, [data.projects, processUserIds, currentUser.role, currentUser.id, selectedDesignerForReleases, releaseGrouping, months, data.users]);
 
   // Memo para listagem e pesquisa dinâmica da quantidade de horas por projeto
   const projectTimeDetails = useMemo(() => {
@@ -1719,6 +1737,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     filteredTargetOps.forEach(a => {
       if (!a.startTime) return;
+      const nameUpper = (a.activityName || '').toUpperCase();
+      if (nameUpper.includes('FOLGA') || nameUpper.includes('FIM DE SEMANA')) {
+        return;
+      }
+      if (
+        nameUpper.includes('AULA') || 
+        nameUpper.includes('AULAS') || 
+        nameUpper.includes('TREINAMENTO') || 
+        nameUpper.includes('CAPACIT')
+      ) {
+        return;
+      }
       const start = new Date(a.startTime);
       const end = a.endTime ? new Date(a.endTime) : new Date();
       const hours = Math.max((end.getTime() - start.getTime()) / 3600000, 0);
@@ -1751,6 +1781,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     });
 
     filteredTargetOps.forEach(a => {
+      const nameUpper = (a.activityName || '').toUpperCase();
+      if (nameUpper.includes('FOLGA') || nameUpper.includes('FIM DE SEMANA')) {
+        return;
+      }
+      if (
+        nameUpper.includes('AULA') || 
+        nameUpper.includes('AULAS') || 
+        nameUpper.includes('TREINAMENTO') || 
+        nameUpper.includes('CAPACIT')
+      ) {
+        return;
+      }
       const start = new Date(a.startTime);
       const end = a.endTime ? new Date(a.endTime) : new Date();
       const hours = Math.max((end.getTime() - start.getTime()) / 3600000, 0);
@@ -2012,7 +2054,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             t={t}
           />
 
-          {currentUser.role === 'GESTOR' ? (
+          {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) ? (
             <div className="flex flex-col gap-1 col-span-2 sm:col-span-1">
               <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-1">{t('designer')}</span>
               <div className="relative">
@@ -3081,6 +3123,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         {/* Releases and Hours Analysis Section */}
             {currentUser.role !== 'PROCESSOS' && visibleSections.includes('releases') && (
               <>
+                {/* Dedicated Selector for individual designer right above the charts */}
+                {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                  <div className="col-span-1 md:col-span-2 bg-gray-50/80 dark:bg-stone-900/50 p-4 rounded-xl border border-gray-100 dark:border-slate-800/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-amber-500/10 dark:bg-amber-500/20 rounded-lg text-amber-500">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-black dark:text-white uppercase tracking-wider">
+                          Análise Comparativa de Aproveitamento (Tempo de Engenharia)
+                        </h4>
+                        <p className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">
+                          Filtre por indivíduo para calcular o aproveitamento real das horas em projeto frente à capacidade mensal legal regulamentar.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                      <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest shrink-0">Filtrar Projetista:</span>
+                      <select
+                        value={selectedDesignerForReleases}
+                        onChange={(e) => {
+                          setSelectedDesignerForReleases(e.target.value);
+                          setSelectedDesignerForChart(e.target.value);
+                        }}
+                        className="w-full sm:w-60 p-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500/10 outline-none text-xs bg-white dark:bg-black text-black dark:text-white cursor-pointer font-bold transition-all shadow-sm"
+                      >
+                        <option value="ALL">TODOS OS PROJETISTAS DA EQUIPE</option>
+                        {availableDesigners.map((u) => (
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
                 {/* Chart 1: Projects Released */}
                 <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">

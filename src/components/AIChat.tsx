@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User as UserIcon, Loader2, Trash2, MessageSquare, X, Maximize2, Minimize2, BarChart3, TrendingUp, Mic } from 'lucide-react';
+import { Send, Bot, User as UserIcon, Loader2, Trash2, MessageSquare, X, Maximize2, Minimize2, BarChart3, TrendingUp, Mic, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -91,9 +91,9 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
                 data={data.series}
                 cx="50%"
                 cy="50%"
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={5}
+                innerRadius="55%"
+                outerRadius="75%"
+                paddingAngle={2}
                 dataKey="value"
               >
                 {data.series.map((entry: any, index: number) => (
@@ -109,7 +109,6 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
                 contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: 'none', borderRadius: '8px', color: '#fff' }}
                 itemStyle={{ color: '#fff' }}
               />
-              <Legend wrapperStyle={{ fontSize: '10px' }} />
             </PieChart>
           </ResponsiveContainer>
         );
@@ -211,6 +210,7 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
   // Audio recording states
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [micError, setMicError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<any>(null);
@@ -233,6 +233,11 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
   }, []);
 
   const startRecording = async () => {
+    setMicError(null);
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setMicError('Seu navegador não suporta gravação de áudio ou o acesso está bloqueado pelas restrições de iframe do Google AI Studio. Por favor, abra o aplicativo em uma nova aba usando o botão no canto superior direito para poder gravar!');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
@@ -286,9 +291,17 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
         setRecordingSeconds(prev => prev + 1);
       }, 1000);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao acessar o microfone ou iniciar gravacao:', err);
-      alert('Não foi possível obter permissão ou acessar seu microfone para gravação.');
+      let errMsg = 'Não foi possível acessar seu microfone para gravação.';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.message?.includes('denied')) {
+        errMsg = 'Permissão de microfone negada. Clique no ícone de cadeado na barra de endereços do navegador para permitir, ou abra o app em uma nova aba!';
+      } else if (err.name === 'SecurityError') {
+        errMsg = 'Acesso ao microfone bloqueado pelas políticas de segurança (iframe sandbox). Para gravar sua voz, abra o aplicativo em uma nova aba clicando no ícone do canto superior direito!';
+      } else {
+        errMsg = `Erro de captura: ${err.message || err.name || 'Microfone indisponível'}. Tente abrir o app em uma nova aba!`;
+      }
+      setMicError(errMsg);
     }
   };
 
@@ -338,7 +351,7 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
     setInput('');
 
     try {
-      const context = generateContext();
+      const context = generateContext(originalInput);
       
       const historyText = messages.slice(-10).map(m => {
         return m.role === 'user' ? `Usuário: ${m.content}` : `Assistente: ${m.content}`;
@@ -375,13 +388,24 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
       
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error: any) {
-      console.error("Chat Error with audio:", error);
-      const errorMessage = error.message || "Erro desconhecido";
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `Desculpe, ocorreu um erro ao carregar e processar sua mensagem de áudio com o Gemini: ${errorMessage}. Por favor, tente enviar novamente por texto ou tente um áudio secundário.`,
-        timestamp: new Date()
-      }]);
+      console.error("Chat Error with audio, trying local fallback:", error);
+      try {
+        const errorMsg = error?.message || error?.details || String(error);
+        const fallbackText = resolveLocalQueryFallback(originalInput || 'Descreva os dados', appState, currentUser, errorMsg);
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: fallbackText,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      } catch (fallbackError) {
+        console.error("Local fallback for audio failed:", fallbackError);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Desculpe, ocorreu um erro ao carregar e processar sua mensagem de áudio com o Gemini: ${error.message || error}. Por favor, tente novamente por texto.`,
+          timestamp: new Date()
+        }]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -394,7 +418,7 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-  const generateContext = () => {
+  const generateContext = (query: string = "") => {
     const { projects, interruptions, innovations, users, settings, ganttTasks = [], operationalActivities = [] } = appState;
     
     const completedProjects = projects.filter(p => p.status === 'COMPLETED');
@@ -492,6 +516,17 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
       dailyAccumulator[userName][dateStr][category] = (dailyAccumulator[userName][dateStr][category] || 0) + hours;
     });
 
+    const normalizedQuery = (query || '').toLowerCase();
+    const isSpecificClassOrTrainingQuery = 
+      normalizedQuery.includes('aula') || 
+      normalizedQuery.includes('aula') || 
+      normalizedQuery.includes('treinamento') || 
+      normalizedQuery.includes('capacita') || 
+      normalizedQuery.includes('matheus') || 
+      normalizedQuery.includes('edson') || 
+      normalizedQuery.includes('liderança') ||
+      normalizedQuery.includes('lideranca');
+
     operationalActivities.forEach(act => {
       if (!act.userId || !act.startTime) return;
       const user = users.find(u => u.id === act.userId);
@@ -505,6 +540,26 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
       const userName = `${user.name} ${user.surname || ''}`.trim();
       const dateStr = act.startTime.substring(0, 10); // YYYY-MM-DD
       const category = act.activityName || 'ATIVIDADE OPERACIONAL';
+      
+      // Skip weekend / off-time activities completely to prevent messing up stats
+      const upperCategory = category.toUpperCase();
+      if (upperCategory.includes('FOLGA') || upperCategory.includes('FIM DE SEMANA')) {
+        return;
+      }
+
+      // Check if this action is classroom/training
+      const isClassOrTraining = 
+        upperCategory.includes('AULA') || 
+        upperCategory.includes('TREINAMENTO') || 
+        upperCategory.includes('CAPACITAC') || 
+        upperCategory.includes('CAPACITAÇÃO') ||
+        upperCategory.includes('AULAS');
+
+      // Crucial user requirement: these hours can only appear if specifically requested
+      if (isClassOrTraining && !isSpecificClassOrTrainingQuery) {
+        return;
+      }
+
       const hours = (act.durationSeconds || 0) / 3600;
       if (hours <= 0) return;
 
@@ -533,16 +588,28 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
           const finalHours = hours * factor;
           if (finalHours <= 0) return;
 
+          const catUpper = category.toUpperCase();
+          const isClassOrTraining = 
+            catUpper.includes('AULA') || 
+            catUpper.includes('TREINAMENTO') || 
+            catUpper.includes('CAPACITAC') || 
+            catUpper.includes('CAPACITAÇÃO') ||
+            catUpper.includes('AULAS');
+
           if (!userMonthlyHours[userName]) userMonthlyHours[userName] = {};
           if (!userMonthlyHours[userName][month]) userMonthlyHours[userName][month] = {};
           userMonthlyHours[userName][month][category] = (userMonthlyHours[userName][month][category] || 0) + finalHours;
 
-          if (role === 'PROJETISTA') {
-            if (!globalProjetistasMonthlyHours[month]) globalProjetistasMonthlyHours[month] = {};
-            globalProjetistasMonthlyHours[month][category] = (globalProjetistasMonthlyHours[month][category] || 0) + finalHours;
-          } else {
-            if (!globalManagementMonthlyHours[month]) globalManagementMonthlyHours[month] = {};
-            globalManagementMonthlyHours[month][category] = (globalManagementMonthlyHours[month][category] || 0) + finalHours;
+          // Crucial user requirement: Class/training hours can NEVER mask general engineering development,
+          // so they are 100% excluded from global summaries/graphs (which are compiled into globalProjetistasMonthlyHours/globalManagementMonthlyHours)
+          if (!isClassOrTraining) {
+            if (role === 'PROJETISTA') {
+              if (!globalProjetistasMonthlyHours[month]) globalProjetistasMonthlyHours[month] = {};
+              globalProjetistasMonthlyHours[month][category] = (globalProjetistasMonthlyHours[month][category] || 0) + finalHours;
+            } else {
+              if (!globalManagementMonthlyHours[month]) globalManagementMonthlyHours[month] = {};
+              globalManagementMonthlyHours[month][category] = (globalManagementMonthlyHours[month][category] || 0) + finalHours;
+            }
           }
         });
       });
@@ -639,6 +706,7 @@ REGRAS DE ANÁLISE DE PRODUTIVIDADE E DE HORAS:
   * SEPARAR ANÁLISE POR EQUIPE E INDIVÍDUO: Ao ser consultado sobre "projetista" ou "projetistas" de forma geral ou individual, certifique-se de que está olhando apenas colaboradores cuja função/cargo listada nos dados é "PROJETISTA". GESTORES, COORDENADORES, CEO não são projetistas corporativos do ponto de vista de produção. Se uma pessoa com cargo 'PROJETISTA' tiver registros, mostre apenas as suas horas úteis de projetos.
   * Se o Edson (ou qualquer outro gestor/coordenador com dezenas de horas de aula/gestão) estiver listado, explique claramente que eles exercem papel de liderança operacional de alto nível, e que suas horas de reunião ou aula não fazem parte do escopo de "horas úteis de engenharia de projeto dos projetistas".
   * Quando o usuário fizer uma pergunta como "Quantas horas o projetista gastou com projeto, liberação, variação e desenvolvimento?", sua resposta deve ser baseada UNICAMENTE nas horas dos profissionais com cargo de PROJETISTA nas 3 categorias elegíveis (Variação, Liberação e Desenvolvimento), sem jamais misturar ou inflar os dados com outras atividades (como aulas) ou com horas de gestores. Exclua do somatório e mencione explicitamente que as aulas do Gestor (como Edson) foram descartadas da conta conforme as diretrizes do sistema.
+  * HORAS DE AULAS/TREINAMENTO DE GESTÃO NUNCA CONTAM COMO DESENVOLVIMENTO OU HORAS GLOBAIS DE ENGENHARIA: As horas de aula, treinamento ou capacitação de Edson Farias (Gestor) e Matheus Prando (Coordenador) NUNCA podem ser somadas, mostradas ou incluídas em relatórios globais de engenharia, gráficos de pizza globais de distribuição de horas de engenharia, ou acumulados globais de horas úteis de desenvolvimento. Elas não fazem parte das horas úteis de engenharia e são consideradas tempo de aperfeiçoamento da liderança. Elas APENAS podem ser mostradas se o usuário perguntar especificamente sobre "treinamentos e aulas" (ou capacitação) nominalmente de Edson ou Matheus. Remova-as integralmente de qualquer gráfico de pesquisa de horas de engenharia ou desenvolvimento geral.
 - SEMPRE mostre as horas e suas respectivas PERCENTUAL (%) exatas calculadas sobre a soma total daquele período quando o usuário perguntar sobre a distribuição ou variação de atividades (ex: "Desenvolvimento: 120.0h (54.5%)", "Variação: 32.5h (14.8%)", "Liberação: 12.0h (5.5%)", etc.).
 - Os gráficos renderizados no bate-papo trarão, ao lado direito da tela, um painel complementar interativo e elegante relacionando cada cor, categoria ou série de dados com seu respectivo valor e percentual calculados matematicamente. Diga isso ao usuário para orientar a leitura da legenda colorida lateral!
 - NUNCA condicione os gaps de tempo ou intervalos sem lançamentos de NS de um GESTOR, COORDENADOR ou CEO como "Tempo Ocioso" ou "Ociosidade". Esclareça de maneira didática que a função desses profissionais não é "operacionalmente produtiva" (ou seja, de fabricação técnica de desenhos/cálculos), mas sim de alta relevância diretiva. Use termos claros e adequados para se referir a esses períodos, tais como "Planejamento Estratégico", "Coordenação Executiva", "Direcionamento Operacional", "Alinhamento de Equipe", "Supervisão de Diretrizes" e "Mentoria Técnica". Explique que essas responsabilidades fundamentais não exigem o rastreamento individual através de Notas de Serviço (NS) técnicas de projeto.
@@ -713,7 +781,7 @@ ${usersInfo}
     // Store original user query text in temporary variable before we empty the input
     const originalInput = input;
     try {
-      const context = generateContext();
+      const context = generateContext(originalInput);
       
       // Format history up to 10 previous messages to maintain conversation context
       const historyText = messages.slice(-10).map(m => {
@@ -906,6 +974,21 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
 
       {/* Input */}
       <div className="p-4 bg-white dark:bg-black border-t border-gray-200 dark:border-slate-800">
+        {micError && (
+          <div className="mb-2.5 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 text-amber-900 dark:text-amber-300 text-xs rounded-xl flex items-start gap-2.5 shadow-sm">
+            <AlertCircle className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="font-semibold text-amber-950 dark:text-amber-200 block mb-0.5">Permissão ou Restrição de Iframe</span>
+              <span>{micError}</span>
+            </div>
+            <button 
+              onClick={() => setMicError(null)} 
+              className="text-[10px] uppercase font-bold text-amber-800 hover:text-amber-950 dark:text-amber-400 dark:hover:text-amber-200 underline shrink-0 mt-0.5"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
         {isRecording ? (
           <div className="flex items-center justify-between gap-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 p-2 rounded-xl">
             <div className="flex items-center gap-2 px-2">

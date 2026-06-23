@@ -3,7 +3,7 @@ import {
   Send, Cpu, User as UserIcon, Loader2, Trash2, Maximize2, Minimize2, 
   Database, ShieldCheck, BarChart3, TrendingUp, PieChart as PieIcon, Activity,
   Plus, Search, Edit3, Check, ClipboardCopy, FileDown, Menu, PanelLeftClose, PanelLeft, X,
-  MessageSquare
+  MessageSquare, Mic, AlertCircle
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -28,6 +28,7 @@ interface Message {
   content: string;
   timestamp: Date;
   chartData?: any;
+  audioUrl?: string;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -176,6 +177,129 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
   const [editTitleInput, setEditTitleInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Audio recording states
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [micError, setMicError] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<any>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    };
+  }, []);
+
+  const startRecording = async () => {
+    setMicError(null);
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setMicError('Seu navegador não suporta gravação de áudio ou o acesso está bloqueado pelas restrições de iframe do Google AI Studio. Por favor, abra o aplicativo em uma nova aba usando o botão no canto superior direito para poder gravar!');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+
+      let mimeType = 'audio/webm';
+      if (typeof MediaRecorder !== 'undefined') {
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+          mimeType = 'audio/ogg';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/aac')) {
+          mimeType = 'audio/aac';
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(track => track.stop());
+
+        if (audioChunksRef.current.length === 0) return;
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (audioBlob.size < 100) return;
+
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          const base64Data = reader.result as string;
+          const base64Clean = base64Data.split(',')[1];
+          await handleSendWithAudio(base64Clean, mimeType, audioUrl);
+        };
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+
+    } catch (err: any) {
+      console.error('Erro ao acessar o microfone ou iniciar gravacao:', err);
+      let errMsg = 'Não foi possível acessar seu microfone para gravação.';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.message?.includes('denied')) {
+        errMsg = 'Permissão de microfone negada. Clique no ícone de cadeado na barra de endereços do navegador para permitir, ou abra o app em uma nova aba!';
+      } else if (err.name === 'SecurityError') {
+        errMsg = 'Acesso ao microfone bloqueado pelas políticas de segurança (iframe sandbox). Para gravar sua voz, abra o aplicativo em uma nova aba clicando no ícone do canto superior direito!';
+      } else {
+        errMsg = `Erro de captura: ${err.message || err.name || 'Microfone indisponível'}. Tente abrir o app em uma nova aba!`;
+      }
+      setMicError(errMsg);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      const stream = mediaRecorderRef.current.stream;
+      if (stream) {
+        stream.getTracks().forEach((track: any) => track.stop());
+      }
+      audioChunksRef.current = [];
+    }
+  };
 
   // Retrieve active thread
   const activeThread = useMemo(() => {
@@ -393,6 +517,130 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
       try {
         const errorMsg = error?.message || error?.details || String(error);
         const fallbackText = resolveLocalQueryFallback(queryText, appState, currentUser, errorMsg);
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: fallbackText,
+          timestamp: new Date()
+        };
+        const updatedThreads = currentThreads.map(t => {
+          if (t.id === targetId) {
+            return {
+              ...t,
+              messages: [...t.messages, assistantMessage]
+            };
+          }
+          return t;
+        });
+        setThreads(updatedThreads);
+        saveThreadsToLocalStorage(updatedThreads);
+      } catch (fallbackError) {
+        console.error("Local fallback failed:", fallbackError);
+        const updatedThreads = currentThreads.map(t => {
+          if (t.id === targetId) {
+            return {
+              ...t,
+              messages: [...t.messages, {
+                role: 'assistant',
+                content: `⚠️ Falha crítica no núcleo Nexus: ${error.message || error}`,
+                timestamp: new Date()
+              }]
+            };
+          }
+          return t;
+        });
+        setThreads(updatedThreads);
+        saveThreadsToLocalStorage(updatedThreads);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendWithAudio = async (base64Audio: string, mimeType: string, audioUrl: string) => {
+    setIsLoading(true);
+
+    const userMessage: Message = {
+      role: 'user',
+      content: input.trim() ? `${input}\n🎙️ [Mensagem de Voz]` : '🎙️ Mensagem de Voz',
+      timestamp: new Date(),
+      audioUrl
+    };
+
+    const originalInput = input;
+    setInput('');
+
+    let targetId = activeThreadId;
+    let currentThreads = [...threads];
+    let targetThread = currentThreads.find(t => t.id === targetId);
+
+    if (!targetThread) {
+      const freshThread: ChatThread = {
+        id: Math.random().toString(36).substring(2, 9),
+        title: originalInput.trim() ? (originalInput.substring(0, 30) + (originalInput.length > 30 ? '...' : '')) : '🎙️ Mensagem de Voz',
+        messages: [userMessage],
+        createdAt: new Date()
+      };
+      currentThreads.unshift(freshThread);
+      setThreads(currentThreads);
+      setActiveThreadId(freshThread.id);
+      targetId = freshThread.id;
+      targetThread = freshThread;
+    } else {
+      targetThread.messages = [...targetThread.messages, userMessage];
+      if (targetThread.title === 'Análise Inicial ERP' && targetThread.messages.filter(m => m.role === 'user').length === 1) {
+        targetThread.title = originalInput.trim() ? (originalInput.substring(0, 30) + (originalInput.length > 30 ? '...' : '')) : '🎙️ Mensagem de Voz';
+      }
+      setThreads(currentThreads);
+      saveThreadsToLocalStorage(currentThreads);
+    }
+
+    try {
+      const historyToSend = targetThread.messages.slice(0, -1).map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content
+      }));
+      
+      const audioPayload = { mimeType, data: base64Audio };
+      const queryToSend = originalInput.trim() || 'Fez uma pergunta por áudio.';
+      const response = await processNexusQuery(queryToSend, appState, currentUser, historyToSend, audioPayload);
+      
+      let cleanContent = response;
+      let chartData = null;
+      
+      const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        try {
+          chartData = JSON.parse(jsonMatch[1]);
+          cleanContent = response.replace(jsonMatch[0], '').trim();
+        } catch (e) {
+          console.error("Failed to parse Nexus chart JSON", e);
+        }
+      }
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: cleanContent,
+        timestamp: new Date(),
+        chartData
+      };
+      
+      const updatedThreads = currentThreads.map(t => {
+        if (t.id === targetId) {
+          return {
+            ...t,
+            messages: [...t.messages, assistantMessage]
+          };
+        }
+        return t;
+      });
+
+      setThreads(updatedThreads);
+      saveThreadsToLocalStorage(updatedThreads);
+    } catch (error: any) {
+      console.error("Nexus IA Error with voice, trying local fallback:", error);
+      try {
+        const errorMsg = error?.message || error?.details || String(error);
+        const fallbackText = resolveLocalQueryFallback(originalInput.trim() || 'Descreva os dados', appState, currentUser, errorMsg);
         const assistantMessage: Message = {
           role: 'assistant',
           content: fallbackText,
@@ -881,7 +1129,14 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
                   }`}>
                     <div className={`prose prose-sm ${theme === 'dark' ? 'prose-invert' : ''} max-w-none`}>
                       {msg.role === 'user' ? (
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        <div className="space-y-2">
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                          {msg.audioUrl && (
+                            <div className="mt-2 bg-blue-700/50 dark:bg-slate-950 p-1.5 rounded-xl border border-blue-400/20 max-w-[260px] shadow-inner">
+                              <audio src={msg.audioUrl} controls className="w-full h-8 text-xs rounded opacity-90 outline-none" />
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <MarkdownRenderer content={msg.content} theme={theme} />
                       )}
@@ -990,28 +1245,90 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
 
         {/* Input */}
         <div className={`p-4 ${theme === 'dark' ? 'bg-black border-slate-800' : 'bg-white border-gray-200'} border-t animate-in slide-in-from-bottom-2`}>
-          <form 
-            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-            className="flex gap-2"
-          >
-            <div className="relative flex-1 group">
-              <Database className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${theme === 'dark' ? 'text-slate-600 group-focus-within:text-blue-500' : 'text-slate-400 group-focus-within:text-blue-600'}`} />
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ex: Mostre um gráfico da evolução de projetos..."
-                className={`w-full pl-10 pr-4 py-3 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white placeholder:text-slate-600' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400'} border rounded-xl outline-none focus:ring-2 focus:ring-blue-500/50 text-sm transition-all`}
-              />
+          {micError && (
+            <div className="mb-2.5 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 text-amber-900 dark:text-amber-300 text-xs rounded-xl flex items-start gap-2.5 shadow-sm">
+              <AlertCircle className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-semibold text-amber-950 dark:text-amber-200 block mb-0.5">Permissão ou Restrição de Iframe</span>
+                <span>{micError}</span>
+              </div>
+              <button 
+                onClick={() => setMicError(null)} 
+                className="text-[10px] uppercase font-bold text-amber-800 hover:text-amber-950 dark:text-amber-400 dark:hover:text-amber-200 underline shrink-0 mt-0.5"
+              >
+                Fechar
+              </button>
             </div>
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="p-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 text-white rounded-xl transition-all shadow-lg active:scale-95"
+          )}
+
+          {isRecording ? (
+            <div className="flex items-center justify-between gap-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 p-2 rounded-xl">
+              <div className="flex items-center gap-2 px-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                </span>
+                <span className="text-xs text-red-650 dark:text-red-300 font-black tracking-wider uppercase animate-pulse">
+                  Gravando Voz ({formatTime(recordingSeconds)})
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={cancelRecording}
+                  className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-bold hover:underline transition-colors active:scale-95"
+                  title="Cancelar"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={stopRecording}
+                  className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-sm active:scale-95"
+                  title="Parar e Enviar"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Enviar</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form 
+              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+              className="flex gap-2"
             >
-              <Send className="w-5 h-5" />
-            </button>
-          </form>
+              <div className="relative flex-1 group">
+                <Database className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${theme === 'dark' ? 'text-slate-600 group-focus-within:text-blue-500' : 'text-slate-400 group-focus-within:text-blue-600'}`} />
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ex: Mostre um gráfico da evolução de projetos..."
+                  className={`w-full pl-10 pr-4 py-3 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white placeholder:text-slate-600' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400'} border rounded-xl outline-none focus:ring-2 focus:ring-blue-500/50 text-sm transition-all`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={startRecording}
+                disabled={isLoading}
+                className={`p-3 border transition-colors shrink-0 rounded-xl transition-all active:scale-95 ${
+                  theme === 'dark'
+                    ? 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-400 hover:text-blue-450'
+                    : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-500 hover:text-blue-600'
+                }`}
+                title="Gravar mensagem de voz"
+              >
+                <Mic className="w-5 h-5" />
+              </button>
+              <button
+                type="submit"
+                disabled={!input.trim() || isLoading}
+                className="p-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 text-white rounded-xl transition-all shadow-lg active:scale-95"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </form>
+          )}
           <div className="flex items-center justify-center gap-3 mt-3">
             <div className="h-[1px] flex-1 bg-gray-100 dark:bg-slate-800" />
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
