@@ -217,6 +217,69 @@ Consultando o banco de dados operacional de **${currentUser.name}** (\`${role}\`
 💡 *Se quiser listar os projetos de Rogerio, Charles ou ver a tabela geral da equipe, envie o nome deles ou "Ver ranking"!*`;
   }
 
+  // --- OVERTIME & ADDITIONAL EFFORT ---
+  if (
+    normalized.includes('hora extra') ||
+    normalized.includes('horas extras') ||
+    normalized.includes('esforco adicional') ||
+    normalized.includes('trabalho extra') ||
+    normalized.includes('esforco extra') ||
+    normalized.includes('trabalhei a mais') ||
+    normalized.includes('fim de semana') ||
+    normalized.includes('final de semana') ||
+    normalized.includes('finais de semana')
+  ) {
+    const targetUser = mentionedUser || currentUser;
+    const isSelf = targetUser.id === currentUser.id;
+
+    const userProjects = projects.filter(p => p.userId === targetUser.id);
+    const operationalActivities = appState.operationalActivities || [];
+    const userOps = operationalActivities.filter(a => a.userId === targetUser.id);
+
+    // Filter projects & operational activities that are overtime
+    const overTimeProjects = userProjects.filter(p => p.isOvertime);
+    const overTimeOps = userOps.filter(a => a.isOvertime);
+
+    const hoursProjectOvertime = overTimeProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600;
+    const hoursOpsOvertime = overTimeOps.reduce((acc, a) => acc + (a.durationSeconds || 0), 0) / 3600;
+    const totalOvertimeHours = hoursProjectOvertime + hoursOpsOvertime;
+
+    // Build lists
+    const projectsList = overTimeProjects.length > 0
+      ? overTimeProjects.map(p => `  * **NS ${p.ns}** - *${p.clientName || 'Inespecífico'}* - **${((p.totalActiveSeconds || 0) / 3600).toFixed(2)}h** (${new Date(p.startTime).toLocaleDateString('pt-BR')})`).join('\n')
+      : "  * Nenhuma NS registrada como hora extra.";
+
+    const opsList = overTimeOps.length > 0
+      ? overTimeOps.map(a => `  * **${a.activityName}** - **${((a.durationSeconds || 0) / 3600).toFixed(2)}h** (${new Date(a.startTime).toLocaleDateString('pt-BR')})${a.notes ? ` - *"${a.notes}"*` : ''}`).join('\n')
+      : "  * Nenhuma Atividade Operacional registrada como hora extra.";
+
+    const selfName = isSelf ? "Você" : targetUser.name;
+
+    return `### ⏱️ Relatório de Horas Extras e Esforço Adicional: ${targetUser.name}${isSelf ? " (Você)" : ""}
+Olá, **${name}**! Analisei todos os lançamentos ativos no banco de dados para levantar o esforço dedicado em horários especiais.
+
+A marcação de **Hora Extra** no sistema indica momentos em que o colaborador dedicou seu tempo pessoal (quando deveria estar em casa ou descansando) para apoiar as entregas de projetos da JIMP.
+
+📊 **Resumo de Horas Extras de ${targetUser.name}:**
+* **Total Geral de Horas Extras:** **${totalOvertimeHours.toFixed(1)}h** ⚡
+* **Horas em Projetos (Rastreador NS):** **${hoursProjectOvertime.toFixed(1)}h**
+* **Horas em Atividades Operacionais:** **${hoursOpsOvertime.toFixed(1)}h**
+
+📂 **Detalhamento das Notas de Serviço (NS) como Hora Extra:**
+${projectsList}
+
+⚙️ **Detalhamento das Atividades Operacionais como Hora Extra:**
+${opsList}
+
+💡 **Reconhecimento de Esforço:**
+${totalOvertimeHours > 0 
+  ? `👏 **Excelente comprometimento!** ${selfName} dedicou **${totalOvertimeHours.toFixed(1)}h** de esforço extra fora do expediente para garantir a qualidade e a pontualidade das entregas da JIMP.`
+  : `Até o momento, não constam horas de esforço registradas sob a tag "Hora Extra" para ${targetUser.name} no período analisado.`
+}
+
+*Caso deseje verificar o esforço adicional de outro colega, pergunte mencionando o nome dele (ex: "horas extras do Rogerio").*`;
+  }
+
   // --- "Quem sou eu" / "Quem eu sou"
   if (
     normalized.includes('quem sou eu') ||

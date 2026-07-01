@@ -32,8 +32,15 @@ Sempre que um usuário perguntar sobre o desempenho, produtividade ou o que um p
 - OBSERVE as "atividades_operacionais": se o projetista tem poucas NS mas muitas horas em "reunião" ou "treinamento", ele NÃO está ocioso.
 - O "tempo_ocioso_hoje_estimado" refere-se apenas a GAPS detectados no dia atual. Não use valores acumulados de meses se houver registros operacionais justificando o tempo.
 - Se houver discrepância entre Rastreador (NS) e Nexus (Gantt), verifique se o trabalho está sendo feito como "Atividade Operacional" antes de apontar falha de planejamento.
-- Seja proativo, mas JUSTO: considere o cargo (ex: Gestores, Coordenadores e CEOs não possuem um papel de produção técnico-operacional direta, logo não são "produtivos" na função executiva de desenhos e NS faturáveis. Por essa razão, seus períodos sem lançamentos manuais nunca devem ser descritos de forma alguma como ociosidade ou tempo ocioso. Ao invés disso, defina esses intervalos com palavras claras e apropriadas de liderança e suporte, como "Planejamento Estratégico", "Direcionamento Operacional", "Supervisão e Alinhamento Técnico", "Mentoria Técnica" ou "Coordenação de Equipe").
+- Seja proativo, mas JUSTO: considere o cargo (ex: Gestores, Coordenadores e CEOs não possuem um papel de produção técnico-operacional direta, logo não são "produtivos" na função executiva de desenhos e NS faturáveis. Por essa razão, seus períodos sem lançamentos manuais nunca devem ser descritos de forma alguma como ociosidade ou tempo ocioso. Ao invés disso, defina esses intervalos com palavras claras e apropriadas de liderança e suporte, como "Planejamento Estratégico", "Direcionamento Operacional", "Supervisão e Alinhamento Técnico", "Mentoria Técnico" ou "Coordenação de Equipe").
 - Valorize quem registra tudo corretamente na aba Desempenho Operacional.
+
+# ANÁLISE DE HORAS EXTRAS (OVERTIME) E ESFORÇO ADICIONAL
+- Quando o usuário perguntar sobre horas extras, esforço adicional, trabalho extra, ou o tempo que doa à empresa trabalhando quando deveria estar em casa (inclusive finais de semana/fora do expediente):
+  - Você DEVE consultar o campo "horas_extras" dentro de "resumo_producao_detalhado" de cada colaborador.
+  - Explique claramente e em detalhes o total de horas extras acumuladas, separando o que foi faturado e rastreador de projetos (Rastreador NS) e o que foi registrado em Atividades Operacionais (reuniões em horários extras, etc.).
+  - Cite as NS (Notas de Serviço) ou Atividades Operacionais específicas de hora extra listadas em "lista_detalhada_horas_extras" (inclua datas e horas de cada uma).
+  - Reconheça o valor desse esforço de forma muito empática e profissional, destacando que as horas extras mostram que o funcionário dedicou tempo pessoal (quando deveria estar em casa descansando) em prol dos objetivos e do crescimento da JIMP.
 
 # RESTRIÇÕES
 - NUNCA busque informações na internet
@@ -95,6 +102,32 @@ export const processNexusQuery = async (
       const horasRastreador = projsUsuario.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600;
       const horasAtividades = atividadesOperacionais.reduce((acc, a) => acc + (a.durationSeconds || 0), 0) / 3600;
       
+      // Cálculo Detalhado de Horas Extras (isOvertime === true)
+      const projsOvertime = projsUsuario.filter(p => p.isOvertime);
+      const horasOvertimeRastreador = projsOvertime.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0) / 3600;
+
+      const atividadesOvertime = atividadesOperacionais.filter(a => a.isOvertime);
+      const horasOvertimeAtividades = atividadesOvertime.reduce((acc, a) => acc + (a.durationSeconds || 0), 0) / 3600;
+
+      const totalHorasExtras = horasOvertimeRastreador + horasOvertimeAtividades;
+
+      const detalhesHorasExtras = [
+        ...projsOvertime.map(p => ({
+          tipo: 'Projeto/NS',
+          identificador: `NS ${p.ns}`,
+          nome: p.name || p.projectCode || `NS ${p.ns}`,
+          horas: ((p.totalActiveSeconds || 0) / 3600).toFixed(2),
+          data_inicio: p.startTime
+        })),
+        ...atividadesOvertime.map(a => ({
+          tipo: 'Atividade Operacional',
+          nome: a.activityName,
+          horas: ((a.durationSeconds || 0) / 3600).toFixed(2),
+          data_inicio: a.startTime,
+          notas: a.notes || ''
+        }))
+      ];
+
       // Detalhamento das atividades operacionais
       const resumoAtividades = atividadesOperacionais.reduce((acc: Record<string, number>, a) => {
         acc[a.activityName] = (acc[a.activityName] || 0) + (a.durationSeconds || 0);
@@ -128,7 +161,13 @@ export const processNexusQuery = async (
           atividades_operacionais: Object.entries(resumoAtividades).map(([nome, segs]) => ({ nome, horas: (segs / 3600).toFixed(1) })),
           tempo_ocioso_hoje_estimado: ['GESTOR', 'COORDENADOR', 'CEO'].includes(u.role) 
             ? "0h (Isento - tempo dedicado à gestão estratégica, reuniões e planejamento)" 
-            : `${(ociosidadeDetectadaSegundos / 3600).toFixed(1)}h`
+            : `${(ociosidadeDetectadaSegundos / 3600).toFixed(1)}h`,
+          horas_extras: {
+            total_horas_extras: totalHorasExtras.toFixed(1),
+            no_rastreador_projetos: horasOvertimeRastreador.toFixed(1),
+            nas_atividades_operacionais: horasOvertimeAtividades.toFixed(1),
+            lista_detalhada_horas_extras: detalhesHorasExtras
+          }
         }
       };
     });
