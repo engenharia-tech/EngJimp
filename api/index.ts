@@ -182,6 +182,12 @@ app.post("/api/gemini/generate", async (req, res) => {
         console.warn(`[Gemini API SDK failed for ${currentModel}]:`, sdkError.message || sdkError);
         lastError = sdkError;
 
+        const sdkErrStr = (sdkError.message || String(sdkError)).toLowerCase();
+        if (sdkErrStr.includes("quota") || sdkErrStr.includes("429") || sdkErrStr.includes("resource_exhausted") || sdkErrStr.includes("exhausted")) {
+          console.log("[Gemini API Server] Quota exceeded detected in SDK. Breaking early to avoid useless slow retries.");
+          break; // Break the model loop immediately
+        }
+
         // Attempt direct REST fetch for this model before trying next model
         try {
           console.log(`[Gemini API Server] Attempting REST fallback for model: ${currentModel}`);
@@ -209,9 +215,18 @@ app.post("/api/gemini/generate", async (req, res) => {
           } else {
             const errText = await restResponse.text();
             console.warn(`[Gemini API REST failed for ${currentModel}]: Status ${restResponse.status}, Error: ${errText}`);
+            if (restResponse.status === 429 || errText.toLowerCase().includes("quota") || errText.toLowerCase().includes("exhausted")) {
+              lastError = new Error(errText || "RESOURCE_EXHAUSTED");
+              break; // Break the model loop immediately
+            }
           }
         } catch (restError: any) {
           console.warn(`[Gemini API REST exception for ${currentModel}]:`, restError.message || restError);
+          const restErrStr = (restError.message || String(restError)).toLowerCase();
+          if (restErrStr.includes("quota") || restErrStr.includes("429") || restErrStr.includes("resource_exhausted") || restErrStr.includes("exhausted")) {
+            lastError = restError;
+            break;
+          }
         }
       }
     }
