@@ -200,6 +200,14 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       if (viewMode === 'day') {
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
+        
+        // If selectedDate is a weekend day, and the activity is not marked as overtime,
+        // it does NOT count as active on this day.
+        const isWeekendDay = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+        if (isWeekendDay && !a.isOvertime) {
+          return false;
+        }
+
         // Activity overlaps with the day if:
         // activityStart <= dayEnd AND activityEnd >= dayStart
         return activityStart <= end && activityEnd >= start;
@@ -222,6 +230,14 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       if (viewMode === 'day') {
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
+
+        // If selectedDate is a weekend day, and the project is not marked as overtime,
+        // it does NOT count as active on this day.
+        const isWeekendDay = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+        if (isWeekendDay && !p.isOvertime) {
+          return false;
+        }
+
         return projectStart <= end && projectEnd >= start;
       } else if (viewMode === 'month') {
         return projectStart.getMonth() === selectedDate.getMonth() && 
@@ -379,6 +395,11 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
       if (viewMode !== 'day') {
         items.push({ id, type, name, start, end, color, activityTypeId });
+        return;
+      }
+
+      // If it is a weekend and the activity/project is NOT marked as overtime, do not show it
+      if (isWeekend && !isOvertime) {
         return;
       }
 
