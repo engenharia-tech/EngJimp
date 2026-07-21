@@ -268,7 +268,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     });
   }, [interruptions, selectedDate, selectedUserId, viewMode]);
 
-  // For the global/engineering tab, we need all projects and interruptions for the period (unfiltered by single user)
+  // For the global/engineering tab, we need all projects, activities and interruptions for the period (unfiltered by single user)
   const engineeringProjects = useMemo(() => {
     return projects.filter(p => {
       const projectStart = parseISO(p.startTime);
@@ -286,6 +286,24 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       }
     });
   }, [projects, selectedDate, viewMode]);
+
+  const engineeringActivities = useMemo(() => {
+    return (activities || []).filter(a => {
+      const activityStart = parseISO(a.startTime);
+      const activityEnd = a.endTime ? parseISO(a.endTime) : new Date();
+
+      if (viewMode === 'day') {
+        const start = startOfDay(selectedDate);
+        const end = endOfDay(selectedDate);
+        return activityStart <= end && activityEnd >= start;
+      } else if (viewMode === 'month') {
+        return activityStart.getMonth() === selectedDate.getMonth() && 
+               activityStart.getFullYear() === selectedDate.getFullYear();
+      } else {
+        return activityStart.getFullYear() === selectedDate.getFullYear();
+      }
+    });
+  }, [activities, selectedDate, viewMode]);
 
   const engineeringInterruptions = useMemo(() => {
     return (interruptions || []).filter(i => {
@@ -1784,6 +1802,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       {activeTab === 'engineering' && (
         <EngineeringDashboard 
           projects={engineeringProjects}
+          activities={engineeringActivities}
+          activityTypes={activityTypes}
           users={(users || []).filter(u => u?.role === 'PROJETISTA' || u?.role === 'COORDENADOR')}
           interruptions={engineeringInterruptions}
           theme={theme}
@@ -1791,6 +1811,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           viewMode={viewMode}
           selectedDate={selectedDate}
           currentUser={currentUser}
+          settings={settings}
         />
       )}
 
@@ -2236,6 +2257,8 @@ const Timer: React.FC<{ startTime: string; settings: AppSettings; isOvertime?: b
 
 const EngineeringDashboard: React.FC<{
   projects: ProjectSession[];
+  activities?: OperationalActivity[];
+  activityTypes?: ActivityType[];
   users: User[];
   interruptions: InterruptionRecord[];
   theme: 'light' | 'dark';
@@ -2243,19 +2266,43 @@ const EngineeringDashboard: React.FC<{
   viewMode: 'day' | 'month' | 'year';
   selectedDate: Date;
   currentUser: User;
-}> = ({ projects, users, interruptions, theme, t, viewMode, selectedDate, currentUser }) => {
+  settings?: AppSettings;
+}> = ({ projects, activities = [], activityTypes = [], users, interruptions, theme, t, viewMode, selectedDate, currentUser, settings }) => {
   const stats = useMemo(() => {
     const drafters = (users || []).filter(u => ['PROJETISTA', 'GESTOR', 'COORDENADOR'].includes(u?.role));
     const drafterCount = drafters.length || 1;
 
-    // Filter projects for these users and period
+    // Filter projects and activities for these users and period
     const relevantProjects = projects || [];
+    const relevantActivities = activities || [];
 
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
     const isGestor = currentUser.role === 'GESTOR' || isEdson;
 
+    const isDevOrProjectActivity = (a: OperationalActivity) => {
+      const nameUpper = (a.activityName || '').toUpperCase();
+      const notesUpper = (a.notes || '').toUpperCase();
+      let typeUpper = '';
+      if (activityTypes && a.activityTypeId) {
+        const typeObj = activityTypes.find(t => t.id === a.activityTypeId);
+        if (typeObj) typeUpper = (typeObj.name || '').toUpperCase();
+      }
+      return nameUpper.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') || typeUpper.includes('DESENVOLVIMENTO') ||
+             nameUpper.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || typeUpper.includes('VARIAÇÃO') ||
+             nameUpper.includes('VARIACAO') || notesUpper.includes('VARIACAO') || typeUpper.includes('VARIACAO') ||
+             nameUpper.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || typeUpper.includes('LIBERAÇÃO') ||
+             nameUpper.includes('LIBERACAO') || notesUpper.includes('LIBERACAO') || typeUpper.includes('LIBERACAO');
+    };
+
+    const getActivitySeconds = (a: OperationalActivity) => {
+      if (a.durationSeconds && a.durationSeconds > 0) return a.durationSeconds;
+      if (!a.startTime) return 0;
+      const end = a.endTime ? parseISO(a.endTime) : new Date();
+      return Math.max(0, differenceInSeconds(end, parseISO(a.startTime)));
+    };
+
     // Overtime analysis
-    const overtimeHours = relevantProjects
+    const overtimeHoursFromProjects = relevantProjects
       .filter(p => {
         if (!p?.isOvertime) return false;
         if (p?.userId) {
@@ -2269,7 +2316,16 @@ const EngineeringDashboard: React.FC<{
       })
       .reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0) / 3600;
 
-    const totalActiveSeconds = isGestor 
+    const overtimeHoursFromActivities = relevantActivities
+      .filter(a => {
+        if (!a?.isOvertime) return false;
+        return isDevOrProjectActivity(a);
+      })
+      .reduce((acc, a) => acc + getActivitySeconds(a), 0) / 3600;
+
+    const overtimeHours = overtimeHoursFromProjects + overtimeHoursFromActivities;
+
+    const projectsSeconds = isGestor 
       ? relevantProjects.reduce((acc, p) => {
           if (p?.userId) {
             const u = (users || []).find(x => x.id === p.userId);
@@ -2281,7 +2337,6 @@ const EngineeringDashboard: React.FC<{
           return acc + (p?.totalActiveSeconds || 0);
         }, 0)
       : relevantProjects.reduce((acc, p) => {
-          // Exclude overtime projects entirely from total working hours calculations for non-gestors
           if (p?.isOvertime) return acc;
           if (p?.userId) {
             const u = (users || []).find(x => x.id === p.userId);
@@ -2293,6 +2348,13 @@ const EngineeringDashboard: React.FC<{
           return acc + (p?.totalActiveSeconds || 0);
         }, 0);
 
+    const activitiesSeconds = relevantActivities.reduce((acc, a) => {
+      if (!isGestor && a?.isOvertime) return acc;
+      if (!isDevOrProjectActivity(a)) return acc;
+      return acc + getActivitySeconds(a);
+    }, 0);
+
+    const totalActiveSeconds = projectsSeconds + activitiesSeconds;
     const totalHours = totalActiveSeconds / 3600;
     
     // Calculate per capita index
@@ -2316,6 +2378,15 @@ const EngineeringDashboard: React.FC<{
       typeGroups[type].count += 1;
     });
 
+    relevantActivities.forEach(a => {
+      if (!isGestor && a?.isOvertime) return;
+      if (!isDevOrProjectActivity(a)) return;
+      const type = 'DESENVOLVIMENTO';
+      if (!typeGroups[type]) typeGroups[type] = { total: 0, count: 0 };
+      typeGroups[type].total += getActivitySeconds(a);
+      typeGroups[type].count += 1;
+    });
+
     const averageByType = Object.entries(typeGroups).map(([name, g]) => ({
       name,
       avgHours: Number((g.total / (g.count || 1) / 3600).toFixed(2)),
@@ -2335,8 +2406,16 @@ const EngineeringDashboard: React.FC<{
         }
         return true;
       });
-      const uHours = uProjects.reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0) / 3600;
-      const uCount = uProjects.length;
+      const uActivities = relevantActivities.filter(a => {
+        if (a?.userId !== u?.id) return false;
+        if (!isGestor && a?.isOvertime) return false;
+        return isDevOrProjectActivity(a);
+      });
+
+      const pSeconds = uProjects.reduce((acc, p) => acc + (p?.totalActiveSeconds || 0), 0);
+      const aSeconds = uActivities.reduce((acc, a) => acc + getActivitySeconds(a), 0);
+      const uHours = (pSeconds + aSeconds) / 3600;
+      const uCount = uProjects.length + uActivities.length;
       return {
         id: u?.id || crypto.randomUUID(),
         name: u?.name || '---',
@@ -2355,7 +2434,7 @@ const EngineeringDashboard: React.FC<{
       userStats,
       drafterCount
     };
-  }, [projects, users, t, currentUser]);
+  }, [projects, activities, activityTypes, users, t, currentUser]);
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 

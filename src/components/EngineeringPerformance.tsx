@@ -187,7 +187,12 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         // Add operational activities
         userActivities.forEach(a => {
           if (designer.role === 'PROJETISTA') {
-            return;
+            const nameUpper = (a.activityName || '').toUpperCase();
+            const notesUpper = (a.notes || '').toUpperCase();
+            const isDevOrProject = nameUpper.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') ||
+                                   nameUpper.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || nameUpper.includes('VARIACAO') || notesUpper.includes('VARIACAO') ||
+                                   nameUpper.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || nameUpper.includes('LIBERACAO') || notesUpper.includes('LIBERACAO');
+            if (!isDevOrProject) return;
           }
           const start = parseISO(a.startTime);
           const now = new Date();
