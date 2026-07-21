@@ -162,7 +162,43 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       return true;
     });
 
-    const totalProductiveSeconds = filtered.reduce((acc, curr) => acc + (curr.totalActiveSeconds || 0), 0);
+    const filteredOperationalDevActivities = (data.operationalActivities || []).filter(a => {
+      if (!a.startTime) return false;
+      if (!isDateInPeriod(new Date(a.startTime))) return false;
+
+      if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) {
+        return false;
+      }
+
+      const nameUpper = (a.activityName || '').toUpperCase();
+      const notesUpper = (a.notes || '').toUpperCase();
+      let typeUpper = '';
+      if (data.activityTypes && a.activityTypeId) {
+        const typeObj = data.activityTypes.find(t => t.id === a.activityTypeId);
+        if (typeObj) typeUpper = (typeObj.name || '').toUpperCase();
+      }
+      const isDevOrProject = nameUpper.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') || typeUpper.includes('DESENVOLVIMENTO') ||
+                             nameUpper.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || typeUpper.includes('VARIAÇÃO') ||
+                             nameUpper.includes('VARIACAO') || notesUpper.includes('VARIACAO') || typeUpper.includes('VARIACAO') ||
+                             nameUpper.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || typeUpper.includes('LIBERAÇÃO') ||
+                             nameUpper.includes('LIBERACAO') || notesUpper.includes('LIBERACAO') || typeUpper.includes('LIBERACAO');
+
+      if (a.userId) {
+        const u = data.users.find(x => x.id === a.userId);
+        if (u && u.role === 'PROJETISTA' && !isDevOrProject) return false;
+      }
+      return isDevOrProject;
+    });
+
+    const projectProductiveSeconds = filtered.reduce((acc, curr) => acc + (curr.totalActiveSeconds || 0), 0);
+    const activityProductiveSeconds = filteredOperationalDevActivities.reduce((acc, a) => {
+      if (a.durationSeconds && a.durationSeconds > 0) return acc + a.durationSeconds;
+      if (!a.startTime) return acc;
+      const end = a.endTime ? new Date(a.endTime) : new Date();
+      return acc + Math.max(0, Math.floor((end.getTime() - new Date(a.startTime).getTime()) / 1000));
+    }, 0);
+
+    const totalProductiveSeconds = projectProductiveSeconds + activityProductiveSeconds;
     const totalInterruptionSeconds = filtered.reduce((acc, curr) => acc + (curr.interruptionSeconds || 0), 0);
     const totalSeconds = totalProductiveSeconds + totalInterruptionSeconds;
     
@@ -176,16 +212,16 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
     return {
       projects: filtered,
-      totalCount: filtered.length,
+      totalCount: filtered.length + filteredOperationalDevActivities.length,
       totalProductiveSeconds,
       totalInterruptionSeconds,
       totalSeconds,
       lossPercentage,
-      avgProductiveSeconds: filtered.length > 0 ? totalProductiveSeconds / filtered.length : 0,
+      avgProductiveSeconds: (filtered.length + filteredOperationalDevActivities.length) > 0 ? totalProductiveSeconds / (filtered.length + filteredOperationalDevActivities.length) : 0,
       monthlyCapacitySeconds,
       capacityPercentage
     };
-  }, [data.projects, data.users, selectedMonth, selectedYear, currentUser]);
+  }, [data.projects, data.operationalActivities, data.activityTypes, data.users, selectedMonth, selectedYear, currentUser]);
 
   const clientData = useMemo(() => {
     const filtered = data.projects.filter(p => {
@@ -375,8 +411,69 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       });
     });
 
+    (data.operationalActivities || []).forEach(a => {
+      if (!a.startTime) return;
+      if (!isDateInPeriod(new Date(a.startTime))) return;
+      if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) return;
+
+      const user = data.users.find(u => u.id === a.userId);
+      const name = user ? user.name : (a.userId && a.userId.length < 30 ? a.userId : 'N/A');
+
+      const nameUpper = (a.activityName || '').toUpperCase();
+      const notesUpper = (a.notes || '').toUpperCase();
+      let typeUpper = '';
+      if (data.activityTypes && a.activityTypeId) {
+        const typeObj = data.activityTypes.find(t => t.id === a.activityTypeId);
+        if (typeObj) typeUpper = (typeObj.name || '').toUpperCase();
+      }
+
+      let type: ProjectType | null = null;
+      if (nameUpper.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') || typeUpper.includes('DESENVOLVIMENTO')) {
+        type = ProjectType.DEVELOPMENT;
+      } else if (nameUpper.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || typeUpper.includes('VARIAÇÃO') || nameUpper.includes('VARIACAO') || notesUpper.includes('VARIACAO') || typeUpper.includes('VARIACAO')) {
+        type = ProjectType.VARIATION;
+      } else if (nameUpper.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || typeUpper.includes('LIBERAÇÃO') || nameUpper.includes('LIBERACAO') || notesUpper.includes('LIBERACAO') || typeUpper.includes('LIBERACAO')) {
+        type = ProjectType.RELEASE;
+      }
+
+      if (user && user.role === 'PROJETISTA' && !type) {
+        return;
+      }
+
+      const assignedType = type || ProjectType.DEVELOPMENT;
+      let duration = a.durationSeconds || 0;
+      if (!duration && a.startTime) {
+        const end = a.endTime ? new Date(a.endTime) : new Date();
+        duration = Math.max(0, Math.floor((end.getTime() - new Date(a.startTime).getTime()) / 1000));
+      }
+
+      if (!stats[name]) {
+        stats[name] = { 
+          name, 
+          count: 0, 
+          productiveSeconds: 0, 
+          interruptionSeconds: 0, 
+          totalCost: 0, 
+          projects: [],
+          types: { [ProjectType.VARIATION]: 0, [ProjectType.DEVELOPMENT]: 0, [ProjectType.RELEASE]: 0 }
+        };
+      }
+
+      stats[name].count += 1;
+      stats[name].productiveSeconds += duration;
+      stats[name].types[assignedType] = (stats[name].types[assignedType] || 0) + 1;
+
+      const actCost = duration * costPerSecond;
+      stats[name].totalCost += actCost;
+      stats[name].projects.push({
+        ns: a.activityName || 'Atividade Operacional',
+        client: a.notes || 'Desenvolvimento',
+        cost: actCost
+      });
+    });
+
     return Object.values(stats).sort((a, b) => a.name.localeCompare(b.name));
-  }, [data.projects, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser]);
+  }, [data.projects, data.operationalActivities, data.activityTypes, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, costPerSecond]);
 
   const projectStatusData = useMemo(() => {
     const filtered = data.projects.filter(p => isProjectInPeriod(p));
