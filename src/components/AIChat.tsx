@@ -532,17 +532,17 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
       const user = users.find(u => u.id === act.userId);
       if (!user) return;
 
-      // Skip operational activities entirely for PROJETISTA role
-      if (user.role === 'PROJETISTA') {
+      const category = act.activityName || 'ATIVIDADE OPERACIONAL';
+      const upperCategory = category.toUpperCase();
+      const notesUpper = (act.notes || '').toUpperCase();
+      const isDevOrProject = upperCategory.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') ||
+                             upperCategory.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || upperCategory.includes('VARIACAO') || notesUpper.includes('VARIACAO') ||
+                             upperCategory.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || upperCategory.includes('LIBERACAO') || notesUpper.includes('LIBERACAO');
+
+      // For PROJETISTA role, only include operational activities marked as DESENVOLVIMENTO, VARIAÇÃO, or LIBERAÇÃO
+      if (user.role === 'PROJETISTA' && !isDevOrProject) {
         return;
       }
-
-      const userName = `${user.name} ${user.surname || ''}`.trim();
-      const dateStr = act.startTime.substring(0, 10); // YYYY-MM-DD
-      const category = act.activityName || 'ATIVIDADE OPERACIONAL';
-      
-      // Skip weekend / off-time activities completely to prevent messing up stats
-      const upperCategory = category.toUpperCase();
       if (upperCategory.includes('FOLGA') || upperCategory.includes('FIM DE SEMANA')) {
         return;
       }

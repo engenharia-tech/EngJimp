@@ -942,11 +942,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             return;
         }
 
-        // Rule for PROJETISTA role: exclude operational activities from useful hours calculation entirely
+        // Rule for PROJETISTA role: only allow operational activities marked as DESENVOLVIMENTO, VARIAÇÃO, or LIBERAÇÃO
         if (a.userId) {
             const u = data.users.find(x => x.id === a.userId);
             if (u && u.role === 'PROJETISTA') {
-                return;
+                const notesUpper = (a.notes || '').toUpperCase();
+                let typeUpper = '';
+                if (data.activityTypes && a.activityTypeId) {
+                    const typeObj = data.activityTypes.find(t => t.id === a.activityTypeId);
+                    if (typeObj) typeUpper = (typeObj.name || '').toUpperCase();
+                }
+                const isDevOrProject = nameUpper.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') || typeUpper.includes('DESENVOLVIMENTO') ||
+                                       nameUpper.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || typeUpper.includes('VARIAÇÃO') ||
+                                       nameUpper.includes('VARIACAO') || notesUpper.includes('VARIACAO') || typeUpper.includes('VARIACAO') ||
+                                       nameUpper.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || typeUpper.includes('LIBERAÇÃO') ||
+                                       nameUpper.includes('LIBERACAO') || notesUpper.includes('LIBERACAO') || typeUpper.includes('LIBERACAO');
+                if (!isDevOrProject) {
+                    return;
+                }
             }
         }
 
