@@ -161,6 +161,46 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
   const [isSaving, setIsSaving] = useState(false);
 
+  // Active Interruption Live Tracker State
+  const [interruptionElapsed, setInterruptionElapsed] = useState<number>(0);
+
+  const openInterruption = useMemo(() => {
+    return interruptions.find(i => 
+      i.status === InterruptionStatus.OPEN && 
+      i.designerId === currentUser?.id
+    );
+  }, [interruptions, currentUser?.id]);
+
+  const interruptedProject = useMemo(() => {
+    if (!openInterruption) return null;
+    return existingProjects.find(p => p.id === openInterruption.projectId || p.ns === openInterruption.projectNs);
+  }, [openInterruption, existingProjects]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    const updateInterruptionTimer = () => {
+      if (!openInterruption) {
+        setInterruptionElapsed(0);
+        return;
+      }
+      const startTime = new Date(openInterruption.startTime);
+      const duration = calcActiveSeconds(startTime, new Date(), settings, true, true);
+      setInterruptionElapsed(duration);
+    };
+
+    if (openInterruption) {
+      updateInterruptionTimer();
+      interval = setInterval(updateInterruptionTimer, 1000);
+    } else {
+      setInterruptionElapsed(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [openInterruption, settings]);
+
   // Sync active project if it's updated in the background (via props or other tabs)
   useEffect(() => {
     if (activeProject && existingProjects) {
@@ -697,7 +737,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
         
         // Check for open interruption
         const openInterruption = interruptions.find(i => 
-            i.projectNs === updatedProject.ns && 
+            (i.projectId === updatedProject.id || i.projectNs === updatedProject.ns) && 
             i.status === InterruptionStatus.OPEN && 
             i.designerId === currentUser?.id
         );
@@ -1349,7 +1389,59 @@ JIMPNEXUS
         <div className="space-y-8">
           
           {/* New Project Form - GESTOR, CEO, COORDENADOR, PROJETISTA */}
-          {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') ? (
+          {openInterruption ? (
+            /* Active Interruption Card */
+            <div className="bg-red-50 dark:bg-red-950/20 border-2 border-red-500 dark:border-red-900 rounded-xl p-6 shadow-lg animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-3.5 h-3.5 rounded-full bg-red-500 animate-ping"></span>
+                    <h2 className="text-xl font-extrabold text-red-600 dark:text-red-400 uppercase tracking-wide flex items-center">
+                      <AlertCircle className="w-6 h-6 mr-2 text-red-500 animate-pulse" />
+                      Interrupção Ativa • {openInterruption.responsibleArea}
+                    </h2>
+                  </div>
+                  <p className="text-gray-700 dark:text-slate-300 font-medium text-base mb-1">
+                    O projeto <strong className="text-black dark:text-white font-black text-lg">NS {openInterruption.projectNs}</strong> {openInterruption.clientName ? `(${openInterruption.clientName})` : ''} está pausado aguardando solução do setor apontado.
+                  </p>
+                  <p className="text-gray-600 dark:text-slate-400 text-sm">
+                    <strong>Motivo da parada:</strong> {openInterruption.problemType}
+                  </p>
+                  <p className="text-gray-500 dark:text-slate-500 text-xs mt-1">
+                    Iniciado às: {new Date(openInterruption.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({new Date(openInterruption.startTime).toLocaleDateString()})
+                  </p>
+                </div>
+                
+                <div className="flex flex-col items-center md:items-end gap-3 w-full md:w-auto">
+                  <div className="text-center md:text-right">
+                    <span className="text-xs text-red-500 font-bold uppercase tracking-wider block mb-1">Tempo de Interrupção</span>
+                    <span className="text-5xl font-mono font-black text-red-600 dark:text-red-400 tracking-tight">
+                      {formatTime(interruptionElapsed)}
+                    </span>
+                  </div>
+                  
+                  {interruptedProject ? (
+                    <button
+                      onClick={() => handleResumeFromList(interruptedProject)}
+                      disabled={isSaving}
+                      className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-black py-3 px-6 rounded-xl flex items-center justify-center transition-all shadow-md shadow-green-500/20 uppercase tracking-widest text-sm"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      ) : (
+                        <Play className="w-5 h-5 mr-2 animate-pulse" />
+                      )}
+                      Retomar Trabalho / Resolver
+                    </button>
+                  ) : (
+                    <div className="text-xs text-gray-500 italic">
+                      Não foi possível encontrar o projeto original para retomada automática.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') ? (
               <div className="bg-white dark:bg-black p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
                 <h2 className="text-xl font-bold mb-4 flex items-center text-black dark:text-white">
                   <Clock className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
