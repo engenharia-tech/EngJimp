@@ -773,9 +773,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       String(p.type || '').toUpperCase().trim() === 'DESENVOLVIMENTO'
     );
     
-    const totalDevSeconds = devProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const totalDevProjectSeconds = devProjects.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+
+    const devActivities = filteredActivities.filter(a => {
+      const nameUpper = (a.activityName || '').toUpperCase();
+      const notesUpper = (a.notes || '').toUpperCase();
+      let typeUpper = '';
+      if (data.activityTypes && a.activityTypeId) {
+        const typeObj = data.activityTypes.find(t => t.id === a.activityTypeId);
+        if (typeObj) typeUpper = (typeObj.name || '').toUpperCase();
+      }
+      return nameUpper.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') || typeUpper.includes('DESENVOLVIMENTO');
+    });
+
+    const totalDevActivitySeconds = devActivities.reduce((acc, a) => {
+      if (a.durationSeconds && a.durationSeconds > 0) return acc + a.durationSeconds;
+      if (!a.startTime) return acc;
+      const end = a.endTime ? new Date(a.endTime) : new Date();
+      return acc + Math.max(0, Math.floor((end.getTime() - new Date(a.startTime).getTime()) / 1000));
+    }, 0);
+
+    const totalDevSeconds = totalDevProjectSeconds + totalDevActivitySeconds;
     const totalDevHours = totalDevSeconds / 3600;
-    const count = devProjects.length;
+    const count = devProjects.length + devActivities.length;
     
     const start = startDate ? new Date(startDate) : new Date();
     const end = endDate ? new Date(endDate) : new Date();
@@ -788,39 +808,75 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       avgPerMonth: Number((totalDevHours / monthDiff).toFixed(1)),
       months: monthDiff
     };
-  }, [filteredProjects, startDate, endDate]);
+  }, [filteredProjects, filteredActivities, data.activityTypes, startDate, endDate]);
 
   const releaseStats = useMemo(() => {
     const releases = filteredProjects.filter(p => 
       String(p.type || '').toUpperCase().trim() === 'LIBERAÇÃO'
     );
-    
+    const releaseActivities = filteredActivities.filter(a => {
+      const nameUpper = (a.activityName || '').toUpperCase();
+      const notesUpper = (a.notes || '').toUpperCase();
+      let typeUpper = '';
+      if (data.activityTypes && a.activityTypeId) {
+        const typeObj = data.activityTypes.find(t => t.id === a.activityTypeId);
+        if (typeObj) typeUpper = (typeObj.name || '').toUpperCase();
+      }
+      return nameUpper.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || typeUpper.includes('LIBERAÇÃO') || nameUpper.includes('LIBERACAO') || notesUpper.includes('LIBERACAO') || typeUpper.includes('LIBERACAO');
+    });
+
+    const totalReleaseProjectSeconds = releases.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const totalReleaseActivitySeconds = releaseActivities.reduce((acc, a) => {
+      if (a.durationSeconds && a.durationSeconds > 0) return acc + a.durationSeconds;
+      if (!a.startTime) return acc;
+      const end = a.endTime ? new Date(a.endTime) : new Date();
+      return acc + Math.max(0, Math.floor((end.getTime() - new Date(a.startTime).getTime()) / 1000));
+    }, 0);
+
     return {
-      count: releases.length,
-      totalHours: releases.reduce((acc, p) => acc + p.totalActiveSeconds, 0) / 3600
+      count: releases.length + releaseActivities.length,
+      totalHours: (totalReleaseProjectSeconds + totalReleaseActivitySeconds) / 3600
     };
-  }, [filteredProjects]);
+  }, [filteredProjects, filteredActivities, data.activityTypes]);
 
   const variationStats = useMemo(() => {
     const variations = filteredProjects.filter(p => 
       String(p.type || '').toUpperCase().trim() === 'VARIAÇÃO'
     );
-    
+    const variationActivities = filteredActivities.filter(a => {
+      const nameUpper = (a.activityName || '').toUpperCase();
+      const notesUpper = (a.notes || '').toUpperCase();
+      let typeUpper = '';
+      if (data.activityTypes && a.activityTypeId) {
+        const typeObj = data.activityTypes.find(t => t.id === a.activityTypeId);
+        if (typeObj) typeUpper = (typeObj.name || '').toUpperCase();
+      }
+      return nameUpper.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || typeUpper.includes('VARIAÇÃO') || nameUpper.includes('VARIACAO') || notesUpper.includes('VARIACAO') || typeUpper.includes('VARIACAO');
+    });
+
     const start = startDate ? new Date(startDate) : new Date();
     const end = endDate ? new Date(endDate) : new Date();
     let monthDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
     if (monthDiff <= 0) monthDiff = 1;
 
-    const totalVariationSeconds = variations.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const totalVariationProjectSeconds = variations.reduce((acc, p) => acc + p.totalActiveSeconds, 0);
+    const totalVariationActivitySeconds = variationActivities.reduce((acc, a) => {
+      if (a.durationSeconds && a.durationSeconds > 0) return acc + a.durationSeconds;
+      if (!a.startTime) return acc;
+      const end = a.endTime ? new Date(a.endTime) : new Date();
+      return acc + Math.max(0, Math.floor((end.getTime() - new Date(a.startTime).getTime()) / 1000));
+    }, 0);
+
+    const totalVariationSeconds = totalVariationProjectSeconds + totalVariationActivitySeconds;
     const totalVariationHours = totalVariationSeconds / 3600;
 
     return {
-      count: variations.length,
+      count: variations.length + variationActivities.length,
       totalHours: Number(totalVariationHours.toFixed(1)),
       avgPerMonth: Number((totalVariationHours / monthDiff).toFixed(1)),
       months: monthDiff
     };
-  }, [filteredProjects, startDate, endDate]);
+  }, [filteredProjects, filteredActivities, data.activityTypes, startDate, endDate]);
 
   // 1.5 Calculate Total Savings (Filtered by period)
   const savingsStats = useMemo(() => {
@@ -1197,6 +1253,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       return u.role === 'PROJETISTA';
     });
 
+    // Valid operational activities for development / project hours
+    const validActivitiesAllTime = (data.operationalActivities || []).filter(a => {
+      if (!a.userId) return false;
+      const u = data.users.find(x => x.id === a.userId);
+      if (!u) return false;
+
+      const isSomeEdson = u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'));
+      if (processUserIds.has(a.userId) && !isSomeEdson) return false;
+
+      if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) return false;
+
+      const activeDesignerTarget = currentUser.role === 'PROJETISTA' ? currentUser.id : selectedDesignerForReleases;
+      if (activeDesignerTarget !== 'ALL' && a.userId !== activeDesignerTarget) return false;
+
+      if (u.role === 'PROJETISTA') {
+        const nameUpper = (a.activityName || '').toUpperCase();
+        const notesUpper = (a.notes || '').toUpperCase();
+        let typeUpper = '';
+        if (data.activityTypes && a.activityTypeId) {
+          const typeObj = data.activityTypes.find(t => t.id === a.activityTypeId);
+          if (typeObj) typeUpper = (typeObj.name || '').toUpperCase();
+        }
+        const isDevOrProject = nameUpper.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') || typeUpper.includes('DESENVOLVIMENTO') ||
+                               nameUpper.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || typeUpper.includes('VARIAÇÃO') ||
+                               nameUpper.includes('VARIACAO') || notesUpper.includes('VARIACAO') || typeUpper.includes('VARIACAO') ||
+                               nameUpper.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || typeUpper.includes('LIBERAÇÃO') ||
+                               nameUpper.includes('LIBERACAO') || notesUpper.includes('LIBERACAO') || typeUpper.includes('LIBERACAO');
+        if (!isDevOrProject) return false;
+      }
+      return true;
+    });
+
     // 2. Apply additional selected designer selector (if Gestor/CEO/Coordenador selects one)
     const designerFiltered = validProjectsAllTime;
 
@@ -1234,14 +1322,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       return workingDays * 8.8;
     };
 
+    const getActivitySecs = (a: OperationalActivity) => {
+      if (a.durationSeconds && a.durationSeconds > 0) return a.durationSeconds;
+      if (!a.startTime) return 0;
+      const end = a.endTime ? new Date(a.endTime) : new Date();
+      return Math.max(0, Math.floor((end.getTime() - new Date(a.startTime).getTime()) / 1000));
+    };
+
     if (releaseGrouping === 'GLOBAL') {
-        const completedCount = designerFiltered.filter(p => p.status === 'COMPLETED').length;
-        const totalHours = designerFiltered.reduce((sum, p) => sum + (p.totalActiveSeconds || 0), 0) / 3600;
+        const completedCount = designerFiltered.filter(p => p.status === 'COMPLETED').length + validActivitiesAllTime.length;
+        const projectHours = designerFiltered.reduce((sum, p) => sum + (p.totalActiveSeconds || 0), 0) / 3600;
+        const activityHours = validActivitiesAllTime.reduce((sum, a) => sum + getActivitySecs(a), 0) / 3600;
+        const totalHours = projectHours + activityHours;
         
         // Find all unique months in designerFiltered or fallback to Jan-Jun 2026
         const uniqueMonthKeys = new Set<string>();
         designerFiltered.forEach(curr => {
           const d = curr.endTime ? new Date(curr.endTime) : (curr.startTime ? new Date(curr.startTime) : new Date());
+          uniqueMonthKeys.add(`${d.getMonth()}/${d.getFullYear()}`);
+        });
+        validActivitiesAllTime.forEach(a => {
+          const d = new Date(a.startTime);
           uniqueMonthKeys.add(`${d.getMonth()}/${d.getFullYear()}`);
         });
 
@@ -1292,6 +1393,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         acc[key].hours += (curr.totalActiveSeconds || 0) / 3600;
         return acc;
     }, {} as Record<string, { count: number; hours: number }>);
+
+    validActivitiesAllTime.forEach(a => {
+      const date = new Date(a.startTime);
+      let key = '';
+      if (releaseGrouping === 'MONTHLY') {
+        const month = months[date.getMonth()];
+        const year = date.getFullYear().toString().slice(-2);
+        key = `${month}/${year}`;
+      } else {
+        key = date.getFullYear().toString();
+      }
+      if (!releasesByPeriod[key]) {
+        releasesByPeriod[key] = { count: 0, hours: 0 };
+      }
+      releasesByPeriod[key].count += 1;
+      releasesByPeriod[key].hours += getActivitySecs(a) / 3600;
+    });
 
     return Object.keys(releasesByPeriod).map(key => {
       const hours = releasesByPeriod[key].hours;
