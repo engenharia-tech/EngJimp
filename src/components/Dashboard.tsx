@@ -4,7 +4,7 @@ import {
   PieChart, Pie, Cell, ComposedChart, Line, ScatterChart, Scatter, ZAxis
 } from 'recharts';
 import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, TrendingUp, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal, GitBranch } from 'lucide-react';
-import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings } from '../types';
+import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings, OperationalActivity } from '../types';
 import { EngineeringPerformance } from './EngineeringPerformance';
 import { InterruptionDashboard } from './InterruptionDashboard';
 import { PerCapitaConfigModal } from './PerCapitaConfigModal';
@@ -583,6 +583,69 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       return iDate >= start && iDate <= end;
     });
   }, [data.innovations, startDate, endDate]);
+
+  const filteredActivities = useMemo(() => {
+    return (data.operationalActivities || []).filter(a => {
+      const isSomeEdson = a.userId ? (() => {
+        const u = data.users.find(x => x.id === a.userId);
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+      })() : false;
+
+      if (a.userId && processUserIds.has(a.userId) && !isSomeEdson) {
+        return false;
+      }
+
+      if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) {
+        return false;
+      }
+
+      if (selectedDesignerForReleases !== 'ALL' && a.userId !== selectedDesignerForReleases) {
+        return false;
+      }
+
+      if (a.userId) {
+        const u = data.users.find(x => x.id === a.userId);
+        if (u && u.role === 'PROJETISTA') {
+          const nameUpper = (a.activityName || '').toUpperCase();
+          const notesUpper = (a.notes || '').toUpperCase();
+          let typeUpper = '';
+          if (data.activityTypes && a.activityTypeId) {
+            const typeObj = data.activityTypes.find(t => t.id === a.activityTypeId);
+            if (typeObj) typeUpper = (typeObj.name || '').toUpperCase();
+          }
+          const isDevOrProject = nameUpper.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') || typeUpper.includes('DESENVOLVIMENTO') ||
+                                 nameUpper.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || typeUpper.includes('VARIAÇÃO') ||
+                                 nameUpper.includes('VARIACAO') || notesUpper.includes('VARIACAO') || typeUpper.includes('VARIACAO') ||
+                                 nameUpper.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || typeUpper.includes('LIBERAÇÃO') ||
+                                 nameUpper.includes('LIBERACAO') || notesUpper.includes('LIBERACAO') || typeUpper.includes('LIBERACAO');
+          if (!isDevOrProject) return false;
+        }
+      }
+
+      if (!startDate && !endDate) return true;
+      if (!a.startTime) return true;
+
+      const aStart = new Date(a.startTime).getTime();
+      const aEnd = a.endTime ? new Date(a.endTime).getTime() : Infinity;
+
+      let start = 0;
+      if (startDate) {
+        const d = new Date(startDate);
+        if (!isNaN(d.getTime())) start = d.getTime();
+      }
+
+      let end = Infinity;
+      if (endDate) {
+        const d = new Date(endDate);
+        if (!isNaN(d.getTime())) {
+          d.setHours(23, 59, 59, 999);
+          end = d.getTime();
+        }
+      }
+
+      return aStart <= end && aEnd >= start;
+    });
+  }, [data.operationalActivities, data.users, data.activityTypes, processUserIds, currentUser.role, currentUser.id, selectedDesignerForReleases, startDate, endDate]);
 
   const filteredInterruptions = useMemo(() => {
     return data.interruptions.filter(i => {
