@@ -560,6 +560,9 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
         return;
       }
 
+      const userName = `${user.name} ${user.surname || ''}`.trim();
+      const dateStr = act.startTime.substring(0, 10); // YYYY-MM-DD
+
       const hours = (act.durationSeconds || 0) / 3600;
       if (hours <= 0) return;
 
