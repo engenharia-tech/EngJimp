@@ -14,8 +14,8 @@ export function calcActiveSeconds(from: Date | string, to: Date | string, settin
   // Ensure default business hours are consistent
   const workdayStartStr = settings.workdayStart || "07:30";
   const workdayEndStr = settings.workdayEnd || "17:30";
-  const lunchStartStr = settings.lunchStart || "12:00";
-  const lunchEndStr = settings.lunchEnd || "13:00";
+  const lunchStartStr = settings.lunchStart || "12:30";
+  const lunchEndStr = settings.lunchEnd || "13:30";
   const workdays = (settings.workdays || [1, 2, 3, 4, 5]).map(Number); // Ensure numbers
 
   const [startH, startM] = workdayStartStr.split(':').map(Number);
@@ -104,8 +104,8 @@ export function isWorkingHour(date: Date, settings: AppSettings, isOvertime: boo
 
   const workdayStartStr = settings.workdayStart || "07:30";
   const workdayEndStr = settings.workdayEnd || "17:30";
-  const lunchStartStr = settings.lunchStart || "12:00";
-  const lunchEndStr = settings.lunchEnd || "13:00";
+  const lunchStartStr = settings.lunchStart || "12:30";
+  const lunchEndStr = settings.lunchEnd || "13:30";
 
   const [startH, startM] = workdayStartStr.split(':').map(Number);
   const [endH, endM] = workdayEndStr.split(':').map(Number);

@@ -355,7 +355,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
               <input
                 type="time"
                 disabled={!isEditing}
-                value={formData.lunchStart || '12:00'}
+                value={formData.lunchStart || '12:30'}
                 onChange={e => setFormData({ ...formData, lunchStart: e.target.value })}
                 className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               />
@@ -365,7 +365,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
               <input
                 type="time"
                 disabled={!isEditing}
-                value={formData.lunchEnd || '13:00'}
+                value={formData.lunchEnd || '13:30'}
                 onChange={e => setFormData({ ...formData, lunchEnd: e.target.value })}
                 className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               />

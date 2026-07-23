@@ -117,8 +117,8 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
   const calculateComplianceData = useMemo(() => {
     const workdayStartStr = settings.workdayStart || "07:30";
     const workdayEndStr = settings.workdayEnd || "17:30";
-    const lunchStartStr = settings.lunchStart || "12:00";
-    const lunchEndStr = settings.lunchEnd || "13:00";
+    const lunchStartStr = settings.lunchStart || "12:30";
+    const lunchEndStr = settings.lunchEnd || "13:30";
 
     const [wsH, wsM] = workdayStartStr.split(':').map(Number);
     const [weH, weM] = workdayEndStr.split(':').map(Number);
