@@ -25,8 +25,8 @@ const defaultSettings = {
   language: 'pt-BR' as const,
   workdayStart: '07:30',
   workdayEnd: '17:30',
-  lunchStart: '12:00',
-  lunchEnd: '13:00',
+  lunchStart: '12:30',
+  lunchEnd: '13:30',
   workdays: [1, 2, 3, 4, 5],
   autoLockTimeout: 15
 };

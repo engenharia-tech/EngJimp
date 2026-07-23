@@ -385,8 +385,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const timelineItems = useMemo(() => {
     const workdayStartStr = settings.workdayStart || "07:30";
     const workdayEndStr = settings.workdayEnd || "17:30";
-    const lunchStartStr = settings.lunchStart || "12:00";
-    const lunchEndStr = settings.lunchEnd || "13:00";
+    const lunchStartStr = settings.lunchStart || "12:30";
+    const lunchEndStr = settings.lunchEnd || "13:30";
 
     const [wsH, wsM] = workdayStartStr.split(':').map(Number);
     const [weH, weM] = workdayEndStr.split(':').map(Number);
@@ -650,9 +650,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
     if (viewMode === 'day') {
       const autoLunchStart = new Date(selectedDate);
-      autoLunchStart.setHours(12, 30, 0, 0);
+      autoLunchStart.setHours(lsH, lsM, 0, 0);
       const autoLunchEnd = new Date(selectedDate);
-      autoLunchEnd.setHours(13, 30, 0, 0);
+      autoLunchEnd.setHours(leH, leM, 0, 0);
 
       // Verify if there is any ongoing or logged project/activity marked as Overtime (isOvertime) that overlaps with lunch on this day
       const hasOvertimeDuringLunch = filteredProjects.some(p => {

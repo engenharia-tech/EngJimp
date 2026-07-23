@@ -101,8 +101,8 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     workdayStart: localStorage.getItem('workday_start') || "07:30",
     workdayEnd: localStorage.getItem('workday_end') || "17:30",
     workdays: parseSafeJson(localStorage.getItem('workdays'), [1,2,3,4,5]).map(Number),
-    lunchStart: localStorage.getItem('lunch_start') || "12:00",
-    lunchEnd: localStorage.getItem('lunch_end') || "13:00",
+    lunchStart: localStorage.getItem('lunch_start') || "12:30",
+    lunchEnd: localStorage.getItem('lunch_end') || "13:30",
     language: (localStorage.getItem('language') as any) || "pt-BR",
     autoLockTimeout: localStorage.getItem('auto_lock_timeout') === null ? 15 : (parseSafeNumber(localStorage.getItem('auto_lock_timeout')) ?? 15)
   };
@@ -148,8 +148,8 @@ export const fetchSettings = async (): Promise<AppSettings> => {
           settings.workdays = [1, 2, 3, 4, 5];
         }
       }
-      if (lunchStartRow) settings.lunchStart = lunchStartRow.value || "12:00";
-      if (lunchEndRow) settings.lunchEnd = lunchEndRow.value || "13:00";
+      if (lunchStartRow) settings.lunchStart = lunchStartRow.value || "12:30";
+      if (lunchEndRow) settings.lunchEnd = lunchEndRow.value || "13:30";
       if (languageRow) settings.language = (languageRow.value as any) || "pt-BR";
       if (autoLockTimeoutRow) {
         const val = autoLockTimeoutRow.value;
@@ -599,8 +599,8 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.workdayStart !== undefined) localStorage.setItem('workday_start', settings.workdayStart || '07:30');
     if (settings.workdayEnd !== undefined) localStorage.setItem('workday_end', settings.workdayEnd || '17:30');
     if (settings.workdays !== undefined) localStorage.setItem('workdays', JSON.stringify(settings.workdays || [1,2,3,4,5]));
-    if (settings.lunchStart !== undefined) localStorage.setItem('lunch_start', settings.lunchStart || '12:00');
-    if (settings.lunchEnd !== undefined) localStorage.setItem('lunch_end', settings.lunchEnd || '13:00');
+    if (settings.lunchStart !== undefined) localStorage.setItem('lunch_start', settings.lunchStart || '12:30');
+    if (settings.lunchEnd !== undefined) localStorage.setItem('lunch_end', settings.lunchEnd || '13:30');
     if (settings.language !== undefined) localStorage.setItem('language', settings.language || 'pt-BR');
     if (settings.autoLockTimeout !== undefined) localStorage.setItem('auto_lock_timeout', settings.autoLockTimeout.toString());
 
