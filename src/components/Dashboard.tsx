@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, ComposedChart, Line, ScatterChart, Scatter, ZAxis
 } from 'recharts';
-import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, TrendingUp, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal, GitBranch } from 'lucide-react';
+import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, TrendingUp, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal, GitBranch, ExternalLink, Globe } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings, OperationalActivity } from '../types';
 import { EngineeringPerformance } from './EngineeringPerformance';
 import { InterruptionDashboard } from './InterruptionDashboard';
@@ -2183,7 +2183,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             {t('analysisFilters')}
           </div>
           
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
+            <a
+              href="https://www.jimpnexus.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center text-[10px] font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-3.5 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all uppercase tracking-wider active:scale-95 gap-1.5"
+              title="Acessar o portal https://www.jimpnexus.com/"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>Voltar ao Portal</span>
+              <ExternalLink className="w-3 h-3 opacity-80" />
+            </a>
             {onRefresh && (
               <button 
                 onClick={onRefresh}
