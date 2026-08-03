@@ -48,7 +48,8 @@ import {
   endOfMonth,
   startOfYear,
   endOfYear,
-  eachDayOfInterval
+  eachDayOfInterval,
+  isSameDay
 } from 'date-fns';
 
 interface EngineeringPerformanceProps {
@@ -145,6 +146,7 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
       const dailyData = periodDays.map(day => {
         const dayStart = startOfDay(day);
         const dayEnd = endOfDay(day);
+        const now = new Date();
 
         // Expected work window
         const workStart = new Date(day);
@@ -158,7 +160,37 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         const lunchEnd = new Date(day);
         lunchEnd.setHours(leH, leM, 0, 0);
 
-        totalExpectedSeconds += differenceInSeconds(workEnd, workStart) - differenceInSeconds(lunchEnd, lunchStart);
+        const isToday = isSameDay(day, now);
+        const isFutureDay = dayStart > startOfDay(now);
+
+        // Determine effective upper limit of expected work time for this day
+        let effectiveWorkEnd = workEnd;
+        if (isFutureDay) {
+          effectiveWorkEnd = workStart; // future days have 0 expected seconds so far
+        } else if (isToday) {
+          if (now < workStart) {
+            effectiveWorkEnd = workStart;
+          } else if (now < workEnd) {
+            effectiveWorkEnd = now;
+          } else {
+            effectiveWorkEnd = workEnd;
+          }
+        }
+
+        // Expected work seconds for this day up to effectiveWorkEnd
+        let dayExpected = 0;
+        if (effectiveWorkEnd > workStart) {
+          const elapsed = differenceInSeconds(effectiveWorkEnd, workStart);
+          let lunchOverlap = 0;
+          const lStart = workStart < lunchStart ? lunchStart : workStart;
+          const lEnd = effectiveWorkEnd > lunchEnd ? lunchEnd : effectiveWorkEnd;
+          if (lStart < lEnd) {
+            lunchOverlap = differenceInSeconds(lEnd, lStart);
+          }
+          dayExpected = Math.max(0, elapsed - lunchOverlap);
+        }
+
+        totalExpectedSeconds += dayExpected;
 
         // Combine all events for this day
         const events: { start: Date; end: Date; type: string }[] = [];
@@ -171,7 +203,6 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
           }
           const start = parseISO(p.startTime);
           // If activity is open, use min(now, workEnd) to avoid counting 24h
-          const now = new Date();
           const effectiveNow = now > workEnd ? workEnd : now;
           const end = p.endTime ? parseISO(p.endTime) : (dayStart < startOfDay(now) ? workEnd : effectiveNow);
           
@@ -195,7 +226,6 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
             if (!isDevOrProject) return;
           }
           const start = parseISO(a.startTime);
-          const now = new Date();
           const effectiveNow = now > workEnd ? workEnd : now;
           const end = a.endTime ? parseISO(a.endTime) : (dayStart < startOfDay(now) ? workEnd : effectiveNow);
 
@@ -211,7 +241,6 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         // Add interruptions
         userInterruptions.forEach(i => {
           const start = parseISO(i.startTime);
-          const now = new Date();
           const effectiveNow = now > workEnd ? workEnd : now;
           const end = i.endTime ? parseISO(i.endTime) : (dayStart < startOfDay(now) ? workEnd : effectiveNow);
 
@@ -244,9 +273,9 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         // Calculate gaps within work hours, excluding lunch
         let dayReportedSeconds = 0;
         mergedEvents.forEach(e => {
-          // Clip to work hours (already partially done)
+          // Clip to work hours up to effectiveWorkEnd
           const s = e.start < workStart ? workStart : e.start;
-          const ed = e.end > workEnd ? workEnd : e.end;
+          const ed = e.end > effectiveWorkEnd ? effectiveWorkEnd : e.end;
           
           if (s < ed) {
             // Subtract lunch overlap from reported time
@@ -262,19 +291,18 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
 
         totalReportedSeconds += dayReportedSeconds;
         
-        const dayExpected = differenceInSeconds(workEnd, workStart) - differenceInSeconds(lunchEnd, lunchStart);
         const dayGap = Math.max(0, dayExpected - dayReportedSeconds);
         totalGapSeconds += dayGap;
 
         return {
           date: format(day, 'dd/MM'),
-          compliance: dayExpected > 0 ? (dayReportedSeconds / dayExpected) * 100 : 100,
+          compliance: dayExpected > 0 ? Math.min(100, (dayReportedSeconds / dayExpected) * 100) : 100,
           gapMinutes: Math.round(dayGap / 60)
         };
       });
 
       const avgCompliance = totalExpectedSeconds > 0 
-        ? (totalReportedSeconds / totalExpectedSeconds) * 100 
+        ? Math.min(100, (totalReportedSeconds / totalExpectedSeconds) * 100) 
         : 100;
 
       return {
