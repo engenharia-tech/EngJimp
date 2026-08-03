@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp, Fingerprint, Key } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp, Fingerprint, Key, ExternalLink, Globe } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { AIChat } from './components/AIChat';
 import { NexusChat } from './nexus/NexusChat';
@@ -1520,7 +1520,21 @@ const AppContent: React.FC = () => {
             <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
         </nav>
-        <div className={`p-6 border-t ${theme === 'dark' ? 'border-slate-800 bg-black' : 'border-gray-100 bg-gray-50'} ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
+        <div className={`p-4 border-t ${theme === 'dark' ? 'border-slate-800 bg-black' : 'border-gray-100 bg-gray-50'} ${isSidebarCollapsed ? 'flex flex-col items-center gap-2' : 'space-y-2'}`}>
+          <a
+            href="https://www.jimpnexus.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex items-center text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-white bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-600 dark:hover:bg-blue-600 p-2.5 rounded-xl transition-all border border-blue-200 dark:border-blue-900/60 shadow-sm ${isSidebarCollapsed ? 'justify-center w-10' : 'w-full justify-between'}`}
+            title={isSidebarCollapsed ? "Voltar ao Portal (https://www.jimpnexus.com/)" : undefined}
+          >
+            <div className="flex items-center gap-2 truncate">
+              <Globe className="w-4 h-4 shrink-0" />
+              {!isSidebarCollapsed && <span className="truncate uppercase tracking-wider text-[11px]">Voltar ao Portal</span>}
+            </div>
+            {!isSidebarCollapsed && <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-70" />}
+          </a>
+
           <button 
             onClick={handleLogout}
             className={`flex items-center text-sm text-red-400 hover:text-red-300 hover:bg-red-50 dark:hover:bg-slate-800/50 p-2 rounded-lg font-medium transition-colors ${isSidebarCollapsed ? 'justify-center w-10' : 'w-full'}`}
@@ -1670,20 +1684,34 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
-               <div className="mb-6 flex items-center gap-4">
-                 <div className="bg-gray-100 dark:bg-black p-2 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-                    <Logo 
-                      theme={theme}
-                      logoUrl={COMPANY_LOGO_URL}
-                      className="h-12 w-auto object-contain" 
-                    />
+               <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                 <div className="flex items-center gap-4">
+                   <div className="bg-gray-100 dark:bg-black p-2 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+                      <Logo 
+                        theme={theme}
+                        logoUrl={COMPANY_LOGO_URL}
+                        className="h-12 w-auto object-contain" 
+                      />
+                   </div>
+                   <div>
+                      <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('performancePanel').toUpperCase()}</h2>
+                      <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
+                        {canSeeAllHistory ? t('globalIndicators').toUpperCase() : t('yourProductivityIndicators').toUpperCase()}
+                      </p>
+                   </div>
                  </div>
-                 <div>
-                    <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('performancePanel').toUpperCase()}</h2>
-                    <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
-                      {canSeeAllHistory ? t('globalIndicators').toUpperCase() : t('yourProductivityIndicators').toUpperCase()}
-                    </p>
-                 </div>
+
+                 <a
+                   href="https://www.jimpnexus.com/"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all duration-200 active:scale-95 group shrink-0"
+                   title="Acessar o portal https://www.jimpnexus.com/"
+                 >
+                   <Globe className="w-4 h-4 text-blue-200 group-hover:text-white transition-colors" />
+                   <span>Voltar ao Portal</span>
+                   <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                 </a>
               </div>
               <Dashboard data={displayData} currentUser={currentUser} theme={theme} settings={effectiveSettings} onRefresh={handleRefresh} />
             </div>
