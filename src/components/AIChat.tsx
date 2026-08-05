@@ -481,8 +481,45 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
       return `- Nome: ${u.name} ${u.surname || ''} (${u.role})
   ${canSeeSalary && u.salary ? `Salário: ${u.salary} BRL` : ''}
   Desempenho Nexus (Gantt): ${completedGantt} concluídas, ${progressGantt} em execução, ${userGanttTasks.length} total.
-  Resumo Rastreador: ${completedUserTracker} concluídos (liberados), ${inProgressUserTracker} em andamento (${totalUserProjects} totais históricos desde o início), ${userInterruptions.length} interrupções.${idleTimeInfo}`;
+  Resumo Rastreador: ${completedUserTracker} concluídos (liberados) acumulados historicamente desde o início (${inProgressUserTracker} em andamento).
+  Interrupções Recentes: ${userInterruptions.length}.${idleTimeInfo}`;
     }).join('\n\n');
+
+    // Calculate exact monthly project delivery volume per user
+    const userMonthlyDeliveriesMap: Record<string, Record<string, { completed: number; inProgress: number; nsList: string[] }>> = {};
+
+    projects.forEach(p => {
+      if (!p.userId || !p.startTime) return;
+      const user = users.find(u => u.id === p.userId);
+      if (!user) return;
+
+      const userName = `${user.name} ${user.surname || ''}`.trim();
+      const dateStr = (p.status === 'COMPLETED' && p.endTime ? p.endTime : p.startTime).substring(0, 7);
+
+      if (!userMonthlyDeliveriesMap[userName]) userMonthlyDeliveriesMap[userName] = {};
+      if (!userMonthlyDeliveriesMap[userName][dateStr]) {
+        userMonthlyDeliveriesMap[userName][dateStr] = { completed: 0, inProgress: 0, nsList: [] };
+      }
+
+      if (p.status === 'COMPLETED') {
+        userMonthlyDeliveriesMap[userName][dateStr].completed += 1;
+        if (p.ns) {
+          userMonthlyDeliveriesMap[userName][dateStr].nsList.push(p.ns);
+        }
+      } else if (p.status === 'IN_PROGRESS') {
+        userMonthlyDeliveriesMap[userName][dateStr].inProgress += 1;
+      }
+    });
+
+    let monthlyProjectDeliveriesSummary = "VOLUME EXATO DE PROJETOS (NS) LIBERADOS / ENTREGUES POR CADA INTEGRANTE / PROJETISTA POR MÊS:\n";
+    Object.entries(userMonthlyDeliveriesMap).sort((a, b) => a[0].localeCompare(b[0])).forEach(([userName, months]) => {
+      const role = userRoleMap[userName] || 'PROJETISTA';
+      monthlyProjectDeliveriesSummary += `* Integrante: ${userName} (${role})\n`;
+      Object.entries(months).sort((a, b) => b[0].localeCompare(a[0])).forEach(([month, data]) => {
+        const nsSample = data.nsList.length > 0 ? ` [NSs: ${data.nsList.slice(0, 15).join(', ')}${data.nsList.length > 15 ? '...' : ''}]` : '';
+        monthlyProjectDeliveriesSummary += `  - Mês ${month}: TOTAL DE ${data.completed} PROJETOS (NS) LIBERADOS/CONCLUÍDOS e ${data.inProgress} em andamento${nsSample}\n`;
+      });
+    });
     
     // Process detailed monthly hour accumulations (projects + operational activities)
     // Map of [user_name_or_global][month_YYYY_MM][category_name] = total_hours
@@ -716,6 +753,15 @@ REGRAS DE ANÁLISE DE PRODUTIVIDADE E DE HORAS:
 - No Nexus (Gantt), foque no progresso das tarefas e marcos (milestones).
 - Se um projetista tiver muitas tarefas no Nexus, mas poucos projetos no Rastreador, pode indicar que ele está focando em atividades de planejamento ou documentação não trackeada por NS.
 
+REGRAS CRÍTICAS DE VOLUME E QUANTIDADE DE PROJETOS LIBERADOS POR MÊS:
+- Quando o usuário perguntar sobre o VOLUME, QUANTIDADE DE PROJETOS ou QUANTAS NSs um projetista (ex: Cobo, Charles, Rogerio, Luiz, etc.) liberou/entregou em qualquer mês (ex: Julho/2026, Junho/2026, ou qualquer período):
+  1. RESPONDA DE FORMA DIRETA, NUMÉRICA E CONCRETA O NÚMERO EXATO DE PROJETOS (NS) LIBERADOS/CONCLUÍDOS no mês/período solicitado, consultando a seção "VOLUME EXATO DE PROJETOS (NS) LIBERADOS / ENTREGUES POR CADA INTEGRANTE / PROJETISTA POR MÊS"!
+  2. NUNCA diga que "o número exato de NSs não está isolado numericamente no banco de dados" ou que "só tem registro de horas". O NÚMERO EXATO DE NSs LIBERADAS POR MÊS POR PROJETISTA ESTÁ TOTALMENTE DISPONÍVEL NOS DADOS!
+  3. Exemplo de resposta exata: "No mês de Julho de 2026, o Cobo liberou/concluiu exatamente X projetos (NSs)."
+  4. MENCIONE O NÚMERO EXATO DE PROJETOS (NSs) e informe os códigos de NSs concluídas no período se relevante.
+  5. Compare o volume do projetista solicitado com os demais projetistas no mesmo período se o usuário pedir comparativo ou ranking.
+  6. Se o usuário solicitar um gráfico do volume de entregas ou comparação entre projetistas por mês, gere um gráfico interativo JSON (tipo "bar") onde cada barra representa o número de projetos (NS) liberados por cada projetista no mês solicitado.
+
 REGRAS DE GERAÇÃO E RENDERIZAÇÃO DE GRÁFICOS INTERATIVOS (OBRIGATÓRIO):
 - Sempre que o usuário solicitar tendências, comparações, variações de horas, distribuição de tempo por categorias, ou dados mensais/numéricos, você DEVE gerar um gráfico interativo.
 - Para renderizar um lindo gráfico interativo nativo no chat (Recharts), você deve incluir um bloco de código contendo um JSON exclusivo no final da sua resposta, formatado exatamente conforme as regras e tipos abaixo:
@@ -758,6 +804,8 @@ DADOS ATUAIS DA PLATAFORMA:
 RESUMO MENSAL DA EMPRESA (Número de Projetos):
 ${monthlySummary}
 
+---
+${monthlyProjectDeliveriesSummary}
 ---
 ${globalHoursSummary}
 ---
