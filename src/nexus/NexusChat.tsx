@@ -1293,6 +1293,41 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
 
         {/* Input */}
         <div className={`p-4 ${theme === 'dark' ? 'bg-black border-slate-800' : 'bg-white border-gray-200'} border-t animate-in slide-in-from-bottom-2`}>
+          {/* Quick Query Prompt Chips */}
+          {!isRecording && (
+            <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+              <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider shrink-0 mr-1">Consultas:</span>
+              <button
+                type="button"
+                onClick={() => { setInput("Quantos projetos foram liberados este mês?"); }}
+                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/50 rounded-full font-medium whitespace-nowrap transition-all text-[11px] flex items-center gap-1 shrink-0"
+              >
+                📦 <span>Volume do Mês</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setInput("Quantos projetos cada projetista liberou?"); }}
+                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/50 rounded-full font-medium whitespace-nowrap transition-all text-[11px] flex items-center gap-1 shrink-0"
+              >
+                📊 <span>Entregas por Projetista</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setInput("Quantas variações e desenvolvimentos foram feitos?"); }}
+                className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/50 rounded-full font-medium whitespace-nowrap transition-all text-[11px] flex items-center gap-1 shrink-0"
+              >
+                🛠️ <span>Variações & Devs</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setInput("Ver ranking da equipe"); }}
+                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/50 rounded-full font-medium whitespace-nowrap transition-all text-[11px] flex items-center gap-1 shrink-0"
+              >
+                🏆 <span>Ranking da Equipe</span>
+              </button>
+            </div>
+          )}
+
           {micError && (
             <div className="mb-2.5 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 text-amber-900 dark:text-amber-300 text-xs rounded-xl flex items-start gap-2.5 shadow-sm">
               <AlertCircle className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -1310,34 +1345,44 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
           )}
 
           {isRecording ? (
-            <div className="flex items-center justify-between gap-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 p-2 rounded-xl">
-              <div className="flex items-center gap-2 px-2">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                </span>
-                <span className="text-xs text-red-650 dark:text-red-300 font-black tracking-wider uppercase animate-pulse">
-                  Gravando Voz ({formatTime(recordingSeconds)})
-                </span>
+            <div className="flex flex-col gap-2 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/20 border border-red-200 dark:border-red-900/40 p-3 rounded-2xl shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+                  </span>
+                  <span className="text-xs font-bold text-red-700 dark:text-red-400 uppercase tracking-wide">
+                    Escutando Comando... ({formatTime(recordingSeconds)})
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={cancelRecording}
+                    className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-bold hover:underline transition-colors active:scale-95"
+                    title="Cancelar"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopRecording}
+                    className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-medium text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-md active:scale-95"
+                    title="Parar e Enviar"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Enviar Áudio</span>
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={cancelRecording}
-                  className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-bold hover:underline transition-colors active:scale-95"
-                  title="Cancelar"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={stopRecording}
-                  className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-sm active:scale-95"
-                  title="Parar e Enviar"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Enviar</span>
-                </button>
+
+              {/* Live speech-to-text feedback */}
+              <div className="px-2.5 py-1.5 bg-white/80 dark:bg-black/50 backdrop-blur border border-red-100 dark:border-red-900/30 rounded-xl text-xs text-gray-700 dark:text-gray-200 italic min-h-[32px] flex items-center gap-2">
+                <span className="text-red-500 shrink-0 font-bold">🎙️</span>
+                <span className="line-clamp-2">
+                  {input ? `"${input}"` : 'Fale claramente seu comando ou pergunta...'}
+                </span>
               </div>
             </div>
           ) : (
