@@ -185,6 +185,8 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
   const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<any>(null);
+  const speechRecognitionRef = useRef<any>(null);
+  const speechTranscriptRef = useRef<string>('');
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -197,11 +199,48 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
       }
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.stop(); } catch (e) {}
+      }
     };
   }, []);
 
   const startRecording = async () => {
     setMicError(null);
+    speechTranscriptRef.current = '';
+
+    // Initialize Web Speech API for real-time speech-to-text transcription if supported
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'pt-BR';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        recognition.onresult = (event: any) => {
+          let liveText = '';
+          for (let i = 0; i < event.results.length; i++) {
+            liveText += event.results[i][0].transcript + ' ';
+          }
+          const trimmed = liveText.trim();
+          if (trimmed) {
+            speechTranscriptRef.current = trimmed;
+            setInput(trimmed);
+          }
+        };
+
+        recognition.onerror = (err: any) => {
+          console.warn('SpeechRecognition warning:', err);
+        };
+
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+      } catch (e) {
+        console.warn('SpeechRecognition failed to start:', e);
+      }
+    }
+
     if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setMicError('Seu navegador não suporta gravação de áudio ou o acesso está bloqueado pelas restrições de iframe do Google AI Studio. Por favor, abra o aplicativo em uma nova aba usando o botão no canto superior direito para poder gravar!');
       return;
@@ -274,6 +313,9 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
   };
 
   const stopRecording = () => {
+    if (speechRecognitionRef.current) {
+      try { speechRecognitionRef.current.stop(); } catch (e) {}
+    }
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
@@ -285,6 +327,9 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
   };
 
   const cancelRecording = () => {
+    if (speechRecognitionRef.current) {
+      try { speechRecognitionRef.current.stop(); } catch (e) {}
+    }
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.onstop = null;
       mediaRecorderRef.current.stop();
@@ -559,15 +604,19 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
   const handleSendWithAudio = async (base64Audio: string, mimeType: string, audioUrl: string) => {
     setIsLoading(true);
 
+    const spokenQuery = speechTranscriptRef.current?.trim() || input.trim();
+    const displayQuery = spokenQuery ? `🎙️ "${spokenQuery}"` : '🎙️ Mensagem de Voz';
+    const effectiveQuery = spokenQuery || 'Resumo geral dos dados e volume de projetos';
+
     const userMessage: Message = {
       role: 'user',
-      content: input.trim() ? `${input}\n🎙️ [Mensagem de Voz]` : '🎙️ Mensagem de Voz',
+      content: displayQuery,
       timestamp: new Date(),
       audioUrl
     };
 
-    const originalInput = input;
     setInput('');
+    speechTranscriptRef.current = '';
 
     let targetId = activeThreadId;
     let currentThreads = [...threads];
@@ -576,7 +625,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
     if (!targetThread) {
       const freshThread: ChatThread = {
         id: Math.random().toString(36).substring(2, 9),
-        title: originalInput.trim() ? (originalInput.substring(0, 30) + (originalInput.length > 30 ? '...' : '')) : '🎙️ Mensagem de Voz',
+        title: effectiveQuery.substring(0, 30) + (effectiveQuery.length > 30 ? '...' : ''),
         messages: [userMessage],
         createdAt: new Date()
       };
@@ -588,7 +637,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
     } else {
       targetThread.messages = [...targetThread.messages, userMessage];
       if (targetThread.title === 'Análise Inicial ERP' && targetThread.messages.filter(m => m.role === 'user').length === 1) {
-        targetThread.title = originalInput.trim() ? (originalInput.substring(0, 30) + (originalInput.length > 30 ? '...' : '')) : '🎙️ Mensagem de Voz';
+        targetThread.title = effectiveQuery.substring(0, 30) + (effectiveQuery.length > 30 ? '...' : '');
       }
       setThreads(currentThreads);
       saveThreadsToLocalStorage(currentThreads);
@@ -601,8 +650,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
       }));
       
       const audioPayload = { mimeType, data: base64Audio };
-      const queryToSend = originalInput.trim() || 'Fez uma pergunta por áudio.';
-      const response = await processNexusQuery(queryToSend, appState, currentUser, historyToSend, audioPayload);
+      const response = await processNexusQuery(effectiveQuery, appState, currentUser, historyToSend, audioPayload);
       
       let cleanContent = response;
       let chartData = null;
@@ -640,7 +688,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
       console.error("Nexus IA Error with voice, trying local fallback:", error);
       try {
         const errorMsg = error?.message || error?.details || String(error);
-        const fallbackText = resolveLocalQueryFallback(originalInput.trim() || 'Descreva os dados', appState, currentUser, errorMsg);
+        const fallbackText = resolveLocalQueryFallback(effectiveQuery, appState, currentUser, errorMsg);
         const assistantMessage: Message = {
           role: 'assistant',
           content: fallbackText,

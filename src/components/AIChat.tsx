@@ -214,6 +214,8 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
   const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<any>(null);
+  const speechRecognitionRef = useRef<any>(null);
+  const speechTranscriptRef = useRef<string>('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { t } = useLanguage();
@@ -229,11 +231,48 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
       }
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.stop(); } catch (e) {}
+      }
     };
   }, []);
 
   const startRecording = async () => {
     setMicError(null);
+    speechTranscriptRef.current = '';
+
+    // Initialize Web Speech API for real-time speech-to-text transcription if supported
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'pt-BR';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        recognition.onresult = (event: any) => {
+          let liveText = '';
+          for (let i = 0; i < event.results.length; i++) {
+            liveText += event.results[i][0].transcript + ' ';
+          }
+          const trimmed = liveText.trim();
+          if (trimmed) {
+            speechTranscriptRef.current = trimmed;
+            setInput(trimmed);
+          }
+        };
+
+        recognition.onerror = (err: any) => {
+          console.warn('SpeechRecognition warning:', err);
+        };
+
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+      } catch (e) {
+        console.warn('SpeechRecognition failed to start:', e);
+      }
+    }
+
     if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setMicError('Seu navegador não suporta gravação de áudio ou o acesso está bloqueado pelas restrições de iframe do Google AI Studio. Por favor, abra o aplicativo em uma nova aba usando o botão no canto superior direito para poder gravar!');
       return;
@@ -306,6 +345,9 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
   };
 
   const stopRecording = () => {
+    if (speechRecognitionRef.current) {
+      try { speechRecognitionRef.current.stop(); } catch (e) {}
+    }
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
@@ -317,6 +359,9 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
   };
 
   const cancelRecording = () => {
+    if (speechRecognitionRef.current) {
+      try { speechRecognitionRef.current.stop(); } catch (e) {}
+    }
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.onstop = null;
       mediaRecorderRef.current.stop();
@@ -339,19 +384,23 @@ export const AIChat: React.FC<AIChatProps> = ({ appState, currentUser, onClose }
   const handleSendWithAudio = async (base64Audio: string, mimeType: string, audioUrl: string) => {
     setIsLoading(true);
 
+    const spokenQuery = speechTranscriptRef.current?.trim() || input.trim();
+    const displayQuery = spokenQuery ? `🎙️ "${spokenQuery}"` : '🎙️ Mensagem de Voz';
+    const effectiveQuery = spokenQuery || 'Resumo geral dos dados e volume de projetos';
+
     const userMessage: Message = {
       role: 'user',
-      content: input.trim() ? `${input}\n🎙️ [Mensagem de Voz]` : '🎙️ Mensagem de Voz',
+      content: displayQuery,
       timestamp: new Date(),
       audioUrl
     };
 
     setMessages(prev => [...prev, userMessage]);
-    const originalInput = input;
     setInput('');
+    speechTranscriptRef.current = '';
 
     try {
-      const context = generateContext(originalInput);
+      const context = generateContext(effectiveQuery);
       
       const historyText = messages.slice(-10).map(m => {
         return m.role === 'user' ? `Usuário: ${m.content}` : `Assistente: ${m.content}`;
@@ -362,7 +411,7 @@ Você está respondendo diretamente a: ${currentUser.name} ${currentUser.surname
 NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Responda em primeira pessoa quando o usuário referir a 'eu', 'minhas NS', 'minha produtividade', etc.
 [/DADOS DE IDENTIFICAÇÃO EM TEMPO REAL]`;
 
-      const prompt = `${context}\n\n${userHeader}\n\n${historyText ? `[CONVERSA ANTERIOR]\n${historyText}\n\n` : ''}Usuário (${currentUser.name}): ${originalInput || 'Fez uma pergunta por áudio.'}\n\nAssistente:`;
+      const prompt = `${context}\n\n${userHeader}\n\n${historyText ? `[CONVERSA ANTERIOR]\n${historyText}\n\n` : ''}Usuário (${currentUser.name}) [Pergunta por voz]: "${effectiveQuery}"\n\nAssistente:`;
       
       const response = await askGemini(prompt, { mimeType, data: base64Audio });
       
@@ -391,7 +440,7 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
       console.error("Chat Error with audio, trying local fallback:", error);
       try {
         const errorMsg = error?.message || error?.details || String(error);
-        const fallbackText = resolveLocalQueryFallback(originalInput || 'Descreva os dados', appState, currentUser, errorMsg);
+        const fallbackText = resolveLocalQueryFallback(effectiveQuery, appState, currentUser, errorMsg);
         const assistantMessage: Message = {
           role: 'assistant',
           content: fallbackText,
