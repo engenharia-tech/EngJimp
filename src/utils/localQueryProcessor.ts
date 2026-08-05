@@ -32,6 +32,39 @@ export const resolveLocalQueryFallback = (
     );
   });
 
+  // Check if a specific month was mentioned in query
+  const monthMap: Record<string, string> = {
+    'janeiro': '01', 'jan': '01',
+    'fevereiro': '02', 'fev': '02',
+    'marco': '03', 'março': '03', 'mar': '03',
+    'abril': '04', 'abr': '04',
+    'maio': '05',
+    'junho': '06', 'jun': '06',
+    'julho': '07', 'jul': '07',
+    'agosto': '08', 'ago': '08',
+    'setembro': '09', 'set': '09',
+    'outubro': '10', 'out': '10',
+    'novembro': '11', 'nov': '11',
+    'dezembro': '12', 'dez': '12'
+  };
+
+  let targetMonthCode: string | null = null;
+  let targetMonthName: string | null = null;
+
+  Object.entries(monthMap).forEach(([nameKey, code]) => {
+    if (!targetMonthCode && normalized.includes(nameKey)) {
+      targetMonthCode = code;
+      targetMonthName = nameKey.charAt(0).toUpperCase() + nameKey.slice(1);
+    }
+  });
+
+  // Match YYYY-MM explicitly if provided (e.g. 2026-07)
+  const yyyyMmMatch = query.match(/20\d\d[-/](0[1-9]|1[0-2])/);
+  if (yyyyMmMatch) {
+    targetMonthCode = yyyyMmMatch[1];
+    targetMonthName = yyyyMmMatch[0];
+  }
+
   // If a specific collaborator was named (excluding common "quem sou eu" questions)
   if (mentionedUser && !normalized.includes("quem sou eu") && !normalized.includes("meu nome")) {
     const isSelfStr = mentionedUser.id === currentUser.id ? " (Você)" : "";
@@ -40,10 +73,45 @@ export const resolveLocalQueryFallback = (
     const inProgress = userProjects.filter(p => p.status === 'IN_PROGRESS').length;
     
     const userGantt = ganttTasks.filter(t => t.assignedTo?.includes(mentionedUser.id));
-    const completedGantt = userGantt.filter(t => t.status === 'closed').length;
+    const completedGantt = userGantt.filter(t => t.status === 'closed' || t.status === 'done').length;
 
     const totalSeconds = userProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0);
     const totalHours = (totalSeconds / 3600).toFixed(1);
+
+    // Group completed projects by month
+    const monthlyDeliveries: Record<string, { completed: number; inProgress: number; nsList: string[] }> = {};
+    userProjects.forEach(p => {
+      const monthStr = (p.status === 'COMPLETED' && p.endTime ? p.endTime : p.startTime).substring(0, 7);
+      if (!monthlyDeliveries[monthStr]) {
+        monthlyDeliveries[monthStr] = { completed: 0, inProgress: 0, nsList: [] };
+      }
+      if (p.status === 'COMPLETED') {
+        monthlyDeliveries[monthStr].completed += 1;
+        if (p.ns) monthlyDeliveries[monthStr].nsList.push(p.ns);
+      } else if (p.status === 'IN_PROGRESS') {
+        monthlyDeliveries[monthStr].inProgress += 1;
+      }
+    });
+
+    // Check if targetMonthCode matches any month
+    let monthHighlight = "";
+    if (targetMonthCode) {
+      const matchedKey = Object.keys(monthlyDeliveries).find(k => k.endsWith(`-${targetMonthCode}`));
+      if (matchedKey) {
+        const data = monthlyDeliveries[matchedKey];
+        const nsStr = data.nsList.length > 0 ? ` (NSs: **${data.nsList.join(', ')}**)` : '';
+        monthHighlight = `\n📌 **VOLUME NO PERÍODO SOLICITADO (${matchedKey}):**\nEm **${targetMonthName || matchedKey}**, **${mentionedUser.name}** liberou/concluiu **${data.completed}** projetos (Notas de Serviço - NSs)${nsStr}.\n`;
+      } else {
+        monthHighlight = `\n📌 **VOLUME NO PERÍODO SOLICITADO (${targetMonthName || targetMonthCode}):**\nNão foram encontrados registros de NSs liberadas para **${mentionedUser.name}** especificamente no mês selecionado (${targetMonthCode}).\n`;
+      }
+    }
+
+    const monthlyTableRows = Object.entries(monthlyDeliveries).length > 0
+      ? Object.entries(monthlyDeliveries)
+          .sort((a, b) => b[0].localeCompare(a[0]))
+          .map(([m, d]) => `| **${m}** | **${d.completed} NSs** | ${d.inProgress} ativos | ${d.nsList.slice(0, 10).join(', ')}${d.nsList.length > 10 ? '...' : ''} |`)
+          .join('\n')
+      : "| Sem dados | 0 NSs | 0 | - |";
 
     // List recent projects
     const recentProj = userProjects.slice(-5).reverse();
@@ -51,27 +119,85 @@ export const resolveLocalQueryFallback = (
       ? recentProj.map(p => `  * **NS ${p.ns}** - *${p.clientName || 'Inespecífico'}* (${p.implementType || 'N/A'}) - Status: \`${p.status}\``).join('\n')
       : "  * Nenhuma Nota de Serviço (NS) registrada ainda.";
 
-    return `### 🔍 Ficha Operacional Real de: ${mentionedUser.name}${isSelfStr}
+    return `### 📦 Volume de Entregas & Ficha Operacional: ${mentionedUser.name}${isSelfStr}
 *Dados extraídos em tempo real do banco de dados local da Engenharia JIMP*
 
 * **Nome Completo:** ${mentionedUser.name} ${mentionedUser.surname || ''}
 * **Cargo / Função:** \`${mentionedUser.role}\`
 * **E-mail:** \`${mentionedUser.email || 'Não cadastrado'}\`
-
-📊 **Lançamento de Horas e Projetos (Rastreador de NS):**
-* **Total de Projetos Liberados (Concluídos):** **${completed}** projetos concluídos/liberados 🏆
-* **Projetos Em Desenvolvimento ativos:** **${inProgress}**
+${monthHighlight}
+📊 **Resumo Consolidado de Liberação de Projetos (Tracker):**
+* **Total Histórico Liberado (Concluído):** **${completed}** projetos (NSs) entregues 🏆
+* **Projetos Ativos em Desenvolvimento:** **${inProgress}**
 * **Total Geral de Projetos Associados:** **${userProjects.length}**
-* **Total de Horas registradas de Rastreamento:** **${totalHours}* horas*
+* **Total de Horas Rastradas em Projetos:** **${totalHours}h**
+
+📅 **Volume de Projetos (NS) Liberados Mês a Mês:**
+| Mês | NSs Liberadas (Concluídas) | Em Andamento | Amostra de NSs |
+|---|---|---|---|
+${monthlyTableRows}
 
 📅 **Cronograma de Atividades (Nexus Gantt):**
-* **Total de Tarefas Atribuídas:** ${userGantt.length} tarefas de cronograma
+* **Total de Tarefas Atribuídas:** ${userGantt.length} tarefas
 * **Tarefas Concluídas:** ${completedGantt} de ${userGantt.length}
 
-📂 **Projetos e Lançamentos Recentes:**
+📂 **Projetos Recentes:**
 ${projList}
 
-*Se quiser detalhes de outro colaborador ou ver a tabela do ranking completo, é só me perguntar!*`;
+*Para comparar com outro projetista ou ver o ranking completo da equipe, pergunte sobre outro integrante ou digite "Ver ranking"!*`;
+  }
+
+  // --- GENERAL VOLUME / MONTHLY DELIVERY BREAKDOWN PER PROJETISTA ---
+  if (
+    normalized.includes('volume') ||
+    normalized.includes('entregas por') ||
+    normalized.includes('quantos cada') ||
+    normalized.includes('quantos projetos') ||
+    normalized.includes('projetos por mes') ||
+    normalized.includes('entregas por mes') ||
+    normalized.includes('liberacoes por mes') ||
+    normalized.includes('projetos liberados')
+  ) {
+    // Compile monthly deliveries by user and by month
+    const userMonthlyDeliveriesMap: Record<string, Record<string, number>> = {};
+    const allMonthsSet = new Set<string>();
+
+    projects.forEach(p => {
+      if (!p.userId || p.status !== 'COMPLETED') return;
+      const u = users.find(usr => usr.id === p.userId);
+      if (!u) return;
+      const uName = `${u.name} ${u.surname || ''}`.trim();
+      const mStr = (p.endTime || p.startTime).substring(0, 7);
+      allMonthsSet.add(mStr);
+
+      if (!userMonthlyDeliveriesMap[uName]) userMonthlyDeliveriesMap[uName] = {};
+      userMonthlyDeliveriesMap[uName][mStr] = (userMonthlyDeliveriesMap[uName][mStr] || 0) + 1;
+    });
+
+    const sortedMonths = Array.from(allMonthsSet).sort((a, b) => b.localeCompare(a));
+
+    const tableHeader = `| Colaborador / Projetista | Cargo | ${sortedMonths.map(m => `**${m}**`).join(' | ')} | Total Concluídos |`;
+    const tableDivider = `|---|---|${sortedMonths.map(() => '---').join('|')}|---|`;
+
+    const tableRows = users.map(u => {
+      const uName = `${u.name} ${u.surname || ''}`.trim();
+      const monthCounts = sortedMonths.map(m => userMonthlyDeliveriesMap[uName]?.[m] || 0);
+      const totalComp = monthCounts.reduce((a, b) => a + b, 0);
+      const isSelf = u.id === currentUser.id ? ' **(Você)**' : '';
+      return `| **${uName}**${isSelf} | \`${u.role}\` | ${monthCounts.map(c => `**${c}**`).join(' | ')} | **${totalComp}** |`;
+    }).join('\n');
+
+    return `### 📦 Volume de Projetos (NS) Liberados por Projetista por Mês
+Olá, **${name}**! Aqui está a matriz de volume real de projetos (NSs) **concluídos/liberados** por cada integrante da equipe de engenharia por mês:
+
+${tableHeader}
+${tableDivider}
+${tableRows}
+
+💡 **Observações de Análise Operacional:**
+* Cada número na tabela representa a quantidade exata de **Notas de Serviço (NSs) físicas concluídas e entregues** no respetivo mês.
+* A coluna **Total Concluídos** exibe o acumulado histórico do profissional no banco de dados.
+* Para ver a lista das NSs de um integrante específico em um determinado mês, basta perguntar: *"Quais NSs o [Nome] liberou em [Mês]?"*.`;
   }
 
   // --- DYNAMIC RANKING / LEADERBOARD ---
