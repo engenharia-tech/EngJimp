@@ -69,8 +69,8 @@ export const resolveLocalQueryFallback = (
   if (mentionedUser && !normalized.includes("quem sou eu") && !normalized.includes("meu nome")) {
     const isSelfStr = mentionedUser.id === currentUser.id ? " (Você)" : "";
     const userProjects = projects.filter(p => p.userId === mentionedUser.id);
-    const completed = userProjects.filter(p => p.status === 'COMPLETED').length;
-    const inProgress = userProjects.filter(p => p.status === 'IN_PROGRESS').length;
+    const completedTotal = userProjects.filter(p => p.status === 'COMPLETED').length;
+    const inProgressTotal = userProjects.filter(p => p.status === 'IN_PROGRESS').length;
     
     const userGantt = ganttTasks.filter(t => t.assignedTo?.includes(mentionedUser.id));
     const completedGantt = userGantt.filter(t => t.status === 'closed' || t.status === 'done').length;
@@ -78,45 +78,101 @@ export const resolveLocalQueryFallback = (
     const totalSeconds = userProjects.reduce((acc, p) => acc + (p.totalActiveSeconds || 0), 0);
     const totalHours = (totalSeconds / 3600).toFixed(1);
 
-    // Group completed projects by month
-    const monthlyDeliveries: Record<string, { completed: number; inProgress: number; nsList: string[] }> = {};
+    // Detailed Monthly & Type Breakdown
+    interface MonthTypeData {
+      liberacoesComp: number;
+      liberacoesAct: number;
+      liberacoesNs: string[];
+
+      variacoesComp: number;
+      variacoesAct: number;
+      variacoesNs: string[];
+      variacoesItemCount: number;
+
+      desenvolvimentosComp: number;
+      desenvolvimentosAct: number;
+      desenvolvimentosNs: string[];
+
+      totalComp: number;
+      totalAct: number;
+    }
+
+    const monthlyTypeMap: Record<string, MonthTypeData> = {};
+
     userProjects.forEach(p => {
       const monthStr = (p.status === 'COMPLETED' && p.endTime ? p.endTime : p.startTime).substring(0, 7);
-      if (!monthlyDeliveries[monthStr]) {
-        monthlyDeliveries[monthStr] = { completed: 0, inProgress: 0, nsList: [] };
+      if (!monthlyTypeMap[monthStr]) {
+        monthlyTypeMap[monthStr] = {
+          liberacoesComp: 0, liberacoesAct: 0, liberacoesNs: [],
+          variacoesComp: 0, variacoesAct: 0, variacoesNs: [], variacoesItemCount: 0,
+          desenvolvimentosComp: 0, desenvolvimentosAct: 0, desenvolvimentosNs: [],
+          totalComp: 0, totalAct: 0
+        };
       }
+
+      const mData = monthlyTypeMap[monthStr];
+      const pType = (p.type || '').toUpperCase();
+      const nsCode = p.ns ? `NS-${p.ns}` : (p.name || 'Projeto');
+
       if (p.status === 'COMPLETED') {
-        monthlyDeliveries[monthStr].completed += 1;
-        if (p.ns) monthlyDeliveries[monthStr].nsList.push(p.ns);
-      } else if (p.status === 'IN_PROGRESS') {
-        monthlyDeliveries[monthStr].inProgress += 1;
+        mData.totalComp += 1;
+        if (pType.includes('LIBERAC') || pType.includes('RELEASE')) {
+          mData.liberacoesComp += 1;
+          mData.liberacoesNs.push(nsCode);
+        } else if (pType.includes('VARIAC') || pType.includes('VARIATION')) {
+          mData.variacoesComp += 1;
+          mData.variacoesNs.push(nsCode);
+          mData.variacoesItemCount += (p.variations || []).length;
+        } else if (pType.includes('DESENVOLV') || pType.includes('DEV')) {
+          mData.desenvolvimentosComp += 1;
+          mData.desenvolvimentosNs.push(nsCode);
+        } else {
+          // Default to Liberação if type not explicitly marked
+          mData.liberacoesComp += 1;
+          mData.liberacoesNs.push(nsCode);
+        }
+      } else {
+        mData.totalAct += 1;
+        if (pType.includes('LIBERAC') || pType.includes('RELEASE')) mData.liberacoesAct += 1;
+        else if (pType.includes('VARIAC') || pType.includes('VARIATION')) mData.variacoesAct += 1;
+        else if (pType.includes('DESENVOLV') || pType.includes('DEV')) mData.desenvolvimentosAct += 1;
+        else mData.liberacoesAct += 1;
       }
     });
 
     // Check if targetMonthCode matches any month
     let monthHighlight = "";
     if (targetMonthCode) {
-      const matchedKey = Object.keys(monthlyDeliveries).find(k => k.endsWith(`-${targetMonthCode}`));
+      const matchedKey = Object.keys(monthlyTypeMap).find(k => k.endsWith(`-${targetMonthCode}`));
       if (matchedKey) {
-        const data = monthlyDeliveries[matchedKey];
-        const nsStr = data.nsList.length > 0 ? ` (NSs: **${data.nsList.join(', ')}**)` : '';
-        monthHighlight = `\n📌 **VOLUME NO PERÍODO SOLICITADO (${matchedKey}):**\nEm **${targetMonthName || matchedKey}**, **${mentionedUser.name}** liberou/concluiu **${data.completed}** projetos (Notas de Serviço - NSs)${nsStr}.\n`;
+        const d = monthlyTypeMap[matchedKey];
+        monthHighlight = `
+🎯 **QUANTIDADES DE PROJETOS ENTREGUES EM ${targetMonthName || matchedKey} (${mentionedUser.name}):**
+* **Projetos de LIBERAÇÃO:** **${d.liberacoesComp}** ${d.liberacoesNs.length > 0 ? `(NSs: **${d.liberacoesNs.join(', ')}**)` : '(Nenhum no período)'}
+* **Projetos de VARIAÇÃO:** **${d.variacoesComp}** ${d.variacoesNs.length > 0 ? `(NSs: **${d.variacoesNs.join(', ')}**)` : '(Nenhum no período)'} ${d.variacoesItemCount > 0 ? `[Total de ${d.variacoesItemCount} itens de variação técnica]` : ''}
+* **Projetos de DESENVOLVIMENTO:** **${d.desenvolvimentosComp}** ${d.desenvolvimentosNs.length > 0 ? `(NSs: **${d.desenvolvimentosNs.join(', ')}**)` : '(Nenhum no período)'}
+
+📍 **TOTAL GERAL ENTREGUE EM ${targetMonthName || matchedKey}:** **${d.totalComp} projetos (NSs)** liberados.
+`;
       } else {
-        monthHighlight = `\n📌 **VOLUME NO PERÍODO SOLICITADO (${targetMonthName || targetMonthCode}):**\nNão foram encontrados registros de NSs liberadas para **${mentionedUser.name}** especificamente no mês selecionado (${targetMonthCode}).\n`;
+        monthHighlight = `
+🎯 **QUANTIDADES EM ${targetMonthName || targetMonthCode} (${mentionedUser.name}):**
+Não foram localizadas NSs concluídas para **${mentionedUser.name}** no mês selecionado (${targetMonthCode}).
+`;
       }
     }
 
-    const monthlyTableRows = Object.entries(monthlyDeliveries).length > 0
-      ? Object.entries(monthlyDeliveries)
+    const monthlyTableRows = Object.entries(monthlyTypeMap).length > 0
+      ? Object.entries(monthlyTypeMap)
           .sort((a, b) => b[0].localeCompare(a[0]))
-          .map(([m, d]) => `| **${m}** | **${d.completed} NSs** | ${d.inProgress} ativos | ${d.nsList.slice(0, 10).join(', ')}${d.nsList.length > 10 ? '...' : ''} |`)
+          .map(([m, d]) => `| **${m}** | **${d.liberacoesComp}** | **${d.variacoesComp}** | **${d.desenvolvimentosComp}** | **${d.totalComp} NSs** | ${d.totalAct} em andamento |`)
           .join('\n')
-      : "| Sem dados | 0 NSs | 0 | - |";
+      : "| Sem dados | 0 | 0 | 0 | 0 NSs | 0 |";
 
     // List recent projects
-    const recentProj = userProjects.slice(-5).reverse();
+    const recentProj = userProjects.slice(-8).reverse();
     const projList = recentProj.length > 0
-      ? recentProj.map(p => `  * **NS ${p.ns}** - *${p.clientName || 'Inespecífico'}* (${p.implementType || 'N/A'}) - Status: \`${p.status}\``).join('\n')
+      ? recentProj.map(p => `  * **NS ${p.ns}** [${p.type || 'LIBERAÇÃO'}] - *${p.clientName || p.name || 'Inespecífico'}* - Status: \`${p.status}\``).join('\n')
       : "  * Nenhuma Nota de Serviço (NS) registrada ainda.";
 
     return `### 📦 Volume de Entregas & Ficha Operacional: ${mentionedUser.name}${isSelfStr}
@@ -126,25 +182,22 @@ export const resolveLocalQueryFallback = (
 * **Cargo / Função:** \`${mentionedUser.role}\`
 * **E-mail:** \`${mentionedUser.email || 'Não cadastrado'}\`
 ${monthHighlight}
-📊 **Resumo Consolidado de Liberação de Projetos (Tracker):**
-* **Total Histórico Liberado (Concluído):** **${completed}** projetos (NSs) entregues 🏆
-* **Projetos Ativos em Desenvolvimento:** **${inProgress}**
-* **Total Geral de Projetos Associados:** **${userProjects.length}**
+📊 **Resumo Acumulado de Liberações por Categoria (Tracker):**
+* **Projetos de Liberação Concluídos:** **${userProjects.filter(p => p.status === 'COMPLETED' && (!p.type || p.type.includes('LIBERAC'))).length}**
+* **Projetos de Variação Concluídos:** **${userProjects.filter(p => p.status === 'COMPLETED' && p.type && p.type.includes('VARIAC')).length}**
+* **Projetos de Desenvolvimento Concluídos:** **${userProjects.filter(p => p.status === 'COMPLETED' && p.type && p.type.includes('DESENVOLV')).length}**
+* **TOTAL GERAL ACUMULADO LIBERADO:** **${completedTotal}** projetos (NSs) entregues 🏆
 * **Total de Horas Rastradas em Projetos:** **${totalHours}h**
 
-📅 **Volume de Projetos (NS) Liberados Mês a Mês:**
-| Mês | NSs Liberadas (Concluídas) | Em Andamento | Amostra de NSs |
-|---|---|---|---|
+📅 **Detalhamento das Entregas Mês a Mês (Quantidade Exata):**
+| Mês | Liberações | Variações | Desenvolvimentos | Total Concluído | Em Andamento |
+|---|---|---|---|---|---|
 ${monthlyTableRows}
 
-📅 **Cronograma de Atividades (Nexus Gantt):**
-* **Total de Tarefas Atribuídas:** ${userGantt.length} tarefas
-* **Tarefas Concluídas:** ${completedGantt} de ${userGantt.length}
-
-📂 **Projetos Recentes:**
+📂 **Lista das Últimas NSs:**
 ${projList}
 
-*Para comparar com outro projetista ou ver o ranking completo da equipe, pergunte sobre outro integrante ou digite "Ver ranking"!*`;
+*Deseja saber mais dados de outro colaborador ou ver o ranking completo? É só solicitar!*`;
   }
 
   // --- GENERAL VOLUME / MONTHLY DELIVERY BREAKDOWN PER PROJETISTA ---
@@ -155,49 +208,53 @@ ${projList}
     normalized.includes('quantos projetos') ||
     normalized.includes('projetos por mes') ||
     normalized.includes('entregas por mes') ||
-    normalized.includes('liberacoes por mes') ||
+    normalized.includes('liberacoes') ||
+    normalized.includes('liberaçoes') ||
+    normalized.includes('variacoes') ||
+    normalized.includes('variaçoes') ||
+    normalized.includes('desenvolvimento') ||
     normalized.includes('projetos liberados')
   ) {
-    // Compile monthly deliveries by user and by month
-    const userMonthlyDeliveriesMap: Record<string, Record<string, number>> = {};
-    const allMonthsSet = new Set<string>();
+    // Detailed stats per user
+    const userSummaryList = users.map(u => {
+      const uProjects = projects.filter(p => p.userId === u.id);
+      const completed = uProjects.filter(p => p.status === 'COMPLETED');
+      const inProgress = uProjects.filter(p => p.status === 'IN_PROGRESS');
 
-    projects.forEach(p => {
-      if (!p.userId || p.status !== 'COMPLETED') return;
-      const u = users.find(usr => usr.id === p.userId);
-      if (!u) return;
-      const uName = `${u.name} ${u.surname || ''}`.trim();
-      const mStr = (p.endTime || p.startTime).substring(0, 7);
-      allMonthsSet.add(mStr);
+      const liberacoes = completed.filter(p => !p.type || p.type.toUpperCase().includes('LIBERAC'));
+      const variacoes = completed.filter(p => p.type && p.type.toUpperCase().includes('VARIAC'));
+      const desenvolvimentos = completed.filter(p => p.type && p.type.toUpperCase().includes('DESENVOLV'));
 
-      if (!userMonthlyDeliveriesMap[uName]) userMonthlyDeliveriesMap[uName] = {};
-      userMonthlyDeliveriesMap[uName][mStr] = (userMonthlyDeliveriesMap[uName][mStr] || 0) + 1;
-    });
-
-    const sortedMonths = Array.from(allMonthsSet).sort((a, b) => b.localeCompare(a));
-
-    const tableHeader = `| Colaborador / Projetista | Cargo | ${sortedMonths.map(m => `**${m}**`).join(' | ')} | Total Concluídos |`;
-    const tableDivider = `|---|---|${sortedMonths.map(() => '---').join('|')}|---|`;
-
-    const tableRows = users.map(u => {
-      const uName = `${u.name} ${u.surname || ''}`.trim();
-      const monthCounts = sortedMonths.map(m => userMonthlyDeliveriesMap[uName]?.[m] || 0);
-      const totalComp = monthCounts.reduce((a, b) => a + b, 0);
       const isSelf = u.id === currentUser.id ? ' **(Você)**' : '';
-      return `| **${uName}**${isSelf} | \`${u.role}\` | ${monthCounts.map(c => `**${c}**`).join(' | ')} | **${totalComp}** |`;
+
+      return {
+        user: u,
+        isSelf,
+        liberacoesCount: liberacoes.length,
+        variacoesCount: variacoes.length,
+        desenvolvimentosCount: desenvolvimentos.length,
+        totalCompleted: completed.length,
+        totalInProgress: inProgress.length
+      };
+    }).sort((a, b) => b.totalCompleted - a.totalCompleted);
+
+    const tableRows = userSummaryList.map(s => {
+      return `| **${s.user.name} ${s.user.surname || ''}**${s.isSelf} | \`${s.user.role}\` | **${s.liberacoesCount}** | **${s.variacoesCount}** | **${s.desenvolvimentosCount}** | **${s.totalCompleted} NSs** | ${s.totalInProgress} |`;
     }).join('\n');
 
-    return `### 📦 Volume de Projetos (NS) Liberados por Projetista por Mês
-Olá, **${name}**! Aqui está a matriz de volume real de projetos (NSs) **concluídos/liberados** por cada integrante da equipe de engenharia por mês:
+    return `### 📦 Quantidades Exatas de Projetos (NS) Liberados por Projetista por Categoria
+Olá, **${name}**! Aqui está a consolidação completa com as **quantidades numéricas exatas** de projetos concluídos e liberados na equipe:
 
-${tableHeader}
-${tableDivider}
+| Colaborador / Projetista | Cargo | Liberações | Variações | Desenvolvimentos | Total Liberado | Em Andamento |
+|---|---|---|---|---|---|---|
 ${tableRows}
 
-💡 **Observações de Análise Operacional:**
-* Cada número na tabela representa a quantidade exata de **Notas de Serviço (NSs) físicas concluídas e entregues** no respetivo mês.
-* A coluna **Total Concluídos** exibe o acumulado histórico do profissional no banco de dados.
-* Para ver a lista das NSs de um integrante específico em um determinado mês, basta perguntar: *"Quais NSs o [Nome] liberou em [Mês]?"*.`;
+💡 **Resumo Operacional:**
+* **Projetos de Liberação (Novos Pacotes/Projetos):** Foco em finalização e liberação formal de novos implementos.
+* **Projetos de Variação:** Foco em revisões, adaptações e ajustes em projetos existentes.
+* **Projetos de Desenvolvimento:** Foco em inovação, novos chassis e componentes base.
+
+*Para consultar o volume de um mês específico (ex: "Quantas variações o Cobo fez em Julho?"), basta perguntar pelo mês desejado!*`;
   }
 
   // --- DYNAMIC RANKING / LEADERBOARD ---
