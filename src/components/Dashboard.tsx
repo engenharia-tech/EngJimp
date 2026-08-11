@@ -1214,7 +1214,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     ]);
 
     return Array.from(allUserIds).map(userId => {
-        const userName = usersMap[userId] || (userId.length < 30 ? userId : t('unknown'));
+        const userName = getUserDisplayName(userId, data.users, usersMap);
         
         // Always start with filteredProjects to respect role-based access
         const userProjects = filteredProjects.filter(p => {
@@ -1655,26 +1655,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   // 8. Stacked Bar Chart: Interruptions by Designer (Reason Breakdown)
   const interruptionsByDesigner = useMemo(() => {
-    const data: Record<string, { name: string, [key: string]: any }> = {};
+    const chartData: Record<string, { name: string, [key: string]: any }> = {};
     const allReasons = new Set<string>();
 
     filteredProjects.forEach(p => {
-        const userName = usersMap[p.userId || ''] || (p.userId && p.userId.length < 30 ? p.userId : t('unknown'));
-        if (!data[userName]) {
-            data[userName] = { name: userName };
+        const userName = getUserDisplayName(p.userId, data.users, usersMap);
+        if (!chartData[userName]) {
+            chartData[userName] = { name: userName };
         }
         
         if (p.pauses && p.pauses.length > 0) {
             p.pauses.forEach(pause => {
                 const reason = pause.reason || t('others');
                 allReasons.add(reason);
-                data[userName][reason] = (data[userName][reason] || 0) + 1;
+                chartData[userName][reason] = (chartData[userName][reason] || 0) + 1;
             });
         }
     });
 
     // Ensure all keys exist for recharts to stack correctly (optional but good practice)
-    const result = Object.values(data).map(item => {
+    const result = Object.values(chartData).map(item => {
         allReasons.forEach(r => {
             if (!item[r]) item[r] = 0;
         });

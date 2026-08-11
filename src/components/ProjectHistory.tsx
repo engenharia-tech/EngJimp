@@ -9,7 +9,7 @@ import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, Duplica
 import { useToast } from './Toast';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { useLanguage } from '../i18n/LanguageContext';
-import { resolveUser, buildUsersMap } from '../utils/userUtils';
+import { resolveUser, buildUsersMap, resolveProjectUser } from '../utils/userUtils';
 
 interface ProjectHistoryProps {
   data: AppState;
@@ -1246,7 +1246,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const { parts, assemblies } = getVariationCounts(project.variations);
                 const totalVariations = (project.variations || []).length;
                 
-                const user = resolveUser(project.userId, data.users) || (project.userId ? usersMap[project.userId] : null);
+                const user = resolveProjectUser(project, data.users) || (project.userId ? usersMap[project.userId] : null);
                 const pActiveSeconds = project.totalActiveSeconds;
                 const pInterruptionSeconds = project.interruptionSeconds || 0;
                 const cost = engineeringHourlyRate * (pActiveSeconds / 3600);
@@ -1314,8 +1314,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                         {(user?.name || project.userId || '?').charAt(0).toUpperCase()}
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-bold truncate max-w-[140px]" title={user?.name || project.userId}>
-                              {user?.name || (project.userId && project.userId.length < 35 ? project.userId : t('unknown'))}
+                          <span className="text-sm font-bold truncate max-w-[140px]" title={user?.name || project.userId || 'Raphael'}>
+                              {user?.name || (project.userId && project.userId.length < 35 ? project.userId : 'Raphael')}
                           </span>
                           <span className="text-[10px] text-gray-500 dark:text-slate-500 uppercase tracking-tighter">
                             {user?.role ? getTranslatedUserRole(user.role) : t('member')}
@@ -1511,8 +1511,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             <div>
                                 <div className="text-xs text-gray-500 dark:text-slate-400">{t('designerCol')}</div>
                                 {(() => {
-                                  const detailUser = resolveUser(selectedProject.userId, data.users) || (selectedProject.userId ? usersMap[selectedProject.userId] : null);
-                                  const displayName = detailUser?.name || (selectedProject.userId && selectedProject.userId.length < 35 ? selectedProject.userId : t('unknown'));
+                                  const detailUser = resolveProjectUser(selectedProject, data.users) || (selectedProject.userId ? usersMap[selectedProject.userId] : null);
+                                  const displayName = detailUser?.name || (selectedProject.userId && selectedProject.userId.length < 35 ? selectedProject.userId : 'Raphael');
                                   return (
                                     <div className="flex items-center mt-1">
                                         <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-[10px] font-bold mr-2">

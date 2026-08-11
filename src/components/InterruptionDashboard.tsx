@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { AppState, InterruptionRecord, InterruptionStatus, User } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
-import { resolveUser } from '../utils/userUtils';
+import { resolveUser, getUserDisplayName } from '../utils/userUtils';
 
 interface InterruptionDashboardProps {
   data: AppState;
@@ -47,7 +47,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
     interruptions.forEach(i => {
       const designerId = i.designerId;
       const designer = resolveUser(designerId, data.users);
-      const designerName = designer ? `${designer.name} ${designer.surname || ''}`.trim() : (designerId && designerId.length < 35 ? designerId : t('unknown'));
+      const designerName = getUserDisplayName(designerId, data.users, undefined, 'Raphael');
       
       if (!stats[designerId]) {
         stats[designerId] = { 
