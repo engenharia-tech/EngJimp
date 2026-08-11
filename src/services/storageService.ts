@@ -3,6 +3,7 @@ import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord
 import { SEOKeyword, SEOMetric, SEOTask, SEOData } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
+import { resolveUser } from '../utils/userUtils';
 
 // Supabase Configuration
 const getSupabaseConfig = () => {
@@ -61,6 +62,89 @@ const defaultState: AppState = {
 };
 
 // --- DATA MANAGEMENT ---
+
+export const RAW_PROJECT_SEED_DATA = [
+  { p: 'Luiz', ns: '8576', c: 'Ademir Petermann', pr: 'Sobrechassi', d: '02/fev', h: '09:30' },
+  { p: 'Luiz', ns: '9040', c: 'Transportes M.E.S', pr: 'Sobrechassi', d: '03/fev', h: '10:00' },
+  { p: 'Luiz', ns: '9041', c: 'Morbach', pr: 'Sobrechassi', d: '04/fev', h: '11:00' },
+  { p: 'Cobo', ns: '8759', c: 'Transleve', pr: 'Sobrechassi', d: '05/fev', h: '14:00' },
+  { p: 'Luiz', ns: '7505', c: 'Multi-Marcas', pr: 'Base e Caixa de carga', d: '05/fev', h: '14:50' },
+  { p: 'Luiz', ns: '7506', c: 'Multi-Marcas', pr: 'Base e Caixa de carga', d: '05/fev', h: '14:50' },
+  { p: 'Luiz', ns: '9026', c: 'Vanderlei', pr: 'Base e Caixa de carga', d: '06/fev', h: '09:00' },
+  { p: 'Luiz', ns: '9030', c: 'Cleber Alves', pr: 'Base e Caixa de carga', d: '06/fev', h: '11:00' },
+  { p: 'Rogerio', ns: '8985', c: 'Rodrigo Martins', pr: 'Base', d: '06/fev', h: '12:08' },
+  { p: 'Rogerio', ns: '9036', c: 'Transportadora Adre LTDA', pr: 'Base', d: '06/fev', h: '12:08' },
+  { p: 'Luiz', ns: '9049', c: 'Camila e Lara', pr: 'Base e Caixa de carga', d: '06/fev', h: '16:36' },
+  { p: 'Luiz', ns: '9050', c: 'Camila e Lara', pr: 'Base e Caixa de carga', d: '06/fev', h: '16:36' },
+  { p: 'Edson', ns: '8974', c: 'Rodrigo Martins', pr: 'Graneleiro', d: '06/fev', h: '19:40' },
+  { p: 'Luiz', ns: '9035', c: 'Transporte 4P', pr: 'Base e Caixa de carga', d: '09/fev', h: '09:00' },
+  { p: 'Edson', ns: '8932', c: 'Adriano Marques', pr: 'Base e Caixa de Carga', d: '09/fev', h: '14:40' },
+  { p: 'Edson', ns: '7707', c: 'Raffo', pr: 'Base', d: '10/fev', h: '16:39' },
+  { p: 'Edson', ns: '9047', c: 'Dinolog', pr: 'Base', d: '11/fev', h: '14:12' },
+  { p: 'Luiz', ns: '8957', c: 'Nelson de Freitas', pr: 'Sobrechassi', d: '11/fev', h: '15:11' },
+  { p: 'Edson', ns: '9042', c: 'Fernando Hasckel', pr: 'Base', d: '11/fev', h: '16:20' },
+  { p: 'Rogerio', ns: '9048', c: 'Dinolog Total Sider', pr: 'Base', d: '14/fev', h: '14:50' },
+  { p: 'Edson', ns: '8966', c: 'Speed Cargo', pr: 'Base', d: '14/fev', h: '15:35' },
+  { p: 'Edson', ns: '8956', c: 'Pluma', pr: 'Base e Caixa de Carga', d: '16/fev', h: '10:47' },
+  { p: 'Luiz', ns: '9037', c: 'Leoni', pr: 'SC Carga seca', d: '16/fev', h: '11:00' },
+  { p: 'Edson', ns: '9045', c: 'Ivan Mendes', pr: 'Base e Caixa de Carga', d: '16/fev', h: '12:02' },
+  { p: 'Rogerio', ns: '8877', c: 'Transberns', pr: 'Base e Caixa de Carga', d: '16/fev', h: '11:44' },
+  { p: 'Rogerio', ns: '8878', c: 'Transberns', pr: 'Base e Caixa de Carga', d: '16/fev', h: '12:05' },
+  { p: 'Edson', ns: '9050', c: 'Kamila e Lara', pr: 'Base e Caixa de Carga', d: '17/fev', h: '13:31' },
+  { p: 'Edson', ns: '9049', c: 'Kamila e Lara', pr: 'Base e Caixa de Carga', d: '17/fev', h: '13:31' },
+  { p: 'Edson', ns: '9043', c: 'Major', pr: 'Base', d: '17/fev', h: '14:25' },
+  { p: 'Cobo', ns: '8998', c: 'Bigfer', pr: 'Sobrechassi', d: '10/fev', h: '17:21' },
+  { p: 'Cobo', ns: '8999', c: 'Bigfer', pr: 'Sobrechassi', d: '10/fev', h: '17:32' },
+  { p: 'Cobo', ns: '9052', c: 'Aceville', pr: 'sobrechassi especial', d: '16/fev', h: '10:32' },
+  { p: 'Edson', ns: '9079', c: 'Dinolog', pr: 'Base', d: '17/fev', h: '14:38' },
+  { p: 'Edson', ns: '9078', c: 'Sandro Jardel', pr: 'Base', d: '17/fev', h: '16:41' },
+  { p: 'Cobo', ns: '9047', c: 'Dinolog', pr: 'Caixa de carga', d: '17/fev', h: '16:53' },
+  { p: 'Cobo', ns: '9079', c: 'Dinolog', pr: 'Caixa de carga', d: '17/fev', h: '16:53' },
+  { p: 'Cobo', ns: '9036', c: 'Adre', pr: 'Caixa de carga', d: '18/fev', h: '08:39' },
+  { p: 'Cobo', ns: '7077', c: 'Raffo', pr: 'Caixa de carga', d: '18/fev', h: '16:00' },
+  { p: 'Luiz', ns: '9061', c: 'Aceville', pr: 'SC Carga seca', d: '18/fev', h: '11:35' },
+  { p: 'Edson', ns: '9104', c: 'Tupy', pr: 'Base', d: '18/fev', h: '17:47' },
+  { p: 'Cobo', ns: '9042', c: 'Fernando Hasckel', pr: 'Caixa de carga', d: '19/fev', h: '08:46' },
+  { p: 'Luiz', ns: '9086', c: 'Carlos Cesas Torassi', pr: 'Sobre chassi', d: '19/fev', h: '10:47' },
+  { p: 'Edson', ns: '9046', c: 'Marcelo Pereira', pr: 'Base e Caixa de Carga', d: '20/fev', h: '08:44' },
+  { p: 'Edson', ns: '8929', c: 'Roju', pr: 'Base', d: '20/fev', h: '11:33' },
+  { p: 'Edson', ns: '8930', c: 'Roju', pr: 'Base', d: '20/fev', h: '11:33' },
+  { p: 'Edson', ns: '9044', c: 'Agrofort', pr: 'Base e Caixa de Carga', d: '20/fev', h: '13:00' },
+  { p: 'Edson', ns: '8265', c: 'Azure', pr: 'Base', d: '20/fev', h: '16:41' },
+  { p: 'Edson', ns: '8266', c: 'Azure', pr: 'Base', d: '20/fev', h: '16:41' },
+  { p: 'Edson', ns: '9008', c: 'MF Express', pr: 'Base e Caixa de Carga', d: '20/fev', h: '17:17' },
+  { p: 'Cobo', ns: '9057', c: 'Aceville', pr: 'sobrechassi especial', d: '20/fev', h: '17:18' },
+  { p: 'Luiz', ns: '9072', c: 'Supermercado Saviski', pr: 'Sobrechassi', d: '23/fev', h: '13:18' },
+  { p: 'Cobo', ns: '9058', c: 'Aceville', pr: 'sobrechassi especial', d: '24/fev', h: '07:33' },
+  { p: 'Cobo', ns: '9059', c: 'Aceville', pr: 'sobrechassi especial', d: '24/fev', h: '07:37' },
+  { p: 'Cobo', ns: '9060', c: 'Aceville', pr: 'sobrechassi especial', d: '24/fev', h: '07:43' },
+  { p: 'Cobo', ns: '9089', c: 'GODI', pr: 'Sobre chassi', d: '24/fev', h: '09:47' },
+  { p: 'Edson', ns: '9009', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9010', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9011', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9012', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9013', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9014', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9015', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9016', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9017', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9018', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9019', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9020', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9021', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9022', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Edson', ns: '9023', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
+  { p: 'Luiz', ns: '9111', c: 'Pedroni', pr: 'Sobrechassi', d: '24/fev', h: '15:25' },
+  { p: 'Cobo', ns: '8976', c: 'bigfer', pr: 'Sobre chassi', d: '24/fev', h: '17:31' },
+  { p: 'Cobo', ns: '8977', c: 'bigfer', pr: 'Sobre chassi', d: '25/fev', h: '07:39' },
+  { p: 'Cobo', ns: '8966', c: 'Speed Cargo', pr: 'Caixa de carga prototipo melhoria', d: '25/fev', h: '16:12' },
+  { p: 'Cobo', ns: '9078', c: 'Sandro Jardel', pr: 'Caixa de carga', d: '26/fev', h: '15:26' },
+  { p: 'Edson', ns: '9116', c: 'LBS', pr: 'Base', d: '27/fev', h: '10:23' },
+  { p: 'Edson', ns: '9117', c: 'LBS', pr: 'Base', d: '27/fev', h: '10:23' },
+  { p: 'Edson', ns: '9100', c: 'Jurandir', pr: 'Base', d: '27/fev', h: '11:49' },
+  { p: 'Edson', ns: '8942', c: 'Bortoluzzi', pr: 'Base', d: '27/fev', h: '16:12' },
+  { p: 'Edson', ns: '8943', c: 'Bortoluzzi', pr: 'Base', d: '27/fev', h: '16:12' },
+];
 
 // Helper to parse numbers safely from DB strings
 const parseSafeNumber = (val: any): number => {
@@ -241,38 +325,66 @@ export const fetchAppState = async (): Promise<AppState> => {
     }
 
     try {
-      projects = (projectsRes.data || []).map((p: any) => ({
-        id: p.id,
-        name: p.client_name || p.project_code || p.ns || 'Sem Nome',
-        ns: p.ns,
-        clientName: p.client_name,
-        flooringType: p.flooring_type,
-        projectCode: p.project_code,
-        chassisNumber: p.chassis_number,
-        type: p.type as ProjectType,
-        implementType: p.implement_type as ImplementType,
-        startTime: p.start_time,
-        endTime: p.end_time,
-        totalActiveSeconds: p.total_active_seconds || 0,
-        interruptionSeconds: p.interruption_seconds || 0,
-        totalSeconds: p.total_seconds || 0,
-        productiveCost: p.productive_cost || 0,
-        interruptionCost: p.interruption_cost || 0,
-        totalCost: p.total_cost || 0,
-        pauses: parseSafeJson(p.pauses),
-        variations: parseSafeJson(p.variations),
-        status: p.status as 'COMPLETED' | 'IN_PROGRESS',
-        notes: p.notes,
-        userId: p.user_id,
-        estimatedSeconds: p.estimated_seconds || 0,
-        isOvertime: (p.is_overtime !== undefined && p.is_overtime !== null) ? !!p.is_overtime : !!(p.notes && (p.notes.includes('Hora Extra') || p.notes.includes('[HORA_EXTRA]'))),
-        lastActiveAt: p.updated_at
-      }));
+      users = (usersRes.data || []).map((u: any) => ({
+        id: u.id, username: u.username, password: u.password, name: u.name, surname: u.surname,
+        email: u.email, phone: u.phone, role: u.role, salary: Number(u.salary) || 0
+      })).sort((a, b) => a.name.localeCompare(b.name));
+    } catch (e) { console.error("Users mapping error:", e); }
+
+    try {
+      const rawDataMapByNs: Record<string, string> = {};
+      const rawDataMapByClient: Record<string, string> = {};
+      RAW_PROJECT_SEED_DATA.forEach((item: any) => {
+        if (item.ns) rawDataMapByNs[String(item.ns).trim()] = item.p;
+        if (item.c) rawDataMapByClient[String(item.c).trim().toLowerCase()] = item.p;
+      });
+
+      projects = (projectsRes.data || []).map((p: any) => {
+        let resolved = resolveUser(p.user_id, users);
+        if (!resolved && p.ns && rawDataMapByNs[String(p.ns).trim()]) {
+          resolved = resolveUser(rawDataMapByNs[String(p.ns).trim()], users);
+        }
+        if (!resolved && p.client_name && rawDataMapByClient[String(p.client_name).trim().toLowerCase()]) {
+          resolved = resolveUser(rawDataMapByClient[String(p.client_name).trim().toLowerCase()], users);
+        }
+        if (!resolved && p.notes) {
+          resolved = resolveUser(p.notes, users);
+        }
+
+        const userId = resolved ? resolved.id : (p.user_id || undefined);
+        return {
+          id: p.id,
+          name: p.client_name || p.project_code || p.ns || 'Sem Nome',
+          ns: p.ns,
+          clientName: p.client_name,
+          flooringType: p.flooring_type,
+          projectCode: p.project_code,
+          chassisNumber: p.chassis_number,
+          type: p.type as ProjectType,
+          implementType: p.implement_type as ImplementType,
+          startTime: p.start_time,
+          endTime: p.end_time,
+          totalActiveSeconds: p.total_active_seconds || 0,
+          interruptionSeconds: p.interruption_seconds || 0,
+          totalSeconds: p.total_seconds || 0,
+          productiveCost: p.productive_cost || 0,
+          interruptionCost: p.interruption_cost || 0,
+          totalCost: p.total_cost || 0,
+          pauses: parseSafeJson(p.pauses),
+          variations: parseSafeJson(p.variations),
+          status: p.status as 'COMPLETED' | 'IN_PROGRESS',
+          notes: p.notes,
+          userId: userId,
+          estimatedSeconds: p.estimated_seconds || 0,
+          isOvertime: (p.is_overtime !== undefined && p.is_overtime !== null) ? !!p.is_overtime : !!(p.notes && (p.notes.includes('Hora Extra') || p.notes.includes('[HORA_EXTRA]'))),
+          lastActiveAt: p.updated_at
+        };
+      });
     } catch (e) { console.error("Projects mapping error:", e); }
 
     try {
       issues = (issuesRes.data || []).map((i: any) => ({
-        id: i.id, projectNs: i.project_ns, type: i.type, description: i.description, date: i.date, reportedBy: i.reported_by
+        id: i.id, projectNs: i.project_ns, type: i.type, description: i.description, date: i.date, reportedBy: resolveUser(i.reported_by, users)?.id || i.reported_by
       }));
     } catch (e) { console.error("Issues mapping error:", e); }
 
@@ -297,7 +409,7 @@ export const fetchAppState = async (): Promise<AppState> => {
           totalAnnualSavings: parseSafeNumber(inv.total_annual_savings), 
           investmentCost: parseSafeNumber(inv.investment_cost),
           status: inv.status, 
-          authorId: inv.author_id, 
+          authorId: resolveUser(inv.author_id, users)?.id || inv.author_id, 
           createdAt: inv.created_at,
           materials: parseSafeJson(inv.materials, []), 
           machine,
@@ -312,7 +424,7 @@ export const fetchAppState = async (): Promise<AppState> => {
     try {
       interruptions = (interruptionsRes.data || []).map((i: any) => ({
         id: i.id, projectId: i.project_id, projectNs: i.project_ns, clientName: i.client_name,
-        designerId: i.designer_id, startTime: i.start_time, endTime: i.end_time,
+        designerId: resolveUser(i.designer_id, users)?.id || i.designer_id, startTime: i.start_time, endTime: i.end_time,
         problemType: i.problem_type, responsibleArea: i.responsible_area as InterruptionArea,
         responsiblePerson: i.responsible_person, description: i.description,
         status: i.status as InterruptionStatus, totalTimeSeconds: i.total_time_seconds, lastActiveAt: i.updated_at || i.created_at || i.start_time
@@ -327,7 +439,7 @@ export const fetchAppState = async (): Promise<AppState> => {
         const checkOvertime = (a.is_overtime !== undefined && a.is_overtime !== null) ? !!a.is_overtime : !!hasOvertimeNotes;
         return {
           id: a.id,
-          userId: a.user_id,
+          userId: resolveUser(a.user_id, users)?.id || a.user_id,
           activityTypeId: a.activity_type_id,
           activityName: a.activity_name,
           startTime: a.start_time,
@@ -351,13 +463,6 @@ export const fetchAppState = async (): Promise<AppState> => {
         managementEstimate: parseSafeNumber(r.management_estimate), designerEstimate: parseSafeNumber(r.designer_estimate)
       }));
     } catch (e) { console.error("ProjectRequests mapping error:", e); }
-
-    try {
-      users = (usersRes.data || []).map((u: any) => ({
-        id: u.id, username: u.username, password: u.password, name: u.name, surname: u.surname,
-        email: u.email, phone: u.phone, role: u.role, salary: Number(u.salary) || 0
-      })).sort((a, b) => a.name.localeCompare(b.name));
-    } catch (e) { console.error("Users mapping error:", e); }
 
     try {
       ganttTasks = (ganttTasksRes.data || []).map((t: any) => {
@@ -1673,89 +1778,7 @@ export const seedFebruaryData = async (): Promise<{ success: boolean; count: num
       return u?.id;
     };
 
-    const rawData = [
-      // ... (keep all the data entries)
-      { p: 'Luiz', ns: '8576', c: 'Ademir Petermann', pr: 'Sobrechassi', d: '02/fev', h: '09:30' },
-      { p: 'Luiz', ns: '9040', c: 'Transportes M.E.S', pr: 'Sobrechassi', d: '03/fev', h: '10:00' },
-      { p: 'Luiz', ns: '9041', c: 'Morbach', pr: 'Sobrechassi', d: '04/fev', h: '11:00' },
-      { p: 'Cobo', ns: '8759', c: 'Transleve', pr: 'Sobrechassi', d: '05/fev', h: '14:00' },
-      { p: 'Luiz', ns: '7505', c: 'Multi-Marcas', pr: 'Base e Caixa de carga', d: '05/fev', h: '14:50' },
-      { p: 'Luiz', ns: '7506', c: 'Multi-Marcas', pr: 'Base e Caixa de carga', d: '05/fev', h: '14:50' },
-      { p: 'Luiz', ns: '9026', c: 'Vanderlei', pr: 'Base e Caixa de carga', d: '06/fev', h: '09:00' },
-      { p: 'Luiz', ns: '9030', c: 'Cleber Alves', pr: 'Base e Caixa de carga', d: '06/fev', h: '11:00' },
-      { p: 'Rogerio', ns: '8985', c: 'Rodrigo Martins', pr: 'Base', d: '06/fev', h: '12:08' },
-      { p: 'Rogerio', ns: '9036', c: 'Transportadora Adre LTDA', pr: 'Base', d: '06/fev', h: '12:08' },
-      { p: 'Luiz', ns: '9049', c: 'Camila e Lara', pr: 'Base e Caixa de carga', d: '06/fev', h: '16:36' },
-      { p: 'Luiz', ns: '9050', c: 'Camila e Lara', pr: 'Base e Caixa de carga', d: '06/fev', h: '16:36' },
-      { p: 'Edson', ns: '8974', c: 'Rodrigo Martins', pr: 'Graneleiro', d: '06/fev', h: '19:40' },
-      { p: 'Luiz', ns: '9035', c: 'Transporte 4P', pr: 'Base e Caixa de carga', d: '09/fev', h: '09:00' },
-      { p: 'Edson', ns: '8932', c: 'Adriano Marques', pr: 'Base e Caixa de Carga', d: '09/fev', h: '14:40' },
-      { p: 'Edson', ns: '7707', c: 'Raffo', pr: 'Base', d: '10/fev', h: '16:39' },
-      { p: 'Edson', ns: '9047', c: 'Dinolog', pr: 'Base', d: '11/fev', h: '14:12' },
-      { p: 'Luiz', ns: '8957', c: 'Nelson de Freitas', pr: 'Sobrechassi', d: '11/fev', h: '15:11' },
-      { p: 'Edson', ns: '9042', c: 'Fernando Hasckel', pr: 'Base', d: '11/fev', h: '16:20' },
-      { p: 'Rogerio', ns: '9048', c: 'Dinolog Total Sider', pr: 'Base', d: '14/fev', h: '14:50' },
-      { p: 'Edson', ns: '8966', c: 'Speed Cargo', pr: 'Base', d: '14/fev', h: '15:35' },
-      { p: 'Edson', ns: '8956', c: 'Pluma', pr: 'Base e Caixa de Carga', d: '16/fev', h: '10:47' },
-      { p: 'Luiz', ns: '9037', c: 'Leoni', pr: 'SC Carga seca', d: '16/fev', h: '11:00' },
-      { p: 'Edson', ns: '9045', c: 'Ivan Mendes', pr: 'Base e Caixa de Carga', d: '16/fev', h: '12:02' },
-      { p: 'Rogerio', ns: '8877', c: 'Transberns', pr: 'Base e Caixa de Carga', d: '16/fev', h: '11:44' },
-      { p: 'Rogerio', ns: '8878', c: 'Transberns', pr: 'Base e Caixa de Carga', d: '16/fev', h: '12:05' },
-      { p: 'Edson', ns: '9050', c: 'Kamila e Lara', pr: 'Base e Caixa de Carga', d: '17/fev', h: '13:31' },
-      { p: 'Edson', ns: '9049', c: 'Kamila e Lara', pr: 'Base e Caixa de Carga', d: '17/fev', h: '13:31' },
-      { p: 'Edson', ns: '9043', c: 'Major', pr: 'Base', d: '17/fev', h: '14:25' },
-      { p: 'Cobo', ns: '8998', c: 'Bigfer', pr: 'Sobrechassi', d: '10/fev', h: '17:21' },
-      { p: 'Cobo', ns: '8999', c: 'Bigfer', pr: 'Sobrechassi', d: '10/fev', h: '17:32' },
-      { p: 'Cobo', ns: '9052', c: 'Aceville', pr: 'sobrechassi especial', d: '16/fev', h: '10:32' },
-      { p: 'Edson', ns: '9079', c: 'Dinolog', pr: 'Base', d: '17/fev', h: '14:38' },
-      { p: 'Edson', ns: '9078', c: 'Sandro Jardel', pr: 'Base', d: '17/fev', h: '16:41' },
-      { p: 'Cobo', ns: '9047', c: 'Dinolog', pr: 'Caixa de carga', d: '17/fev', h: '16:53' },
-      { p: 'Cobo', ns: '9079', c: 'Dinolog', pr: 'Caixa de carga', d: '17/fev', h: '16:53' },
-      { p: 'Cobo', ns: '9036', c: 'Adre', pr: 'Caixa de carga', d: '18/fev', h: '08:39' },
-      { p: 'Cobo', ns: '7077', c: 'Raffo', pr: 'Caixa de carga', d: '18/fev', h: '16:00' },
-      { p: 'Luiz', ns: '9061', c: 'Aceville', pr: 'SC Carga seca', d: '18/fev', h: '11:35' },
-      { p: 'Edson', ns: '9104', c: 'Tupy', pr: 'Base', d: '18/fev', h: '17:47' },
-      { p: 'Cobo', ns: '9042', c: 'Fernando Hasckel', pr: 'Caixa de carga', d: '19/fev', h: '08:46' },
-      { p: 'Luiz', ns: '9086', c: 'Carlos Cesas Torassi', pr: 'Sobre chassi', d: '19/fev', h: '10:47' },
-      { p: 'Edson', ns: '9046', c: 'Marcelo Pereira', pr: 'Base e Caixa de Carga', d: '20/fev', h: '08:44' },
-      { p: 'Edson', ns: '8929', c: 'Roju', pr: 'Base', d: '20/fev', h: '11:33' },
-      { p: 'Edson', ns: '8930', c: 'Roju', pr: 'Base', d: '20/fev', h: '11:33' },
-      { p: 'Edson', ns: '9044', c: 'Agrofort', pr: 'Base e Caixa de Carga', d: '20/fev', h: '13:00' },
-      { p: 'Edson', ns: '8265', c: 'Azure', pr: 'Base', d: '20/fev', h: '16:41' },
-      { p: 'Edson', ns: '8266', c: 'Azure', pr: 'Base', d: '20/fev', h: '16:41' },
-      { p: 'Edson', ns: '9008', c: 'MF Express', pr: 'Base e Caixa de Carga', d: '20/fev', h: '17:17' },
-      { p: 'Cobo', ns: '9057', c: 'Aceville', pr: 'sobrechassi especial', d: '20/fev', h: '17:18' },
-      { p: 'Luiz', ns: '9072', c: 'Supermercado Saviski', pr: 'Sobrechassi', d: '23/fev', h: '13:18' },
-      { p: 'Cobo', ns: '9058', c: 'Aceville', pr: 'sobrechassi especial', d: '24/fev', h: '07:33' },
-      { p: 'Cobo', ns: '9059', c: 'Aceville', pr: 'sobrechassi especial', d: '24/fev', h: '07:37' },
-      { p: 'Cobo', ns: '9060', c: 'Aceville', pr: 'sobrechassi especial', d: '24/fev', h: '07:43' },
-      { p: 'Cobo', ns: '9089', c: 'GODI', pr: 'Sobre chassi', d: '24/fev', h: '09:47' },
-      { p: 'Edson', ns: '9009', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9010', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9011', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9012', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9013', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9014', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9015', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9016', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9017', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9018', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9019', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9020', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9021', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9022', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Edson', ns: '9023', c: 'ARAUCO', pr: 'Base e Caixa de Carga', d: '24/mar', h: '11:47' },
-      { p: 'Luiz', ns: '9111', c: 'Pedroni', pr: 'Sobrechassi', d: '24/fev', h: '15:25' },
-      { p: 'Cobo', ns: '8976', c: 'bigfer', pr: 'Sobre chassi', d: '24/fev', h: '17:31' },
-      { p: 'Cobo', ns: '8977', c: 'bigfer', pr: 'Sobre chassi', d: '25/fev', h: '07:39' },
-      { p: 'Cobo', ns: '8966', c: 'Speed Cargo', pr: 'Caixa de carga prototipo melhoria', d: '25/fev', h: '16:12' },
-      { p: 'Cobo', ns: '9078', c: 'Sandro Jardel', pr: 'Caixa de carga', d: '26/fev', h: '15:26' },
-      { p: 'Edson', ns: '9116', c: 'LBS', pr: 'Base', d: '27/fev', h: '10:23' },
-      { p: 'Edson', ns: '9117', c: 'LBS', pr: 'Base', d: '27/fev', h: '10:23' },
-      { p: 'Edson', ns: '9100', c: 'Jurandir', pr: 'Base', d: '27/fev', h: '11:49' },
-      { p: 'Edson', ns: '8942', c: 'Bortoluzzi', pr: 'Base', d: '27/fev', h: '16:12' },
-      { p: 'Edson', ns: '8943', c: 'Bortoluzzi', pr: 'Base', d: '27/fev', h: '16:12' },
-    ];
+    const rawData = RAW_PROJECT_SEED_DATA;
 
     const parseDuration = (h: string) => {
       const [hours, mins] = h.split(':').map(Number);

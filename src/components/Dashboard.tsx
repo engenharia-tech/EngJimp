@@ -16,6 +16,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { PRODUCT_CATEGORIES, SUSPENSION_TYPES } from '../constants';
 import { parseISO } from 'date-fns';
 import { calcActiveSeconds } from '../utils/workdayCalc';
+import { resolveUser, getUserDisplayName } from '../utils/userUtils';
 
 interface DashboardProps {
   data: AppState;
@@ -395,7 +396,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     // Exclude 'PROCESSOS' role as they don't belong to product engineering
     const filteredUsers = data.users.filter(u => u.role !== 'PROCESSOS');
     const sortedUsers = [...filteredUsers].sort((a, b) => a.name.localeCompare(b.name));
-    const map = sortedUsers.reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {} as Record<string, string>);
+    const map: Record<string, string> = {};
+    sortedUsers.forEach(u => {
+      if (!u) return;
+      if (u.id) map[u.id] = u.name;
+      if (u.id) map[u.id.toLowerCase()] = u.name;
+      if (u.name) map[u.name] = u.name;
+      if (u.name) map[u.name.toLowerCase()] = u.name;
+      if (u.username) map[u.username] = u.name;
+      if (u.username) map[u.username.toLowerCase()] = u.name;
+      if (u.email) map[u.email] = u.name;
+      if (u.email) map[u.email.toLowerCase()] = u.name;
+      const fullName = `${u.name} ${u.surname || ''}`.trim();
+      if (fullName) {
+        map[fullName] = u.name;
+        map[fullName.toLowerCase()] = u.name;
+      }
+    });
     setUsersMap(map);
     setAvailableDesigners(sortedUsers.filter(u => u.role !== 'CEO' || u.id === currentUser.id));
   }, [data.users, currentUser.id]);
@@ -1522,7 +1539,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const list = filteredProjects.map(p => {
       const hours = ((p.totalActiveSeconds || 0) / 3600).toFixed(2);
       const hoursFormatted = formatDuration(p.totalActiveSeconds || 0);
-      const designerName = p.userId ? (usersMap[p.userId] || p.userId) : t('unknown');
+      const designerName = getUserDisplayName(p.userId, data.users, usersMap);
       return {
         ...p,
         hours,
@@ -1563,7 +1580,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     if (currentUser.role !== 'GESTOR') return [];
 
     const counts = filteredProjects.reduce((acc, curr) => {
-      const name = usersMap[curr.userId || ''] || (curr.userId && curr.userId.length < 30 ? curr.userId : t('unknown'));
+      const name = getUserDisplayName(curr.userId, data.users, usersMap);
       const date = new Date(curr.endTime || curr.startTime);
       
       let key = name;
@@ -1614,12 +1631,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   // 7. Stacked Bar Chart: Activities by Designer (Release, Variation, Development)
   const activitiesByDesigner = useMemo(() => {
-    const data: Record<string, { name: string, [key: string]: any }> = {};
+    const groupedByDesigner: Record<string, { name: string, [key: string]: any }> = {};
 
     filteredProjects.forEach(p => {
-        const userName = usersMap[p.userId || ''] || (p.userId && p.userId.length < 30 ? p.userId : t('unknown'));
-        if (!data[userName]) {
-            data[userName] = { 
+        const userName = getUserDisplayName(p.userId, data.users, usersMap);
+        if (!groupedByDesigner[userName]) {
+            groupedByDesigner[userName] = { 
                 name: userName, 
                 [ProjectType.RELEASE]: 0, 
                 [ProjectType.VARIATION]: 0, 
@@ -1628,13 +1645,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         }
         
         // Count occurrences with normalization
-        if (isTypeMatch(p.type, ProjectType.RELEASE)) data[userName][ProjectType.RELEASE]++;
-        else if (isTypeMatch(p.type, ProjectType.VARIATION)) data[userName][ProjectType.VARIATION]++;
-        else if (isTypeMatch(p.type, ProjectType.DEVELOPMENT)) data[userName][ProjectType.DEVELOPMENT]++;
+        if (isTypeMatch(p.type, ProjectType.RELEASE)) groupedByDesigner[userName][ProjectType.RELEASE]++;
+        else if (isTypeMatch(p.type, ProjectType.VARIATION)) groupedByDesigner[userName][ProjectType.VARIATION]++;
+        else if (isTypeMatch(p.type, ProjectType.DEVELOPMENT)) groupedByDesigner[userName][ProjectType.DEVELOPMENT]++;
     });
 
-    return Object.values(data);
-  }, [filteredProjects, usersMap]);
+    return Object.values(groupedByDesigner);
+  }, [filteredProjects, data.users, usersMap]);
 
   // 8. Stacked Bar Chart: Interruptions by Designer (Reason Breakdown)
   const interruptionsByDesigner = useMemo(() => {
@@ -1890,8 +1907,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     const getUserDisplayName = (userId: string | undefined) => {
       if (!userId) return 'Desconhecido';
-      const found = usersList.find(u => u.id === userId);
-      return found ? `${found.name} ${found.surname || ''}`.trim() : 'Desconhecido';
+      const found = resolveUser(userId, data.users);
+      return found ? `${found.name} ${found.surname || ''}`.trim() : (userId.length < 35 ? userId : 'Desconhecido');
     };
 
     const processItem = (dateStr: string, hours: number, isOvertime: boolean, desc: string, isFactory: boolean, userId?: string) => {

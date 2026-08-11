@@ -13,6 +13,7 @@ import {
   InterruptionArea, InterruptionType 
 } from '../types';
 import { INTERRUPTION_AREAS } from '../constants';
+import { resolveUser } from '../utils/userUtils';
 import { useLanguage } from '../i18n/LanguageContext';
 import { 
   addInterruption, updateInterruption, deleteInterruption,
@@ -495,8 +496,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       t('duration')
     ];
     const exportRows = filteredInterruptions.map(i => {
-      const designer = data.users.find(u => u.id === i.designerId);
-      const designerName = designer ? `${designer.name} ${designer.surname || ''}`.trim() : t('unknown');
+      const designer = resolveUser(i.designerId, data.users);
+      const designerName = designer ? `${designer.name} ${designer.surname || ''}`.trim() : (i.designerId && i.designerId.length < 35 ? i.designerId : t('unknown'));
       return [
         i.projectNs,
         i.clientName,
@@ -673,8 +674,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                         <UserIcon className="w-2.5 h-2.5 text-gray-500" />
                         <span className="text-[10px] font-bold text-gray-600 dark:text-slate-300">
                           {(() => {
-                            const designer = data.users.find(u => u.id === i.designerId);
-                            return designer ? `${designer.name} ${designer.surname || ''}`.trim() : t('unknown');
+                            const designer = resolveUser(i.designerId, data.users);
+                            return designer ? `${designer.name} ${designer.surname || ''}`.trim() : (i.designerId && i.designerId.length < 35 ? i.designerId : t('unknown'));
                           })()}
                         </span>
                       </div>
