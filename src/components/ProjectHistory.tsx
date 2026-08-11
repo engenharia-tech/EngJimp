@@ -9,6 +9,7 @@ import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, Duplica
 import { useToast } from './Toast';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { useLanguage } from '../i18n/LanguageContext';
+import { resolveUser, buildUsersMap } from '../utils/userUtils';
 
 interface ProjectHistoryProps {
   data: AppState;
@@ -104,11 +105,12 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
   useEffect(() => {
     const load = async () => {
       const users = await fetchUsers();
-      const map = users.reduce((acc, u) => ({ ...acc, [u.id]: u }), {} as Record<string, User>);
+      const allUsers = users.length > 0 ? users : (data.users || []);
+      const map = buildUsersMap(allUsers);
       setUsersMap(map);
     };
     load();
-  }, []);
+  }, [data.users]);
 
   const normalize = (str: string) => 
     str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim() : "";
@@ -177,8 +179,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           valB = b.type;
           break;
         case 'userId':
-          valA = (usersMap[a.userId || '']?.name || '').toLowerCase();
-          valB = (usersMap[b.userId || '']?.name || '').toLowerCase();
+          valA = (resolveUser(a.userId, data.users)?.name || a.userId || '').toLowerCase();
+          valB = (resolveUser(b.userId, data.users)?.name || b.userId || '').toLowerCase();
           break;
         default:
           valA = 0;
@@ -204,7 +206,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           minutes: Math.floor((project.totalActiveSeconds % 3600) / 60),
           estHours: project.estimatedSeconds ? Math.floor(project.estimatedSeconds / 3600) : 0,
           estMinutes: project.estimatedSeconds ? Math.floor((project.estimatedSeconds % 3600) / 60) : 0,
-          userId: project.userId || '',
+          userId: resolveUser(project.userId, data.users)?.id || project.userId || '',
           startDate: getLocalDate(project.startTime),
           startTime: getLocalTime(project.startTime),
           endDate: project.endTime ? getLocalDate(project.endTime) : '',
@@ -690,7 +692,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
     try {
       const exportData = filteredProjects.map((p, idx) => {
-        const designerName = usersMap[p.userId || '']?.name || 'Não atribuído';
+        const designerName = resolveUser(p.userId, data.users)?.name || p.userId || 'Não atribuído';
         const activeHours = (p.totalActiveSeconds || 0) / 3600;
         const estHours = (p.estimatedSeconds || 0) / 3600;
         const efficiency = estHours > 0 ? `${Math.round((activeHours / estHours) * 100)}%` : '-';
@@ -775,7 +777,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       doc.line(40, 80, 802, 80);
 
       const tableRows = filteredProjects.map((p, idx) => {
-        const designerName = usersMap[p.userId || '']?.name || '-';
+        const designerName = resolveUser(p.userId, data.users)?.name || p.userId || '-';
         const hoursReal = ((p.totalActiveSeconds || 0) / 3600).toFixed(1) + 'h';
         const hoursEst = p.estimatedSeconds ? ((p.estimatedSeconds || 0) / 3600).toFixed(1) + 'h' : '-';
         const dateStr = p.startTime ? new Date(p.startTime).toLocaleDateString('pt-BR') : '-';
@@ -1135,7 +1137,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 <div className="p-8 text-center text-gray-500 italic block">{t('noProjects')}</div>
             ) : (
                 filteredProjects.map((project) => {
-                    const user = usersMap[project.userId || ''];
+                    const user = resolveUser(project.userId, data.users) || (project.userId ? usersMap[project.userId] : null);
                     const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
                     const pActiveSeconds = project.totalActiveSeconds;
                     const pInterruptionSeconds = project.interruptionSeconds || 0;
@@ -1160,7 +1162,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase leading-tight mb-1">{project.clientName}</h4>
                                 <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-slate-400 font-bold uppercase">
                                     <UserIcon className="w-3 h-3" />
-                                    {user?.name || '-'}
+                                    {user?.name || (project.userId && project.userId.length < 35 ? project.userId : '-')}
                                 </div>
                             </div>
 
@@ -1244,7 +1246,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const { parts, assemblies } = getVariationCounts(project.variations);
                 const totalVariations = (project.variations || []).length;
                 
-                const user = usersMap[project.userId || ''];
+                const user = resolveUser(project.userId, data.users) || (project.userId ? usersMap[project.userId] : null);
                 const pActiveSeconds = project.totalActiveSeconds;
                 const pInterruptionSeconds = project.interruptionSeconds || 0;
                 const cost = engineeringHourlyRate * (pActiveSeconds / 3600);
@@ -1309,11 +1311,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                   <td className="p-4">
                     <div className="flex items-center text-black dark:text-white font-medium">
                         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xs mr-3 font-bold shadow-sm ring-2 ring-white dark:ring-slate-800 shrink-0">
-                        {(user?.name || '?').charAt(0)}
+                        {(user?.name || project.userId || '?').charAt(0).toUpperCase()}
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-bold truncate max-w-[100px]" title={user?.name}>
-                              {user?.name || t('unknown')}
+                          <span className="text-sm font-bold truncate max-w-[140px]" title={user?.name || project.userId}>
+                              {user?.name || (project.userId && project.userId.length < 35 ? project.userId : t('unknown'))}
                           </span>
                           <span className="text-[10px] text-gray-500 dark:text-slate-500 uppercase tracking-tighter">
                             {user?.role ? getTranslatedUserRole(user.role) : t('member')}
@@ -1508,12 +1510,18 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             </div>
                             <div>
                                 <div className="text-xs text-gray-500 dark:text-slate-400">{t('designerCol')}</div>
-                                <div className="flex items-center mt-1">
-                                    <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-[10px] font-bold mr-2">
-                                        {(usersMap[selectedProject.userId || '']?.name || '?').charAt(0)}
+                                {(() => {
+                                  const detailUser = resolveUser(selectedProject.userId, data.users) || (selectedProject.userId ? usersMap[selectedProject.userId] : null);
+                                  const displayName = detailUser?.name || (selectedProject.userId && selectedProject.userId.length < 35 ? selectedProject.userId : t('unknown'));
+                                  return (
+                                    <div className="flex items-center mt-1">
+                                        <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-[10px] font-bold mr-2">
+                                            {displayName.charAt(0).toUpperCase()}
+                                        </div>
+                                        <span className="text-sm text-gray-700 dark:text-slate-300">{displayName}</span>
                                     </div>
-                                    <span className="text-sm text-gray-700 dark:text-slate-300">{usersMap[selectedProject.userId || '']?.name || t('unknown')}</span>
-                                </div>
+                                  );
+                                })()}
                             </div>
                         </div>
 
@@ -1746,14 +1754,13 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             disabled={isSaving}
                         >
                             <option value="">{t('selectDesigner')}</option>
-                            {Object.keys(usersMap).length === 0 ? (
+                            {data.users.length === 0 ? (
                                 <option disabled>{t('loadingUsers')}...</option>
                             ) : (
-                                Object.keys(usersMap).map(userId => {
-                                    const user = usersMap[userId];
+                                data.users.map(user => {
                                     return (
                                         <option key={user.id} value={user.id}>
-                                            {user.name}
+                                            {user.name} {user.surname ? user.surname : ''}
                                         </option>
                                     );
                                 })

@@ -3,6 +3,7 @@ import { Play, Pause, Square, Clock, AlertCircle, Timer, Hash, Truck, Maximize2,
 import { ProjectType, ProjectSession, PauseRecord, ImplementType, VariationRecord, User, InterruptionRecord, AppSettings, InterruptionStatus, InterruptionArea, ProjectRequest, ProjectRequestStatus, AppState } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES, SUSPENSION_TYPES, PRODUCT_CATEGORIES } from '../constants';
 import { calcActiveSeconds, isWorkingHour } from '../utils/workdayCalc';
+import { resolveUser } from '../utils/userUtils';
 import { fetchUsers } from '../services/storageService';
 import { triggerExcelUpdate } from '../services/webhookService';
 import { useToast } from './Toast';
@@ -1257,8 +1258,8 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     const totalCostValue = sessions.reduce((acc, p) => acc + (p.totalCost || 0), 0);
     
     const designers = sessions.map(p => {
-        const u = users.find(usr => usr.id === p.userId);
-        return u ? `${u.name} ${u.surname || ''}`.trim() : t('unidentified');
+        const u = resolveUser(p.userId, users);
+        return u ? `${u.name} ${u.surname || ''}`.trim() : (p.userId && p.userId.length < 35 ? p.userId : t('unidentified'));
     });
     const designersStr = [...new Set(designers)].join(', ');
     const allNotes = sessions.map(p => p.notes).filter(v => v && v.trim()).join('\n---\n');
@@ -1634,7 +1635,7 @@ JIMPNEXUS
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  {pendingProjects.map(p => {
                     const isPaused = p.pauses.length > 0 && p.pauses[p.pauses.length - 1].durationSeconds === -1;
-                    const pUser = users.find(u => u.id === p.userId);
+                    const pUser = resolveUser(p.userId, users);
                     return (
                      <div key={p.id} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 hover:border-blue-300 dark:hover:border-blue-500 transition-all bg-gray-50 dark:bg-black group">
                         <div className="flex justify-between items-start mb-2">
@@ -2198,7 +2199,7 @@ JIMPNEXUS
                         <div>
                             <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">{t('responsible')}</span>
                             <span className="text-sm font-medium text-gray-800 dark:text-slate-200">
-                                {users.find(u => u.id === selectedProjectDetails.userId)?.name || t('notAssigned')}
+                                {resolveUser(selectedProjectDetails.userId, users)?.name || (selectedProjectDetails.userId && selectedProjectDetails.userId.length < 35 ? selectedProjectDetails.userId : t('notAssigned'))}
                             </span>
                         </div>
                         <div>

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { resolveUser } from '../utils/userUtils';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -378,9 +379,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     }
 
     filtered.forEach(p => {
-      const user = data.users.find(u => u.id === p.userId);
-      // Fallback: if userId is not a UUID but a name (legacy), or if user not found by ID
-      const name = user ? user.name : (p.userId && p.userId.length < 30 ? p.userId : 'N/A');
+      const user = resolveUser(p.userId, data.users);
+      const name = user ? user.name : (p.userId && p.userId.length < 35 ? p.userId : 'N/A');
       
       if (!stats[name]) {
         stats[name] = { 
@@ -416,8 +416,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       if (!isDateInPeriod(new Date(a.startTime))) return;
       if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) return;
 
-      const user = data.users.find(u => u.id === a.userId);
-      const name = user ? user.name : (a.userId && a.userId.length < 30 ? a.userId : 'N/A');
+      const user = resolveUser(a.userId, data.users);
+      const name = user ? user.name : (a.userId && a.userId.length < 35 ? a.userId : 'N/A');
 
       const nameUpper = (a.activityName || '').toUpperCase();
       const notesUpper = (a.notes || '').toUpperCase();
@@ -572,8 +572,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       }
       
       const userId = p.userId || 'unknown';
-      const user = data.users.find(u => u.id === userId);
-      const userName = user ? `${user.name} ${user.surname || ''}`.trim() : (userId.length < 30 ? userId : 'N/A');
+      const user = resolveUser(userId, data.users);
+      const userName = user ? `${user.name} ${user.surname || ''}`.trim() : (userId.length < 35 ? userId : 'N/A');
       
       if (!stats[ns].contributors[userId]) {
         stats[ns].contributors[userId] = { userId, name: userName, sessions: 0, seconds: 0, cost: 0 };
@@ -1332,8 +1332,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                   {productivityData.projects.map((p) => {
-                    const user = data.users.find(u => u.id === p.userId);
-                    const designerName = user ? user.name : (p.userId && p.userId.length < 30 ? p.userId : 'N/A');
+                    const user = resolveUser(p.userId, data.users);
+                    const designerName = user ? user.name : (p.userId && p.userId.length < 35 ? p.userId : 'N/A');
                     return (
                       <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
                         <td className="p-3 font-medium text-black dark:text-white">{p.ns}</td>
