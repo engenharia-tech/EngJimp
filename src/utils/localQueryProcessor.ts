@@ -582,3 +582,85 @@ Eu possuo acesso a todas as tabelas e métricas locais da Engenharia JIMP, poden
 
 *O que você gostaria de pesquisar no banco de dados agora?*`;
 };
+
+// ====================================================================
+// ROTEAMENTO "IA INTERNA PRIMEIRO"
+// --------------------------------------------------------------------
+// tryResolveLocalQuery decide se a pergunta e uma BUSCA factual que o
+// motor interno acima ja resolve. Se for, respondemos localmente:
+// rapido, numeros exatos, e SEM enviar dados (inclusive salarios) a
+// terceiros. Se nao for, retornamos null e o chamador recorre ao Gemini.
+//
+// IMPORTANTE: as condicoes de hasFactualIntent ESPELHAM os blocos `if`
+// de resolveLocalQueryFallback. Ao adicionar uma nova intencao la,
+// espelhe aqui — senao ela ainda funciona (via Gemini -> fallback),
+// mas deixa de ser priorizada localmente.
+// ====================================================================
+
+const normalizeText = (s: string): string =>
+  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+// Pedidos de analise/opiniao/raciocinio NAO sao "busca": preferimos o Gemini.
+const ANALYTICAL_HINTS = [
+  'analise', 'analisa', 'sugira', 'sugest', 'recomend', 'melhor', 'opini',
+  'porque', 'por que', 'deveria', 'compare', 'tendencia', 'estrategia',
+  'o que voce acha', 'faca uma analise'
+];
+
+const hasFactualIntent = (query: string, appState: AppState, currentUser: User): boolean => {
+  const normalized = normalizeText(query);
+  const users = appState.users || [];
+  const any = (arr: string[]): boolean => arr.some(k => normalized.includes(k));
+
+  // 1. Nome de um colaborador mencionado (ficha operacional dele)
+  const mentionedUser = users.find(u => {
+    const normUser = normalizeText(`${u.name} ${u.surname || ''}`);
+    const firstName = normalizeText(u.name);
+    return (firstName.length > 2 && normalized.includes(firstName)) || normalized.includes(normUser);
+  });
+  if (mentionedUser && !normalized.includes('quem sou eu') && !normalized.includes('meu nome')) return true;
+
+  // 2. Volume / entregas por categoria
+  if (any(['volume', 'entregas por', 'quantos cada', 'quantos projetos', 'projetos por mes',
+           'entregas por mes', 'liberacoes', 'variacoes', 'desenvolvimento', 'projetos liberados'])) return true;
+  // 3. Ranking / lideranca
+  if (any(['ranking', 'quem mais', 'quem liberou mais', 'quem tem mais', 'mais liberou',
+           'lidera', 'lideranca', 'podio', 'campeao', 'eficiencia'])) return true;
+  // 4. Busca direta por NS
+  if (/ns\s*\d+/i.test(query)) return true;
+  // 5. Metricas do proprio usuario
+  if (any(['quantos projetos eu', 'eu liberei', 'minhas ns', 'meus projetos', 'minhas entregas',
+           'quantos eu', 'meu volume', 'e eu?', 'meus lancamentos'])) return true;
+  if (normalized.includes('quantos') && normalized.includes('projeto') &&
+      any(['lancei', 'entreguei', 'fiz', 'liberei'])) return true;
+  // 6. Horas extras / esforco adicional
+  if (any(['hora extra', 'horas extras', 'esforco adicional', 'trabalho extra', 'esforco extra',
+           'trabalhei a mais', 'fim de semana', 'final de semana', 'finais de semana'])) return true;
+  // 7. Quem sou eu / meu perfil
+  if (any(['quem sou eu', 'quem eu sou', 'meu nome', 'qual o meu nome', 'meu perfil', 'minha conta'])) return true;
+  // 8. Por que nao apareco no grafico
+  if (any(['apareco no', 'nao apareco', 'nao estou no grafico', 'cade eu no grafico', 'cade meu nome'])) return true;
+  // 9. Resumo / status geral / indicadores
+  if (any(['resumo', 'estatistica', 'indicadores', 'plataforma', 'geral', 'status'])) return true;
+
+  return false;
+};
+
+/**
+ * IA INTERNA PRIMEIRO. Retorna a resposta do motor interno quando a
+ * pergunta e uma busca factual coberta por ele; caso contrario null,
+ * sinalizando ao chamador que deve recorrer ao Gemini.
+ */
+export const tryResolveLocalQuery = (
+  query: string,
+  appState: AppState,
+  currentUser: User
+): string | null => {
+  const normalized = normalizeText(query);
+  // Pedido de analise/opiniao -> Gemini (nao e busca factual)
+  if (ANALYTICAL_HINTS.some(h => normalized.includes(h))) return null;
+  // Nao reconhecido como busca -> Gemini
+  if (!hasFactualIntent(query, appState, currentUser)) return null;
+  // Busca factual reconhecida -> responde localmente, sem sourceError
+  return resolveLocalQueryFallback(query, appState, currentUser);
+};

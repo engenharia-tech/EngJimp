@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { processNexusQuery } from './nexusEngine';
 import { AppState, User } from '../types';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
-import { resolveLocalQueryFallback } from '../utils/localQueryProcessor';
+import { resolveLocalQueryFallback, tryResolveLocalQuery } from '../utils/localQueryProcessor';
 import { useToast } from '../components/Toast';
 
 interface ChatThread {
@@ -523,8 +523,13 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
         role: m.role as 'user' | 'assistant',
         content: m.content
       }));
-      const response = await processNexusQuery(queryText, appState, currentUser, historyToSend);
-      
+      // IA INTERNA PRIMEIRO: busca factual respondida localmente (exato e
+      // sem enviar dados a terceiros); senao, cai no motor Nexus (Gemini).
+      const localAnswer = tryResolveLocalQuery(queryText, appState, currentUser);
+      const response = localAnswer !== null
+        ? localAnswer
+        : await processNexusQuery(queryText, appState, currentUser, historyToSend);
+
       let cleanContent = response;
       let chartData = null;
       
@@ -771,8 +776,12 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
         role: m.role as 'user' | 'assistant',
         content: m.content
       }));
-      const response = await processNexusQuery(currentTerm, appState, currentUser, historyToSend);
-      
+      // IA INTERNA PRIMEIRO tambem na busca por termo.
+      const localAnswer = tryResolveLocalQuery(currentTerm, appState, currentUser);
+      const response = localAnswer !== null
+        ? localAnswer
+        : await processNexusQuery(currentTerm, appState, currentUser, historyToSend);
+
       let cleanContent = response;
       let chartData = null;
       
