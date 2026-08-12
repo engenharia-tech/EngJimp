@@ -21,6 +21,7 @@ import {
   addAuditLog
 } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
+import { getInterruptionRecipients } from '../services/notificationService';
 
 interface InterruptionManagerProps {
   data: AppState;
@@ -311,8 +312,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             details: `Interrupção no projeto ${newItem.projectNs} registrada por ${currentUser.name}`
         });
 
-        // Trigger email notification if configured
-        if (data.settings.interruptionEmailTo) {
+        // Notifica Engenharia + Coordenacao + Comercial da interrupcao
+        // (destinos corporativos fixos — ver notificationService).
+        const interruptionRecipients = getInterruptionRecipients();
+        if (interruptionRecipients.length > 0) {
           try {
             if (!emailBody || emailBody.trim().length < 10) {
               console.warn("Interruption email body is empty or too short. Skipping email.");
@@ -324,7 +327,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                 body: JSON.stringify({
                   subject: t('newInterruptionAlert', { ns }),
                   body: emailBody.replace(/\n/g, '<br>'),
-                  to: data.settings.interruptionEmailTo,
+                  to: interruptionRecipients.join(','),
                   fromName: `${userDisplayName} - JIMPNEXUS`
                 })
               });
