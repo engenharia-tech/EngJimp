@@ -739,7 +739,7 @@ const AppContent: React.FC = () => {
           // de projeto ja concluido). Fire-and-forget: nunca bloqueia o fluxo.
           const acabouDeConcluir = oldProject?.status !== 'COMPLETED' && project.status === 'COMPLETED';
           if (acabouDeConcluir && currentUser?.role === 'PROJETISTA') {
-            notifyProjectCompletion(project, currentUser, data.users);
+            notifyProjectCompletion(project, currentUser, data.users, data.interruptions);
           }
           const changedProps: string[] = [];
           if (oldProject) {

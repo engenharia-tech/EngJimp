@@ -1,104 +1,118 @@
-import { ProjectSession, User } from '../types';
+import { ProjectSession, User, InterruptionRecord } from '../types';
 
 /**
- * Notificacao de CONCLUSAO de projeto.
+ * Notificacoes por e-mail: CONCLUSAO de projeto e INTERRUPCAO.
+ * Enviadas via /api/send-email (nodemailer), que le as credenciais SMTP das
+ * variaveis de ambiente do servidor (remetente naoresponda@). A senha nunca
+ * fica no codigo.
  *
- * Quando um PROJETISTA conclui um projeto, gestor(es) e coordenador(es)
- * recebem um e-mail. O envio usa o endpoint /api/send-email (nodemailer),
- * que le as credenciais SMTP das variaveis de ambiente do servidor
- * (EMAIL_HOST/PORT/USER/PASS/FROM) — a senha NUNCA fica no codigo nem no
- * repositorio, mesmo padrao do correio.py do APPCUSTOS.
- *
- * Para usar o remetente naoresponda@joinvilleimplementos.com.br, configure
- * na Vercel (e no .env local, se for testar):
- *   EMAIL_HOST=mail.joinvilleimplementos.com.br
- *   EMAIL_PORT=465
- *   EMAIL_USER=naoresponda@joinvilleimplementos.com.br
- *   EMAIL_PASS=<a senha, so no ambiente>
- *   EMAIL_FROM=naoresponda@joinvilleimplementos.com.br
- *
- * Nota de arquitetura: este disparo parte do navegador de quem concluiu
- * (mesmo padrao do e-mail de interrupcao). E simples, mas se o navegador
- * fechar antes do fetch completar, a notificacao se perde. A versao robusta
- * (fila/outbox no banco + n8n, com retentativa) fica para a etapa de WhatsApp.
+ * Disparo a partir do navegador de quem age (mesmo padrao do resto do app).
+ * Fire-and-forget: nunca lanca excecao para nao travar o fluxo.
  */
 
-const isValidEmail = (email?: string): email is string =>
-  !!email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+// ====================================================================
+// DESTINOS DAS NOTIFICACOES — e-mails corporativos FIXOS.
+// Independentes do e-mail de LOGIN de cada usuario (o do Edson, por ex.,
+// e pessoal e serve so para login/redefinicao de senha).
+// Para mudar quem recebe, edite estas constantes.
+// ====================================================================
+const EMAIL_ENGENHARIA  = 'engenharia@joinvilleimplementos.com.br'; // Edson / Engenharia
+const EMAIL_COORDENACAO = 'matheus.p@joinvilleimplementos.com.br';  // Matheus (Coordenacao)
+const EMAIL_COMERCIAL   = 'comercial@furgoesjoinville.com.br';      // Vinicius (Comercial)
 
-/** Gestores e coordenadores com e-mail valido cadastrado. */
-export const getCompletionRecipients = (users: User[] = []): string[] => {
-  const seen = new Set<string>();
-  const recipients: string[] = [];
-  for (const u of users) {
-    if (u.role !== 'GESTOR' && u.role !== 'COORDENADOR') continue;
-    const email = u.email?.trim().toLowerCase();
-    if (!isValidEmail(email) || seen.has(email)) continue;
-    seen.add(email);
-    recipients.push(u.email!.trim());
-  }
-  return recipients;
+/** CONCLUSAO de projeto -> Engenharia + Coordenacao. */
+export const getCompletionRecipients = (): string[] => [EMAIL_ENGENHARIA, EMAIL_COORDENACAO];
+
+/** INTERRUPCAO -> Engenharia + Coordenacao + Comercial. As paradas de
+ *  projeto sao ocasionadas pelo Comercial, entao precisam saber. */
+export const getInterruptionRecipients = (): string[] => [EMAIL_ENGENHARIA, EMAIL_COORDENACAO, EMAIL_COMERCIAL];
+
+// --- formatacao ---
+const horas = (secs?: number): string => ((secs || 0) / 3600).toFixed(2);
+const brl = (v?: number): string =>
+  ('R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+    .replace(/ /g, ' '); // evita NBSP
+const hhmmss = (secs?: number): string => {
+  const s = Math.max(0, Math.floor(secs || 0));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  return [h, m, ss].map((x) => String(x).padStart(2, '0')).join(':');
 };
 
 /**
- * Dispara o e-mail de conclusao. Fire-and-forget: nunca lanca excecao para
- * nao travar o fluxo de finalizacao do projetista; falhas ficam no console.
+ * E-mail de CONCLUSAO de projeto (disparado quando um PROJETISTA conclui).
+ * Segue o formato padrao da engenharia (NS, cliente, tempos, custos,
+ * detalhamento de interrupcoes e observacoes).
  */
 export const notifyProjectCompletion = async (
   project: ProjectSession,
   completedBy: User,
-  users: User[] = []
+  users: User[] = [],
+  interruptions: InterruptionRecord[] = []
 ): Promise<void> => {
   try {
-    const recipients = getCompletionRecipients(users);
-    if (recipients.length === 0) {
-      console.warn(
-        '[Notificacao] Projeto concluido, mas nenhum GESTOR/COORDENADOR tem e-mail valido cadastrado. E-mail nao enviado.'
-      );
-      return;
-    }
+    const recipients = getCompletionRecipients();
 
-    const projetistaNome = `${completedBy.name} ${completedBy.surname || ''}`.trim();
-    const horas = ((project.totalActiveSeconds || 0) / 3600).toFixed(2);
-    const conclusao = project.endTime
-      ? new Date(project.endTime).toLocaleString('pt-BR')
-      : new Date().toLocaleString('pt-BR');
-    const tipoProduto = project.implementType || project.type || 'Nao informado';
+    const designer = users.find((u) => u.id === project.userId);
+    const designerName = designer
+      ? `${designer.name} ${designer.surname || ''}`.trim()
+      : `${completedBy.name} ${completedBy.surname || ''}`.trim();
+    const liberadoPor = `${completedBy.name} ${completedBy.surname || ''}`.trim();
 
-    const subject = `✅ Projeto concluido: NS ${project.ns} — ${projetistaNome}`;
+    const doProjeto = (interruptions || []).filter(
+      (i) =>
+        (i.projectId && i.projectId === project.id) ||
+        (i.projectNs && String(i.projectNs) === String(project.ns))
+    );
+    const detalhe = doProjeto.length
+      ? doProjeto
+          .map((i) => `- ${i.problemType || 'Interrupção'} (${i.responsibleArea || '—'}): ${hhmmss(i.totalTimeSeconds)}`)
+          .join('<br>')
+      : 'NENHUMA INTERRUPÇÃO REGISTRADA.';
 
-    const linhas = [
-      `<b>Projetista:</b> ${projetistaNome}`,
-      `<b>NS:</b> ${project.ns}`,
-      `<b>Cliente:</b> ${project.clientName || 'Nao informado'}`,
-      `<b>Tipo / Produto:</b> ${tipoProduto}`,
-      project.projectCode ? `<b>Codigo do projeto:</b> ${project.projectCode}` : '',
-      `<b>Tempo trabalhado:</b> ${horas} h`,
-      `<b>Concluido em:</b> ${conclusao}`,
-    ].filter(Boolean);
+    const observacoes = (project.notes || '').trim() || 'NENHUMA';
 
-    const body =
-      `O projetista <b>${projetistaNome}</b> concluiu um projeto.<br><br>` +
-      linhas.join('<br>') +
-      `<br><br>Mensagem automatica do JIMPNexus KPI. Nao responda este e-mail.`;
+    const subject = `Conclusão de Projeto — NS ${project.ns}`;
+    const body = [
+      'BOM DIA,',
+      '',
+      'INFORMAMOS A CONCLUSÃO DO PROJETO ABAIXO:',
+      '',
+      `NS: ${project.ns}`,
+      `CLIENTE: ${project.clientName || 'NÃO INFORMADO'}`,
+      `CÓDIGO DO PROJETO: ${project.projectCode || 'NÃO INFORMADO'}`,
+      `DESIGNER: ${designerName}`,
+      `Liberado por: ${liberadoPor}`,
+      '',
+      `TEMPO PLANEJADO: ${horas(project.estimatedSeconds)} HORAS`,
+      `TEMPO EXECUTADO: ${horas(project.totalActiveSeconds)} HORAS`,
+      `TEMPO DE INTERRUPÇÃO: ${hhmmss(project.interruptionSeconds)}`,
+      '',
+      `CUSTO PRODUTIVO: ${brl(project.productiveCost)}`,
+      `CUSTO DE INTERRUPÇÕES: ${brl(project.interruptionCost)}`,
+      `CUSTO TOTAL DO PROJETO: ${brl(project.totalCost)}`,
+      '',
+      `INTERRUPÇÕES: ${doProjeto.length}`,
+      '',
+      'DETALHAMENTO DAS INTERRUPÇÕES:',
+      detalhe,
+      '',
+      'OBSERVAÇÕES:',
+      observacoes,
+      '',
+      'ATENCIOSAMENTE.',
+      'JIMPNEXUS',
+    ].join('<br>');
 
     const response = await fetch('/api/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        subject,
-        body,
-        to: recipients.join(','),
-        fromName: 'JIMPNexus KPI',
-      }),
+      body: JSON.stringify({ subject, body, to: recipients.join(','), fromName: 'JIMPNexus KPI' }),
     });
-
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
       console.error('[Notificacao] Falha ao enviar e-mail de conclusao:', response.status, detail);
     }
   } catch (error) {
-    // Nunca bloquear a finalizacao do projeto por causa do e-mail.
     console.error('[Notificacao] Erro inesperado ao notificar conclusao:', error);
   }
 };
