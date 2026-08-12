@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { askGemini } from '../lib/gemini';
 import { useLanguage } from '../i18n/LanguageContext';
-import { resolveLocalQueryFallback } from '../utils/localQueryProcessor';
+import { resolveLocalQueryFallback, tryResolveLocalQuery } from '../utils/localQueryProcessor';
 import { AppState, User, InterruptionStatus, ProjectType } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
@@ -894,7 +894,13 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
 [/DADOS DE IDENTIFICAÇÃO EM TEMPO REAL]`;
 
       const prompt = `${context}\n\n${userHeader}\n\n${historyText ? `[CONVERSA ANTERIOR]\n${historyText}\n\n` : ''}Usuário (${currentUser.name}): ${input}\n\nAssistente:`;
-      const response = await askGemini(prompt);
+
+      // IA INTERNA PRIMEIRO: buscas factuais (ranking, NS, volume, horas
+      // extras, etc.) sao respondidas localmente — rapido, numeros exatos e
+      // sem enviar dados a terceiros. So recorremos ao Gemini quando a
+      // pergunta nao e uma busca coberta pelo motor interno.
+      const localAnswer = tryResolveLocalQuery(originalInput, appState, currentUser);
+      const response = localAnswer !== null ? localAnswer : await askGemini(prompt);
       
       // Extract JSON if present
       let cleanContent = response;
