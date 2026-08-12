@@ -4,6 +4,7 @@ import { SEOKeyword, SEOMetric, SEOTask, SEOData } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser } from '../utils/userUtils';
+import { getAuthToken } from './authToken';
 
 // Supabase Configuration
 const getSupabaseConfig = () => {
@@ -34,7 +35,11 @@ const getSupabaseConfig = () => {
 
 const { url: SUPABASE_URL, key: SUPABASE_KEY } = getSupabaseConfig();
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// O cliente usa o token de sessao (JWT do servidor) em toda requisicao, para
+// a RLS reconhecer o usuario. Deslogado => sem token => requisicao anonima.
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  accessToken: async () => getAuthToken() ?? undefined,
+});
 
 const defaultState: AppState = {
   projects: [],

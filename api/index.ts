@@ -2,6 +2,7 @@ import express from "express";
 import nodemailer from "nodemailer";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
+import { createHmac } from "crypto";
 
 const app = express();
 app.use(express.json({ limit: "50mb" }));
@@ -277,6 +278,31 @@ function getSupabaseAdmin() {
 const isValidEmail = (e?: string | null): e is string =>
   !!e && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e.trim());
 
+// Assina um JWT (HS256) com o JWT Secret do Supabase. O banco (PostgREST)
+// valida esse token e a RLS le suas claims. Sem lib externa — HMAC nativo.
+function b64url(input: string): string {
+  return Buffer.from(input).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+function signSupabaseJwt(user: any): string | null {
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (!secret) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = b64url(JSON.stringify({
+    role: "authenticated",           // papel Postgres que a RLS enxerga
+    aud: "authenticated",
+    iss: "supabase",
+    sub: user.id,                    // auth.uid()
+    app_role: user.role,             // cargo do app (GESTOR, PROJETISTA, ...)
+    email: user.email || undefined,
+    username: user.username,
+    iat: now,
+    exp: now + 12 * 3600,            // 12h (uma jornada)
+  }));
+  const sig = b64url(createHmac("sha256", secret).update(`${header}.${payload}`).digest() as any);
+  return `${header}.${payload}.${sig}`;
+}
+
 // Envia e-mail simples com as credenciais EMAIL_* (mesma config do /api/send-email).
 async function sendPlainMail(to: string, subject: string, text: string): Promise<void> {
   const host = process.env.EMAIL_HOST;
@@ -310,7 +336,10 @@ app.post("/api/auth/login", async (req, res) => {
   }
   const user = Array.isArray(data) ? data[0] : data;
   if (!user) return res.status(401).json({ success: false, error: "Usuario ou senha invalidos." });
-  return res.json({ success: true, user });
+  // Cracha de sessao: so emitimos para quem NAO precisa criar senha (quem
+  // precisa vai para a tela de criar senha, sem sessao valida ainda).
+  const token = user.must_set_password ? null : signSupabaseJwt(user);
+  return res.json({ success: true, user, token });
 });
 
 // POST /api/auth/request-code — gera e ENVIA por e-mail o codigo para criar senha.
