@@ -1,6 +1,7 @@
 import express from "express";
 import nodemailer from "nodemailer";
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 
 const app = express();
 app.use(express.json({ limit: "50mb" }));
@@ -256,6 +257,121 @@ app.post("/api/gemini/generate", async (req, res) => {
       details: error.message || String(error)
     });
   }
+});
+
+// ============================================================
+// AUTENTICACAO (Etapa 2) — mediada pelo servidor com a chave de
+// SERVICO. O navegador nunca toca na tabela users para logar.
+// As funcoes verify_login / request_password_code /
+// set_password_with_code so tem EXECUTE para o service_role.
+// ============================================================
+
+// Cliente Supabase com a chave de servico (lazy, so no servidor).
+function getSupabaseAdmin() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+const isValidEmail = (e?: string | null): e is string =>
+  !!e && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e.trim());
+
+// Envia e-mail simples com as credenciais EMAIL_* (mesma config do /api/send-email).
+async function sendPlainMail(to: string, subject: string, text: string): Promise<void> {
+  const host = process.env.EMAIL_HOST;
+  const port = parseInt(process.env.EMAIL_PORT || "465");
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+  const from = process.env.EMAIL_FROM || user;
+  if (!host || !user || !pass) throw new Error("EMAIL_* nao configurado no servidor.");
+  const transporter = nodemailer.createTransport({
+    host, port, secure: port === 465, auth: { user, pass },
+    connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 10000,
+  });
+  await transporter.sendMail({ from: `"JIMPNexus KPI" <${from}>`, to, subject, text });
+}
+
+// POST /api/auth/login — valida via funcao do banco (hash ou, na transicao, texto puro).
+app.post("/api/auth/login", async (req, res) => {
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor de autenticacao nao configurado." });
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ success: false, error: "Usuario e senha sao obrigatorios." });
+
+  const { data, error } = await admin.rpc("verify_login", {
+    p_username: String(username).trim(),
+    p_password: String(password),
+  });
+  if (error) {
+    console.error("[auth/login]", error.message);
+    return res.status(500).json({ success: false, error: "Erro ao autenticar." });
+  }
+  const user = Array.isArray(data) ? data[0] : data;
+  if (!user) return res.status(401).json({ success: false, error: "Usuario ou senha invalidos." });
+  return res.json({ success: true, user });
+});
+
+// POST /api/auth/request-code — gera e ENVIA por e-mail o codigo para criar senha.
+// Resposta neutra (nao revela se o usuario existe). Se o usuario nao tem e-mail
+// valido, NAO gera codigo (para nao trava-lo) e retorna delivered:"no_email".
+app.post("/api/auth/request-code", async (req, res) => {
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor de autenticacao nao configurado." });
+  const { username } = req.body || {};
+  if (!username) return res.status(400).json({ success: false, error: "Usuario obrigatorio." });
+  const uname = String(username).trim();
+
+  const { data: rows } = await admin.from("users").select("email,name").ilike("username", uname).limit(1);
+  const u = rows && rows[0];
+  const email = u?.email?.trim();
+  if (!u || !isValidEmail(email)) {
+    return res.json({ success: true, delivered: "no_email" });
+  }
+
+  const { data: code, error } = await admin.rpc("request_password_code", { p_username: uname, p_hours: 24 });
+  if (error || !code) {
+    console.error("[auth/request-code]", error?.message);
+    return res.status(500).json({ success: false, error: "Erro ao gerar o codigo." });
+  }
+  try {
+    await sendPlainMail(email, "JIMPNexus KPI — codigo para criar sua senha",
+`${u.name || ""},
+
+Use o codigo abaixo para criar a sua senha no JIMPNexus KPI:
+
+    Codigo: ${code}
+
+O codigo vale 24 horas e serve uma unica vez.
+Se nao foi voce que pediu, ignore este e-mail.
+
+-- JIMPNexus KPI (mensagem automatica, nao responda)`);
+  } catch (e: any) {
+    console.error("[auth/request-code] falha ao enviar e-mail:", e.message);
+    return res.status(500).json({ success: false, error: "Nao consegui enviar o e-mail com o codigo." });
+  }
+  return res.json({ success: true, delivered: "email" });
+});
+
+// POST /api/auth/set-password — valida o codigo, grava a senha com hash, apaga o texto puro.
+app.post("/api/auth/set-password", async (req, res) => {
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor de autenticacao nao configurado." });
+  const { username, code, newPassword } = req.body || {};
+  if (!username || !code || !newPassword) return res.status(400).json({ success: false, error: "Dados incompletos." });
+  if (String(newPassword).length < 6) return res.status(400).json({ success: false, error: "A senha deve ter ao menos 6 caracteres." });
+
+  const { data, error } = await admin.rpc("set_password_with_code", {
+    p_username: String(username).trim(),
+    p_code: String(code),
+    p_new_password: String(newPassword),
+  });
+  if (error) {
+    console.error("[auth/set-password]", error.message);
+    return res.status(500).json({ success: false, error: "Erro ao salvar a senha." });
+  }
+  if (data !== true) return res.status(400).json({ success: false, error: "Codigo invalido ou expirado." });
+  return res.json({ success: true });
 });
 
 // Global error handler
