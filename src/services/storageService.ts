@@ -182,6 +182,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     emailTo: localStorage.getItem('email_to') || '',
     interruptionEmailTo: localStorage.getItem('interruption_email_to') || '',
     interruptionEmailTemplate: localStorage.getItem('interruption_email_template') || '',
+    completionEmailTemplate: localStorage.getItem('completion_email_template') || '',
     workdayStart: localStorage.getItem('workday_start') || "07:30",
     workdayEnd: localStorage.getItem('workday_end') || "17:30",
     workdays: parseSafeJson(localStorage.getItem('workdays'), [1,2,3,4,5]).map(Number),
@@ -199,47 +200,36 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     if (settingsError) throw settingsError;
 
     if (settingsData && settingsData.length > 0) {
-      console.log("FETCHED SETTINGS FROM SUPABASE:", settingsData);
-      const hourlyCostRow = settingsData.find(s => s.key === 'hourly_cost');
-      const logoUrlRow = settingsData.find(s => s.key === 'logo_url');
-      const companyNameRow = settingsData.find(s => s.key === 'company_name');
-      const emailToRow = settingsData.find(s => s.key === 'email_to');
-      const useAutomaticCostRow = settingsData.find(s => s.key === 'use_automatic_cost');
-      const interruptionEmailToRow = settingsData.find(s => s.key === 'interruption_email_to');
-      const interruptionEmailTemplateRow = settingsData.find(s => s.key === 'interruption_email_template');
-      const workdayStartRow = settingsData.find(s => s.key === 'workday_start');
-      const workdayEndRow = settingsData.find(s => s.key === 'workday_end');
-      const workdaysRow = settingsData.find(s => s.key === 'workdays');
-      const lunchStartRow = settingsData.find(s => s.key === 'lunch_start');
-      const lunchEndRow = settingsData.find(s => s.key === 'lunch_end');
-      const languageRow = settingsData.find(s => s.key === 'language');
-      const autoLockTimeoutRow = settingsData.find(s => s.key === 'auto_lock_timeout');
+      // A tabela settings e de UMA LINHA LARGA: cada config e uma coluna.
+      const row: any = settingsData[0];
+      const clean = (v: any, def = ''): string => (v === null || v === undefined || v === 'null') ? def : String(v);
 
-      if (hourlyCostRow) settings.hourlyCost = parseSafeNumber(hourlyCostRow.value);
-      if (logoUrlRow) settings.logoUrl = logoUrlRow.value === 'null' ? '' : (logoUrlRow.value || '');
-      if (companyNameRow) settings.companyName = companyNameRow.value === 'null' ? 'JIMP NEXUS' : (companyNameRow.value || 'JIMP NEXUS');
-      if (emailToRow) settings.emailTo = emailToRow.value === 'null' ? '' : (emailToRow.value || '');
-      if (useAutomaticCostRow) settings.useAutomaticCost = useAutomaticCostRow.value === 'true';
-      if (interruptionEmailToRow) settings.interruptionEmailTo = interruptionEmailToRow.value === 'null' ? '' : (interruptionEmailToRow.value || '');
-      if (interruptionEmailTemplateRow) settings.interruptionEmailTemplate = interruptionEmailTemplateRow.value === 'null' ? '' : (interruptionEmailTemplateRow.value || '');
-      if (workdayStartRow) settings.workdayStart = workdayStartRow.value || "07:30";
-      if (workdayEndRow) settings.workdayEnd = workdayEndRow.value || "17:30";
-      if (workdaysRow) {
+      if (row.hourly_cost !== undefined && row.hourly_cost !== null) settings.hourlyCost = parseSafeNumber(row.hourly_cost);
+      if (row.use_automatic_cost !== undefined && row.use_automatic_cost !== null) settings.useAutomaticCost = row.use_automatic_cost === true || row.use_automatic_cost === 'true';
+      // Campos de texto: aplicar so quando NAO for null/undefined, para uma
+      // linha parcial nunca sobrescrever o que ja veio do localStorage.
+      if (row.logo_url != null) settings.logoUrl = clean(row.logo_url) || undefined;
+      if (row.company_name != null) settings.companyName = clean(row.company_name, 'JIMP NEXUS') || 'JIMP NEXUS';
+      if (row.email_to != null) settings.emailTo = clean(row.email_to);
+      if (row.email_from != null) settings.emailFrom = clean(row.email_from);
+      if (row.interruption_email_to != null) settings.interruptionEmailTo = clean(row.interruption_email_to);
+      if (row.interruption_email_template != null) settings.interruptionEmailTemplate = clean(row.interruption_email_template);
+      if (row.completion_email_template != null) settings.completionEmailTemplate = clean(row.completion_email_template);
+      if (row.workday_start) settings.workdayStart = row.workday_start;
+      if (row.workday_end) settings.workdayEnd = row.workday_end;
+      if (row.workdays !== undefined && row.workdays !== null) {
         try {
-          const parsedWorkdays = JSON.parse(workdaysRow.value || "[1,2,3,4,5]");
-          settings.workdays = Array.isArray(parsedWorkdays) ? parsedWorkdays.map(Number) : [1, 2, 3, 4, 5];
+          const parsed = typeof row.workdays === 'string' ? JSON.parse(row.workdays) : row.workdays;
+          settings.workdays = Array.isArray(parsed) ? parsed.map(Number) : [1, 2, 3, 4, 5];
         } catch (e) {
           settings.workdays = [1, 2, 3, 4, 5];
         }
       }
-      if (lunchStartRow) settings.lunchStart = lunchStartRow.value || "12:30";
-      if (lunchEndRow) settings.lunchEnd = lunchEndRow.value || "13:30";
-      if (languageRow) settings.language = (languageRow.value as any) || "pt-BR";
-      if (autoLockTimeoutRow) {
-        const val = autoLockTimeoutRow.value;
-        settings.autoLockTimeout = (val === null || val === undefined || val === '') ? 15 : parseSafeNumber(val);
-      }
- 
+      if (row.lunch_start) settings.lunchStart = row.lunch_start;
+      if (row.lunch_end) settings.lunchEnd = row.lunch_end;
+      if (row.language) settings.language = row.language;
+      if (row.auto_lock_timeout !== undefined && row.auto_lock_timeout !== null) settings.autoLockTimeout = parseSafeNumber(row.auto_lock_timeout);
+
       // Sync to localStorage for offline fallback
       localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
       if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
@@ -248,6 +238,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       localStorage.setItem('use_automatic_cost', String(settings.useAutomaticCost || false));
       localStorage.setItem('interruption_email_to', settings.interruptionEmailTo || '');
       localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate || '');
+      localStorage.setItem('completion_email_template', settings.completionEmailTemplate || '');
       if (settings.workdayStart) localStorage.setItem('workday_start', settings.workdayStart);
       if (settings.workdayEnd) localStorage.setItem('workday_end', settings.workdayEnd);
       if (settings.workdays) localStorage.setItem('workdays', JSON.stringify(settings.workdays));
@@ -701,6 +692,7 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.useAutomaticCost !== undefined) localStorage.setItem('use_automatic_cost', String(settings.useAutomaticCost || false));
     if (settings.interruptionEmailTo !== undefined) localStorage.setItem('interruption_email_to', settings.interruptionEmailTo || '');
     if (settings.interruptionEmailTemplate !== undefined) localStorage.setItem('interruption_email_template', settings.interruptionEmailTemplate || '');
+    if (settings.completionEmailTemplate !== undefined) localStorage.setItem('completion_email_template', settings.completionEmailTemplate || '');
     if (settings.workdayStart !== undefined) localStorage.setItem('workday_start', settings.workdayStart || '07:30');
     if (settings.workdayEnd !== undefined) localStorage.setItem('workday_end', settings.workdayEnd || '17:30');
     if (settings.workdays !== undefined) localStorage.setItem('workdays', JSON.stringify(settings.workdays || [1,2,3,4,5]));
@@ -709,36 +701,39 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.language !== undefined) localStorage.setItem('language', settings.language || 'pt-BR');
     if (settings.autoLockTimeout !== undefined) localStorage.setItem('auto_lock_timeout', settings.autoLockTimeout.toString());
 
-    const updates: { key: string, value: string }[] = [];
+    // A tabela settings e de UMA LINHA LARGA: montamos um objeto com as
+    // colunas e fazemos UPDATE da linha existente (ou INSERT se nao houver).
+    const row: Record<string, any> = {};
+    if (settings.hourlyCost !== undefined) row.hourly_cost = settings.hourlyCost;
+    if (settings.logoUrl !== undefined) row.logo_url = settings.logoUrl || '';
+    if (settings.companyName !== undefined) row.company_name = settings.companyName || '';
+    if (settings.emailTo !== undefined) row.email_to = settings.emailTo || '';
+    if (settings.emailFrom !== undefined) row.email_from = settings.emailFrom || '';
+    if (settings.useAutomaticCost !== undefined) row.use_automatic_cost = !!settings.useAutomaticCost;
+    if (settings.interruptionEmailTo !== undefined) row.interruption_email_to = settings.interruptionEmailTo || '';
+    if (settings.interruptionEmailTemplate !== undefined) row.interruption_email_template = settings.interruptionEmailTemplate || '';
+    if (settings.completionEmailTemplate !== undefined) row.completion_email_template = settings.completionEmailTemplate || '';
+    if (settings.workdayStart !== undefined) row.workday_start = settings.workdayStart;
+    if (settings.workdayEnd !== undefined) row.workday_end = settings.workdayEnd;
+    if (settings.workdays !== undefined) row.workdays = JSON.stringify(settings.workdays);
+    if (settings.lunchStart !== undefined) row.lunch_start = settings.lunchStart;
+    if (settings.lunchEnd !== undefined) row.lunch_end = settings.lunchEnd;
+    if (settings.language !== undefined) row.language = settings.language;
+    if (settings.autoLockTimeout !== undefined) row.auto_lock_timeout = settings.autoLockTimeout;
 
-    if (settings.hourlyCost !== undefined) updates.push({ key: 'hourly_cost', value: settings.hourlyCost.toString() });
-    if (settings.logoUrl !== undefined) updates.push({ key: 'logo_url', value: settings.logoUrl || '' });
-    if (settings.companyName !== undefined) updates.push({ key: 'company_name', value: settings.companyName || '' });
-    if (settings.emailTo !== undefined) updates.push({ key: 'email_to', value: settings.emailTo || '' });
-    if (settings.useAutomaticCost !== undefined) updates.push({ key: 'use_automatic_cost', value: String(settings.useAutomaticCost) });
-    if (settings.interruptionEmailTo !== undefined) updates.push({ key: 'interruption_email_to', value: settings.interruptionEmailTo || '' });
-    if (settings.interruptionEmailTemplate !== undefined) updates.push({ key: 'interruption_email_template', value: settings.interruptionEmailTemplate || '' });
-    if (settings.workdayStart !== undefined) updates.push({ key: 'workday_start', value: settings.workdayStart });
-    if (settings.workdayEnd !== undefined) updates.push({ key: 'workday_end', value: settings.workdayEnd });
-    if (settings.workdays !== undefined) updates.push({ key: 'workdays', value: JSON.stringify(settings.workdays) });
-    if (settings.lunchStart !== undefined) updates.push({ key: 'lunch_start', value: settings.lunchStart });
-    if (settings.lunchEnd !== undefined) updates.push({ key: 'lunch_end', value: settings.lunchEnd });
-    if (settings.language !== undefined) updates.push({ key: 'language', value: settings.language });
-    if (settings.autoLockTimeout !== undefined) updates.push({ key: 'auto_lock_timeout', value: settings.autoLockTimeout.toString() });
+    if (Object.keys(row).length > 0) {
+      const { data: existing, error: selErr } = await supabase.from('settings').select('id').limit(1);
+      if (selErr) { console.error("SUPABASE SETTINGS SELECT ERROR:", selErr); throw selErr; }
 
-    console.log("SUPABASE UPDATES PAYLOAD:", updates);
-
-    if (updates.length > 0) {
-      const { error } = await supabase
-        .from('settings')
-        .upsert(updates, { onConflict: 'key' });
-      
-      if (error) {
-        console.error("SUPABASE SETTINGS UPDATE ERROR:", error);
-        throw error;
+      if (existing && existing.length > 0) {
+        const { error } = await supabase.from('settings').update(row).eq('id', (existing[0] as any).id);
+        if (error) { console.error("SUPABASE SETTINGS UPDATE ERROR:", error); throw error; }
+      } else {
+        const { error } = await supabase.from('settings').insert([row]);
+        if (error) { console.error("SUPABASE SETTINGS INSERT ERROR:", error); throw error; }
       }
     }
-    
+
     return fetchAppState();
   } catch (error) {
     console.error("FAILED TO UPDATE SETTINGS IN SUPABASE", error);

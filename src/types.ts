@@ -233,8 +233,10 @@ export interface AppSettings {
   logoUrl?: string;
   companyName?: string;
   emailTo?: string;
+  emailFrom?: string;
   interruptionEmailTo?: string;
   interruptionEmailTemplate?: string;
+  completionEmailTemplate?: string;
   // New fields for workday
   workdayStart?: string; // "07:30"
   workdayEnd?: string;   // "17:30"
