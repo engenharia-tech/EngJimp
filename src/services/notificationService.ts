@@ -38,16 +38,59 @@ const hhmmss = (secs?: number): string => {
   return [h, m, ss].map((x) => String(x).padStart(2, '0')).join(':');
 };
 
+// Template padrao do e-mail de CONCLUSAO. As tags [ ... ] sao substituidas
+// pelos valores do projeto. E editavel em Configuracoes -> Template de
+// e-mail de conclusao; se vazio, usa-se este padrao.
+export const DEFAULT_COMPLETION_TEMPLATE = [
+  'BOM DIA,',
+  '',
+  'INFORMAMOS A CONCLUSÃO DO PROJETO ABAIXO:',
+  '',
+  'NS: [NS]',
+  'CLIENTE: [CLIENTE]',
+  'CÓDIGO DO PROJETO: [CODIGO]',
+  'DESIGNER: [DESIGNER]',
+  'Liberado por: [LIBERADO_POR]',
+  '',
+  'TEMPO PLANEJADO: [TEMPO_PLANEJADO] HORAS',
+  'TEMPO EXECUTADO: [TEMPO_EXECUTADO] HORAS',
+  'TEMPO DE INTERRUPÇÃO: [TEMPO_INTERRUPCAO]',
+  '',
+  'CUSTO PRODUTIVO: [CUSTO_PRODUTIVO]',
+  'CUSTO DE INTERRUPÇÕES: [CUSTO_INTERRUPCAO]',
+  'CUSTO TOTAL DO PROJETO: [CUSTO_TOTAL]',
+  '',
+  'INTERRUPÇÕES: [QTD_INTERRUPCOES]',
+  '',
+  'DETALHAMENTO DAS INTERRUPÇÕES:',
+  '[DETALHE_INTERRUPCOES]',
+  '',
+  'OBSERVAÇÕES:',
+  '[OBSERVACOES]',
+  '',
+  'ATENCIOSAMENTE.',
+  'JIMPNEXUS',
+].join('\n');
+
+/** Tags aceitas no template de conclusao (para a tela de Configuracoes). */
+export const COMPLETION_TEMPLATE_TAGS = [
+  '[NS]', '[CLIENTE]', '[CODIGO]', '[DESIGNER]', '[LIBERADO_POR]',
+  '[TEMPO_PLANEJADO]', '[TEMPO_EXECUTADO]', '[TEMPO_INTERRUPCAO]',
+  '[CUSTO_PRODUTIVO]', '[CUSTO_INTERRUPCAO]', '[CUSTO_TOTAL]',
+  '[QTD_INTERRUPCOES]', '[DETALHE_INTERRUPCOES]', '[OBSERVACOES]',
+];
+
 /**
  * E-mail de CONCLUSAO de projeto (disparado quando um PROJETISTA conclui).
- * Segue o formato padrao da engenharia (NS, cliente, tempos, custos,
- * detalhamento de interrupcoes e observacoes).
+ * Usa o `template` (editavel em Configuracoes) com substituicao de tags;
+ * se vazio, cai no DEFAULT_COMPLETION_TEMPLATE (formato padrao da engenharia).
  */
 export const notifyProjectCompletion = async (
   project: ProjectSession,
   completedBy: User,
   users: User[] = [],
-  interruptions: InterruptionRecord[] = []
+  interruptions: InterruptionRecord[] = [],
+  template?: string
 ): Promise<void> => {
   try {
     const recipients = getCompletionRecipients();
@@ -72,36 +115,31 @@ export const notifyProjectCompletion = async (
     const observacoes = (project.notes || '').trim() || 'NENHUMA';
 
     const subject = `Conclusão de Projeto — NS ${project.ns}`;
-    const body = [
-      'BOM DIA,',
-      '',
-      'INFORMAMOS A CONCLUSÃO DO PROJETO ABAIXO:',
-      '',
-      `NS: ${project.ns}`,
-      `CLIENTE: ${project.clientName || 'NÃO INFORMADO'}`,
-      `CÓDIGO DO PROJETO: ${project.projectCode || 'NÃO INFORMADO'}`,
-      `DESIGNER: ${designerName}`,
-      `Liberado por: ${liberadoPor}`,
-      '',
-      `TEMPO PLANEJADO: ${horas(project.estimatedSeconds)} HORAS`,
-      `TEMPO EXECUTADO: ${horas(project.totalActiveSeconds)} HORAS`,
-      `TEMPO DE INTERRUPÇÃO: ${hhmmss(project.interruptionSeconds)}`,
-      '',
-      `CUSTO PRODUTIVO: ${brl(project.productiveCost)}`,
-      `CUSTO DE INTERRUPÇÕES: ${brl(project.interruptionCost)}`,
-      `CUSTO TOTAL DO PROJETO: ${brl(project.totalCost)}`,
-      '',
-      `INTERRUPÇÕES: ${doProjeto.length}`,
-      '',
-      'DETALHAMENTO DAS INTERRUPÇÕES:',
-      detalhe,
-      '',
-      'OBSERVAÇÕES:',
-      observacoes,
-      '',
-      'ATENCIOSAMENTE.',
-      'JIMPNEXUS',
-    ].join('<br>');
+
+    // Valores para as tags do template.
+    const vars: Record<string, string> = {
+      '[NS]': String(project.ns ?? ''),
+      '[CLIENTE]': project.clientName || 'NÃO INFORMADO',
+      '[CODIGO]': project.projectCode || 'NÃO INFORMADO',
+      '[DESIGNER]': designerName,
+      '[LIBERADO_POR]': liberadoPor,
+      '[TEMPO_PLANEJADO]': horas(project.estimatedSeconds),
+      '[TEMPO_EXECUTADO]': horas(project.totalActiveSeconds),
+      '[TEMPO_INTERRUPCAO]': hhmmss(project.interruptionSeconds),
+      '[CUSTO_PRODUTIVO]': brl(project.productiveCost),
+      '[CUSTO_INTERRUPCAO]': brl(project.interruptionCost),
+      '[CUSTO_TOTAL]': brl(project.totalCost),
+      '[QTD_INTERRUPCOES]': String(doProjeto.length),
+      '[DETALHE_INTERRUPCOES]': detalhe,
+      '[OBSERVACOES]': observacoes,
+    };
+
+    const modelo = (template && template.trim()) ? template : DEFAULT_COMPLETION_TEMPLATE;
+    let texto = modelo;
+    for (const [tag, valor] of Object.entries(vars)) {
+      texto = texto.split(tag).join(valor);
+    }
+    const body = texto.replace(/\n/g, '<br>');
 
     const response = await fetch('/api/send-email', {
       method: 'POST',

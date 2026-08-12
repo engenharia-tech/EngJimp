@@ -645,6 +645,29 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
               </p>
             </div>
           </div>
+
+          {/* Template de e-mail de CONCLUSAO de projeto */}
+          <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Template de e-mail de conclusão de projeto</label>
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800 mb-3">
+              <p className="text-[10px] text-blue-700 dark:text-blue-300 font-bold uppercase mb-1">{t('availableTags')}:</p>
+              <div className="flex flex-wrap gap-2">
+                {['[NS]','[CLIENTE]','[CODIGO]','[DESIGNER]','[LIBERADO_POR]','[TEMPO_PLANEJADO]','[TEMPO_EXECUTADO]','[TEMPO_INTERRUPCAO]','[CUSTO_PRODUTIVO]','[CUSTO_INTERRUPCAO]','[CUSTO_TOTAL]','[QTD_INTERRUPCOES]','[DETALHE_INTERRUPCOES]','[OBSERVACOES]'].map(tag => (
+                  <span key={tag} className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">{tag}</span>
+                ))}
+              </div>
+            </div>
+            <textarea
+              disabled={!isEditing}
+              value={formData.completionEmailTemplate || ''}
+              onChange={e => setFormData({ ...formData, completionEmailTemplate: e.target.value })}
+              className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 h-48 font-mono text-sm resize-none"
+              placeholder={"Deixe em branco para usar o formato padrão da engenharia (NS, cliente, código, designer, tempos, custos, interrupções e observações)."}
+            />
+            <p className="mt-2 text-xs text-gray-500 dark:text-slate-400 italic">
+              Enviado para engenharia@ e Coordenação quando um projetista conclui um projeto. Em branco = formato padrão.
+            </p>
+          </div>
         </div>
 
         {/* Database Health Section */}
