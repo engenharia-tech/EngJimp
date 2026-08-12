@@ -49,6 +49,7 @@ import {
   normalizeForgottenActivityInDB
 } from './services/storageService';
 import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
+import { notifyProjectCompletion } from './services/notificationService';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -732,6 +733,14 @@ const AppContent: React.FC = () => {
 
           // Comparative diff for expanded project audit logs
           const oldProject = data.projects.find(p => p.id === project.id);
+
+          // Notificar gestor e coordenador quando um PROJETISTA CONCLUI um
+          // projeto (apenas na transicao para COMPLETED — nao em re-edicoes
+          // de projeto ja concluido). Fire-and-forget: nunca bloqueia o fluxo.
+          const acabouDeConcluir = oldProject?.status !== 'COMPLETED' && project.status === 'COMPLETED';
+          if (acabouDeConcluir && currentUser?.role === 'PROJETISTA') {
+            notifyProjectCompletion(project, currentUser, data.users);
+          }
           const changedProps: string[] = [];
           if (oldProject) {
             if (oldProject.ns !== project.ns) changedProps.push(`NS (ex: "${oldProject.ns}", novo: "${project.ns}")`);
