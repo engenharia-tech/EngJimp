@@ -2,21 +2,19 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
-  const geminiKey = env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
-  
+export default defineConfig(() => {
+  // A GEMINI_API_KEY NAO e injetada no bundle de proposito.
+  // Ela e lida apenas no servidor (api/index.ts); o cliente fala com o Gemini
+  // somente pelo proxy /api/gemini/generate (src/lib/gemini.ts). Qualquer
+  // `define` de chave aqui a publicaria no JavaScript que vai ao navegador —
+  // e a propria Vercel ja sinaliza essa variavel como "Needs Attention".
   return {
     plugins: [react(), tailwindcss()],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(geminiKey),
-      'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(geminiKey),
-    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
