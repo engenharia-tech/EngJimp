@@ -45,7 +45,6 @@ import {
   addProjectRequest,
   updateProjectRequest,
   deleteProjectRequest,
-  seedFebruaryData,
   addAuditLog,
   normalizeForgottenActivityInDB
 } from './services/storageService';
@@ -404,18 +403,12 @@ const AppContent: React.FC = () => {
         );
 
         const initializationPromise = (async () => {
-          // One-time seed for current month data
-          const hasSeeded = localStorage.getItem('eng_jimp_seeded_current_v1');
-          if (!hasSeeded) {
-            console.log("Seeding initial current month data...");
-            try {
-              await seedFebruaryData();
-              localStorage.setItem('eng_jimp_seeded_current_v1', 'true');
-            } catch (e) {
-              console.error("Seed error", e);
-            }
-          }
-
+          // ATENCAO: o auto-seed de dados de demonstracao foi DESATIVADO.
+          // seedFebruaryData() escrevia ~80 projetos ficticios (com datas
+          // remapeadas para o mes corrente) e criava usuarios com senha '123'
+          // no banco de PRODUCAO, no primeiro acesso de cada navegador. Isso
+          // contaminava os indicadores. A funcao continua em storageService
+          // apenas para uso manual/controlado, nunca automatico.
           const appData = await fetchAppState();
           setData(appData);
         })();
