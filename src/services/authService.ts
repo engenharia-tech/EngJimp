@@ -1,4 +1,5 @@
 import { User } from '../types';
+import { setAuthToken } from './authToken';
 
 /**
  * Autenticacao pelo SERVIDOR (Etapa 3). O navegador nunca mais le a tabela
@@ -36,6 +37,8 @@ export const loginViaServer = async (username: string, password: string): Promis
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.success && data.user) {
+      // Guarda o cracha de sessao (JWT) para o cliente Supabase usar na RLS.
+      setAuthToken(data.token || null);
       return { user: mapUser(data.user), mustSetPassword: !!data.user.must_set_password };
     }
     if (res.status === 401) return { error: 'Usuário ou senha inválidos' };

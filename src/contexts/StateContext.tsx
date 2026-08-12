@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { AppState, User } from '../types';
+import { setAuthToken } from '../services/authToken';
 
 interface StateContextType {
   data: AppState;
@@ -96,6 +97,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       sessionStorage.removeItem('nexus_user');
       localStorage.removeItem('nexus_user');
       sessionStorage.removeItem('nexus_locked');
+      setAuthToken(null); // limpa o cracha de sessao no logout
     }
   }, []);
 
