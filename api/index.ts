@@ -288,6 +288,7 @@ async function sendPlainMail(to: string, subject: string, text: string): Promise
   const transporter = nodemailer.createTransport({
     host, port, secure: port === 465, auth: { user, pass },
     connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 10000,
+    tls: { rejectUnauthorized: false }, // alinha com /api/send-email (cert do mail server)
   });
   await transporter.sendMail({ from: `"JIMPNexus KPI" <${from}>`, to, subject, text });
 }
@@ -348,7 +349,11 @@ Se nao foi voce que pediu, ignore este e-mail.
 -- JIMPNexus KPI (mensagem automatica, nao responda)`);
   } catch (e: any) {
     console.error("[auth/request-code] falha ao enviar e-mail:", e.message);
-    return res.status(500).json({ success: false, error: "Nao consegui enviar o e-mail com o codigo." });
+    // Desfaz a marcacao para nao deixar o usuario preso sem ter recebido o codigo.
+    await admin.from("users")
+      .update({ must_set_password: false, reset_code_hash: null, reset_code_expires: null })
+      .ilike("username", uname);
+    return res.status(500).json({ success: false, error: "Nao consegui enviar o e-mail com o codigo. Tente novamente." });
   }
   return res.json({ success: true, delivered: "email" });
 });
