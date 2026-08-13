@@ -24,6 +24,26 @@ app.get("/api/ip", (req, res) => {
   res.json({ ip: clientIp });
 });
 
+// GET /api/branding — dados PUBLICOS da tela de login (logo + nome da empresa).
+// Publico de proposito: substitui a leitura anonima da tabela `settings`
+// inteira (M2 da auditoria), que entregava email_to/email_from/templates/
+// hourly_cost para quem NAO esta logado. Aqui so saem logo e nome.
+app.get("/api/branding", async (req, res) => {
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.json({ logoUrl: null, companyName: "JIMPNexus" });
+  try {
+    const { data } = await admin.from("settings").select("logo_url, company_name").limit(1);
+    const row = data && data[0];
+    const clean = (v: any) => (v && v !== "null") ? String(v) : null;
+    return res.json({
+      logoUrl: clean(row?.logo_url),
+      companyName: clean(row?.company_name) || "JIMPNexus",
+    });
+  } catch {
+    return res.json({ logoUrl: null, companyName: "JIMPNexus" });
+  }
+});
+
 // API Route for sending email
 app.post("/api/send-email", async (req, res) => {
   console.log("[Email API] Received request on", process.env.VERCEL ? 'Vercel' : 'Local');
@@ -584,6 +604,43 @@ app.post("/api/users/save", async (req, res) => {
   }
   const { error } = await admin.from("users").update(patch).eq("id", user.id);
   if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
+  return res.json({ success: true });
+});
+
+// POST /api/settings/save { row } — grava as configuracoes. Escrita mediada
+// pelo servidor (mesma logica do C1): a policy de escrita direta em `settings`
+// e removida (migracao 007), entao QUALQUER logado (ate projetista) nao pode
+// mais mudar custo/hora, destinatarios de e-mail ou templates falando direto
+// com o banco. So admin (ou o Edson) grava, via service_role.
+const SETTINGS_WRITABLE = new Set([
+  "hourly_cost", "use_automatic_cost", "company_name", "email_to", "email_from",
+  "interruption_email_to", "interruption_email_template", "completion_email_template",
+  "workday_start", "workday_end", "workdays", "lunch_start", "lunch_end",
+  "language", "auto_lock_timeout", "logo_url",
+]);
+app.post("/api/settings/save", async (req, res) => {
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  if (!(ADMIN_ROLES.includes(claims.app_role) || claimsAreEdson(claims))) {
+    return res.status(403).json({ success: false, error: "Sem permissao para alterar configuracoes." });
+  }
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+
+  const incoming = (req.body && req.body.row) || {};
+  const row: any = {};
+  for (const k of Object.keys(incoming)) if (SETTINGS_WRITABLE.has(k)) row[k] = incoming[k];
+  if (Object.keys(row).length === 0) return res.json({ success: true }); // nada a gravar
+
+  const { data: existing, error: selErr } = await admin.from("settings").select("id").limit(1);
+  if (selErr) return res.json({ success: false, message: selErr.message });
+  if (existing && existing.length > 0) {
+    const { error } = await admin.from("settings").update(row).eq("id", (existing[0] as any).id);
+    if (error) return res.json({ success: false, message: error.message });
+  } else {
+    const { error } = await admin.from("settings").insert([row]);
+    if (error) return res.json({ success: false, message: error.message });
+  }
   return res.json({ success: true });
 });
 
