@@ -562,7 +562,7 @@ export const SEOManager: React.FC<SEOManagerProps> = ({ currentUser, theme }) =>
             </div>
             <form onSubmit={handleAddMetric} className="p-6 space-y-4">
               <div className="p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-xl border border-blue-100/50 dark:border-blue-900/30 flex items-start gap-2">
-                <Sparkles className="w-4.5 h-4.5 text-blue-500 mt-0.5 shrink-0" />
+                <Sparkles className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                 <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
                   Os valores cadastrados serão plotados automaticamente na linha temporal do gráfico de crescimento e refletirão na visão geral de tráfego.
                 </p>
@@ -861,7 +861,7 @@ export const SEOManager: React.FC<SEOManagerProps> = ({ currentUser, theme }) =>
                   </button>
                 </div>
 
-                <div className="flex items-center gap-3 bg-gray-50 dark:bg-slate-800/40 px-3 py-1.5 rounded-lg border border-gray-150 dark:border-slate-800 text-[11px] text-gray-500 dark:text-slate-400">
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-slate-800/40 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-800 text-[11px] text-gray-500 dark:text-slate-400">
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full bg-blue-500"></div>
                     <span>Visitas Orgânicas</span>
@@ -1006,7 +1006,7 @@ export const SEOManager: React.FC<SEOManagerProps> = ({ currentUser, theme }) =>
 
               {/* Difficulty filter selection */}
               <div className="flex items-center gap-1.5">
-                <SlidersHorizontal className="w-4.5 h-4.5 text-gray-400 shrink-0" />
+                <SlidersHorizontal className="w-4 h-4 text-gray-400 shrink-0" />
                 <select
                   value={difficultyFilter}
                   onChange={e => setDifficultyFilter(e.target.value as any)}
@@ -1187,7 +1187,7 @@ export const SEOManager: React.FC<SEOManagerProps> = ({ currentUser, theme }) =>
                               <td colSpan={6} className="px-6 py-4 border-l-2 border-blue-500">
                                 <div className="space-y-2">
                                   <div className="flex items-center gap-2">
-                                    <Sparkles className="w-4.5 h-4.5 text-yellow-500 shrink-0" />
+                                    <Sparkles className="w-4 h-4 text-yellow-500 shrink-0" />
                                     <span className="text-xs font-bold text-gray-700 dark:text-slate-200 uppercase tracking-widest">
                                       Guia de Engenharia de Rank - Jimp SEO
                                     </span>
@@ -1324,7 +1324,7 @@ export const SEOManager: React.FC<SEOManagerProps> = ({ currentUser, theme }) =>
                 </div>
               </div>
               <div className="space-y-3">
-                <div className="flex justify-between text-xs font-bold border-b border-gray-100 dark:border-slate-850 pb-2">
+                <div className="flex justify-between text-xs font-bold border-b border-gray-100 dark:border-slate-800 pb-2">
                   <span className="text-gray-400 uppercase">Fator</span>
                   <span className="text-gray-400 uppercase">Status</span>
                 </div>

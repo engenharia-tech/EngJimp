@@ -61,7 +61,15 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<any>('dashboard');
+  // Aba ativa PERSISTIDA na sessão: um F5 (ou editar o perfil) não devolve
+  // mais o usuário ao Dashboard — ele continua de onde estava.
+  const [activeTab, setActiveTabState] = useState<any>(() => {
+    try { return sessionStorage.getItem('nexus_tab') || 'dashboard'; } catch { return 'dashboard'; }
+  });
+  const setActiveTab = useCallback((tab: any) => {
+    setActiveTabState(tab);
+    try { if (tab) sessionStorage.setItem('nexus_tab', String(tab)); } catch { /* storage indisponível */ }
+  }, []);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
       const saved = localStorage.getItem('theme');
@@ -97,6 +105,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       sessionStorage.removeItem('nexus_user');
       localStorage.removeItem('nexus_user');
       sessionStorage.removeItem('nexus_locked');
+      sessionStorage.removeItem('nexus_tab'); // esquece a aba ao deslogar
       setAuthToken(null); // limpa o cracha de sessao no logout
     }
   }, []);

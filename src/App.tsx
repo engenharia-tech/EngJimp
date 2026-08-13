@@ -597,12 +597,17 @@ const AppContent: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [data.operationalActivities, data.settings, currentUser, addToast]);
 
-  // Auto-redirect based on role logic
+  // Vai para o Dashboard só no LOGIN de fato (null -> usuário), NÃO a cada
+  // mudança do objeto do usuário. Assim, editar o perfil (que atualiza
+  // currentUser) não expulsa mais a pessoa da aba atual; e um F5 preserva a
+  // aba (persistida na sessão pelo StateContext).
+  const prevUserIdRef = useRef<string | null>(currentUser?.id ?? null);
   useEffect(() => {
-      if (currentUser) {
-          // GESTOR, CEO, PROJETISTA, COORDENADOR default to dashboard
+      const uid = currentUser?.id ?? null;
+      if (uid && uid !== prevUserIdRef.current) {
           setActiveTab('dashboard');
       }
+      prevUserIdRef.current = uid;
   }, [currentUser]);
 
   // --- PERMISSIONS LOGIC ---
@@ -1611,7 +1616,7 @@ const AppContent: React.FC = () => {
             <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             
             <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-            <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             {canUseTracker && (
               <>
                 <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
@@ -1619,6 +1624,12 @@ const AppContent: React.FC = () => {
                 <NavItem id="interruptions" labelKey="interruptions" icon={PauseCircle} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
                 <NavItem id="operational" labelKey="operationalPerformance" icon={Activity} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
               </>
+            )}
+            {canSeeEngineeringPerformance && (
+                <NavItem id="engineering_performance" labelKey="engineeringPerformance" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            )}
+            {canSeeAudit && (
+                <NavItem id="audit" labelKey="auditLog" icon={History} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             {canSeeInnovations && (
                 <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />

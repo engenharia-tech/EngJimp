@@ -983,7 +983,7 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
           {onClose && (
             <button 
               onClick={onClose}
-              className="p-1.5 hover:bg-red-650 hover:bg-red-500 rounded-lg transition-colors border border-white/10 ml-1"
+              className="p-1.5 hover:bg-red-600 hover:bg-red-500 rounded-lg transition-colors border border-white/10 ml-1"
               title="Fechar chat"
             >
               <X className="w-4 h-4" />

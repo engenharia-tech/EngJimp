@@ -424,7 +424,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 </div>
 
                 {/* Grid of users with checkbox controls */}
-                <div className="border border-gray-150 dark:border-slate-800 rounded-xl overflow-hidden max-h-96 overflow-y-auto bg-gray-50/55 dark:bg-slate-905/30">
+                <div className="border border-gray-200 dark:border-slate-800 rounded-xl overflow-hidden max-h-96 overflow-y-auto bg-gray-50/55 dark:bg-slate-900/30">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-gray-100/80 dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
@@ -433,7 +433,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                         <th className="p-3 text-center w-28">Interrupção (Parada)</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-150 dark:divide-slate-800/80">
+                    <tbody className="divide-y divide-gray-200 dark:divide-slate-800/80">
                       {users.map((user) => {
                         const userEmail = user.email?.trim() || '';
                         const hasEmail = !!userEmail && userEmail.includes('@');
@@ -463,7 +463,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                                 disabled={!isEditing || !hasEmail}
                                 checked={isCheckedGen && hasEmail}
                                 onChange={() => toggleUserEmail(userEmail, 'general')}
-                                className="w-4.5 h-4.5 rounded border-gray-350 text-blue-600 focus:ring-blue-500 dark:bg-slate-900 dark:border-slate-700 disabled:opacity-40"
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-slate-900 dark:border-slate-700 disabled:opacity-40"
                               />
                             </td>
                             <td className="p-3 text-center">
@@ -472,7 +472,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                                 disabled={!isEditing || !hasEmail}
                                 checked={isCheckedInt && hasEmail}
                                 onChange={() => toggleUserEmail(userEmail, 'interruption')}
-                                className="w-4.5 h-4.5 rounded border-gray-350 text-emerald-605 focus:ring-emerald-500 dark:bg-slate-900 dark:border-slate-700 disabled:opacity-40"
+                                className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 dark:bg-slate-900 dark:border-slate-700 disabled:opacity-40"
                               />
                             </td>
                           </tr>
@@ -483,7 +483,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 </div>
 
                 {/* Manual Emails Section */}
-                <div className="space-y-4 pt-4 border-t border-gray-150 dark:border-slate-800">
+                <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-slate-800">
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <h5 className="text-xs font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider">Destinatários Adicionais (Projetos Concluídos)</h5>
@@ -572,7 +572,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                   <Shield className="w-6 h-6 animate-pulse" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-gray-955 dark:text-slate-200">
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-slate-200">
                     Acesso Restrito aos Destinatários
                   </h4>
                   <p className="text-xs text-gray-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
@@ -581,7 +581,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 </div>
                 
                 {/* Show read-only mail listing */}
-                <div className="text-left bg-white dark:bg-black p-4 rounded-xl border border-gray-150 dark:border-slate-800 max-w-md mx-auto pt-3 space-y-2 mt-4">
+                <div className="text-left bg-white dark:bg-black p-4 rounded-xl border border-gray-200 dark:border-slate-800 max-w-md mx-auto pt-3 space-y-2 mt-4">
                   <div className="text-xs">
                     <span className="font-bold text-gray-600 dark:text-slate-400 block mb-1">Destinatários Fim de Projeto:</span>
                     {formData.emailTo ? (

@@ -1888,10 +1888,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       filteredTargetOps = data.operationalActivities.filter(a => a.userId === selectedEdsonAnalyticsUser);
     }
 
-    // Let's analyze June 2026 ("este mês")
-    const targetYear = 2026;
-    const targetMonth = 5; // June is index 5
-    const daysInMonth = 30; // June has 30 days
+    // Analisa o MÊS CORRENTE (antes estava fixo em junho/2026, que ficou
+    // desatualizado). Tudo — dados, rótulos e alinhamento do calendário —
+    // passa a derivar da data de hoje.
+    const now = new Date();
+    const targetYear = now.getFullYear();
+    const targetMonth = now.getMonth();
+    const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+    const MESES_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const monthLabel = `${MESES_PT[targetMonth]} ${targetYear}`;
+    // Offset p/ alinhar o dia 1 na coluna certa (a grade começa na Segunda).
+    const firstWeekdayMondayIdx = (new Date(targetYear, targetMonth, 1).getDay() + 6) % 7;
 
     // Initialize daily metrics for June 2026
     const dailyData = Array.from({ length: daysInMonth }, (_, idx) => {
@@ -2030,7 +2037,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       historicOvertimeSum: parseFloat(historicOvertimeSum.toFixed(1)),
       historicFactorySum: parseFloat(historicFactorySum.toFixed(1)),
       activeUserName,
-      edsonDefaultId: edsonUser?.id || ''
+      edsonDefaultId: edsonUser?.id || '',
+      monthLabel,
+      firstWeekdayMondayIdx
     };
   }, [data.projects, data.operationalActivities, data.users, selectedEdsonAnalyticsUser]);
 
@@ -2554,7 +2563,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           {currentUser.role !== 'PROCESSOS' && (
              <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-amber-500/5">
                 <div className="w-full">
-                  <p className="text-[9px] sm:text-xs font-black text-amber-600 dark:text-amber-450 uppercase tracking-widest mb-0.5 sm:mb-1">
+                  <p className="text-[9px] sm:text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-0.5 sm:mb-1">
                     Total de Variações
                   </p>
                   <div className="flex items-baseline gap-1">
@@ -2565,10 +2574,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   </div>
                   <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 flex flex-col gap-0.5">
                      <p className="text-[9px] text-gray-500 font-bold uppercase flex items-center gap-1">
-                       <Clock size={10} className="text-amber-450" />
+                       <Clock size={10} className="text-amber-400" />
                        Média: {variationStats.avgPerMonth} / mês
                      </p>
-                     <p className="text-[8px] text-amber-650 font-black uppercase">
+                     <p className="text-[8px] text-amber-600 font-black uppercase">
                        Total Ano: {yearlyStats.variationCount} VARIAÇÕES
                      </p>
                      <div className="flex flex-col gap-0.5 mt-1 border-t border-amber-50 dark:border-slate-800/50 pt-1">
@@ -3803,7 +3812,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       {/* Advanced Indicators & Analytics Section */}
       {visibleSections.includes('advanced_charts') && (
-        <div className="bg-white dark:bg-black/40 border border-gray-150 dark:border-slate-800 p-6 rounded-2xl col-span-1 md:col-span-2 space-y-6 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white dark:bg-black/40 border border-gray-200 dark:border-slate-800 p-6 rounded-2xl col-span-1 md:col-span-2 space-y-6 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex flex-col gap-1 border-b border-gray-100 dark:border-slate-800 pb-3">
             <h3 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wide flex items-center gap-2">
               <TrendingUp className="text-indigo-500 w-5 h-5 animate-pulse" />
@@ -3814,7 +3823,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             {/* 1. Scatter Plot (Dispersão) */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-850 shadow-sm flex flex-col justify-between min-h-[400px]">
+            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between min-h-[400px]">
               <div>
                 <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2 mb-1">
                   <Activity className="text-blue-500 w-4 h-4" />
@@ -3873,7 +3882,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
 
             {/* 2. Pipeline Funnel Chart (Funil de Progresso de Entregas) */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-850 shadow-sm flex flex-col justify-between min-h-[400px]">
+            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between min-h-[400px]">
               <div>
                 <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2 mb-1">
                   <SlidersHorizontal className="text-indigo-500 w-4 h-4" />
@@ -3909,7 +3918,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
 
             {/* 3. Heatmap de Produtividade Semanal (Weekly Heatmap) */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-850 shadow-sm col-span-1 xl:col-span-2 flex flex-col justify-between min-h-[400px]">
+            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm col-span-1 xl:col-span-2 flex flex-col justify-between min-h-[400px]">
               <div>
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-2 mb-1">
                   <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2">
@@ -3918,7 +3927,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   </h4>
                   <div className="flex items-center gap-2 text-[9px] font-black uppercase text-gray-400">
                     <span>Inativo (0h)</span>
-                    <div className="w-3.5 h-3.5 rounded bg-gray-100 dark:bg-slate-900 border border-slate-250 dark:border-slate-800" />
+                    <div className="w-3.5 h-3.5 rounded bg-gray-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800" />
                     <div className="w-3.5 h-3.5 rounded bg-indigo-100/40 dark:bg-indigo-950/25 border border-indigo-200/20" />
                     <div className="w-3.5 h-3.5 rounded bg-indigo-300/60 dark:bg-indigo-700/65" />
                     <div className="w-3.5 h-3.5 rounded bg-indigo-600" />
@@ -3928,19 +3937,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 <p className="text-[11px] text-gray-400 mb-4 font-medium uppercase">Matriz de esforço diário em horas dos projetistas para otimização do balanceamento de carga.</p>
               </div>
 
-              <div className="overflow-x-auto w-full no-scrollbar border border-slate-100 dark:border-slate-850 rounded-xl">
+              <div className="overflow-x-auto w-full no-scrollbar border border-slate-100 dark:border-slate-800 rounded-xl">
                 <table className="w-full border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-150 dark:border-slate-850">
-                      <th className="py-2.5 px-4 text-left text-[11px] font-black text-slate-400 tracking-wider uppercase border-r border-slate-100 dark:border-slate-850">Projetista</th>
+                    <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+                      <th className="py-2.5 px-4 text-left text-[11px] font-black text-slate-400 tracking-wider uppercase border-r border-slate-100 dark:border-slate-800">Projetista</th>
                       {advancedWeeklyHeatmap.daysName.map(day => (
-                        <th key={day} className="py-2.5 px-4 text-center text-[11px] font-black text-slate-400 tracking-wide uppercase border-r border-slate-100 dark:border-slate-850">{day}</th>
+                        <th key={day} className="py-2.5 px-4 text-center text-[11px] font-black text-slate-400 tracking-wide uppercase border-r border-slate-100 dark:border-slate-800">{day}</th>
                       ))}
                       {(() => {
                         const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
                         const isGestorOrEdson = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser?.role) || isEdson;
                         return isGestorOrEdson && (
-                          <th className="py-2.5 px-4 text-center text-[11px] font-black text-amber-600 dark:text-amber-400 tracking-wide uppercase border-r border-slate-100 dark:border-slate-850 bg-amber-50/20 dark:bg-amber-950/10">H. Extra</th>
+                          <th className="py-2.5 px-4 text-center text-[11px] font-black text-amber-600 dark:text-amber-400 tracking-wide uppercase border-r border-slate-100 dark:border-slate-800 bg-amber-50/20 dark:bg-amber-950/10">H. Extra</th>
                         );
                       })()}
                       <th className="py-2.5 px-4 text-center text-[11px] font-black text-slate-400 tracking-wide uppercase">Total</th>
@@ -3959,7 +3968,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       if (visibleRows.length > 0) {
                         return visibleRows.map(row => (
                           <tr key={row.id} className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
-                            <td className="py-3 px-4 font-bold text-xs text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-850">
+                            <td className="py-3 px-4 font-bold text-xs text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-800">
                               {row.name}
                             </td>
                             {row.hours.map((val, idx) => {
@@ -3967,13 +3976,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                               if (val > 0 && val <= 2) {
                                 bgClass = "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 border border-indigo-100/40 dark:border-indigo-900/10";
                               } else if (val > 2 && val <= 6) {
-                                bgClass = "bg-indigo-200 dark:bg-indigo-700/60 text-indigo-800 dark:text-indigo-200 font-extrabold border border-indigo-300/40 dark:border-indigo-850";
+                                bgClass = "bg-indigo-200 dark:bg-indigo-700/60 text-indigo-800 dark:text-indigo-200 font-extrabold border border-indigo-300/40 dark:border-indigo-900";
                               } else if (val > 6) {
                                 bgClass = "bg-indigo-600 text-white font-black";
                               }
 
                               return (
-                                <td key={idx} className="p-1 border-r border-slate-100 dark:border-slate-850">
+                                <td key={idx} className="p-1 border-r border-slate-100 dark:border-slate-800">
                                   <div 
                                     className={`py-2 px-1 text-center text-xs rounded-lg transition-all border border-transparent shadow-xs hover:scale-[1.03] duration-150 ${bgClass}`}
                                     title={`${row.name} - ${advancedWeeklyHeatmap.daysName[idx]}: ${val} horas projetadas.`}
@@ -3984,7 +3993,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                               );
                             })}
                             {isGestorOrEdson && (
-                              <td className="p-1 border-r border-slate-100 dark:border-slate-850 bg-amber-50/10 dark:bg-amber-950/5">
+                              <td className="p-1 border-r border-slate-100 dark:border-slate-800 bg-amber-50/10 dark:bg-amber-950/5">
                                 <div 
                                   className={`py-2 px-1 text-center text-xs font-extrabold rounded-lg transition-all border border-transparent shadow-xs hover:scale-[1.03] duration-150 ${
                                     row.overtime > 0 
@@ -4023,22 +4032,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
             if (!isEdson) return null;
 
-            const { dailyData, monthOvertimeSum, monthFactorySum, monthNormalSum, historicOvertimeSum, historicFactorySum, activeUserName } = edsonExtraHoursAnalytics;
-            
-            // June 2026 starts on Monday. Columns will start at Monday.
+            const { dailyData, monthOvertimeSum, monthFactorySum, monthNormalSum, historicOvertimeSum, historicFactorySum, activeUserName, monthLabel, firstWeekdayMondayIdx } = edsonExtraHoursAnalytics;
+
+            // A grade começa na Segunda; o offset abaixo alinha o dia 1 na coluna correta.
             const weekdaysShort = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
             const selectedDayDetails = selectedEdsonDay !== null ? dailyData[selectedEdsonDay - 1] : null;
 
             return (
-              <div className="bg-slate-50/55 dark:bg-slate-900/40 p-6 rounded-2xl border border-slate-100 dark:border-slate-850 space-y-6 mt-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-100 dark:border-slate-850 pb-4 gap-4">
+              <div className="bg-slate-50/55 dark:bg-slate-900/40 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-6 mt-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 gap-4">
                   <div>
-                    <h4 className="text-sm font-extrabold text-slate-850 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                    <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
                       Análise de Horas Extras & Fábrica — {activeUserName}
                     </h4>
                     <p className="text-[11px] text-gray-400 mt-0.5 uppercase tracking-wide">
-                      Mapeamento exclusivo de intensidade operacional na planta e horas extras (Junho 2026)
+                      Mapeamento exclusivo de intensidade operacional na planta e horas extras ({monthLabel})
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
@@ -4050,7 +4059,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                           setSelectedEdsonAnalyticsUser(e.target.value);
                           setSelectedEdsonDay(null); // Clear selected day
                         }}
-                        className="px-3 py-1.5 text-xs bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-800 font-bold uppercase transition-all duration-150 shadow-xs focus:ring-2 focus:ring-amber-500/30 focus:outline-hidden cursor-pointer"
+                        className="px-3 py-1.5 text-xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-800 font-bold uppercase transition-all duration-150 shadow-xs focus:ring-2 focus:ring-amber-500/30 focus:outline-hidden cursor-pointer"
                       >
                         <option value="ALL">🌟 Todos os Colaboradores</option>
                         {data.users.map(u => (
@@ -4077,17 +4086,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 {/* Sub-Layout: Heatmap + Analytical Breakdown */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                   {/* Heatmap Section - 5 Columns */}
-                  <div className="lg:col-span-5 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-850 shadow-xs flex flex-col justify-between">
+                  <div className="lg:col-span-5 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col justify-between">
                     <div>
                       <h5 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3 flex items-center justify-between">
-                        <span>Mapa de Calor: Junho 2026</span>
+                        <span>Mapa de Calor: {monthLabel}</span>
                         <span className="text-[9px] text-zinc-400 capitalize font-medium">clique no dia para ver detalhes</span>
                       </h5>
                       
                       {/* Grid Headers */}
                       <div className="grid grid-cols-7 gap-1 text-center mb-1">
                         {weekdaysShort.map((day) => (
-                          <div key={day} className="text-[10px] font-black text-slate-450 uppercase py-1">
+                          <div key={day} className="text-[10px] font-black text-slate-400 uppercase py-1">
                             {day}
                           </div>
                         ))}
@@ -4095,6 +4104,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
                       {/* Heatmap Grid of Days */}
                       <div className="grid grid-cols-7 gap-1.5 animate-in fade-in duration-300">
+                        {Array.from({ length: firstWeekdayMondayIdx }).map((_, i) => (
+                          <div key={`blank-${i}`} aria-hidden="true" />
+                        ))}
                         {dailyData.map((d) => {
                           const dailyTotal = d.overtimeHours + d.factoryHours;
                           
@@ -4146,26 +4158,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       </div>
                     </div>
 
-                    <div className="mt-5 border-t border-slate-100 dark:border-slate-900 pt-3 text-[9px] text-gray-450 uppercase italic font-medium">
-                      💡 Junho de 2026 iniciou-se em uma Segunda-feira.
+                    <div className="mt-5 border-t border-slate-100 dark:border-slate-900 pt-3 text-[9px] text-gray-400 uppercase italic font-medium">
+                      💡 Intensidade operacional no chão de fábrica e horas extras em {monthLabel}.
                     </div>
                   </div>
 
                   {/* Day Details or Monthly breakdown - 4 Columns */}
-                  <div className="lg:col-span-4 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-850 shadow-xs flex flex-col justify-between">
+                  <div className="lg:col-span-4 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col justify-between">
                     <div>
                       <h5 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3">
-                        {selectedDayDetails ? `Detalhes do Dia ${selectedDayDetails.day} de Junho` : "Selecione um Dia no Mapa"}
+                        {selectedDayDetails ? `Detalhes do Dia ${selectedDayDetails.day}` : "Selecione um Dia no Mapa"}
                       </h5>
 
                       {selectedDayDetails ? (
                         <div className="space-y-4 animate-in fade-in duration-200">
                           <div className="grid grid-cols-2 gap-2 text-center">
-                            <div className="bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-850">
+                            <div className="bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
                               <p className="text-[9px] font-black text-slate-400 uppercase">H. Extra</p>
                               <p className="text-sm font-black text-amber-600 dark:text-amber-400">{selectedDayDetails.overtimeHours.toFixed(1)}h</p>
                             </div>
-                            <div className="bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-850">
+                            <div className="bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
                               <p className="text-[9px] font-black text-slate-400 uppercase">Fábrica</p>
                               <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">{selectedDayDetails.factoryHours.toFixed(1)}h</p>
                             </div>
@@ -4188,12 +4200,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                 })}
                               </ul>
                             ) : (
-                              <p className="text-xs text-slate-400 dark:text-slate-550 italic">Apenas horas de expediente normal sem apontamentos adicionais registrados.</p>
+                              <p className="text-xs text-slate-400 dark:text-slate-500 italic">Apenas horas de expediente normal sem apontamentos adicionais registrados.</p>
                             )}
                           </div>
                         </div>
                       ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-center py-8 text-gray-450 dark:text-slate-500">
+                        <div className="h-full flex flex-col items-center justify-center text-center py-8 text-gray-400 dark:text-slate-500">
                           <Activity className="w-8 h-8 opacity-25 mb-2 animate-bounce" />
                           <p className="text-xs max-w-[220px]">Clique em qualquer quadrado com horas no mapa de calor para expor a lista detalhada de apontamentos.</p>
                         </div>
@@ -4203,7 +4215,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     {selectedDayDetails && (
                       <button 
                         onClick={() => setSelectedEdsonDay(null)}
-                        className="w-full mt-4 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-600 dark:text-slate-300 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                        className="w-full mt-4 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer"
                       >
                         Limpar Seleção
                       </button>
@@ -4211,7 +4223,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   </div>
 
                   {/* Summary / Report Card - 3 Columns */}
-                  <div className="lg:col-span-3 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-850 shadow-xs flex flex-col justify-between space-y-4">
+                  <div className="lg:col-span-3 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-4">
                     <div>
                       <h5 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3">
                         Acumulado Histórico
@@ -4221,14 +4233,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                         <div>
                           <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Acumulado Horas Extras</p>
                           <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight mt-0.5">
-                            {historicOvertimeSum} <span className="text-xs font-normal text-slate-450">horas totais</span>
+                            {historicOvertimeSum} <span className="text-xs font-normal text-slate-400">horas totais</span>
                           </p>
                         </div>
 
                         <div>
                           <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Total em Fábrica</p>
                           <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight mt-0.5">
-                            {historicFactorySum} <span className="text-xs font-normal text-slate-450">horas na planta</span>
+                            {historicFactorySum} <span className="text-xs font-normal text-slate-400">horas na planta</span>
                           </p>
                         </div>
 
@@ -4248,7 +4260,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
                     <div className="bg-amber-50/15 dark:bg-amber-950/5 p-3 rounded-xl border border-amber-500/10">
                       <p className="text-[9px] font-black text-amber-600 uppercase tracking-wider">Nota de Engenharia</p>
-                      <p className="text-[10.5px] text-slate-600 dark:text-slate-350 leading-relaxed mt-1">
+                      <p className="text-[10.5px] text-slate-600 dark:text-slate-400 leading-relaxed mt-1">
                         {selectedEdsonAnalyticsUser === 'ALL' ? (
                           "Sua equipe demonstra uma presença active e resiliente nos layouts industriais e setups produtivos. O monitoramento centralizado consolida as horas extras acumuladas e o fôlego de execução fabril de toda a planta."
                         ) : selectedEdsonAnalyticsUser === edsonExtraHoursAnalytics.edsonDefaultId ? (
