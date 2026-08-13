@@ -249,7 +249,7 @@ NOTIFY pgrst, 'reload config';`;
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${theme === 'dark' ? 'bg-slate-800/50 text-slate-300 border border-slate-800' : 'bg-gray-100 text-gray-600 border border-gray-150'}`}>
+                    <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${theme === 'dark' ? 'bg-slate-800/50 text-slate-300 border border-slate-800' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
                       {log.ipAddress || '—'}
                     </span>
                   </td>

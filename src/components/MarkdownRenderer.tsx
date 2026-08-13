@@ -84,7 +84,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, the
     if (!inTable) return null;
     const el = (
       <div key={`table-container-${key}`} className="my-4 overflow-x-auto border border-gray-200 dark:border-slate-800 rounded-xl shadow-sm">
-        <table className="min-w-full divide-y divide-gray-250 dark:divide-slate-800 text-left text-xs">
+        <table className="min-w-full divide-y divide-gray-300 dark:divide-slate-800 text-left text-xs">
           <thead className={theme === 'dark' ? 'bg-slate-900 text-slate-300' : 'bg-gray-50 text-gray-700'}>
             <tr>
               {tableHeaders.map((header, idx) => (

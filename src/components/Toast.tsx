@@ -110,7 +110,7 @@ NOTIFY pgrst, 'reload config';`;
       {/* RLS Block Explantory Overlay Modal */}
       <AnimatePresence>
         {rlsBlockMsg && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <motion.div key="rls-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -191,7 +191,7 @@ NOTIFY pgrst, 'reload config';`}
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 mt-6 border-t border-zinc-805 pt-4">
+              <div className="flex justify-end gap-3 mt-6 border-t border-zinc-800 pt-4">
                 <button
                   onClick={() => setRlsBlockMsg(null)}
                   className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-sm font-semibold transition"
@@ -200,7 +200,7 @@ NOTIFY pgrst, 'reload config';`}
                 </button>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </ToastContext.Provider>

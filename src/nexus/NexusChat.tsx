@@ -971,7 +971,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
                   className={`w-full pl-8 pr-2 py-1.5 text-xs rounded-lg border outline-none ${
                     theme === 'dark' 
                       ? 'bg-slate-900 border-slate-800 text-white placeholder:text-slate-600 focus:border-slate-700' 
-                      : 'bg-white border-gray-250 text-gray-900 placeholder:text-gray-400 focus:border-gray-300'
+                      : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-gray-300'
                   }`}
                 />
               </div>
@@ -1088,7 +1088,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
               }`}
               title={sidebarOpen ? "Ocultar Histórico" : "Exibir Histórico"}
             >
-              {sidebarOpen ? <PanelLeftClose className="w-4.5 h-4.5" /> : <PanelLeft className="w-4.5 h-4.5 text-blue-500" />}
+              {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4 text-blue-500" />}
             </button>
 
             <div className={`w-10 h-10 ${theme === 'dark' ? 'bg-blue-600 shadow-blue-500/20' : 'bg-blue-50 border border-blue-100'} rounded-lg flex items-center justify-center shadow-lg transition-all`}>
@@ -1415,7 +1415,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
                 disabled={isLoading}
                 className={`p-3 border transition-colors shrink-0 rounded-xl transition-all active:scale-95 ${
                   theme === 'dark'
-                    ? 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-400 hover:text-blue-450'
+                    ? 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-400 hover:text-blue-500'
                     : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-500 hover:text-blue-600'
                 }`}
                 title="Gravar mensagem de voz"
@@ -1436,7 +1436,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
               Nexus Intelligence Analytics System
             </p>
-            <div className="h-[1px] flex-1 bg-gray-150 dark:bg-slate-800" />
+            <div className="h-[1px] flex-1 bg-gray-200 dark:bg-slate-800" />
           </div>
         </div>
       </div>

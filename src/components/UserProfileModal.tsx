@@ -265,7 +265,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
             </div>
 
             {/* Device Biometrics (WebAuthn / Local Simulation) */}
-            <div className="bg-slate-50 dark:bg-slate-900/40 p-4 rounded-xl border border-gray-200 dark:border-slate-850 space-y-3 mt-4">
+            <div className="bg-slate-50 dark:bg-slate-900/40 p-4 rounded-xl border border-gray-200 dark:border-slate-800 space-y-3 mt-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <Fingerprint className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
