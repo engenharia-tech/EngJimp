@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { askGemini } from '../lib/gemini';
 import { useLanguage } from '../i18n/LanguageContext';
+import { isEdsonUser } from '../utils/identity';
 import { resolveLocalQueryFallback, tryResolveLocalQuery } from '../utils/localQueryProcessor';
 import { AppState, User, InterruptionStatus, ProjectType } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -475,7 +476,7 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
     const openInterruptions = interruptions.filter(i => i.status === InterruptionStatus.OPEN);
 
     // Filter sensitive data based on role. Only Edson (efariaseng0@gmail.com) can see salaries.
-    const isEdson = currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
+    const isEdson = isEdsonUser(currentUser);
     const canSeeSalary = isEdson;
 
     const userRoleMap: Record<string, string> = {};
