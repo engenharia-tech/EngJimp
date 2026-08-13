@@ -275,7 +275,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={name}
               onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               required
               placeholder="Somente letras"
             />
@@ -286,7 +286,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={surname}
               onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               placeholder="Somente letras"
             />
           </div>
@@ -296,7 +296,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="email" 
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               placeholder="exemplo@exemplo.com"
             />
           </div>
@@ -306,7 +306,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               placeholder="xx-xxxxx-xxxx"
             />
           </div>
@@ -316,7 +316,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               required
             />
           </div>
@@ -326,7 +326,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               placeholder="Defina uma senha"
               required
             />
@@ -337,7 +337,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               value={role}
               onChange={e => setRole(e.target.value as UserRole)}
               disabled={!isGestor}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
             >
               <option value="PROJETISTA">{t('projetista')}</option>
               <option value="GESTOR">{t('gestor')}</option>
@@ -356,7 +356,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                   setSalary(Number(val));
               }}
               disabled={!isEdson}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isEdson ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!isEdson ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
               placeholder={!isEdson ? '••••••' : 'Ex: 5000.00'}
             />
           </div>
@@ -364,7 +364,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             <button 
               type="submit"
               disabled={isRegistering}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center"
             >
               {isRegistering ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
               {isRegistering ? (editingUserId ? 'Salvando...' : 'Cadastrando...') : (editingUserId ? 'Salvar Alterações' : 'Cadastrar')}
