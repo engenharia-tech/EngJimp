@@ -50,6 +50,7 @@ import {
 } from './services/storageService';
 import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { notifyProjectCompletion } from './services/notificationService';
+import { isTokenExpired } from './services/authToken';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -389,6 +390,25 @@ const AppContent: React.FC = () => {
       document.body.classList.remove('dark');
     }
   }, [theme]);
+
+  // Guardiao de sessao: o JWT vale 12h e NAO tem refresh. Se expira com a aba
+  // aberta, a RLS passa a negar tudo e a GRAVACAO FALHA EM SILENCIO (o usuario
+  // acha que salvou e nao salvou). Aqui detectamos o vencimento (ao focar a aba
+  // e a cada 30s) e deslogamos com aviso claro, mandando ao login antes da perda.
+  useEffect(() => {
+    if (!currentUser) return;
+    const check = () => {
+      if (isTokenExpired()) {
+        addToast('Sua sessão expirou. Faça login novamente para continuar salvando.', 'error');
+        setCurrentUser(null);
+        setActiveTab('tracker');
+      }
+    };
+    const id = window.setInterval(check, 30000);
+    window.addEventListener('focus', check);
+    check();
+    return () => { window.clearInterval(id); window.removeEventListener('focus', check); };
+  }, [currentUser]);
 
   // Load data when user logs in or mounts
   useEffect(() => {
