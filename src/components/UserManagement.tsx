@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy } from 'lucide-react';
 import { User, UserRole } from '../types';
+import { isEdsonUser } from '../utils/identity';
 import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts, addAuditLog } from '../services/storageService';
 import { getWebhookUrl, saveWebhookUrl } from '../services/webhookService';
 import { useToast } from './Toast';
@@ -233,8 +234,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
 
   const isGestor = currentUser.role === 'GESTOR';
   // Salario e um dado do DONO: SO o Edson ve/edita — nem outros gestores (C2).
-  const isEdson = currentUser.email?.trim().toLowerCase() === 'efariaseng0@gmail.com'
-    || currentUser.username?.trim().toLowerCase() === 'edson';
+  // Fonte unica: isEdsonUser (mesma regra do servidor claimsAreEdson). [[identity]]
+  const isEdson = isEdsonUser(currentUser);
   const isCoordenador = currentUser.role === 'COORDENADOR';
   // Gestor can do everything. Coordenador can view. Everyone can edit themselves.
   

@@ -1,5 +1,6 @@
 import { AppState, User, InterruptionStatus } from '../types';
 import { askGemini } from '../lib/gemini';
+import { isEdsonUser } from '../utils/identity';
 import { GoogleGenAI } from "@google/genai";
 
 /**
@@ -154,7 +155,7 @@ export const processNexusQuery = async (
         id: u.id,
         nome: `${u.name} ${u.surname || ''}`,
         cargo: u.role,
-        salario: (currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') ? u.salary : 'RESTRITO',
+        salario: isEdsonUser(currentUser) ? u.salary : 'RESTRITO',
         resumo_producao_detalhado: {
           rastreador_ns: { total: projsUsuario.length, concluidos: concluidosRastreador, horas_totais: horasRastreador.toFixed(1) },
           nexus_gantt: { total: tarefasGantt.length, concluidos: concluidasGantt },
