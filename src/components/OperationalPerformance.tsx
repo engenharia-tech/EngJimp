@@ -190,6 +190,20 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     return nonProcessUsers.filter(u => u.id === currentUser.id);
   }, [users, currentUser.id, canEditOthers]);
 
+  // Auto-corrige o seletor de usuario: se ficar apontando para um id que nao
+  // esta na lista (ex.: os usuarios ainda nao tinham carregado no 1o render,
+  // deixando o seletor preso em "Selecione..." e a tela em branco), volta
+  // sozinho para o usuario logado assim que a lista carrega. A aba ENGENHARIA
+  // continua preferindo "Todos". Nao mexe numa selecao valida escolhida a mao.
+  useEffect(() => {
+    if (!currentUser.id) return;
+    if (selectedUserId === 'ALL') return;
+    if (activeTab === 'engineering' && canEditOthers) return;
+    if (filteredUsers.length === 0) return; // lista ainda nao carregou
+    const valido = filteredUsers.some(u => u.id === selectedUserId);
+    if (!valido) setSelectedUserId(currentUser.id);
+  }, [filteredUsers, selectedUserId, currentUser.id, activeTab, canEditOthers]);
+
   const filteredActivities = useMemo(() => {
     return activities.filter(a => {
       const activityStart = parseISO(a.startTime);
