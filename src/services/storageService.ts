@@ -259,6 +259,34 @@ export const fetchSettings = async (): Promise<AppSettings> => {
   return settings;
 };
 
+// Colunas de `users` que PODEM ir para o navegador. NUNCA inclua salary,
+// password, password_hash, reset_code_hash, reset_code_expires — sao segredos
+// que so o servidor (service_role) le. Trocar select('*') por esta lista fecha
+// o vazamento do C2 (o salario/senha vinham crus para todo cliente).
+const USER_SAFE_COLUMNS = 'id, username, name, surname, email, phone, role, created_at';
+
+// Media (custo/hora) calculada no servidor, sem expor salario individual.
+// Usada pelo "custo automatico" no app inteiro.
+export const fetchAutoHourlyCost = async (): Promise<number> => {
+  try {
+    const res = await fetch('/api/labor/hourly-cost', { headers: { ...authHeaders() } });
+    if (!res.ok) return 0;
+    const data = await res.json().catch(() => ({}));
+    return Number(data?.hourlyRate) || 0;
+  } catch { return 0; }
+};
+
+// Salarios individuais { [id]: valor }. O servidor so responde para o Edson;
+// para qualquer outro usuario retorna 403 e aqui vira {} (salario ausente).
+export const fetchEdsonSalaries = async (): Promise<Record<string, number>> => {
+  try {
+    const res = await fetch('/api/users/salaries', { headers: { ...authHeaders() } });
+    if (!res.ok) return {};
+    const data = await res.json().catch(() => ({}));
+    return (data && data.salaries) || {};
+  } catch { return {}; }
+};
+
 export const fetchAppState = async (): Promise<AppState> => {
   let projects: ProjectSession[] = [];
   let issues: IssueRecord[] = [];
@@ -285,10 +313,12 @@ export const fetchAppState = async (): Promise<AppState> => {
       supabase.from('activity_types').select('*').order('name', { ascending: true }),
       supabase.from('operational_activities').select('*').order('start_time', { ascending: false }),
       supabase.from('project_requests').select('*').order('created_at', { ascending: false }),
-      supabase.from('users').select('*'),
+      supabase.from('users').select(USER_SAFE_COLUMNS),
       supabase.from('gantt_tasks').select('*').order('order', { ascending: true }),
       supabase.from('audit_logs').select('*').order('timestamp', { ascending: false }).limit(500),
-      fetchSettings()
+      fetchSettings(),
+      fetchAutoHourlyCost(),   // [12] media custo/hora (servidor, sem salario individual)
+      fetchEdsonSalaries()     // [13] salarios individuais — SO chega preenchido para o Edson
     ];
 
     const results = await Promise.all(fetches);
@@ -304,6 +334,11 @@ export const fetchAppState = async (): Promise<AppState> => {
     const ganttTasksRes = results[9] as any;
     const auditLogsRes = results[10] as any;
     settings = results[11] as AppSettings;
+    const autoHourlyCost = (results[12] as number) || 0;
+    const edsonSalaries = (results[13] as Record<string, number>) || {};
+    // Taxa media (custo/hora) vem do servidor — nenhum salario individual foi
+    // baixado. Alimenta o "custo automatico" em todas as telas.
+    if (autoHourlyCost > 0) settings = { ...settings, hourlyCostCalculated: autoHourlyCost };
 
     activityTypes = (activityTypesRes.data || []).map((t: any) => ({
       id: t.id,
@@ -322,8 +357,10 @@ export const fetchAppState = async (): Promise<AppState> => {
 
     try {
       users = (usersRes.data || []).map((u: any) => ({
-        id: u.id, username: u.username, password: u.password, name: u.name, surname: u.surname,
-        email: u.email, phone: u.phone, role: u.role, salary: Number(u.salary) || 0
+        id: u.id, username: u.username, password: '', name: u.name, surname: u.surname,
+        email: u.email, phone: u.phone, role: u.role,
+        // salario so existe no cliente do Edson (via /api/users/salaries); 0 p/ o resto.
+        salary: Number(edsonSalaries[u.id]) || 0
       })).sort((a, b) => a.name.localeCompare(b.name));
     } catch (e) { console.error("Users mapping error:", e); }
 
@@ -1574,18 +1611,22 @@ export const deleteProjectRequest = async (id: string): Promise<AppState> => {
 
 export const fetchUsers = async (): Promise<User[]> => {
   try {
-    const { data, error } = await supabase.from('users').select('*');
+    // Colunas seguras (sem salary/senha/hash) + salarios do Edson em paralelo.
+    const [{ data, error }, edsonSalaries] = await Promise.all([
+      supabase.from('users').select(USER_SAFE_COLUMNS),
+      fetchEdsonSalaries(),
+    ]);
     if (error) throw error;
     return (data || []).map((u: any) => ({
       id: u.id,
       username: u.username,
-      password: u.password,
+      password: '',
       name: u.name,
       surname: u.surname,
       email: u.email,
       phone: u.phone,
       role: u.role,
-      salary: Number(u.salary) || 0
+      salary: Number(edsonSalaries[u.id]) || 0
     })).sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
     console.error("FAILED TO FETCH USERS", error);
@@ -1646,22 +1687,9 @@ export const deleteUser = async (id: string): Promise<{ success: boolean; messag
   }
 };
 
-export const authenticateUser = async (username: string, password: string): Promise<User | null> => {
-  try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .ilike('username', username)
-      .eq('password', password)
-      .single();
-
-    if (error || !data) return null;
-    return data as User;
-  } catch (error) {
-    console.error("AUTH ERROR", error);
-    return null;
-  }
-};
+// (removido) authenticateUser — login agora e 100% pelo servidor (/api/auth/login).
+// A funcao antiga lia users.select('*') + eq('password', ...) em texto puro,
+// justamente o que o C2 elimina. Nenhum caller no app.
 
 export const seedFebruaryData = async (): Promise<{ success: boolean; count: number; errors: string[] }> => {
   const errors: string[] = [];
@@ -1942,14 +1970,11 @@ export const findDuplicateProjects = async (): Promise<{ success: boolean; dupli
 export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; message: string }> => {
   try {
     const settings = await fetchSettings();
-    const users = await fetchUsers();
-    
+
     let costPerSecond = settings.hourlyCost / 3600;
     if (settings.hourlyCost <= 0) {
-      const relevantUsers = users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
-      const totalSalaries = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
-      const numUsers = relevantUsers.length || 1;
-      const hourlyRate = (totalSalaries / numUsers) / 220;
+      // Taxa media vem do servidor (nao somamos salario no cliente — C2).
+      const hourlyRate = await fetchAutoHourlyCost();
       costPerSecond = hourlyRate / 3600;
     }
 

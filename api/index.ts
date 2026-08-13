@@ -341,6 +341,16 @@ function verifyBearerToken(req: express.Request): any | null {
   }
 }
 
+// Identidade do DONO (Edson). Salario e um dado que SO ele pode ver/editar —
+// nem outros GESTORES. Centralizado aqui para nao espalhar o hardcode.
+const EDSON_EMAIL = "efariaseng0@gmail.com";
+function claimsAreEdson(claims: any): boolean {
+  if (!claims) return false;
+  const email = String(claims.email || "").trim().toLowerCase();
+  const uname = String(claims.username || "").trim().toLowerCase();
+  return email === EDSON_EMAIL || uname === "edson";
+}
+
 // Envia e-mail simples com as credenciais EMAIL_* (mesma config do /api/send-email).
 async function sendPlainMail(to: string, subject: string, text: string): Promise<void> {
   const host = process.env.EMAIL_HOST;
@@ -377,7 +387,14 @@ app.post("/api/auth/login", async (req, res) => {
   // Cracha de sessao: so emitimos para quem NAO precisa criar senha (quem
   // precisa vai para a tela de criar senha, sem sessao valida ainda).
   const token = user.must_set_password ? null : signSupabaseJwt(user);
-  return res.json({ success: true, user, token });
+  // Sanitiza: o payload de login NUNCA leva salary/senha/hash para o navegador
+  // (C2). So o Edson ve salario, e por uma porta propria (/api/users/salaries).
+  const safeUser = {
+    id: user.id, username: user.username, name: user.name, surname: user.surname,
+    email: user.email, phone: user.phone, role: user.role,
+    must_set_password: user.must_set_password,
+  };
+  return res.json({ success: true, user: safeUser, token });
 });
 
 // POST /api/auth/request-code — gera e ENVIA por e-mail o codigo para criar senha.
@@ -471,9 +488,12 @@ app.post("/api/users/save", async (req, res) => {
     if (!isAdmin) return res.status(403).json({ success: false, error: "Sem permissao para criar usuarios." });
     const { data: existing } = await admin.from("users").select("id").ilike("username", user.username).limit(1);
     if (existing && existing.length) return res.json({ success: false, message: "Nome de usuário já existe." });
+    // Salario so e gravado se quem cria for o Edson. Um admin comum nem
+    // enxerga salario (cliente recebe 0), entao nunca escreve esse campo.
     const { error } = await admin.from("users").insert([{
       id: user.id, name: user.name, surname: user.surname, email: user.email, phone: user.phone,
-      username: user.username, password: user.password, role: user.role, salary: user.salary || 0,
+      username: user.username, password: user.password, role: user.role,
+      salary: claimsAreEdson(claims) ? (Number(user.salary) || 0) : 0,
     }]);
     if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
     return res.json({ success: true });
@@ -487,8 +507,12 @@ app.post("/api/users/save", async (req, res) => {
   if (isAdmin) {
     patch.username = user.username;
     patch.role = user.role;
-    patch.salary = user.salary || 0;
     if (user.password) patch.password = user.password;
+  }
+  // Salario: leitura E escrita restritas ao Edson. Sem esta guarda, um admin
+  // comum editando um usuario ZERARIA o salario real (o cliente dele tem 0).
+  if (claimsAreEdson(claims) && user.salary !== undefined && user.salary !== null) {
+    patch.salary = Number(user.salary) || 0;
   }
   const { error } = await admin.from("users").update(patch).eq("id", user.id);
   if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
@@ -513,6 +537,50 @@ app.post("/api/users/delete", async (req, res) => {
   if (error) return res.json({ success: false, message: `Erro ao excluir: ${error.message}` });
   if (!data || data.length === 0) return res.json({ success: false, message: "Usuario nao encontrado." });
   return res.json({ success: true });
+});
+
+// ============================================================
+// CUSTO / SALARIO (C2 da auditoria). O salario individual NUNCA mais sai do
+// banco para o navegador de ninguem — nem via select('*'). Duas portas:
+//  - /api/labor/hourly-cost: devolve SO a media agregada (custo/hora) que o
+//    app inteiro precisa para custear projetos. Nao revela salario de ninguem.
+//  - /api/users/salaries: devolve os salarios individuais, SO para o Edson.
+// ============================================================
+
+// GET /api/labor/hourly-cost — media (custo/hora) para o custo automatico.
+app.get("/api/labor/hourly-cost", async (req, res) => {
+  if (!verifyBearerToken(req)) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  const { data, error } = await admin.from("users").select("role,salary");
+  if (error) {
+    console.error("[labor/hourly-cost]", error.message);
+    return res.status(500).json({ success: false, error: "Erro ao calcular." });
+  }
+  const relevant = (data || []).filter(
+    (u: any) => u.role !== "CEO" && u.role !== "PROCESSOS" && Number(u.salary) > 0
+  );
+  const total = relevant.reduce((acc: number, u: any) => acc + Number(u.salary || 0), 0);
+  const n = relevant.length || 1;
+  const hourlyRate = total / n / 220; // media mensal / 220h
+  return res.json({ success: true, hourlyRate });
+});
+
+// GET /api/users/salaries — salarios individuais. SO o Edson (dono) ve.
+app.get("/api/users/salaries", async (req, res) => {
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  if (!claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Sem permissao." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  const { data, error } = await admin.from("users").select("id,salary");
+  if (error) {
+    console.error("[users/salaries]", error.message);
+    return res.status(500).json({ success: false, error: "Erro ao ler." });
+  }
+  const salaries: Record<string, number> = {};
+  (data || []).forEach((u: any) => { salaries[u.id] = Number(u.salary) || 0; });
+  return res.json({ success: true, salaries });
 });
 
 // Global error handler

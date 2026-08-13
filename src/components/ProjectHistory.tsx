@@ -636,12 +636,9 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
 
   const engineeringHourlyRate = useMemo(() => {
     let rate = data.settings.hourlyCost;
-    
-    // Calculate average rate as a fallback
-    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
-    const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
-    const numUsers = relevantUsers.length || 1;
-    const averageRate = (totalSalary / numUsers) / 220;
+
+    // Taxa media (fallback) vem do servidor (C2) — sem salario individual aqui.
+    const averageRate = data.settings.hourlyCostCalculated ?? 0;
 
     if (data.settings.useAutomaticCost) {
       // If automatic cost is enabled, we use the average as the base, 
@@ -654,7 +651,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     }
     
     return rate;
-  }, [data.users, data.settings.hourlyCost, data.settings.useAutomaticCost]);
+  }, [data.settings.hourlyCost, data.settings.useAutomaticCost, data.settings.hourlyCostCalculated]);
 
   // Calculate Stats
   const stats = useMemo(() => {

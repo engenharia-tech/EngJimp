@@ -636,11 +636,10 @@ const AppContent: React.FC = () => {
   // --- HANDLERS ---
 
   const calculatedHourlyRate = useMemo(() => {
-    const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
-    const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
-    const numUsers = relevantUsers.length || 1;
-    return (totalSalary / numUsers) / 220;
-  }, [data.users]);
+    // Media (custo/hora) calculada no SERVIDOR — nenhum salario individual e
+    // baixado para o cliente (C2). Vem em settings.hourlyCostCalculated.
+    return data.settings.hourlyCostCalculated ?? 0;
+  }, [data.settings.hourlyCostCalculated]);
 
   const effectiveSettings = useMemo(() => ({
     ...data.settings,
