@@ -270,9 +270,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
 
         <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome (Primeiro Nome)</label>
-            <input 
-              type="text" 
+            <label htmlFor="um-name" className="block text-sm font-medium text-black dark:text-white mb-1">Nome (Primeiro Nome)</label>
+            <input
+              id="um-name"
+              type="text"
               value={name}
               onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
@@ -281,9 +282,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Sobrenome</label>
-            <input 
-              type="text" 
+            <label htmlFor="um-surname" className="block text-sm font-medium text-black dark:text-white mb-1">Sobrenome</label>
+            <input
+              id="um-surname"
+              type="text"
               value={surname}
               onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
@@ -291,9 +293,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">E-mail</label>
-            <input 
-              type="email" 
+            <label htmlFor="um-email" className="block text-sm font-medium text-black dark:text-white mb-1">E-mail</label>
+            <input
+              id="um-email"
+              type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
@@ -301,9 +304,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Celular</label>
-            <input 
-              type="text" 
+            <label htmlFor="um-phone" className="block text-sm font-medium text-black dark:text-white mb-1">Celular</label>
+            <input
+              id="um-phone"
+              type="text"
               value={phone}
               onChange={e => setPhone(e.target.value)}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
@@ -311,9 +315,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Nome de Usuário (Login)</label>
-            <input 
-              type="text" 
+            <label htmlFor="um-username" className="block text-sm font-medium text-black dark:text-white mb-1">Nome de Usuário (Login)</label>
+            <input
+              id="um-username"
+              type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
