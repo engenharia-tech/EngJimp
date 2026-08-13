@@ -214,7 +214,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setEmail(user.email || '');
     setPhone(user.phone || '');
     setUsername(user.username);
-    setPassword(user.password);
+    setPassword(''); // senha nao vem mais do banco; em branco = manter a atual
     setRole(user.role);
     setSalary(user.salary || 0);
     setEditingUserId(user.id);
@@ -232,6 +232,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   };
 
   const isGestor = currentUser.role === 'GESTOR';
+  // Salario e um dado do DONO: SO o Edson ve/edita — nem outros gestores (C2).
+  const isEdson = currentUser.email?.trim().toLowerCase() === 'efariaseng0@gmail.com'
+    || currentUser.username?.trim().toLowerCase() === 'edson';
   const isCoordenador = currentUser.role === 'COORDENADOR';
   // Gestor can do everything. Coordenador can view. Everyone can edit themselves.
   
@@ -343,17 +346,17 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Salário (R$) {(!isGestor) && <span className="text-xs text-gray-400 dark:text-slate-500">(Somente Gestor)</span>}</label>
-            <input 
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Salário (R$) {(!isEdson) && <span className="text-xs text-gray-400 dark:text-slate-500">(Restrito)</span>}</label>
+            <input
               type="text"
-              value={salary === 0 ? '' : salary}
+              value={!isEdson ? '' : (salary === 0 ? '' : salary)}
               onChange={e => {
                   const val = e.target.value.replace(/[^0-9.]/g, '');
                   setSalary(Number(val));
               }}
-              disabled={!isGestor}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-black text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-black dark:text-slate-200'}`}
-              placeholder="Ex: 5000.00"
+              disabled={!isEdson}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isEdson ? 'bg-gray-100 dark:bg-black text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-black dark:text-slate-200'}`}
+              placeholder={!isEdson ? '••••••' : 'Ex: 5000.00'}
             />
           </div>
           <div className="md:col-span-2">
@@ -420,7 +423,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                         <div>
                             <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Salário</span>
                             <span className="text-xs font-black text-gray-800 dark:text-slate-200">
-                                {(isGestor || currentUser.id === u.id) 
+                                {isEdson
                                 ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
                                 : '***'}
                             </span>
@@ -473,8 +476,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                   <div className="text-xs">{u.email || '-'}</div>
                   <div className="text-[10px] text-gray-500 dark:text-slate-400">{u.phone || '-'}</div>
                 </td>
-                <td className="p-4 text-black dark:text-white font-mono text-xs">
-                  {u.password}
+                <td className="p-4 text-gray-400 dark:text-slate-500 font-mono text-xs">
+                  {/* Senha nunca mais trafega em texto puro (C2). Fica com hash no banco. */}
+                  ••••••
                 </td>
                 <td className="p-4">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-black text-black dark:text-white`}>
@@ -484,7 +488,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                 </td>
                 <td className="p-4 text-black dark:text-white">
                   {/* Only show salary if user is GESTOR or viewing their own salary */}
-                  {(isGestor || currentUser.id === u.id) 
+                  {isEdson
                     ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
                     : '***'}
                 </td>

@@ -192,13 +192,11 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
   const costPerSecond = useMemo(() => {
     let hourlyRate = data.settings.hourlyCost;
     if (data.settings.useAutomaticCost || hourlyRate <= 0) {
-      const relevantUsers = data.users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
-      const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
-      const numUsers = relevantUsers.length || 1;
-      hourlyRate = (totalSalary / numUsers) / 220;
+      // Taxa media do servidor (C2) — sem salario individual no cliente.
+      hourlyRate = data.settings.hourlyCostCalculated ?? 0;
     }
     return hourlyRate / 3600;
-  }, [data.users, data.settings.hourlyCost, data.settings.useAutomaticCost]);
+  }, [data.settings.hourlyCost, data.settings.useAutomaticCost, data.settings.hourlyCostCalculated]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(val);

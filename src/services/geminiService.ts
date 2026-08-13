@@ -11,11 +11,9 @@ export const analyzePerformance = async (
   try {
     // Project Summary with Costs
     let hourlyCost = settings?.hourlyCost || 0;
-    if (hourlyCost <= 0 && users.length > 0) {
-      const relevantUsers = users.filter(u => u.role !== 'CEO' && u.role !== 'PROCESSOS' && (u.salary || 0) > 0);
-      const totalSalary = relevantUsers.reduce((acc, u) => acc + (u.salary || 0), 0);
-      const numUsers = relevantUsers.length || 1;
-      hourlyCost = (totalSalary / numUsers) / 220;
+    if (hourlyCost <= 0) {
+      // Taxa media do servidor (C2) — sem somar salario individual no cliente.
+      hourlyCost = settings?.hourlyCostCalculated ?? 0;
     }
     const projectSummary = projects.slice(0, 15).map(p => {
       const productiveMins = (p.totalActiveSeconds / 60).toFixed(1);
