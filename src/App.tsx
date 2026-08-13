@@ -1673,6 +1673,21 @@ const AppContent: React.FC = () => {
             <div className="h-full bg-blue-600 animate-pulse w-full"></div>
           </div>
         )}
+        {isLoading && data.projects.length === 0 && data.users.length === 0 && (
+          <div className="max-w-5xl mx-auto pb-12" aria-hidden="true">
+            <div className="h-8 w-56 rounded-lg bg-gray-200 dark:bg-slate-800 animate-pulse mb-6" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-28 rounded-2xl bg-gray-200 dark:bg-slate-800 animate-pulse" />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="h-64 rounded-2xl bg-gray-200 dark:bg-slate-800 animate-pulse" />
+              ))}
+            </div>
+          </div>
+        )}
         <div className="max-w-5xl mx-auto pb-12">
           {/* Tracker Tab */}
           <div className={activeTab === 'tracker' && canUseTracker ? 'block space-y-6' : 'hidden'}>
