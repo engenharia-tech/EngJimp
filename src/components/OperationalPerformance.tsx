@@ -1863,7 +1863,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                     {type.isActive ? <Square size={16} /> : <Play size={16} />}
                   </button>
                   <button
-                    onClick={() => onDeleteActivityType(type.id)}
+                    onClick={() => { if (window.confirm(`Excluir o tipo de atividade "${type.name}"? Ele deixa de aparecer no histórico de toda a equipe.`)) onDeleteActivityType(type.id); }}
+                    aria-label={`Excluir tipo ${type.name}`}
                     className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
                   >
                     <Trash2 size={16} />

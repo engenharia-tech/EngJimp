@@ -370,20 +370,20 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
   const handleStartNew = async () => {
     if (!ns.trim()) {
-      alert(t('nsRequired'));
+      addToast(t('nsRequired'), 'warning');
       return;
     }
 
     // MELHORIA 3: Bloqueio de NS duplicada
     const isDuplicate = allProjects.some(p => p.ns === ns.trim() && p.status === 'IN_PROGRESS');
     if (isDuplicate) {
-      alert(t('nsDuplicate', { ns: ns.trim() }));
+      addToast(t('nsDuplicate', { ns: ns.trim() }), 'warning');
       return;
     }
 
     // Check Working Hours
     if (!isWorkingHour(new Date(), settings, isOvertime)) {
-      alert(t('outsideWorkingHours'));
+      addToast(t('outsideWorkingHours'), 'warning');
       return;
     }
 
@@ -489,7 +489,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
     // Check Working Hours
     if (!isWorkingHour(new Date(), settings, pickIsOvertime)) {
-      alert(t('outsideWorkingHours'));
+      addToast(t('outsideWorkingHours'), 'warning');
       return;
     }
 
@@ -784,7 +784,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
                           pauseReason.toLowerCase().includes('incompatibilidade');
     
     if (isInterruption && !pauseSector) {
-        alert(t('selectProblemSector'));
+        addToast(t('selectProblemSector'), 'warning');
         return;
     }
 
@@ -1128,7 +1128,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const handleAddVariation = () => {
       if (!activeProject) return;
       if (!varOldCode.trim() && !varNewCode.trim()) {
-          alert(t('enterOneCode'));
+          addToast(t('enterOneCode'), 'warning');
           return;
       }
 
@@ -1888,6 +1888,7 @@ JIMPNEXUS
                           <button 
                             onClick={async () => {
                               if (isSaving) return;
+                              if (!window.confirm(`Excluir o pedido da NS ${request.ns || ''}? Esta ação não pode ser desfeita.`)) return;
                               setIsSaving(true);
                               try {
                                 await onDeleteProjectRequest(request.id);
