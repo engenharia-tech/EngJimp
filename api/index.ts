@@ -71,10 +71,24 @@ app.post("/api/send-email", async (req, res) => {
 
     if (!host || !user || !pass || !to) {
       console.warn("[Email API] Missing configuration");
-      return res.status(400).json({ 
-        success: false, 
-        error: "Configuração de e-mail incompleta no servidor. Verifique as variáveis de ambiente." 
+      return res.status(400).json({
+        success: false,
+        error: "Configuração de e-mail incompleta no servidor. Verifique as variáveis de ambiente."
       });
+    }
+
+    // Allow-list de destinatarios (residuo do C3): so dominios da empresa +
+    // enderecos configurados em settings. Fecha o phishing externo.
+    const adminForRecips = getSupabaseAdmin();
+    const configured = adminForRecips ? await configuredRecipients(adminForRecips) : new Set<string>();
+    const recipients = String(to).split(",").map((s) => s.trim()).filter(Boolean);
+    if (recipients.length === 0) {
+      return res.status(400).json({ success: false, error: "Nenhum destinatário válido." });
+    }
+    const blocked = recipients.filter((r) => !recipientAllowed(r, configured));
+    if (blocked.length > 0) {
+      console.warn("[Email API] Destinatário bloqueado:", blocked.join(", "));
+      return res.status(403).json({ success: false, error: `Destinatário não permitido: ${blocked.join(", ")}. Apenas endereços da empresa.` });
     }
 
     const transporter = nodemailer.createTransport({
@@ -407,6 +421,30 @@ async function rlReset(bucket: string): Promise<void> {
 function tooMany(res: express.Response, retryAfterSeconds: number) {
   return res.status(429).set("Retry-After", String(retryAfterSeconds))
     .json({ success: false, error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." });
+}
+
+// ---- Allow-list de destinatarios de e-mail (residuo do C3). /api/send-email
+// exige token, mas ainda aceitava `to` livre: um logado poderia mandar e-mail
+// com o dominio da empresa (SPF/DKIM valido) para uma vitima EXTERNA (phishing).
+// Restringe a: dominios da empresa + os enderecos configurados em `settings`.
+const ALLOWED_EMAIL_DOMAINS = ["joinvilleimplementos.com.br", "furgoesjoinville.com.br"];
+async function configuredRecipients(admin: any): Promise<Set<string>> {
+  const set = new Set<string>();
+  try {
+    const { data } = await admin.from("settings").select("email_to, interruption_email_to, email_from").limit(1);
+    const row = data && data[0];
+    for (const f of ["email_to", "interruption_email_to", "email_from"]) {
+      const v = row?.[f];
+      if (v) String(v).split(",").forEach((a: string) => { const t = a.trim().toLowerCase(); if (t) set.add(t); });
+    }
+  } catch { /* sem settings: fica so o dominio */ }
+  return set;
+}
+function recipientAllowed(addr: string, configured: Set<string>): boolean {
+  const a = String(addr || "").trim().toLowerCase();
+  if (!a || !a.includes("@")) return false;
+  if (configured.has(a)) return true;
+  return ALLOWED_EMAIL_DOMAINS.includes(a.split("@")[1] || "");
 }
 
 // Envia e-mail simples com as credenciais EMAIL_* (mesma config do /api/send-email).
