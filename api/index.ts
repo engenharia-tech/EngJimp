@@ -27,6 +27,11 @@ app.get("/api/ip", (req, res) => {
 // API Route for sending email
 app.post("/api/send-email", async (req, res) => {
   console.log("[Email API] Received request on", process.env.VERCEL ? 'Vercel' : 'Local');
+  // Exige cracha valido: sem isto, o endpoint era um relay ABERTO (qualquer um
+  // enviava e-mail em nome da empresa). Agora so um usuario logado usa.
+  if (!verifyBearerToken(req)) {
+    return res.status(401).json({ success: false, error: "Nao autorizado." });
+  }
   try {
     const { subject, body, to: bodyTo, fromName } = req.body;
     console.log(`[Email API] Request Body: Subject="${subject}", BodyLength=${body?.length}, To=${bodyTo}, FromName=${fromName}`);
@@ -107,6 +112,11 @@ app.post("/api/send-email", async (req, res) => {
 
 // API Route for Gemini analysis and chat
 app.post("/api/gemini/generate", async (req, res) => {
+  // Exige cracha valido: sem isto qualquer um queimava a cota do Gemini e
+  // usava o servidor como proxy anonimo de LLM.
+  if (!verifyBearerToken(req)) {
+    return res.status(401).json({ success: false, error: "Nao autorizado." });
+  }
   try {
     const { prompt, model, audio } = req.body;
     if (!prompt && !audio) {
@@ -301,6 +311,34 @@ function signSupabaseJwt(user: any): string | null {
   }));
   const sig = b64url(createHmac("sha256", secret).update(`${header}.${payload}`).digest() as any);
   return `${header}.${payload}.${sig}`;
+}
+
+// Verifica o cracha (JWT) enviado pelo cliente: assinatura HS256 com o
+// SUPABASE_JWT_SECRET + expiracao. Retorna as claims ou null. Usado para
+// proteger endpoints que NAO devem ser publicos (e-mail, Gemini).
+function verifyBearerToken(req: express.Request): any | null {
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (!secret) return null;
+  const auth = String(req.headers.authorization || "");
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+  const parts = m[1].split(".");
+  if (parts.length !== 3) return null;
+  const [h, p, sig] = parts;
+  const expected = Buffer.from(createHmac("sha256", secret).update(`${h}.${p}`).digest())
+    .toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  // comparacao de tempo constante
+  if (sig.length !== expected.length) return null;
+  let diff = 0;
+  for (let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+  if (diff !== 0) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(p.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString());
+    if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) return null; // expirado
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 // Envia e-mail simples com as credenciais EMAIL_* (mesma config do /api/send-email).

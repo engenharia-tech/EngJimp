@@ -1,4 +1,5 @@
 import { ProjectSession, User, InterruptionRecord } from '../types';
+import { authHeaders } from './authToken';
 
 /**
  * Notificacoes por e-mail: CONCLUSAO de projeto e INTERRUPCAO.
@@ -143,7 +144,7 @@ export const notifyProjectCompletion = async (
 
     const response = await fetch('/api/send-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ subject, body, to: recipients.join(','), fromName: 'JIMPNexus KPI' }),
     });
     if (!response.ok) {

@@ -4,6 +4,7 @@ import { AppSettings, User } from '../types';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
 import { recalculateAllInterruptionTimes, recalculateAllProjectTimes, getDatabaseStats, addAuditLog } from '../services/storageService';
+import { authHeaders } from '../services/authToken';
 
 interface SettingsProps {
   settings: AppSettings;
@@ -140,7 +141,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
     try {
       const response = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           subject: t('testEmailSubject'),
           body: t('testEmailBody'),

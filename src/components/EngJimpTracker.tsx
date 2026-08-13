@@ -5,6 +5,7 @@ import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES, SUSPENSION_TYPES, PRODU
 import { calcActiveSeconds, isWorkingHour } from '../utils/workdayCalc';
 import { resolveUser } from '../utils/userUtils';
 import { fetchUsers } from '../services/storageService';
+import { authHeaders } from '../services/authToken';
 import { triggerExcelUpdate } from '../services/webhookService';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -1343,9 +1344,9 @@ JIMPNEXUS
       console.log("Fetching /api/send-email with recipient:", settings.emailTo);
       const response = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          subject, 
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          subject,
           body,
           to: settings.emailTo,
           fromName: `${userDisplayName} - JIMPNEXUS`
