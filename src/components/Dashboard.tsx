@@ -2200,7 +2200,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   return (
     <div className="space-y-6">
-      
+
+      {/* Cabeçalho de página — dá contexto de "onde estou" (antes abria direto nos filtros) */}
+      <div>
+        <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">{t('dashboard')}</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">Visão geral dos indicadores de engenharia</p>
+      </div>
+
       {/* Date Filter Section */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -2506,14 +2512,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <p className="text-[10px] text-blue-600 font-black uppercase">
                       Total Ano: {yearlyStats.devCount} PROJETOS
                     </p>
-                    <div className="flex flex-col gap-0.5 mt-1 border-t border-blue-50 dark:border-slate-800/50 pt-1">
-                       <p className="text-[10px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {devProjectsStats.count})</p>
-                       <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
-                         {yearlyStats.monthly.map(m => (
-                           <span key={m.name} className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-blue-500 dark:text-blue-400">{m.dev}</span></span>
-                         ))}
-                       </div>
-                    </div>
                  </div>
                </div>
                <div className="h-7 w-7 sm:h-9 sm:w-9 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
@@ -2543,14 +2541,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <p className="text-[10px] text-emerald-600 font-black uppercase">
                       Total Ano: {yearlyStats.releaseCount} PROJETOS
                     </p>
-                    <div className="flex flex-col gap-0.5 mt-1 border-t border-emerald-50 dark:border-slate-800/50 pt-1">
-                       <p className="text-[10px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {releaseStats.count})</p>
-                       <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
-                         {yearlyStats.monthly.map(m => (
-                           <span key={m.name} className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-emerald-500 dark:text-emerald-400">{m.release}</span></span>
-                         ))}
-                       </div>
-                    </div>
                  </div>
                </div>
                <div className="h-7 w-7 sm:h-9 sm:w-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
@@ -2580,14 +2570,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                      <p className="text-[10px] text-amber-600 font-black uppercase">
                        Total Ano: {yearlyStats.variationCount} VARIAÇÕES
                      </p>
-                     <div className="flex flex-col gap-0.5 mt-1 border-t border-amber-50 dark:border-slate-800/50 pt-1">
-                        <p className="text-[10px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {variationStats.count})</p>
-                        <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
-                          {yearlyStats.monthly.map(m => (
-                            <span key={m.name} className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-amber-500 dark:text-amber-400">{m.variation}</span></span>
-                          ))}
-                        </div>
-                     </div>
                   </div>
                 </div>
                 <div className="h-7 w-7 sm:h-9 sm:w-9 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center text-amber-600 dark:text-amber-400 flex-shrink-0">
