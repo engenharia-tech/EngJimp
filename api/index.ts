@@ -121,7 +121,7 @@ app.post("/api/gemini/generate", async (req, res) => {
   // Anti abuso de cota: por usuario e por IP (janela de 1 min).
   const ip = clientIp(req);
   if ((await rlHit(`gemini:user:${claims.sub}`, 60)) > 30) return tooMany(res, 60);
-  if ((await rlHit(`gemini:ip:${ip}`, 60)) > 60) return tooMany(res, 60);
+  if ((await rlHit(`gemini:ip:${ip}`, 60)) > 120) return tooMany(res, 60);
   try {
     const { prompt, model, audio } = req.body;
     if (!prompt && !audio) {
@@ -416,7 +416,9 @@ app.post("/api/auth/login", async (req, res) => {
   // Por usuario: so conta FALHAS e zera no sucesso — nao trava quem acerta.
   const ip = clientIp(req);
   const unameKey = String(username).trim().toLowerCase();
-  if ((await rlHit(`login:ip:${ip}`, 900)) > 40) return tooMany(res, 900);
+  // IP alto de proposito: os 12 podem estar atras do MESMO IP do escritorio.
+  // A trava real e a de FALHAS por usuario (nao afeta quem acerta a senha).
+  if ((await rlHit(`login:ip:${ip}`, 900)) > 100) return tooMany(res, 900);
   if ((await rlCount(`login:fail:${unameKey}`, 900)) >= 8) return tooMany(res, 900);
 
   const { data, error } = await admin.rpc("verify_login", {
@@ -459,7 +461,7 @@ app.post("/api/auth/request-code", async (req, res) => {
   // Anti abuso: pedir codigo tem efeito colateral (marca must_set_password e
   // dispara e-mail), entao limita por IP e por usuario, independente de sucesso.
   const ip = clientIp(req);
-  if ((await rlHit(`reqcode:ip:${ip}`, 3600)) > 15) return tooMany(res, 3600);
+  if ((await rlHit(`reqcode:ip:${ip}`, 3600)) > 30) return tooMany(res, 3600);
   if ((await rlHit(`reqcode:user:${uname.toLowerCase()}`, 3600)) > 4) return tooMany(res, 3600);
 
   const { data: rows } = await admin.from("users").select("email,name").ilike("username", uname).limit(1);
@@ -509,7 +511,7 @@ app.post("/api/auth/set-password", async (req, res) => {
   // usuario (so falhas, zera no sucesso). Depois de N erros, trava a janela.
   const ip = clientIp(req);
   const unameKey = String(username).trim().toLowerCase();
-  if ((await rlHit(`setpw:ip:${ip}`, 900)) > 30) return tooMany(res, 900);
+  if ((await rlHit(`setpw:ip:${ip}`, 900)) > 60) return tooMany(res, 900);
   if ((await rlCount(`setpw:fail:${unameKey}`, 900)) >= 6) return tooMany(res, 900);
 
   const { data, error } = await admin.rpc("set_password_with_code", {
