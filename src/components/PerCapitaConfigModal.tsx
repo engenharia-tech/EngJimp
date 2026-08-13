@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, SlidersHorizontal, RefreshCw, User, Calendar, Info } from 'lucide-react';
 import { User as UserType } from '../types';
+import { useDialog } from '../hooks/useDialog';
 
 interface PerCapitaConfigModalProps {
   perCapitaStats: {
@@ -31,6 +32,7 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
   onReset,
   theme
 }) => {
+  const dialogRef = useDialog<HTMLDivElement>(onClose);
   // Local state for months divisor
   const [isMonthAuto, setIsMonthAuto] = useState<boolean>(overrideMonths === null);
   const [localMonths, setLocalMonths] = useState<number>(() => {
@@ -85,8 +87,8 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
   const currentMonthsToDisplay = isMonthAuto ? perCapitaStats.calculatedMonths : localMonths;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-lg p-6 border border-gray-100 dark:border-slate-800 text-left flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Configurar cálculo per capita" tabIndex={-1} className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-lg p-6 border border-gray-100 dark:border-slate-800 text-left flex flex-col max-h-[90vh] outline-none">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b pb-3 border-gray-100 dark:border-slate-800">

@@ -6,6 +6,7 @@ import {
 import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, TrendingUp, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal, GitBranch, ExternalLink, Globe } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings, OperationalActivity } from '../types';
 import { EngineeringPerformance } from './EngineeringPerformance';
+import { Sparkline } from './Sparkline';
 import { InterruptionDashboard } from './InterruptionDashboard';
 import { PerCapitaConfigModal } from './PerCapitaConfigModal';
 import { analyzePerformance } from '../services/geminiService';
@@ -2512,6 +2513,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <p className="text-[10px] text-blue-600 font-black uppercase">
                       Total Ano: {yearlyStats.devCount} PROJETOS
                     </p>
+                    <Sparkline values={yearlyStats.monthly.map(m => m.dev)} color="#3b82f6" className="w-full h-6 mt-1.5" />
                  </div>
                </div>
                <div className="h-7 w-7 sm:h-9 sm:w-9 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
@@ -2541,6 +2543,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <p className="text-[10px] text-emerald-600 font-black uppercase">
                       Total Ano: {yearlyStats.releaseCount} PROJETOS
                     </p>
+                    <Sparkline values={yearlyStats.monthly.map(m => m.release)} color="#10b981" className="w-full h-6 mt-1.5" />
                  </div>
                </div>
                <div className="h-7 w-7 sm:h-9 sm:w-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
@@ -2570,6 +2573,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                      <p className="text-[10px] text-amber-600 font-black uppercase">
                        Total Ano: {yearlyStats.variationCount} VARIAÇÕES
                      </p>
+                     <Sparkline values={yearlyStats.monthly.map(m => m.variation)} color="#f59e0b" className="w-full h-6 mt-1.5" />
                   </div>
                 </div>
                 <div className="h-7 w-7 sm:h-9 sm:w-9 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center text-amber-600 dark:text-amber-400 flex-shrink-0">

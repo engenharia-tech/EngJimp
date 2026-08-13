@@ -1929,7 +1929,7 @@ const AppContent: React.FC = () => {
           {/* Security Auto-Lock Screen Overlay */}
           {isLocked && currentUser && (
             <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-2xl animate-in fade-in duration-300">
-              <div className="bg-white dark:bg-slate-950 p-8 rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 max-w-md w-full mx-4 text-center space-y-6">
+              <div role="dialog" aria-modal="true" aria-label="Tela bloqueada" className="bg-white dark:bg-slate-950 p-8 rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 max-w-md w-full mx-4 text-center space-y-6">
                 <div className="mx-auto w-16 h-16 bg-rose-50 dark:bg-rose-950/20 rounded-2xl flex items-center justify-center text-rose-500 border border-rose-100 dark:border-rose-900/30">
                   <Shield className="w-8 h-8 animate-pulse" />
                 </div>

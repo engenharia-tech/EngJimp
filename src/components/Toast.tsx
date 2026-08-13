@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle, XCircle, X, AlertCircle, Info, Terminal, Copy, Check } from 'lucide-react';
 
@@ -29,6 +29,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [rlsBlockMsg, setRlsBlockMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+
+  // Escape fecha o modal informativo de RLS (acessibilidade de diálogo).
+  useEffect(() => {
+    if (!rlsBlockMsg) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setRlsBlockMsg(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [rlsBlockMsg]);
 
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -123,6 +131,9 @@ NOTIFY pgrst, 'reload config';`;
         {rlsBlockMsg && (
           <motion.div key="rls-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Segurança do Supabase (RLS)"
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
