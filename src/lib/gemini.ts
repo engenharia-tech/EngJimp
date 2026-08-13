@@ -1,3 +1,5 @@
+import { authHeaders } from '../services/authToken';
+
 /**
  * Client-side proxy utility to interact with the server-side Gemini endpoint.
  * This keeps API keys safely hidden from the browser.
@@ -8,6 +10,7 @@ export const askGemini = async (prompt: string, audio?: { mimeType: string; data
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...authHeaders(),
       },
       body: JSON.stringify({
         prompt,

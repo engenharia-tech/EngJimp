@@ -22,6 +22,7 @@ import {
 } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { getInterruptionRecipients } from '../services/notificationService';
+import { authHeaders } from '../services/authToken';
 
 interface InterruptionManagerProps {
   data: AppState;
@@ -323,7 +324,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
               const userDisplayName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : "JIMPNEXUS";
               fetch('/api/send-email', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({
                   subject: t('newInterruptionAlert', { ns }),
                   body: emailBody.replace(/\n/g, '<br>'),

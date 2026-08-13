@@ -10,6 +10,13 @@ let current: string | null = (() => {
 
 export const getAuthToken = (): string | null => current;
 
+// Cabecalho de autorizacao para chamadas aos endpoints /api protegidos
+// (send-email, gemini). Vazio se deslogado.
+export const authHeaders = (): Record<string, string> => {
+  const t = current;
+  return t ? { Authorization: `Bearer ${t}` } : {};
+};
+
 export const setAuthToken = (token: string | null): void => {
   current = token && token.trim() ? token : null;
   try {
