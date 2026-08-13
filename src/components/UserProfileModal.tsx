@@ -3,6 +3,7 @@ import { User, UserRole } from '../types';
 import { updateUser } from '../services/storageService';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useDialog } from '../hooks/useDialog';
 import { User as UserIcon, Mail, Phone, Lock, Save, X, Loader2, Shield, Fingerprint } from 'lucide-react';
 
 interface UserProfileModalProps {
@@ -14,6 +15,7 @@ interface UserProfileModalProps {
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClose, onUpdateUser }) => {
   const { addToast } = useToast();
   const { t } = useLanguage();
+  const dialogRef = useDialog<HTMLDivElement>(onClose);
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -145,8 +147,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] border border-gray-100 dark:border-slate-700">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Meu perfil" tabIndex={-1} className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] border border-gray-100 dark:border-slate-700 outline-none">
         {/* Header */}
         <div className="bg-indigo-600 dark:bg-indigo-700 p-6 text-white flex justify-between items-start">
             <div>
