@@ -114,9 +114,14 @@ app.post("/api/send-email", async (req, res) => {
 app.post("/api/gemini/generate", async (req, res) => {
   // Exige cracha valido: sem isto qualquer um queimava a cota do Gemini e
   // usava o servidor como proxy anonimo de LLM.
-  if (!verifyBearerToken(req)) {
+  const claims = verifyBearerToken(req);
+  if (!claims) {
     return res.status(401).json({ success: false, error: "Nao autorizado." });
   }
+  // Anti abuso de cota: por usuario e por IP (janela de 1 min).
+  const ip = clientIp(req);
+  if ((await rlHit(`gemini:user:${claims.sub}`, 60)) > 30) return tooMany(res, 60);
+  if ((await rlHit(`gemini:ip:${ip}`, 60)) > 60) return tooMany(res, 60);
   try {
     const { prompt, model, audio } = req.body;
     if (!prompt && !audio) {
@@ -351,6 +356,39 @@ function claimsAreEdson(claims: any): boolean {
   return email === EDSON_EMAIL || uname === "edson";
 }
 
+// ---- Rate limiting (anti brute-force). Serverless nao guarda estado em
+// memoria entre invocacoes, entao a contagem fica no banco (funcoes
+// rate_limit_* via service_role). Fail-open: se a funcao ainda nao existe
+// (migracao 006 nao rodada) ou o banco falha, NAO travamos o usuario legitimo.
+function clientIp(req: express.Request): string {
+  const xff = req.headers["x-forwarded-for"];
+  const raw = Array.isArray(xff) ? xff[0] : (xff || req.socket.remoteAddress || "");
+  return String(raw).split(",")[0].trim() || "unknown";
+}
+async function rlHit(bucket: string, windowSeconds: number): Promise<number> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return 0;
+  const { data, error } = await admin.rpc("rate_limit_hit", { p_bucket: bucket, p_window_seconds: windowSeconds });
+  if (error) { console.warn("[rate_limit_hit]", error.message); return 0; } // fail-open
+  return Number(data) || 0;
+}
+async function rlCount(bucket: string, windowSeconds: number): Promise<number> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return 0;
+  const { data, error } = await admin.rpc("rate_limit_count", { p_bucket: bucket, p_window_seconds: windowSeconds });
+  if (error) { console.warn("[rate_limit_count]", error.message); return 0; } // fail-open
+  return Number(data) || 0;
+}
+async function rlReset(bucket: string): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+  try { await admin.rpc("rate_limit_reset", { p_bucket: bucket }); } catch { /* best-effort */ }
+}
+function tooMany(res: express.Response, retryAfterSeconds: number) {
+  return res.status(429).set("Retry-After", String(retryAfterSeconds))
+    .json({ success: false, error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." });
+}
+
 // Envia e-mail simples com as credenciais EMAIL_* (mesma config do /api/send-email).
 async function sendPlainMail(to: string, subject: string, text: string): Promise<void> {
   const host = process.env.EMAIL_HOST;
@@ -374,6 +412,13 @@ app.post("/api/auth/login", async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ success: false, error: "Usuario e senha sao obrigatorios." });
 
+  // Anti brute-force. Por IP: trava um atacante martelando varias contas.
+  // Por usuario: so conta FALHAS e zera no sucesso — nao trava quem acerta.
+  const ip = clientIp(req);
+  const unameKey = String(username).trim().toLowerCase();
+  if ((await rlHit(`login:ip:${ip}`, 900)) > 40) return tooMany(res, 900);
+  if ((await rlCount(`login:fail:${unameKey}`, 900)) >= 8) return tooMany(res, 900);
+
   const { data, error } = await admin.rpc("verify_login", {
     p_username: String(username).trim(),
     p_password: String(password),
@@ -383,7 +428,11 @@ app.post("/api/auth/login", async (req, res) => {
     return res.status(500).json({ success: false, error: "Erro ao autenticar." });
   }
   const user = Array.isArray(data) ? data[0] : data;
-  if (!user) return res.status(401).json({ success: false, error: "Usuario ou senha invalidos." });
+  if (!user) {
+    await rlHit(`login:fail:${unameKey}`, 900); // registra a falha
+    return res.status(401).json({ success: false, error: "Usuario ou senha invalidos." });
+  }
+  await rlReset(`login:fail:${unameKey}`); // sucesso limpa as falhas do usuario
   // Cracha de sessao: so emitimos para quem NAO precisa criar senha (quem
   // precisa vai para a tela de criar senha, sem sessao valida ainda).
   const token = user.must_set_password ? null : signSupabaseJwt(user);
@@ -406,6 +455,12 @@ app.post("/api/auth/request-code", async (req, res) => {
   const { username } = req.body || {};
   if (!username) return res.status(400).json({ success: false, error: "Usuario obrigatorio." });
   const uname = String(username).trim();
+
+  // Anti abuso: pedir codigo tem efeito colateral (marca must_set_password e
+  // dispara e-mail), entao limita por IP e por usuario, independente de sucesso.
+  const ip = clientIp(req);
+  if ((await rlHit(`reqcode:ip:${ip}`, 3600)) > 15) return tooMany(res, 3600);
+  if ((await rlHit(`reqcode:user:${uname.toLowerCase()}`, 3600)) > 4) return tooMany(res, 3600);
 
   const { data: rows } = await admin.from("users").select("email,name").ilike("username", uname).limit(1);
   const u = rows && rows[0];
@@ -450,6 +505,13 @@ app.post("/api/auth/set-password", async (req, res) => {
   if (!username || !code || !newPassword) return res.status(400).json({ success: false, error: "Dados incompletos." });
   if (String(newPassword).length < 6) return res.status(400).json({ success: false, error: "A senha deve ter ao menos 6 caracteres." });
 
+  // Anti brute-force do codigo (6 digitos = 1M combinacoes). Por IP e por
+  // usuario (so falhas, zera no sucesso). Depois de N erros, trava a janela.
+  const ip = clientIp(req);
+  const unameKey = String(username).trim().toLowerCase();
+  if ((await rlHit(`setpw:ip:${ip}`, 900)) > 30) return tooMany(res, 900);
+  if ((await rlCount(`setpw:fail:${unameKey}`, 900)) >= 6) return tooMany(res, 900);
+
   const { data, error } = await admin.rpc("set_password_with_code", {
     p_username: String(username).trim(),
     p_code: String(code),
@@ -459,7 +521,11 @@ app.post("/api/auth/set-password", async (req, res) => {
     console.error("[auth/set-password]", error.message);
     return res.status(500).json({ success: false, error: "Erro ao salvar a senha." });
   }
-  if (data !== true) return res.status(400).json({ success: false, error: "Codigo invalido ou expirado." });
+  if (data !== true) {
+    await rlHit(`setpw:fail:${unameKey}`, 900); // registra a tentativa errada do codigo
+    return res.status(400).json({ success: false, error: "Codigo invalido ou expirado." });
+  }
+  await rlReset(`setpw:fail:${unameKey}`); // sucesso limpa as falhas
   return res.json({ success: true });
 });
 
