@@ -27,7 +27,11 @@ export const getTokenExp = (): number | null => {
   try {
     const payload = t.split('.')[1];
     if (!payload) return null;
-    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    // base64url -> base64 COM padding (sem o padding, atob falha em alguns
+    // comprimentos e faria o token parecer 'sem exp' -> nunca expirado).
+    let b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    b64 += '='.repeat((4 - (b64.length % 4)) % 4);
+    const json = JSON.parse(atob(b64));
     return typeof json.exp === 'number' ? json.exp : null;
   } catch { return null; }
 };
