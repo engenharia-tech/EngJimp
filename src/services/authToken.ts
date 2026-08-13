@@ -17,6 +17,29 @@ export const authHeaders = (): Record<string, string> => {
   return t ? { Authorization: `Bearer ${t}` } : {};
 };
 
+// Le o `exp` (epoch em segundos) do JWT guardado, SEM validar assinatura (a
+// validacao real e do servidor/RLS). Serve so para o cliente saber quando a
+// sessao expira e evitar a gravacao que falha em SILENCIO (JWT vencido -> RLS
+// nega -> updateXxx engole o erro -> usuario acha que salvou).
+export const getTokenExp = (): number | null => {
+  const t = current;
+  if (!t) return null;
+  try {
+    const payload = t.split('.')[1];
+    if (!payload) return null;
+    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof json.exp === 'number' ? json.exp : null;
+  } catch { return null; }
+};
+
+// true se HA token e ele ja expirou (com folga de `skewSeconds`). Retorna false
+// se nao ha token (esse caso e tratado a parte, no gate de sessao).
+export const isTokenExpired = (skewSeconds = 30): boolean => {
+  const exp = getTokenExp();
+  if (exp == null) return false;
+  return Math.floor(Date.now() / 1000) >= (exp - skewSeconds);
+};
+
 export const setAuthToken = (token: string | null): void => {
   current = token && token.trim() ? token : null;
   try {
