@@ -255,6 +255,19 @@ export const fetchSettings = async (): Promise<AppSettings> => {
   } catch (e) {
     console.warn("Error fetching settings from Supabase, using localStorage/defaults:", e);
   }
+  // Pre-login (anon): a tabela `settings` nao e mais legivel por anonimo (M2).
+  // Buscamos SO o branding (logo + nome) por um endpoint publico dedicado,
+  // para a tela de login continuar mostrando a marca da empresa.
+  if (!getAuthToken()) {
+    try {
+      const res = await fetch('/api/branding');
+      if (res.ok) {
+        const b = await res.json();
+        if (b.companyName) { settings.companyName = b.companyName; localStorage.setItem('company_name', b.companyName); }
+        if (b.logoUrl) { settings.logoUrl = b.logoUrl; localStorage.setItem('logo_url', b.logoUrl); }
+      }
+    } catch { /* mantem localStorage/defaults */ }
+  }
   console.log("FINAL SETTINGS OBJECT:", settings);
   return settings;
 };
@@ -763,16 +776,19 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     if (settings.language !== undefined) row.language = settings.language;
     if (settings.autoLockTimeout !== undefined) row.auto_lock_timeout = settings.autoLockTimeout;
 
+    // Escrita MEDIADA pelo servidor: a policy de escrita direta em `settings`
+    // foi removida (migração 007). Só admin/Edson gravam, via service_role, e o
+    // servidor confere o crachá. Assim um projetista não muda custo/e-mails.
     if (Object.keys(row).length > 0) {
-      const { data: existing, error: selErr } = await supabase.from('settings').select('id').limit(1);
-      if (selErr) { console.error("SUPABASE SETTINGS SELECT ERROR:", selErr); throw selErr; }
-
-      if (existing && existing.length > 0) {
-        const { error } = await supabase.from('settings').update(row).eq('id', (existing[0] as any).id);
-        if (error) { console.error("SUPABASE SETTINGS UPDATE ERROR:", error); throw error; }
-      } else {
-        const { error } = await supabase.from('settings').insert([row]);
-        if (error) { console.error("SUPABASE SETTINGS INSERT ERROR:", error); throw error; }
+      const res = await fetch('/api/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ row }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out.success) {
+        console.error("SETTINGS SAVE (servidor) falhou:", out.message || out.error || res.status);
+        throw new Error(out.message || out.error || 'Falha ao salvar configurações.');
       }
     }
 
