@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle, XCircle, X, AlertCircle, Info, Terminal, Copy, Check } from 'lucide-react';
 
@@ -30,23 +30,30 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [rlsBlockMsg, setRlsBlockMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
+  const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const removeToast = useCallback((id: string) => {
+    const t = timersRef.current[id];
+    if (t) { clearTimeout(t); delete timersRef.current[id]; }
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
+
+  // Duração por tipo: erros/avisos ficam mais tempo para dar tempo de ler.
+  const startTimer = useCallback((id: string, type: ToastType) => {
+    const ms = type === 'error' ? 8000 : type === 'warning' ? 6000 : 3500;
+    if (timersRef.current[id]) clearTimeout(timersRef.current[id]);
+    timersRef.current[id] = setTimeout(() => removeToast(id), ms);
+  }, [removeToast]);
+
   const addToast = useCallback((message: string, type: ToastType) => {
     if (type === 'error' && message.includes("RLS_BLOCK:")) {
       setRlsBlockMsg(message.replace("RLS_BLOCK:", "").trim());
       return;
     }
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message: message.toUpperCase(), type }]);
-    
-    // Auto remove after 3 seconds
-    setTimeout(() => {
-      removeToast(id);
-    }, 3000);
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  }, []);
+    setToasts((prev) => [...prev, { id, message, type }]); // sem CAIXA-ALTA forçada
+    startTimer(id, type);
+  }, [startTimer]);
 
   const handleCopySql = () => {
     const sql = `ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
@@ -72,7 +79,7 @@ NOTIFY pgrst, 'reload config';`;
       {children}
       
       {/* Global Toast Container */}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2" role="region" aria-label="Notificações">
         <AnimatePresence>
           {toasts.map((toast) => (
             <motion.div
@@ -81,12 +88,15 @@ NOTIFY pgrst, 'reload config';`;
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
               layout
+              role={toast.type === 'error' ? 'alert' : 'status'}
+              onMouseEnter={() => { const tm = timersRef.current[toast.id]; if (tm) clearTimeout(tm); }}
+              onMouseLeave={() => startTimer(toast.id, toast.type)}
               className={`
                 flex items-center w-full max-w-sm p-4 rounded-lg shadow-lg border-l-4
-                ${toast.type === 'success' ? 'bg-white dark:bg-black border-green-500 text-gray-800 dark:text-slate-100' : ''}
-                ${toast.type === 'error' ? 'bg-white dark:bg-black border-red-500 text-gray-800 dark:text-slate-100' : ''}
-                ${toast.type === 'info' ? 'bg-white dark:bg-black border-blue-500 text-gray-800 dark:text-slate-100' : ''}
-                ${toast.type === 'warning' ? 'bg-white dark:bg-black border-yellow-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'success' ? 'bg-white dark:bg-slate-900 border-green-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'error' ? 'bg-white dark:bg-slate-900 border-red-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'info' ? 'bg-white dark:bg-slate-900 border-blue-500 text-gray-800 dark:text-slate-100' : ''}
+                ${toast.type === 'warning' ? 'bg-white dark:bg-slate-900 border-yellow-500 text-gray-800 dark:text-slate-100' : ''}
               `}
             >
               <div className="flex-shrink-0 mr-3">
@@ -98,6 +108,7 @@ NOTIFY pgrst, 'reload config';`;
               <div className="flex-1 text-sm font-medium">{toast.message}</div>
               <button
                 onClick={() => removeToast(toast.id)}
+                aria-label="Fechar aviso"
                 className="ml-4 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
               >
                 <X className="w-4 h-4" />

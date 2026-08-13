@@ -67,7 +67,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
   };
 
   return (
-    <div className="h-full bg-white dark:bg-black flex flex-col overflow-hidden">
+    <div className="h-full bg-white dark:bg-slate-900 flex flex-col overflow-hidden">
       {/* Toolbar */}
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between z-30 shadow-sm font-sans">
         <div className="flex items-center gap-6">
@@ -111,8 +111,8 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
             </div>
             <div className="flex-grow overflow-hidden flex flex-col">
                <div className="flex h-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                  <div className="px-4 py-1 text-[9px] font-black text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800 uppercase tracking-widest">Abril 2026</div>
-                  <div className="px-4 py-1 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Maio 2026</div>
+                  <div className="px-4 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800 uppercase tracking-widest">Abril 2026</div>
+                  <div className="px-4 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Maio 2026</div>
                </div>
                <div className="flex h-10 bg-white dark:bg-slate-900">
                   {days.map((day, i) => (
@@ -121,7 +121,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
                       className={`flex-shrink-0 border-r border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center ${isSameDay(day, new Date()) ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-900/40' : isWeekend(day) ? 'bg-slate-50 dark:bg-slate-900/40' : ''}`}
                       style={{ width: `${zoomLevel}px` }}
                     >
-                      <span className={`text-[8px] font-bold ${isSameDay(day, new Date()) ? 'text-rose-500' : 'text-slate-300 dark:text-slate-600'}`}>
+                      <span className={`text-[10px] font-bold ${isSameDay(day, new Date()) ? 'text-rose-500' : 'text-slate-300 dark:text-slate-600'}`}>
                         {format(day, 'd')}
                       </span>
                       {isSameDay(day, new Date()) && (
@@ -140,7 +140,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
                className="absolute top-0 bottom-0 w-px bg-rose-400 z-10 pointer-events-none" 
                style={{ left: `calc(16rem + ${differenceInDays(new Date(), timelineInterval.start) * zoomLevel}px)` }}
             >
-               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-rose-400 text-white text-[8px] font-black px-1 py-0.5 rounded-t tracking-tighter uppercase whitespace-nowrap">Hoje</div>
+               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-rose-400 text-white text-[10px] font-black px-1 py-0.5 rounded-t tracking-tighter uppercase whitespace-nowrap">Hoje</div>
             </div>
 
             {state.users.map(user => {

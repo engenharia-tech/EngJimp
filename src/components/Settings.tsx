@@ -226,7 +226,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* General Settings */}
-        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
           <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
             <Globe className="w-5 h-5 mr-2 text-blue-500" />
             {t('general')}
@@ -238,7 +238,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 disabled={!isEditing}
                 value={formData.language || 'pt-BR'}
                 onChange={e => setFormData({ ...formData, language: e.target.value as any })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               >
                 <option value="pt-BR">{t('portuguese')}</option>
                 <option value="en-US">{t('english')}</option>
@@ -254,7 +254,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 disabled={!isEditing}
                 value={formData.autoLockTimeout !== undefined ? formData.autoLockTimeout : 0}
                 onChange={e => setFormData({ ...formData, autoLockTimeout: parseInt(e.target.value) || 0 })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               >
                 <option value={0}>Inativo (Nunca bloquear)</option>
                 <option value={1}>1 minuto</option>
@@ -296,7 +296,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                       disabled={!isEditing}
                       value={formData.hourlyCost}
                       onChange={e => setFormData({ ...formData, hourlyCost: parseFloat(e.target.value) || 0 })}
-                      className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                      className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
                       placeholder="150.00"
                     />
                   </div>
@@ -316,7 +316,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
         </div>
 
         {/* Workday Settings */}
-        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
           <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
             <Clock className="w-5 h-5 mr-2 text-amber-500" />
             {t('workdayConfig')}
@@ -333,7 +333,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 disabled={!isEditing}
                 value={formData.workdayStart || '07:30'}
                 onChange={e => setFormData({ ...formData, workdayStart: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               />
             </div>
             <div>
@@ -343,7 +343,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 disabled={!isEditing}
                 value={formData.workdayEnd || '17:30'}
                 onChange={e => setFormData({ ...formData, workdayEnd: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               />
             </div>
           </div>
@@ -356,7 +356,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 disabled={!isEditing}
                 value={formData.lunchStart || '12:30'}
                 onChange={e => setFormData({ ...formData, lunchStart: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               />
             </div>
             <div>
@@ -366,7 +366,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 disabled={!isEditing}
                 value={formData.lunchEnd || '13:30'}
                 onChange={e => setFormData({ ...formData, lunchEnd: e.target.value })}
-                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900"
               />
             </div>
           </div>
@@ -403,7 +403,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
         </div>
 
         {/* Email Settings */}
-        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
           <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
             <Mail className="w-5 h-5 mr-2 text-emerald-500" />
             {t('emailConfig')}
@@ -511,7 +511,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                       disabled={!isEditing}
                       value={formData.emailTo || ''}
                       onChange={e => setFormData({ ...formData, emailTo: e.target.value })}
-                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900 font-mono text-xs"
+                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900 font-mono text-xs"
                       placeholder="Ex: engenharia@empresa.com, diretoria@empresa.com"
                     />
                     <div className="flex flex-wrap gap-1.5 mt-2">
@@ -551,7 +551,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                       disabled={!isEditing}
                       value={formData.interruptionEmailTo || ''}
                       onChange={e => setFormData({ ...formData, interruptionEmailTo: e.target.value })}
-                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900 font-mono text-xs"
+                      className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 disabled:bg-gray-50 dark:disabled:bg-slate-900 font-mono text-xs"
                       placeholder="Ex: gestor@empresa.com, comercial@empresa.com"
                     />
                     <div className="flex flex-wrap gap-1.5 mt-2">
@@ -581,7 +581,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 </div>
                 
                 {/* Show read-only mail listing */}
-                <div className="text-left bg-white dark:bg-black p-4 rounded-xl border border-gray-200 dark:border-slate-800 max-w-md mx-auto pt-3 space-y-2 mt-4">
+                <div className="text-left bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-200 dark:border-slate-800 max-w-md mx-auto pt-3 space-y-2 mt-4">
                   <div className="text-xs">
                     <span className="font-bold text-gray-600 dark:text-slate-400 block mb-1">Destinatários Fim de Projeto:</span>
                     {formData.emailTo ? (
@@ -634,7 +634,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
               disabled={!isEditing}
               value={formData.interruptionEmailTemplate || ''}
               onChange={e => setFormData({ ...formData, interruptionEmailTemplate: e.target.value })}
-              className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 h-48 font-mono text-sm resize-none"
+              className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 h-48 font-mono text-sm resize-none"
               placeholder={`“E-mail automático, não responda este e-mail”\n\nOlá,\n\n Informamos que a [NS_PARADA] está interrompida no departamento de engenharia, \nTipo de Problema: [TIPO_PROBLEMA]\nArea Responsável: [AREA_RESPONSAVEL]\nResponsável da resposta: [RESPONSAVEL_RESPOSTA]\nData e hora da parada: [DATA_HORA]\nMotivo: [MOTIVO]\n\nOutras perdas: [OUTRAS_PERDAS]\n\naguardamos as informações para retornarmos o projeto, enquanto isso estará com um put andou o tempo de projeto parado`}
             />
             <div className="mt-3 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800">
@@ -660,7 +660,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
               disabled={!isEditing}
               value={formData.completionEmailTemplate || ''}
               onChange={e => setFormData({ ...formData, completionEmailTemplate: e.target.value })}
-              className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white disabled:opacity-80 h-48 font-mono text-sm resize-none"
+              className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 h-48 font-mono text-sm resize-none"
               placeholder={"Deixe em branco para usar o formato padrão da engenharia (NS, cliente, código, designer, tempos, custos, interrupções e observações)."}
             />
             <p className="mt-2 text-xs text-gray-500 dark:text-slate-400 italic">
@@ -670,7 +670,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
         </div>
 
         {/* Database Health Section */}
-        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
           <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
             <Database className="w-5 h-5 mr-2 text-indigo-500" />
             {t('databaseLimit')}

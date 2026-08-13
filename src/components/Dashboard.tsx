@@ -98,8 +98,8 @@ const MultiSelect: React.FC<{
           onClick={() => setIsOpen(!isOpen)}
           className={`flex items-center justify-between w-full md:w-48 px-3 py-2 border rounded-lg text-sm text-left transition-all duration-200 ${
             isOpen 
-              ? 'border-blue-500 ring-2 ring-blue-500/10 bg-white dark:bg-black' 
-              : 'border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-black hover:border-gray-300 dark:hover:border-slate-600'
+              ? 'border-blue-500 ring-2 ring-blue-500/10 bg-white dark:bg-slate-900' 
+              : 'border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 hover:border-gray-300 dark:hover:border-slate-600'
           }`}
         >
           <span className="truncate text-gray-700 dark:text-slate-200 font-medium">
@@ -110,8 +110,8 @@ const MultiSelect: React.FC<{
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-2 w-64 bg-white dark:bg-black border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl p-2 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200">
-          <div className="flex items-center justify-between p-2 border-b border-gray-100 dark:border-slate-800 mb-2 sticky top-0 bg-white dark:bg-black z-10">
+        <div className="absolute z-50 mt-2 w-64 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl p-2 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between p-2 border-b border-gray-100 dark:border-slate-800 mb-2 sticky top-0 bg-white dark:bg-slate-900 z-10">
             <button 
               onClick={() => onChange([])}
               className="text-[10px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 uppercase tracking-tight"
@@ -133,7 +133,7 @@ const MultiSelect: React.FC<{
                     type="checkbox"
                     checked={selected.includes(option)}
                     onChange={() => toggleOption(option)}
-                    className="peer w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 bg-white dark:bg-black transition-all"
+                    className="peer w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 bg-white dark:bg-slate-900 transition-all"
                   />
                 </div>
                 <span className={`text-xs transition-colors truncate ${
@@ -2202,7 +2202,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     <div className="space-y-6">
       
       {/* Date Filter Section */}
-      <div className="bg-white dark:bg-black p-5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center text-black dark:text-white font-black uppercase tracking-widest text-sm">
             <Filter className="w-5 h-5 mr-3 text-blue-600" />
@@ -2232,7 +2232,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             )}
             <button 
               onClick={handleExportCSV}
-              className="flex items-center text-[10px] font-black text-gray-600 dark:text-slate-300 hover:text-white bg-white dark:bg-black border border-gray-200 dark:border-slate-700 px-4 py-2.5 rounded-xl hover:bg-blue-600 dark:hover:bg-blue-600 hover:border-blue-600 transition-all shadow-sm uppercase tracking-wider"
+              className="flex items-center text-[10px] font-black text-gray-600 dark:text-slate-300 hover:text-white bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 px-4 py-2.5 rounded-xl hover:bg-blue-600 dark:hover:bg-blue-600 hover:border-blue-600 transition-all shadow-sm uppercase tracking-wider"
             >
               <Download className="w-3.5 h-3.5 mr-2" />
               {t('exportCsv')}
@@ -2251,7 +2251,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-[12px] bg-gray-50 dark:bg-black text-gray-700 dark:text-white transition-all shadow-sm"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-[12px] bg-gray-50 dark:bg-slate-900 text-gray-700 dark:text-white transition-all shadow-sm"
               />
             </div>
           </div>
@@ -2264,7 +2264,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-[12px] bg-gray-50 dark:bg-black text-gray-700 dark:text-white transition-all shadow-sm"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-[12px] bg-gray-50 dark:bg-slate-900 text-gray-700 dark:text-white transition-all shadow-sm"
               />
             </div>
           </div>
@@ -2296,7 +2296,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     setSelectedDesignerForReleases(e.target.value);
                     setSelectedDesignerForChart(e.target.value);
                   }}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-[12px] bg-gray-50 dark:bg-black text-gray-700 dark:text-white cursor-pointer appearance-none transition-all shadow-sm"
+                  className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-[12px] bg-gray-50 dark:bg-slate-900 text-gray-700 dark:text-white cursor-pointer appearance-none transition-all shadow-sm"
                 >
                   <option value="ALL">{t('all')}</option>
                   {availableDesigners.map((u) => (
@@ -2331,7 +2331,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               <Sparkles className="w-3 h-3" />
               {t('clearFilters') || 'Limpar Filtros'}
             </button>
-            <div className="h-3 w-px bg-gray-200 dark:bg-black" />
+            <div className="h-3 w-px bg-gray-200 dark:bg-slate-900" />
             <span className="text-[10px] font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider">
               {filteredProjects.length} {t('results') || 'Resultados'}
             </span>
@@ -2340,7 +2340,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       </div>
 
       {/* Dashboard Visibility Controls */}
-      <div className="bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
         <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-3">{t('selectDashboards')}</p>
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-4 gap-y-3">
           <label className={`flex items-center gap-2 group ${!hasPermissionForSection('kpi') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
@@ -2487,9 +2487,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Unified Development Card */}
           {currentUser.role !== 'PROCESSOS' && (
-             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-blue-500/5">
+             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-blue-500/5">
                <div className="w-full">
-                 <p className="text-[9px] sm:text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-0.5 sm:mb-1">
+                 <p className="text-[10px] sm:text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-0.5 sm:mb-1">
                    Desenvolvimento Total
                  </p>
                  <div className="flex items-baseline gap-1">
@@ -2499,18 +2499,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                    <span className="text-[10px] text-blue-500/70 font-bold uppercase italic">produtivas</span>
                  </div>
                  <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 flex flex-col gap-0.5">
-                    <p className="text-[9px] text-gray-500 font-bold uppercase flex items-center gap-1">
+                    <p className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1">
                       <Clock size={10} className="text-blue-400" />
                       Média: {devProjectsStats.avgPerMonth}h / mês
                     </p>
-                    <p className="text-[9px] text-blue-600 font-black uppercase">
+                    <p className="text-[10px] text-blue-600 font-black uppercase">
                       Total Ano: {yearlyStats.devCount} PROJETOS
                     </p>
                     <div className="flex flex-col gap-0.5 mt-1 border-t border-blue-50 dark:border-slate-800/50 pt-1">
-                       <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {devProjectsStats.count})</p>
+                       <p className="text-[10px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {devProjectsStats.count})</p>
                        <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
                          {yearlyStats.monthly.map(m => (
-                           <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-blue-500 dark:text-blue-400">{m.dev}</span></span>
+                           <span key={m.name} className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-blue-500 dark:text-blue-400">{m.dev}</span></span>
                          ))}
                        </div>
                     </div>
@@ -2524,9 +2524,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           {/* Releases Total Card */}
           {currentUser.role !== 'PROCESSOS' && (
-             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-emerald-500/5">
+             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-emerald-500/5">
                <div className="w-full">
-                 <p className="text-[9px] sm:text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-0.5 sm:mb-1">
+                 <p className="text-[10px] sm:text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-0.5 sm:mb-1">
                    Total de Liberações
                  </p>
                  <div className="flex items-baseline gap-1">
@@ -2536,18 +2536,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                    <span className="text-[10px] text-emerald-500/70 font-bold uppercase italic">projetos</span>
                  </div>
                  <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 flex flex-col gap-0.5">
-                    <p className="text-[9px] text-gray-500 font-bold uppercase flex items-center gap-1">
+                    <p className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1">
                       <Clock size={10} className="text-emerald-400" />
                       Média: {(releaseStats.count / devProjectsStats.months).toFixed(1)} / mês
                     </p>
-                    <p className="text-[8px] text-emerald-600 font-black uppercase">
+                    <p className="text-[10px] text-emerald-600 font-black uppercase">
                       Total Ano: {yearlyStats.releaseCount} PROJETOS
                     </p>
                     <div className="flex flex-col gap-0.5 mt-1 border-t border-emerald-50 dark:border-slate-800/50 pt-1">
-                       <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {releaseStats.count})</p>
+                       <p className="text-[10px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {releaseStats.count})</p>
                        <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
                          {yearlyStats.monthly.map(m => (
-                           <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-emerald-500 dark:text-emerald-400">{m.release}</span></span>
+                           <span key={m.name} className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-emerald-500 dark:text-emerald-400">{m.release}</span></span>
                          ))}
                        </div>
                     </div>
@@ -2561,9 +2561,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           {/* Total de Variações Card */}
           {currentUser.role !== 'PROCESSOS' && (
-             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-amber-500/5">
+             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-amber-500/5">
                 <div className="w-full">
-                  <p className="text-[9px] sm:text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-0.5 sm:mb-1">
+                  <p className="text-[10px] sm:text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-0.5 sm:mb-1">
                     Total de Variações
                   </p>
                   <div className="flex items-baseline gap-1">
@@ -2573,18 +2573,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <span className="text-[10px] text-amber-500/70 font-bold uppercase italic">variações</span>
                   </div>
                   <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 flex flex-col gap-0.5">
-                     <p className="text-[9px] text-gray-500 font-bold uppercase flex items-center gap-1">
+                     <p className="text-[10px] text-gray-500 font-bold uppercase flex items-center gap-1">
                        <Clock size={10} className="text-amber-400" />
                        Média: {variationStats.avgPerMonth} / mês
                      </p>
-                     <p className="text-[8px] text-amber-600 font-black uppercase">
+                     <p className="text-[10px] text-amber-600 font-black uppercase">
                        Total Ano: {yearlyStats.variationCount} VARIAÇÕES
                      </p>
                      <div className="flex flex-col gap-0.5 mt-1 border-t border-amber-50 dark:border-slate-800/50 pt-1">
-                        <p className="text-[9px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {variationStats.count})</p>
+                        <p className="text-[10px] text-gray-500 font-black uppercase mb-1">Resumo por mês (Total Período: {variationStats.count})</p>
                         <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
                           {yearlyStats.monthly.map(m => (
-                            <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-amber-500 dark:text-amber-400">{m.variation}</span></span>
+                            <span key={m.name} className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-amber-500 dark:text-amber-400">{m.variation}</span></span>
                           ))}
                         </div>
                      </div>
@@ -2598,14 +2598,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           {/* Real Average Per Capita / Month */}
           {currentUser.role !== 'PROCESSOS' && (
-             <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                <div className="w-full">
                  <div className="flex items-center justify-between">
-                   <p className="text-[9px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
+                   <p className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
                      Produtividade Per Capita
                    </p>
                    {perCapitaStats.isCustomized && (
-                     <span className="text-[7px] sm:text-[8px] px-1 py-0.5 bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-400 font-bold uppercase rounded tracking-wider">
+                     <span className="text-[10px] sm:text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-400 font-bold uppercase rounded tracking-wider">
                        Ajustado
                      </span>
                    )}
@@ -2614,18 +2614,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                    <p className="text-lg sm:text-xl font-black text-gray-800 dark:text-white">
                      {perCapitaStats.avgPerDesignerMonth}h
                    </p>
-                   <span className="text-[8px] sm:text-[9px] text-gray-400 font-bold uppercase italic">/mês</span>
+                   <span className="text-[10px] sm:text-[10px] text-gray-400 font-bold uppercase italic">/mês</span>
                  </div>
                  <div className="mt-2 pt-2 border-t border-gray-50 dark:border-slate-800/50 flex flex-col gap-0.5">
-                    <p className="text-[8px] text-gray-400 uppercase">
+                    <p className="text-[10px] text-gray-400 uppercase">
                       Ref: <strong className="text-gray-600 dark:text-slate-300">{perCapitaStats.designerCount}</strong> projetistas {perCapitaStats.isCustomized ? 'equivalentes' : 'ativos'}
                     </p>
-                    <p className="text-[8px] text-gray-500 font-bold uppercase">
+                    <p className="text-[10px] text-gray-500 font-bold uppercase">
                       {perCapitaStats.monthsInPeriod} {perCapitaStats.monthsInPeriod === 1 ? 'MÊS SELECIONADO' : 'MESES SELECIONADOS'}
                     </p>
                     <button 
                       onClick={() => setIsPerCapitaModalOpen(true)}
-                      className="mt-1 flex items-center gap-1 text-[8.5px] font-bold uppercase text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer self-start border border-blue-50 dark:border-slate-800 bg-blue-50/50 dark:bg-slate-900/30 px-1.5 py-0.5 rounded transition shadow-sm hover:shadow"
+                      className="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer self-start border border-blue-50 dark:border-slate-800 bg-blue-50/50 dark:bg-slate-900/30 px-1.5 py-0.5 rounded transition shadow-sm hover:shadow"
                     >
                       <SlidersHorizontal size={9} />
                       Configurar Cálculo
@@ -2641,39 +2641,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           {currentUser.role !== 'PROCESSOS' && averageTimes.length > 0 && averageTimes
             .filter(stat => stat.type !== 'DESENVOLVIMENTO')
             .map((stat) => (
-            <div key={stat.type} className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+            <div key={stat.type} className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
               <div>
-                <p className="text-[9px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">Duração Média Projetos ({stat.type})</p>
+                <p className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">Duração Média Projetos ({stat.type})</p>
                 <p className="text-sm sm:text-lg font-black text-black dark:text-white">{formatDuration(stat.avgSeconds)}</p>
               </div>
-              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-blue-50 dark:bg-black rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-blue-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
                 <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
           ))}
           
           {currentUser.role !== 'PROCESSOS' && (
-            <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+            <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
               <div className="w-full">
-                <p className="text-[9px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalHours')}</p>
+                <p className="text-[10px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalHours')}</p>
                 <div className="flex items-baseline gap-1">
                   <p className="text-sm sm:text-xl font-black text-indigo-800 dark:text-indigo-300">{totalHours}h</p>
-                  <span className="text-[8px] text-indigo-500 font-bold italic">/ {(totalHours / devProjectsStats.months).toFixed(1)}h MÊS</span>
+                  <span className="text-[10px] text-indigo-500 font-bold italic">/ {(totalHours / devProjectsStats.months).toFixed(1)}h MÊS</span>
                 </div>
-                <p className="text-[8px] text-indigo-400 font-bold uppercase mt-0.5 leading-tight">Total Ano: {Math.round(yearlyStats.totalHours)}h</p>
+                <p className="text-[10px] text-indigo-400 font-bold uppercase mt-0.5 leading-tight">Total Ano: {Math.round(yearlyStats.totalHours)}h</p>
                 <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 mt-1 border-t border-indigo-50/50 dark:border-indigo-900/20 pt-1">
                   {yearlyStats.monthly.map(m => (
-                    <span key={m.name} className="text-[7px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-indigo-500 dark:text-indigo-400">{Math.round(m.hours)}h</span></span>
+                    <span key={m.name} className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase italic">{m.name}: <span className="text-indigo-500 dark:text-indigo-400">{Math.round(m.hours)}h</span></span>
                   ))}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
-                  <div className="flex-1 h-1 sm:h-1.5 bg-gray-100 dark:bg-black rounded-full overflow-hidden">
+                  <div className="flex-1 h-1 sm:h-1.5 bg-gray-100 dark:bg-slate-900 rounded-full overflow-hidden">
                     <div className="h-full bg-indigo-500" style={{ width: `${goalProgress}%` }}></div>
                   </div>
-                  <span className="text-[8px] sm:text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{goalProgress}%</span>
+                  <span className="text-[10px] sm:text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{goalProgress}%</span>
                 </div>
               </div>
-              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-indigo-50 dark:bg-black rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-indigo-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
                 <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
@@ -2682,11 +2682,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
 
           {/* Cost KPI */}
-          <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+          <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
             <div>
-              <p className="text-[9px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalProjectValue')}</p>
+              <p className="text-[10px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalProjectValue')}</p>
               <p className="text-sm sm:text-xl font-black text-blue-800 dark:text-blue-300">{formatCurrency(costData.productive)}</p>
-              <p className="text-[8px] sm:text-[10px] text-blue-500 font-medium mt-0.5 sm:mt-1">{t('productiveTimeBase')}</p>
+              <p className="text-[10px] sm:text-[10px] text-blue-500 font-medium mt-0.5 sm:mt-1">{t('productiveTimeBase')}</p>
             </div>
             <div className="h-7 w-7 sm:h-8 sm:w-8 bg-blue-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
               <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -2694,13 +2694,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           </div>
 
           {/* Interruption Cost KPI */}
-          <div className="bg-white dark:bg-black p-3 sm:p-4 rounded-xl border border-red-100 dark:border-red-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+          <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-red-100 dark:border-red-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
             <div>
-              <p className="text-[9px] sm:text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('interruptionCost')}</p>
+              <p className="text-[10px] sm:text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('interruptionCost')}</p>
               <p className="text-sm sm:text-xl font-black text-red-800 dark:text-red-300">{formatCurrency(costData.interruption)}</p>
-              <p className="text-[8px] sm:text-[10px] text-red-500 font-medium mt-0.5 sm:mt-1">{t('totalTime')}: {formatDuration(costData.totalInterruptionSeconds)}</p>
+              <p className="text-[10px] sm:text-[10px] text-red-500 font-medium mt-0.5 sm:mt-1">{t('totalTime')}: {formatDuration(costData.totalInterruptionSeconds)}</p>
             </div>
-            <div className="h-7 w-7 sm:h-8 sm:w-8 bg-red-50 dark:bg-black rounded-full flex items-center justify-center text-red-600 dark:text-red-400 flex-shrink-0">
+            <div className="h-7 w-7 sm:h-8 sm:w-8 bg-red-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 flex-shrink-0">
               <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
@@ -2709,7 +2709,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       {/* AI Insights Section */}
         {currentUser.role !== 'PROCESSOS' && (
-          <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-black p-6 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+          <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-slate-900 p-6 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
             <div className="flex flex-col sm:flex-row items-center justify-between mb-4 gap-4">
               <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-300 flex items-center">
                 <Sparkles className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
@@ -2725,7 +2725,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
             
             {aiAnalysis ? (
-              <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-black p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/20 shadow-inner">
+              <div className="prose prose-sm max-w-none text-black dark:text-white bg-white/50 dark:bg-slate-900 p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/20 shadow-inner">
                 <MarkdownRenderer content={aiAnalysis} theme={theme} />
               </div>
             ) : (
@@ -2740,31 +2740,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       {/* NOVO: Ranking do Mês (CEO/GESTOR/COORDENADOR) */}
       {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR') && currentUser.role !== 'PROCESSOS' && visibleSections.includes('ranking') && (
-        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
             <div className="flex flex-col md:flex-row items-center justify-between mb-4 gap-4">
                     <h3 className="text-lg font-bold text-black dark:text-white flex items-center uppercase">
                         <Target className="w-5 h-5 mr-2 text-purple-600" />
                         {t('productivityRankingTitle')}
                     </h3>
                 
-                <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg">
+                <div className="flex bg-gray-100 dark:bg-slate-900 p-1 rounded-lg">
                     <button 
                         onClick={() => setRankingPeriod('MONTH')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'MONTH' ? 'bg-white dark:bg-black text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'MONTH' ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         <Calendar className="w-3 h-3" />
                         {t('thisMonth')}
                     </button>
                     <button 
                         onClick={() => setRankingPeriod('YEAR')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'YEAR' ? 'bg-white dark:bg-black text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'YEAR' ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         <Calendar className="w-3 h-3" />
                         {t('thisYear')}
                     </button>
                     <button 
                         onClick={() => setRankingPeriod('CUSTOM')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'CUSTOM' ? 'bg-white dark:bg-black text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${rankingPeriod === 'CUSTOM' ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
                     >
                         <Filter className="w-3 h-3" />
                         {t('custom')}
@@ -2777,12 +2777,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                    {/* Mobile List / Desktop Table */}
                    <div className="md:hidden space-y-3 mb-6">
                         {rankingStats.length === 0 ? (
-                            <div className="p-8 text-center bg-gray-50 dark:bg-black rounded-xl text-gray-500 dark:text-slate-400 italic text-sm">
+                            <div className="p-8 text-center bg-gray-50 dark:bg-slate-900 rounded-xl text-gray-500 dark:text-slate-400 italic text-sm">
                                 {t('noProjects')}
                             </div>
                         ) : (
                             rankingStats.map((stat, index) => (
-                                <div key={index} className="bg-gray-50 dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-800">
+                                <div key={index} className="bg-gray-50 dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
                                     <div className="flex items-center justify-between mb-3 border-b border-gray-100 dark:border-slate-800 pb-2">
                                         <div className="flex items-center">
                                             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
@@ -2794,7 +2794,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                             </span>
                                             <span className="font-bold text-gray-900 dark:text-white uppercase">{stat.name}</span>
                                         </div>
-                                        <div className="bg-white dark:bg-black px-2 py-1 rounded text-xs font-black text-indigo-600 dark:text-indigo-400 shadow-sm">
+                                        <div className="bg-white dark:bg-slate-900 px-2 py-1 rounded text-xs font-black text-indigo-600 dark:text-indigo-400 shadow-sm">
                                             {stat.total} {t('total').toUpperCase()}
                                         </div>
                                     </div>
@@ -2819,7 +2819,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-sm text-left">
-                            <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+                            <thead className="bg-gray-50 dark:bg-slate-900 text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
                                 <tr>
                                     <th className="p-3">{t('designerCol')}</th>
                                     <th className="p-3 text-center">{t('releases')}</th>
@@ -2844,7 +2844,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                                 <div className="flex items-center">
                                                     <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
                                                         index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
-                                                        index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-300' : 
+                                                        index === 1 ? 'bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-slate-300' : 
                                                         index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                                                     }`}>
                                                         {index + 1}
@@ -2902,7 +2902,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       {/* NS Queue Analysis Section */}
       {visibleSections.includes('ns_analysis') && (
         <div className="space-y-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm">
             <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
               <Layers className="w-5 h-5 mr-2 text-orange-500" />
               {t('nsReports')}
@@ -2919,7 +2919,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               </label>
               <button 
                 onClick={handleExportNSCSV}
-                className="flex items-center text-sm font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
+                className="flex items-center text-sm font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
               >
                 <Download className="w-4 h-4 mr-2" />
                 {t('exportNSReport')}
@@ -2928,7 +2928,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
                 <Layers className="w-5 h-5 mr-2 text-orange-500" />
@@ -2962,7 +2962,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
           </div>
 
-          <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
                 <Truck className="w-5 h-5 mr-2 text-blue-500" />
@@ -2991,7 +2991,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       {/* Detailed Product Report Section */}
       {visibleSections.includes('detailed_report') && (
-        <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-500 mb-6">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-500 mb-6">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
               <FileText className="w-5 h-5 mr-2 text-blue-500" />
@@ -3043,7 +3043,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 link.click();
                 document.body.removeChild(link);
               }}
-              className="flex items-center text-xs font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
+              className="flex items-center text-xs font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
             >
               <Download className="w-4 h-4 mr-1" />
               {t('exportReport')}
@@ -3067,14 +3067,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             {/* Mobile Cards / Desktop Table */}
             <div className="md:hidden space-y-4">
               {detailedProductReport.slice(0, 10).map((item, idx) => (
-                <div key={idx} className="bg-gray-50 dark:bg-black p-4 rounded-xl border border-gray-100 dark:border-slate-800">
+                <div key={idx} className="bg-gray-50 dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-800">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">{item.ns}</span>
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                         item.status === ProjectRequestStatus.COMPLETED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                         item.status === ProjectRequestStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                        'bg-gray-100 text-gray-700 dark:bg-black dark:text-slate-400'
+                        'bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-slate-400'
                       }`}>
                         {item.status}
                       </span>
@@ -3092,19 +3092,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2 uppercase">{item.clientName}</h4>
                   <div className="grid grid-cols-2 gap-y-2 text-[10px] font-medium uppercase text-gray-500 dark:text-slate-400">
                     <div>
-                      <span className="block text-[8px] opacity-60">{t('productType')}</span>
+                      <span className="block text-[10px] opacity-60">{t('productType')}</span>
                       <span className="text-gray-700 dark:text-slate-200">{item.productType}</span>
                     </div>
                     <div>
-                      <span className="block text-[8px] opacity-60">{t('bastidor')}</span>
+                      <span className="block text-[10px] opacity-60">{t('bastidor')}</span>
                       <span className="text-gray-700 dark:text-slate-200">{item.chassis}</span>
                     </div>
                     <div>
-                      <span className="block text-[8px] opacity-60">{t('setup')}</span>
+                      <span className="block text-[10px] opacity-60">{t('setup')}</span>
                       <span className="text-gray-700 dark:text-slate-200">{item.setup}</span>
                     </div>
                     <div>
-                      <span className="block text-[8px] opacity-60">{t('releasedMonth')}</span>
+                      <span className="block text-[10px] opacity-60">{t('releasedMonth')}</span>
                       <span className={item.isReleasedThisMonth ? 'text-emerald-600 font-bold' : ''}>{item.isReleasedThisMonth ? t('yes') : t('no')}</span>
                     </div>
                   </div>
@@ -3138,7 +3138,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{item.setup}</td>
                     <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{item.dimension}</td>
                     <td className="py-3 px-4">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                         item.status === ProjectRequestStatus.COMPLETED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                         item.status === ProjectRequestStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                         'bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-400'
@@ -3178,7 +3178,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             {/* NS Delete Confirmation Modal */}
             {deleteConfirmationNs && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-                  <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700 text-left">
+                  <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700 text-left">
                       <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 uppercase">{t('confirmDeletion') || 'CONFIRMAR EXCLUSÃO'}</h3>
                       <p className="text-gray-600 dark:text-slate-400 mb-6 text-sm">
                         {`Deseja realmente excluir todos os registros (pedido de rastreamento e sessões de projeto) vinculados ao NS "${deleteConfirmationNs}"? Essa ação é irreversível e removerá todos os dados históricos desse NS.`}
@@ -3252,7 +3252,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       {visibleSections.includes('interruption_report') && (
         <div className="space-y-8 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) && (
-            <div className="mt-6 bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
+            <div className="mt-6 bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
               <div className="mb-4">
                 <h2 className={`text-2xl font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('interruptionReports')}</h2>
                 <div className="text-xs text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wide">{t('bottleneckAnalysis')}</div>
@@ -3261,7 +3261,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
           )}
 
-          <div className="bg-white dark:bg-black p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center uppercase">
                 <PauseCircle className="w-5 h-5 mr-2 text-red-500" />
@@ -3300,7 +3300,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   link.click();
                   document.body.removeChild(link);
                 }}
-                className="flex items-center text-xs font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-black border border-gray-200 dark:border-slate-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
+                className="flex items-center text-xs font-bold text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors uppercase"
               >
                 <Download className="w-4 h-4 mr-1" />
                 {t('exportReport')}
@@ -3378,7 +3378,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                           setSelectedDesignerForReleases(e.target.value);
                           setSelectedDesignerForChart(e.target.value);
                         }}
-                        className="w-full sm:w-60 p-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500/10 outline-none text-xs bg-white dark:bg-black text-black dark:text-white cursor-pointer font-bold transition-all shadow-sm"
+                        className="w-full sm:w-60 p-2 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500/10 outline-none text-xs bg-white dark:bg-slate-900 text-black dark:text-white cursor-pointer font-bold transition-all shadow-sm"
                       >
                         <option value="ALL">TODOS OS PROJETISTAS DA EQUIPE</option>
                         {availableDesigners.map((u) => (
@@ -3390,7 +3390,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 )}
 
                 {/* Chart 1: Projects Released */}
-                <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                       <div className="flex flex-col">
                           <h3 className="text-sm font-bold text-black dark:text-white flex items-center uppercase tracking-wide">
@@ -3402,7 +3402,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                           )}
                           <span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold ml-7 uppercase tracking-wider">Quantidade total (Histórico completo)</span>
                       </div>
-                      <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg self-end sm:self-auto">
+                      <div className="flex bg-gray-100 dark:bg-slate-900 p-1 rounded-lg self-end sm:self-auto">
                           <button 
                               onClick={() => setReleaseGrouping('MONTHLY')}
                               className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
@@ -3448,7 +3448,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 </div>
 
                 {/* Chart 2: Hours Performed in Projects */}
-                <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                       <div className="flex flex-col">
                           <h3 className="text-sm font-bold text-black dark:text-white flex items-center uppercase tracking-wide">
@@ -3460,7 +3460,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                           )}
                           <span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold ml-7 uppercase tracking-wider">Tempo produtivo (Histórico completo)</span>
                       </div>
-                      <div className="flex bg-gray-100 dark:bg-black p-1 rounded-lg self-end sm:self-auto">
+                      <div className="flex bg-gray-100 dark:bg-slate-900 p-1 rounded-lg self-end sm:self-auto">
                           <button 
                               onClick={() => setReleaseGrouping('MONTHLY')}
                               className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${releaseGrouping === 'MONTHLY' ? 'bg-white dark:bg-slate-800 text-amber-500 dark:text-amber-400 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
@@ -3507,7 +3507,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
             {/* Tabela de Detalhamento de Horas por Projeto - Standalone Section */}
             {visibleSections.includes('project_hours_table') && (
-              <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 col-span-1 md:col-span-2 space-y-4">
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 col-span-1 md:col-span-2 space-y-4">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                       <h3 className="text-sm font-bold text-black dark:text-white flex items-center uppercase tracking-wide">
@@ -3564,13 +3564,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-gray-50 dark:bg-stone-900 border-b border-gray-100 dark:border-slate-800">
-                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">N.S. / Código</th>
-                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Cliente</th>
-                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Projetista</th>
-                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Tipo / Implemento</th>
-                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Período</th>
-                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
-                          <th className="py-2.5 px-4 text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider text-right">Tempo Realizado</th>
+                          <th className="py-2.5 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">N.S. / Código</th>
+                          <th className="py-2.5 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Cliente</th>
+                          <th className="py-2.5 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Projetista</th>
+                          <th className="py-2.5 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Tipo / Implemento</th>
+                          <th className="py-2.5 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Período</th>
+                          <th className="py-2.5 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
+                          <th className="py-2.5 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider text-right">Tempo Realizado</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 dark:divide-slate-900">
@@ -3590,7 +3590,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                   <div className="flex flex-col">
                                     <span className="text-xs font-bold text-blue-600 dark:text-blue-400 font-mono">{item.ns}</span>
                                     {item.projectCode && (
-                                      <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono mt-0.5">#{item.projectCode}</span>
+                                      <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono mt-0.5">#{item.projectCode}</span>
                                     )}
                                   </div>
                                 </td>
@@ -3600,7 +3600,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                   <div className="flex flex-col gap-0.5">
                                     <span className="text-[10px] font-medium text-black dark:text-white">{item.type}</span>
                                     {item.implementType && (
-                                      <span className="text-[9px] text-gray-400 dark:text-slate-500 font-medium">{item.implementType}</span>
+                                      <span className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">{item.implementType}</span>
                                     )}
                                   </div>
                                 </td>
@@ -3611,7 +3611,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                   </div>
                                 </td>
                                 <td className="py-2.5 px-4">
-                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-black tracking-wide uppercase ${
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-black tracking-wide uppercase ${
                                     item.status === 'COMPLETED'
                                       ? 'bg-green-100/80 text-green-700 dark:bg-green-950/30 dark:text-green-400'
                                       : 'bg-blue-100/80 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
@@ -3622,7 +3622,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                                 <td className="py-2.5 px-4 text-right">
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-extrabold text-amber-600 dark:text-amber-400 font-mono">{item.hours}h</span>
-                                    <span className="text-[9px] text-gray-400 dark:text-slate-500 font-mono">{item.hoursFormatted}</span>
+                                    <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono">{item.hoursFormatted}</span>
                                   </div>
                                 </td>
                               </tr>
@@ -3662,7 +3662,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
         {/* Innovations Chart */}
         {visibleSections.includes('innovation') && (
-            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
             <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
                 <Lightbulb className="w-5 h-5 mr-2 text-yellow-500" />
                 {t('innovationStatus')}
@@ -3697,7 +3697,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           <>
             {/* 1. Activities by Designer (Stacked Bar) */}
             {visibleSections.includes('activities') && (
-              <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px]">
                   <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center uppercase">
                       <Activity className="w-5 h-5 mr-2 text-indigo-600" />
                       {t('activitiesByDesigner')}
@@ -3732,7 +3732,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
             {/* 2. Paradas by Designer (Stacked Bar) */}
             {visibleSections.includes('stops') && (
-              <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 min-h-[350px] col-span-1 md:col-span-2">
                   <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-bold text-gray-700 dark:text-slate-200 flex items-center uppercase">
                           <PauseCircle className="w-5 h-5 mr-2 text-red-500" />
@@ -3741,7 +3741,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <select 
                         value={selectedInterruptionDesigner}
                         onChange={(e) => setSelectedInterruptionDesigner(e.target.value)}
-                        className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-sm bg-gray-50 dark:bg-black dark:text-white cursor-pointer"
+                        className="p-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-sm bg-gray-50 dark:bg-slate-900 dark:text-white cursor-pointer"
                     >
                         <option value="ALL">{t('overviewAll')}</option>
                         {availableDesigners.map((u) => (
@@ -3823,7 +3823,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             {/* 1. Scatter Plot (Dispersão) */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between min-h-[400px]">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between min-h-[400px]">
               <div>
                 <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2 mb-1">
                   <Activity className="text-blue-500 w-4 h-4" />
@@ -3882,7 +3882,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
 
             {/* 2. Pipeline Funnel Chart (Funil de Progresso de Entregas) */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between min-h-[400px]">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between min-h-[400px]">
               <div>
                 <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2 mb-1">
                   <SlidersHorizontal className="text-indigo-500 w-4 h-4" />
@@ -3918,14 +3918,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
 
             {/* 3. Heatmap de Produtividade Semanal (Weekly Heatmap) */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm col-span-1 xl:col-span-2 flex flex-col justify-between min-h-[400px]">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm col-span-1 xl:col-span-2 flex flex-col justify-between min-h-[400px]">
               <div>
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-2 mb-1">
                   <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2">
                     <Calendar className="text-emerald-500 w-4 h-4" />
                     Mapa de Calor: Intensidade Diária por Projetista (Seg-Sex)
                   </h4>
-                  <div className="flex items-center gap-2 text-[9px] font-black uppercase text-gray-400">
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400">
                     <span>Inativo (0h)</span>
                     <div className="w-3.5 h-3.5 rounded bg-gray-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800" />
                     <div className="w-3.5 h-3.5 rounded bg-indigo-100/40 dark:bg-indigo-950/25 border border-indigo-200/20" />
@@ -4086,11 +4086,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 {/* Sub-Layout: Heatmap + Analytical Breakdown */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                   {/* Heatmap Section - 5 Columns */}
-                  <div className="lg:col-span-5 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+                  <div className="lg:col-span-5 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col justify-between">
                     <div>
                       <h5 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3 flex items-center justify-between">
                         <span>Mapa de Calor: {monthLabel}</span>
-                        <span className="text-[9px] text-zinc-400 capitalize font-medium">clique no dia para ver detalhes</span>
+                        <span className="text-[10px] text-zinc-400 capitalize font-medium">clique no dia para ver detalhes</span>
                       </h5>
                       
                       {/* Grid Headers */}
@@ -4136,9 +4136,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                               className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-semibold border transition-all duration-150 cursor-pointer ${bgClass} ${borderClass}`}
                               title={`Dia ${d.day}: Extra: ${d.overtimeHours.toFixed(1)}h | Fábrica: ${d.factoryHours.toFixed(1)}h.`}
                             >
-                              <span className="text-[9px] opacity-70 block mb-0.5">{d.day}</span>
+                              <span className="text-[10px] opacity-70 block mb-0.5">{d.day}</span>
                               {dailyTotal > 0 && (
-                                <span className="text-[9px] font-extrabold">
+                                <span className="text-[10px] font-extrabold">
                                   {dailyTotal.toFixed(1)}h
                                 </span>
                               )}
@@ -4148,7 +4148,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       </div>
 
                       {/* Legend */}
-                      <div className="flex items-center gap-3 mt-4 text-[9px] font-black uppercase text-gray-400 justify-center">
+                      <div className="flex items-center gap-3 mt-4 text-[10px] font-black uppercase text-gray-400 justify-center">
                         <span>Livre (0h)</span>
                         <div className="w-3 h-3 rounded bg-gray-100 dark:bg-slate-900 border border-slate-200/20" />
                         <div className="w-3 h-3 rounded bg-amber-100/40 dark:bg-amber-950/20 border border-amber-200/10" />
@@ -4158,13 +4158,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       </div>
                     </div>
 
-                    <div className="mt-5 border-t border-slate-100 dark:border-slate-900 pt-3 text-[9px] text-gray-400 uppercase italic font-medium">
+                    <div className="mt-5 border-t border-slate-100 dark:border-slate-900 pt-3 text-[10px] text-gray-400 uppercase italic font-medium">
                       💡 Intensidade operacional no chão de fábrica e horas extras em {monthLabel}.
                     </div>
                   </div>
 
                   {/* Day Details or Monthly breakdown - 4 Columns */}
-                  <div className="lg:col-span-4 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+                  <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col justify-between">
                     <div>
                       <h5 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3">
                         {selectedDayDetails ? `Detalhes do Dia ${selectedDayDetails.day}` : "Selecione um Dia no Mapa"}
@@ -4174,17 +4174,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                         <div className="space-y-4 animate-in fade-in duration-200">
                           <div className="grid grid-cols-2 gap-2 text-center">
                             <div className="bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                              <p className="text-[9px] font-black text-slate-400 uppercase">H. Extra</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase">H. Extra</p>
                               <p className="text-sm font-black text-amber-600 dark:text-amber-400">{selectedDayDetails.overtimeHours.toFixed(1)}h</p>
                             </div>
                             <div className="bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                              <p className="text-[9px] font-black text-slate-400 uppercase">Fábrica</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase">Fábrica</p>
                               <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">{selectedDayDetails.factoryHours.toFixed(1)}h</p>
                             </div>
                           </div>
 
                           <div className="space-y-2">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wide">Apontamentos Realizados:</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wide">Apontamentos Realizados:</p>
                             {selectedDayDetails.descriptions.length > 0 ? (
                               <ul className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1 no-scrollbar text-xs">
                                 {selectedDayDetails.descriptions.map((desc, idx) => {
@@ -4215,7 +4215,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     {selectedDayDetails && (
                       <button 
                         onClick={() => setSelectedEdsonDay(null)}
-                        className="w-full mt-4 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                        className="w-full mt-4 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
                       >
                         Limpar Seleção
                       </button>
@@ -4223,7 +4223,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   </div>
 
                   {/* Summary / Report Card - 3 Columns */}
-                  <div className="lg:col-span-3 bg-white dark:bg-black p-5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-4">
+                  <div className="lg:col-span-3 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-4">
                     <div>
                       <h5 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3">
                         Acumulado Histórico
@@ -4231,26 +4231,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
                       <div className="space-y-4">
                         <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Acumulado Horas Extras</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Acumulado Horas Extras</p>
                           <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight mt-0.5">
                             {historicOvertimeSum} <span className="text-xs font-normal text-slate-400">horas totais</span>
                           </p>
                         </div>
 
                         <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Total em Fábrica</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Total em Fábrica</p>
                           <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight mt-0.5">
                             {historicFactorySum} <span className="text-xs font-normal text-slate-400">horas na planta</span>
                           </p>
                         </div>
 
                         <div className="border-t border-slate-100 dark:border-slate-900 pt-3">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Foco de Atuação</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Foco de Atuação</p>
                           <div className="flex gap-2">
-                            <span className="p-1 px-1.5 rounded bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 text-[8px] font-bold uppercase">
+                            <span className="p-1 px-1.5 rounded bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase">
                               Segurança
                             </span>
-                            <span className="p-1 px-1.5 rounded bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 text-[8px] font-bold uppercase">
+                            <span className="p-1 px-1.5 rounded bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold uppercase">
                               Planta de Fábrica
                             </span>
                           </div>
@@ -4259,7 +4259,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     </div>
 
                     <div className="bg-amber-50/15 dark:bg-amber-950/5 p-3 rounded-xl border border-amber-500/10">
-                      <p className="text-[9px] font-black text-amber-600 uppercase tracking-wider">Nota de Engenharia</p>
+                      <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider">Nota de Engenharia</p>
                       <p className="text-[10.5px] text-slate-600 dark:text-slate-400 leading-relaxed mt-1">
                         {selectedEdsonAnalyticsUser === 'ALL' ? (
                           "Sua equipe demonstra uma presença active e resiliente nos layouts industriais e setups produtivos. O monitoramento centralizado consolida as horas extras acumuladas e o fôlego de execução fabril de toda a planta."

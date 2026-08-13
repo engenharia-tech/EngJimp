@@ -43,4 +43,11 @@
   .dark {
     color-scheme: dark;
   }
+  /* Foco de teclado visível em qualquer controle (acessibilidade).
+     Só no foco por teclado (focus-visible), não atrapalha o mouse. */
+  :focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
 }
