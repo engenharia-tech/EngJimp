@@ -50,7 +50,7 @@ import {
 } from './services/storageService';
 import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { notifyProjectCompletion } from './services/notificationService';
-import { isTokenExpired } from './services/authToken';
+import { isTokenExpired, getAuthToken } from './services/authToken';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -398,8 +398,11 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!currentUser) return;
     const check = () => {
-      if (isTokenExpired()) {
-        addToast('Sua sessão expirou. Faça login novamente para continuar salvando.', 'error');
+      // Sessão inválida = token AUSENTE ou EXPIRADO. Sem isto, um token que
+      // sumiu deixava o app consultando como anônimo -> RLS devolve vazio ->
+      // "tudo sem informação" sem avisar. Agora manda ao login com aviso.
+      if (!getAuthToken() || isTokenExpired()) {
+        addToast('Sua sessão expirou. Faça login novamente para carregar seus dados.', 'error');
         setCurrentUser(null);
         setActiveTab('tracker');
       }
