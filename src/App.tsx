@@ -79,6 +79,8 @@ const NavItem: React.FC<NavItemProps> = ({ id, labelKey, icon: Icon, activeTab, 
   <button
     onClick={() => onClick(id)}
     title={isCollapsed ? t(labelKey) : undefined}
+    aria-current={activeTab === id ? 'page' : undefined}
+    aria-label={t(labelKey)}
     className={`flex items-center w-full ${isCollapsed ? 'justify-center px-0' : 'px-6'} py-4 text-left transition-all border-l-4 ${
       activeTab === id 
         ? theme === 'dark' 
@@ -1505,7 +1507,7 @@ const AppContent: React.FC = () => {
             </>
           )}
         </div>
-        <nav className="flex-1 mt-6 overflow-y-auto custom-scrollbar">
+        <nav aria-label="Navegação principal" className="flex-1 mt-6 overflow-y-auto custom-scrollbar">
           <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
 
           <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
@@ -1599,8 +1601,10 @@ const AppContent: React.FC = () => {
             >
                 <UserCog className="w-5 h-5" />
             </button>
-            <button 
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label={isMobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+              aria-expanded={isMobileMenuOpen}
               className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white'} shadow-lg active:scale-95 transition-all`}
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -1610,8 +1614,8 @@ const AppContent: React.FC = () => {
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 bg-white dark:bg-black z-20 pt-20 md:hidden animate-in slide-in-from-top duration-300">
-          <nav className="flex flex-col h-full overflow-y-auto p-4 space-y-1">
+        <div className="fixed inset-0 bg-white dark:bg-slate-900 z-20 pt-20 md:hidden animate-in slide-in-from-top duration-300">
+          <nav aria-label="Navegação" className="flex flex-col h-full overflow-y-auto p-4 space-y-1">
             <div className="px-4 py-2 mb-2">
               <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t('controlPanel')}</p>
               <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{currentUser.name}</p>
@@ -1721,7 +1725,7 @@ const AppContent: React.FC = () => {
             <div className="space-y-6">
                <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                  <div className="flex items-center gap-4">
-                   <div className="bg-gray-100 dark:bg-black p-2 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+                   <div className="bg-gray-100 dark:bg-slate-900 p-2 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
                       <Logo 
                         theme={theme}
                         logoUrl={COMPANY_LOGO_URL}
@@ -1871,7 +1875,7 @@ const AppContent: React.FC = () => {
           {/* Delete Confirmation Modal */}
           {deleteConfirmationId && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-                <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700">
+                <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t('confirmDeletion').toUpperCase()}</h3>
                     <p className="text-gray-600 dark:text-slate-400 mb-6">
                         {t('confirmDeletionDesc').toUpperCase()}
@@ -1879,7 +1883,7 @@ const AppContent: React.FC = () => {
                     <div className="flex justify-end gap-3">
                         <button 
                             onClick={() => setDeleteConfirmationId(null)}
-                            className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors"
+                            className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors"
                         >
                             {t('cancel').toUpperCase()}
                         </button>

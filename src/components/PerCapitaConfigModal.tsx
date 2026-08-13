@@ -86,7 +86,7 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-lg p-6 border border-gray-100 dark:border-slate-800 text-left flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-lg p-6 border border-gray-100 dark:border-slate-800 text-left flex flex-col max-h-[90vh]">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b pb-3 border-gray-100 dark:border-slate-800">
@@ -164,9 +164,9 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
                         const v = parseFloat(e.target.value);
                         setLocalMonths(isNaN(v) ? 1 : v);
                       }}
-                      className="w-20 px-1.5 py-0.5 text-xs bg-white dark:bg-black border border-gray-300 dark:border-slate-700 rounded text-center font-black"
+                      className="w-20 px-1.5 py-0.5 text-xs bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded text-center font-black"
                     />
-                    <span className="text-[9px] text-gray-400">Meses</span>
+                    <span className="text-[10px] text-gray-400">Meses</span>
                   </div>
                 </div>
               </label>
@@ -194,7 +194,7 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
                 return (
                   <div 
                     key={u.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-lg border border-gray-100 dark:border-slate-800 bg-white dark:bg-black gap-2 sm:gap-0"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-lg border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 gap-2 sm:gap-0"
                   >
                     <div className="flex items-center gap-2">
                       <input 
@@ -205,15 +205,15 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
                       />
                       <div>
                         <span className="text-xs font-black text-gray-800 dark:text-white uppercase block leading-none">{u.name}</span>
-                        <span className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase italic">{u.role}</span>
+                        <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase italic">{u.role}</span>
                       </div>
                     </div>
 
                     {isIncluded && (
                       <div className="flex items-center gap-2 sm:self-center self-end">
                         <div className="text-right">
-                          <span className="text-[9px] uppercase font-bold text-gray-400 block leading-tight">Equivalente</span>
-                          <span className="text-[8.5px] font-black text-indigo-600 dark:text-indigo-400 uppercase italic">
+                          <span className="text-[10px] uppercase font-bold text-gray-400 block leading-tight">Equivalente</span>
+                          <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase italic">
                             {individualMonths} meses
                           </span>
                         </div>
@@ -225,7 +225,7 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
                             step="0.05"
                             value={weight}
                             onChange={(e) => handleWeightChange(u.id, parseFloat(e.target.value))}
-                            className="w-14 text-center text-xs font-black bg-white dark:bg-black border border-gray-200 dark:border-slate-800 rounded py-0.5"
+                            className="w-14 text-center text-xs font-black bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded py-0.5"
                           />
                           <input 
                             type="range" 
@@ -241,7 +241,7 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
                     )}
 
                     {!isIncluded && (
-                      <span className="text-[9px] font-black text-red-500 bg-red-50 dark:bg-red-950/20 px-1.5 py-0.5 rounded uppercase italic self-end sm:self-auto">
+                      <span className="text-[10px] font-black text-red-500 bg-red-50 dark:bg-red-950/20 px-1.5 py-0.5 rounded uppercase italic self-end sm:self-auto">
                         Inativo / Excluído
                       </span>
                     )}

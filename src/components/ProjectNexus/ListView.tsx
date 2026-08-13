@@ -122,9 +122,9 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
   };
 
   return (
-    <div className="h-full bg-white dark:bg-black flex flex-col overflow-hidden">
+    <div className="h-full bg-white dark:bg-slate-900 flex flex-col overflow-hidden">
       {/* List Toolbar */}
-      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-black">
+      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900">
         <div className="flex items-center gap-2">
            <button 
             onClick={() => setInlineAdding(true)}
@@ -171,7 +171,7 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
               <th className="px-4 py-3 w-10"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium bg-white dark:bg-black">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium bg-white dark:bg-slate-900">
             {inlineAdding && (
               <tr className="bg-blue-50/30">
                 <td className="px-6 py-3 text-xs text-slate-400">*</td>
@@ -200,7 +200,7 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
               .map((task, idx) => (
               <tr 
                 key={task.id} 
-                className={`hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group bg-white dark:bg-black relative cursor-pointer ${(statusPickerOpenId === task.id || menuTaskId === task.id) ? 'z-[50]' : 'z-0'}`}
+                className={`hover:bg-slate-50/80 dark:hover:bg-slate-800 transition-colors group bg-white dark:bg-slate-900 relative cursor-pointer ${(statusPickerOpenId === task.id || menuTaskId === task.id) ? 'z-[50]' : 'z-0'}`}
                 onClick={() => onEditTask?.(task)}
                 style={{ zIndex: (statusPickerOpenId === task.id || menuTaskId === task.id) ? 50 : (idx === state.ganttTasks.length - 1 ? 1 : 0) }}
               >
@@ -283,7 +283,7 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
         </table>
 
         {/* Footer Add buttons */}
-        <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex items-center gap-4 bg-white dark:bg-black">
+        <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex items-center gap-4 bg-white dark:bg-slate-900">
            <button 
             onClick={() => setInlineAdding(true)}
             className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold text-xs hover:underline"

@@ -113,8 +113,8 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
   return (
     <div className="space-y-6">
       {/* Area Stats Section */}
-      <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
-        <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black flex items-center justify-between">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 flex items-center justify-between">
           <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
             <BarChart3 className="w-5 h-5 mr-2 text-amber-500" />
             {t('stopsByArea')}
@@ -122,7 +122,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
         </div>
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {areaStats.map((stat) => (
-            <div key={stat.area} className="p-4 bg-gray-50 dark:bg-black rounded-xl border border-gray-100 dark:border-slate-800">
+            <div key={stat.area} className="p-4 bg-gray-50 dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800">
               <div className="flex justify-between items-start mb-2">
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t(stat.area.toLowerCase())}</span>
                 <span className="text-xs font-bold text-red-600 dark:text-red-400">{formatDuration(stat.totalLostTime)}</span>
@@ -153,8 +153,8 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
         </div>
       </div>
 
-      <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
-        <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black flex items-center justify-between">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 flex items-center justify-between">
           <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
             <Users className="w-5 h-5 mr-2 text-blue-500" />
             {t('stopsByDesigner')}
@@ -206,8 +206,8 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
       {/* Detail Modal */}
       {selectedDesignerData && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-gray-50 dark:bg-black">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-gray-50 dark:bg-slate-900">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white text-xl font-bold shadow-lg">
                   {selectedDesignerData.name.charAt(0)}
@@ -273,7 +273,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
               </div>
             </div>
 
-            <div className="p-6 bg-gray-50 dark:bg-black border-t border-gray-100 dark:border-slate-700">
+            <div className="p-6 bg-gray-50 dark:bg-slate-900 border-t border-gray-100 dark:border-slate-700">
               <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
                 <Info className="w-5 h-5 text-blue-600 mt-0.5" />
                 <p className="text-sm text-blue-800 dark:text-blue-200">

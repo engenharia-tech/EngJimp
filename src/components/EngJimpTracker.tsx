@@ -1444,7 +1444,7 @@ JIMPNEXUS
               </div>
             </div>
           ) : ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') ? (
-              <div className="bg-white dark:bg-black p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
                 <h2 className="text-xl font-bold mb-4 flex items-center text-black dark:text-white">
                   <Clock className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
                   {t('startProject')}
@@ -1457,7 +1457,7 @@ JIMPNEXUS
                         type="text" 
                         value={ns}
                         onChange={e => setNs(e.target.value)}
-                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white text-sm"
                         placeholder={t('nsPlaceholder')}
                       />
                       {aggregatedInfo && (
@@ -1479,7 +1479,7 @@ JIMPNEXUS
                           type="text" 
                           value={clientName}
                           onChange={e => setClientName(e.target.value)}
-                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
+                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white text-sm"
                           placeholder={t('clientName')}
                         />
                       </div>
@@ -1492,7 +1492,7 @@ JIMPNEXUS
                           type="text" 
                           value={projectCode}
                           onChange={e => setProjectCode(e.target.value)}
-                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
+                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white text-sm"
                           placeholder={t('projectCodePlaceholder')}
                         />
                       </div>
@@ -1505,7 +1505,7 @@ JIMPNEXUS
                           type="text" 
                           value={chassis}
                           onChange={e => setChassis(e.target.value)}
-                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
+                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white text-sm"
                           placeholder={t('chassisNumberPlaceholder')}
                         />
                       </div>
@@ -1515,7 +1515,7 @@ JIMPNEXUS
                       <select 
                         value={type}
                         onChange={e => setType(e.target.value as ProjectType)}
-                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm appearance-none"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white text-sm appearance-none"
                       >
                         {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -1527,7 +1527,7 @@ JIMPNEXUS
                         <select 
                           value={implementType}
                           onChange={e => setImplementType(e.target.value as ImplementType)}
-                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm appearance-none"
+                          className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white text-sm appearance-none"
                         >
                           {IMPLEMENT_TYPES.map(type => <option key={type} value={type}>{t(type.toLowerCase())}</option>)}
                         </select>
@@ -1542,7 +1542,7 @@ JIMPNEXUS
                             <select 
                             value={flooringType}
                             onChange={e => setFlooringType(e.target.value)}
-                            className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm appearance-none"
+                            className="w-full pl-10 p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white text-sm appearance-none"
                             >
                                 <option value="">{t('select')}</option>
                                 {FLOORING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1559,7 +1559,7 @@ JIMPNEXUS
                             type="number" 
                             value={estHours}
                             onChange={e => setEstHours(e.target.value)}
-                            className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
+                            className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white text-sm"
                             placeholder={t('hours')}
                             min="0"
                           />
@@ -1570,7 +1570,7 @@ JIMPNEXUS
                             type="number" 
                             value={estMinutes}
                             onChange={e => setEstMinutes(e.target.value)}
-                            className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white text-sm"
+                            className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white text-sm"
                             placeholder={t('minutes')}
                             min="0"
                             max="59"
@@ -1615,8 +1615,8 @@ JIMPNEXUS
                 </div>
               </div>
           ) : (
-            <div className="bg-white dark:bg-black p-8 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-black mb-4">
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-slate-900 mb-4">
                     <Clock className="w-8 h-8 text-gray-400 dark:text-slate-500" />
                 </div>
                 <h3 className="text-lg font-bold text-black dark:text-white mb-2">{t('viewMode')}</h3>
@@ -1628,7 +1628,7 @@ JIMPNEXUS
 
           {/* Pending Projects */}
           {pendingProjects.length > 0 && (
-            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/30">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/30">
                <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center">
                  <Briefcase className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
                  {t('projectsInProgressPaused')}
@@ -1638,7 +1638,7 @@ JIMPNEXUS
                     const isPaused = p.pauses.length > 0 && p.pauses[p.pauses.length - 1].durationSeconds === -1;
                     const pUser = resolveUser(p.userId, users);
                     return (
-                     <div key={p.id} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 hover:border-blue-300 dark:hover:border-blue-500 transition-all bg-gray-50 dark:bg-black group">
+                     <div key={p.id} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 hover:border-blue-300 dark:hover:border-blue-500 transition-all bg-gray-50 dark:bg-slate-900 group">
                         <div className="flex justify-between items-start mb-2">
                            <div>
                              <div className="font-bold text-black dark:text-white text-lg">{p.ns}</div>
@@ -1659,7 +1659,7 @@ JIMPNEXUS
                                 <button 
                                   onClick={() => handleResumeFromList(p)}
                                   disabled={isSaving}
-                                  className="flex-1 bg-white dark:bg-black border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center group-hover:bg-blue-600 dark:group-hover:bg-blue-500 group-hover:text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="flex-1 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center group-hover:bg-blue-600 dark:group-hover:bg-blue-500 group-hover:text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   {isSaving ? (
                                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -1673,7 +1673,7 @@ JIMPNEXUS
                             {['CEO', 'COORDENADOR'].includes(currentUser?.role || '') && (
                                 <button 
                                     onClick={() => setSelectedProjectDetails(p)}
-                                    className="px-3 bg-white dark:bg-black border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 font-bold py-2 rounded hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors flex items-center justify-center shadow-sm"
+                                    className="px-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 font-bold py-2 rounded hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors flex items-center justify-center shadow-sm"
                                     title={t('viewDetails')}
                                 >
                                     <Info className="w-4 h-4" />
@@ -1688,7 +1688,7 @@ JIMPNEXUS
           )}
 
           {/* NS Queue Section */}
-          <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
                 <Layers className="w-5 h-5 mr-2 text-orange-600 dark:text-orange-400" />
@@ -1743,7 +1743,7 @@ JIMPNEXUS
                       type="text" 
                       value={nsClient}
                       onChange={e => setNsClient(e.target.value)}
-                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-slate-900 text-sm"
                       placeholder={t('clientNamePlaceholder')}
                     />
                   </div>
@@ -1753,7 +1753,7 @@ JIMPNEXUS
                       type="text" 
                       value={nsNumber}
                       onChange={e => setNsNumber(e.target.value)}
-                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-slate-900 text-sm"
                       placeholder={t('nsNumberPlaceholder')}
                     />
                   </div>
@@ -1762,7 +1762,7 @@ JIMPNEXUS
                     <select 
                       value={nsProductType}
                       onChange={e => setNsProductType(e.target.value)}
-                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-slate-900 text-sm"
                     >
                       <option value="">{t('select')}</option>
                       {PRODUCT_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
@@ -1774,7 +1774,7 @@ JIMPNEXUS
                       type="text" 
                       value={nsDimension}
                       onChange={e => setNsDimension(e.target.value)}
-                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-slate-900 text-sm"
                       placeholder={t('dimensionPlaceholder')}
                     />
                   </div>
@@ -1783,7 +1783,7 @@ JIMPNEXUS
                     <select 
                       value={nsFlooring}
                       onChange={e => setNsFlooring(e.target.value)}
-                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-slate-900 text-sm"
                     >
                       <option value="">{t('select')}</option>
                       {FLOORING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1794,7 +1794,7 @@ JIMPNEXUS
                     <select 
                       value={nsSetup}
                       onChange={e => setNsSetup(e.target.value)}
-                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-slate-900 text-sm"
                     >
                       <option value="">{t('select')}</option>
                       {SUSPENSION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1806,7 +1806,7 @@ JIMPNEXUS
                       type="text" 
                       value={nsChassis}
                       onChange={e => setNsChassis(e.target.value)}
-                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-slate-900 text-sm"
                       placeholder={t('chassisNumberPlaceholder')}
                     />
                   </div>
@@ -1817,7 +1817,7 @@ JIMPNEXUS
                       step="0.5"
                       value={nsManagementEstimate}
                       onChange={e => setNsManagementEstimate(e.target.value)}
-                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-black text-sm"
+                      className="w-full p-2 border border-orange-200 dark:border-orange-800 rounded bg-white dark:bg-slate-900 text-sm"
                       placeholder={t('managementEstimatePlaceholder')}
                     />
                   </div>
@@ -1923,12 +1923,12 @@ JIMPNEXUS
                         return (
                           <div className="flex flex-wrap gap-1.5 mt-2">
                             {request.needsBase && (
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${hasBase ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${hasBase ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                                 {t('base')} {hasBase ? `(${t('ok')})` : ''}
                               </span>
                             )}
                             {request.needsBox && (
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${hasBox ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${hasBox ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                                 {t('box')} {hasBox ? `(${t('ok')})` : ''}
                               </span>
                             )}
@@ -1948,7 +1948,7 @@ JIMPNEXUS
       {activeProject && (
         <div className="space-y-6">
             {/* Main Tracker Card */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700 relative">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700 relative">
                 <div className="flex justify-between items-start mb-6">
                     <h2 className="text-xl font-bold flex items-center text-black dark:text-white">
                         <Clock className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
@@ -1996,7 +1996,7 @@ JIMPNEXUS
                     </div>
                 </div>
 
-                <div className="flex flex-col items-center justify-center bg-gray-50 dark:bg-black p-8 rounded-xl border border-gray-200 dark:border-slate-700 mb-6">
+                <div className="flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900 p-8 rounded-xl border border-gray-200 dark:border-slate-700 mb-6">
                     <span className="text-sm text-gray-500 dark:text-slate-400 font-medium tracking-wider uppercase mb-2 flex items-center animate-pulse">
                         <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
                         {t('running')}
@@ -2039,21 +2039,21 @@ JIMPNEXUS
             </div>
 
             {/* VARIATION MANAGEMENT SECTION */}
-            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
                  <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center border-b dark:border-slate-700 pb-2">
                     <Layers className="w-5 h-5 mr-2 text-purple-600 dark:text-purple-400" />
                     {t('variationList')}
                  </h3>
                  
                  {/* Input Row */}
-                 <div className="grid grid-cols-1 md:grid-cols-12 gap-2 mb-4 bg-gray-50 dark:bg-black p-3 rounded-lg items-end">
+                 <div className="grid grid-cols-1 md:grid-cols-12 gap-2 mb-4 bg-gray-50 dark:bg-slate-900 p-3 rounded-lg items-end">
                      <div className="md:col-span-2">
                         <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">{t('oldCode')}</label>
                         <input 
                             type="text" 
                             value={varOldCode}
                             onChange={e => setVarOldCode(e.target.value)}
-                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-black dark:text-white"
+                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-slate-900 dark:text-white"
                         />
                      </div>
                      <div className="md:col-span-4">
@@ -2062,7 +2062,7 @@ JIMPNEXUS
                             type="text" 
                             value={varDesc}
                             onChange={e => setVarDesc(e.target.value)}
-                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-black dark:text-white"
+                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-slate-900 dark:text-white"
                         />
                      </div>
                      <div className="md:col-span-2">
@@ -2071,7 +2071,7 @@ JIMPNEXUS
                             type="text" 
                             value={varNewCode}
                             onChange={e => setVarNewCode(e.target.value)}
-                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-black dark:text-white"
+                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-slate-900 dark:text-white"
                         />
                      </div>
                      <div className="md:col-span-2">
@@ -2079,7 +2079,7 @@ JIMPNEXUS
                         <select 
                             value={varType}
                             onChange={e => setVarType(e.target.value as any)}
-                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-black dark:text-white"
+                            className="w-full p-2 text-sm border border-gray-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-purple-500 dark:bg-slate-900 dark:text-white"
                         >
                             <option value="PEÇA">{t('part')}</option>
                             <option value="MONTAGEM">{t('assembly')}</option>
@@ -2091,7 +2091,7 @@ JIMPNEXUS
                                 type="checkbox" 
                                 checked={varFiles}
                                 onChange={e => setVarFiles(e.target.checked)}
-                                className="w-4 h-4 text-purple-600 dark:text-purple-400 rounded mr-1 dark:bg-black dark:border-slate-600"
+                                className="w-4 h-4 text-purple-600 dark:text-purple-400 rounded mr-1 dark:bg-slate-900 dark:border-slate-600"
                              />
                              <span className="text-xs font-bold text-gray-600 dark:text-slate-400">{t('ok')}</span>
                          </label>
@@ -2110,7 +2110,7 @@ JIMPNEXUS
                                  {/* Table */}
                  <div className="overflow-x-auto">
                      <table className="w-full text-sm text-left">
-                         <thead className="bg-gray-100 dark:bg-black text-black dark:text-white font-semibold">
+                         <thead className="bg-gray-100 dark:bg-slate-900 text-black dark:text-white font-semibold">
                              <tr>
                                  <th className="p-3 rounded-tl-lg">{t('oldCode')}</th>
                                  <th className="p-3">{t('description')}</th>
@@ -2127,7 +2127,7 @@ JIMPNEXUS
                                      <td className="p-3 text-black dark:text-white font-medium">{v.description}</td>
                                      <td className="p-3 font-mono text-blue-600 dark:text-blue-400 font-bold">{v.newCode || '-'}</td>
                                      <td className="p-3">
-                                         <span className={`px-2 py-0.5 rounded text-xs ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-black dark:text-slate-300'}`}>
+                                         <span className={`px-2 py-0.5 rounded text-xs ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-slate-900 dark:text-slate-300'}`}>
                                              {v.type}
                                          </span>
                                      </td>
@@ -2138,7 +2138,7 @@ JIMPNEXUS
                                             className={`flex items-center justify-center p-2 rounded mx-auto transition-colors ${
                                                 v.filesGenerated 
                                                 ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 shadow-sm' 
-                                                : 'bg-gray-100 text-gray-400 dark:bg-black dark:text-slate-500 hover:bg-gray-200 dark:hover:bg-slate-600'
+                                                : 'bg-gray-100 text-gray-400 dark:bg-slate-900 dark:text-slate-500 hover:bg-gray-200 dark:hover:bg-slate-600'
                                             }`}
                                          >
                                             {v.filesGenerated ? <FileCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
@@ -2172,8 +2172,8 @@ JIMPNEXUS
       {/* Project Details Modal (CEO/COORDENADOR) */}
       {selectedProjectDetails && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col border border-gray-100 dark:border-slate-700">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center sticky top-0 bg-white dark:bg-black z-10">
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col border border-gray-100 dark:border-slate-700">
+                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-900 z-10">
                     <h3 className="text-xl font-bold text-gray-800 dark:text-slate-100 flex items-center">
                         <Info className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
                         {t('projectDetails')}
@@ -2188,7 +2188,7 @@ JIMPNEXUS
                 
                 <div className="p-6 space-y-6">
                     {/* Header Info */}
-                    <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-black p-4 rounded-lg border border-gray-200 dark:border-slate-700">
+                    <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-slate-900 p-4 rounded-lg border border-gray-200 dark:border-slate-700">
                         <div>
                             <span className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold block">NS</span>
                             <span className="text-lg font-mono font-bold text-gray-800 dark:text-slate-100">{selectedProjectDetails.ns}</span>
@@ -2253,7 +2253,7 @@ JIMPNEXUS
                         {selectedProjectDetails.variations.length > 0 ? (
                             <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
                                 <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-100 dark:bg-black text-gray-600 dark:text-slate-400 font-semibold">
+                                    <thead className="bg-gray-100 dark:bg-slate-900 text-gray-600 dark:text-slate-400 font-semibold">
                                         <tr>
                                             <th className="p-3">{t('fromOld')}</th>
                                             <th className="p-3">{t('toNew')}</th>
@@ -2268,7 +2268,7 @@ JIMPNEXUS
                                                 <td className="p-3 font-mono text-blue-600 dark:text-blue-400 font-bold">{v.newCode || '-'}</td>
                                                 <td className="p-3 text-gray-800 dark:text-slate-200">{v.description}</td>
                                                 <td className="p-3">
-                                                    <span className={`px-2 py-0.5 rounded text-xs ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-black dark:text-slate-300'}`}>
+                                                    <span className={`px-2 py-0.5 rounded text-xs ${v.type === 'Montagem' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-200 text-gray-700 dark:bg-slate-900 dark:text-slate-300'}`}>
                                                         {v.type}
                                                     </span>
                                                 </td>
@@ -2278,17 +2278,17 @@ JIMPNEXUS
                                 </table>
                             </div>
                         ) : (
-                            <div className="text-center p-6 bg-gray-50 dark:bg-black rounded-lg border border-gray-200 dark:border-slate-700 text-gray-400 dark:text-slate-500 italic">
+                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 text-gray-400 dark:text-slate-500 italic">
                                 {t('noVariations')}
                             </div>
                         )}
                     </div>
                 </div>
                 
-                <div className="p-6 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black rounded-b-xl flex justify-end">
+                <div className="p-6 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 rounded-b-xl flex justify-end">
                     <button 
                         onClick={() => setSelectedProjectDetails(null)}
-                        className="px-6 py-2 bg-gray-200 dark:bg-black hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-800 dark:text-slate-200 font-bold rounded-lg transition-colors"
+                        className="px-6 py-2 bg-gray-200 dark:bg-slate-900 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-800 dark:text-slate-200 font-bold rounded-lg transition-colors"
                     >
                         {t('close')}
                     </button>
@@ -2302,7 +2302,7 @@ JIMPNEXUS
         const { hasBase: selectedHasBase, hasBox: selectedHasBox } = checkRequestParts(selectedRequest);
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-            <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-orange-100 dark:border-orange-900/50">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-orange-100 dark:border-orange-900/50">
               <h3 className="text-lg font-bold mb-4 flex items-center text-orange-600 dark:text-orange-400">
                 <Play className="w-5 h-5 mr-2" />
                 {t('startProjectNs', { ns: selectedRequest.ns })}
@@ -2345,7 +2345,7 @@ JIMPNEXUS
                         placeholder={t('hours')}
                         value={pickDesignerEstHours}
                         onChange={e => setPickDesignerEstHours(e.target.value)}
-                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
+                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-sm"
                       />
                     </div>
                     <span className="font-bold">:</span>
@@ -2355,7 +2355,7 @@ JIMPNEXUS
                         placeholder={t('minutes')}
                         value={pickDesignerEstMinutes}
                         onChange={e => setPickDesignerEstMinutes(e.target.value)}
-                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-black text-sm"
+                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-sm"
                       />
                     </div>
                   </div>
@@ -2405,7 +2405,7 @@ JIMPNEXUS
       {/* Pause Modal */}
       {showPauseModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
             <h3 className="text-lg font-bold mb-4 flex items-center text-yellow-600 dark:text-amber-400">
               <Pause className="w-5 h-5 mr-2" />
               {t('pauseProject')}
@@ -2420,7 +2420,7 @@ JIMPNEXUS
                     <select 
                         value={pauseReason}
                         onChange={e => setPauseReason(e.target.value)}
-                        className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none dark:bg-black dark:text-white"
+                        className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none dark:bg-slate-900 dark:text-white"
                     >
                         <option value="">{t('selectReason')}</option>
                         <option value="Almoço / Intervalo">{t('lunchBreak')}</option>
@@ -2439,7 +2439,7 @@ JIMPNEXUS
                         <select 
                             value={pauseSector}
                             onChange={e => setPauseSector(e.target.value)}
-                            className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none dark:bg-black dark:text-white"
+                            className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none dark:bg-slate-900 dark:text-white"
                         >
                             <option value="">{t('selectSector')}</option>
                             <option value="COMERCIAL">{t('comercial')}</option>
@@ -2461,7 +2461,7 @@ JIMPNEXUS
                             value={pauseSector} // Reuse pauseSector for other reason text
                             onChange={e => setPauseSector(e.target.value)}
                             placeholder={t('reasonPlaceholder')}
-                            className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none dark:bg-black dark:text-white"
+                            className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none dark:bg-slate-900 dark:text-white"
                         />
                     </div>
                 )}
@@ -2495,7 +2495,7 @@ JIMPNEXUS
       {/* Finish Confirmation Modal */}
       {showFinishModal && activeProject && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
             <h3 className="text-lg font-bold mb-2 flex items-center text-red-600 dark:text-red-400">
               <CheckSquare className="w-5 h-5 mr-2" />
               {t('finishRelease')}
@@ -2505,7 +2505,7 @@ JIMPNEXUS
             </p>
             
             <div className="space-y-4 mb-6">
-                <div className="p-4 bg-gray-50 dark:bg-black rounded-lg border border-gray-100 dark:border-slate-700">
+                <div className="p-4 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700">
                     <div className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold mb-1">{t('realizedTimeStopwatch')}</div>
                     <div className="text-2xl font-mono font-bold text-gray-800 dark:text-slate-100">{formatTime(elapsedSeconds)}</div>
                 </div>
@@ -2518,7 +2518,7 @@ JIMPNEXUS
                         type="number" 
                         value={estHours}
                         onChange={e => setEstHours(e.target.value)}
-                        className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                        className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white"
                         placeholder={t('hours')}
                         min="0"
                       />
@@ -2529,7 +2529,7 @@ JIMPNEXUS
                         type="number" 
                         value={estMinutes}
                         onChange={e => setEstMinutes(e.target.value)}
-                        className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-black dark:text-white"
+                        className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white"
                         placeholder={t('minAbbr')}
                         min="0"
                         max="59"

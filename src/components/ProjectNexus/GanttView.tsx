@@ -488,7 +488,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
         />
         
         <div className="relative z-10 flex items-center justify-between w-full min-w-0 gap-2">
-          <span className={`text-[9px] font-black truncate drop-shadow-md ${isDone ? 'text-slate-500' : 'text-white'}`}>
+          <span className={`text-[10px] font-black truncate drop-shadow-md ${isDone ? 'text-slate-500' : 'text-white'}`}>
             {task.title}
           </span>
           <span className={`text-[10px] font-black drop-shadow-md shrink-0 ${isDone ? 'text-slate-400' : 'text-white'}`}>
@@ -505,15 +505,15 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 border border-slate-700 text-white rounded-xl opacity-0 group-hover/bar:opacity-100 transition-all scale-75 group-hover/bar:scale-100 pointer-events-none whitespace-nowrap z-50 shadow-2xl">
            <div className="flex items-center gap-2 mb-1">
              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: taskColor }} />
-             <div className="font-black uppercase tracking-widest text-[8px] opacity-50">{task.status}</div>
+             <div className="font-black uppercase tracking-widest text-[10px] opacity-50">{task.status}</div>
            </div>
            <div className="font-black text-xs">{task.title || 'Sem título'}</div>
            {task.reports && (
-             <div className="text-[8px] italic text-blue-300 mt-1 max-w-[150px] truncate">
+             <div className="text-[10px] italic text-blue-300 mt-1 max-w-[150px] truncate">
                "{task.reports}"
              </div>
            )}
-           <div className="text-[9px] font-bold opacity-60 mt-1 flex items-center gap-1">
+           <div className="text-[10px] font-bold opacity-60 mt-1 flex items-center gap-1">
              <Clock size={10} />
              {format(start, 'dd/MM')} — {format(end, 'dd/MM')}
            </div>
@@ -893,9 +893,9 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-black select-none transition-colors duration-300">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900 select-none transition-colors duration-300">
       {/* Toolbar as seen in Image 1 */}
-      <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black flex items-center justify-between shadow-sm z-30 transition-colors overflow-hidden">
+      <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shadow-sm z-30 transition-colors overflow-hidden">
         <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar max-w-[60%] sm:max-w-none">
           <div className="flex items-center gap-1 group">
              <button 
@@ -924,7 +924,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                >
                  <ChevronLeft size={14} />
                </button>
-               <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 px-2 min-w-24 text-center whitespace-nowrap">
+               <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 px-2 min-w-24 text-center whitespace-nowrap">
                  {format(currentDate, 'MMMM yyyy', { locale: language === 'pt-BR' ? ptBR : undefined }).toUpperCase()}
                </span>
                <button 
@@ -1063,11 +1063,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
           >
             <div className="flex items-center gap-2 sm:gap-8 w-full">
               <span className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 w-4">#</span>
-              <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 flex-grow text-[8px] sm:text-[9px] uppercase tracking-wider truncate">Nome de tarefa</span>
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 flex-grow text-[10px] sm:text-[10px] uppercase tracking-wider truncate">Nome de tarefa</span>
               {!isMobile && (
                 <>
-                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-16 text-[9px] uppercase tracking-wider">Atribuído</span>
-                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-24 text-center text-[9px] uppercase tracking-wider">Estado</span>
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-16 text-[10px] uppercase tracking-wider">Atribuído</span>
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-24 text-center text-[10px] uppercase tracking-wider">Estado</span>
                 </>
               )}
               <Plus size={16} className="text-slate-300 dark:text-slate-600 cursor-pointer hover:text-blue-500 transition-colors flex-shrink-0" onClick={() => handleAddTask(null)} />
@@ -1120,10 +1120,10 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                   className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center transition-colors ${isSameDay(day, new Date()) ? 'bg-rose-100 dark:bg-rose-900/50 border-rose-300 dark:border-rose-600 z-10 scale-y-105 shadow-sm' : isWeekend(day) ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
                   style={{ width: `${zoomLevel}px` }}
                 >
-                  <span className={`text-[8px] font-black ${isSameDay(day, new Date()) ? 'text-rose-700 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                  <span className={`text-[10px] font-black ${isSameDay(day, new Date()) ? 'text-rose-700 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`}>
                     {format(day, 'd')}
                   </span>
-                  <span className={`text-[9px] font-black uppercase ${isSameDay(day, new Date()) ? 'text-rose-700 dark:text-rose-300' : 'text-slate-400 dark:text-slate-600'}`}>
+                  <span className={`text-[10px] font-black uppercase ${isSameDay(day, new Date()) ? 'text-rose-700 dark:text-rose-300' : 'text-slate-400 dark:text-slate-600'}`}>
                     {format(day, 'EEE', { locale: language === 'pt-BR' ? ptBR : undefined }).substring(0, 1)}
                   </span>
                 </div>
@@ -1188,7 +1188,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                 className="absolute top-0 bottom-0 w-0.5 bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
                 style={{ left: `${todayLeft}px` }}
               >
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-rose-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-lg flex items-center gap-1 border border-white/20 whitespace-nowrap">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-rose-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded shadow-lg flex items-center gap-1 border border-white/20 whitespace-nowrap">
                   <Target size={8} className="animate-pulse" />
                   HOJE
                 </div>
@@ -1597,7 +1597,7 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
               </div>
             ))}
             {assignedUsers.length > 2 && (
-              <div className="w-6 h-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-slate-400">
+              <div className="w-6 h-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-400">
                 +{assignedUsers.length - 2}
               </div>
             )}
@@ -1636,7 +1636,7 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
             
             <div className="max-h-48 overflow-y-auto py-1">
               {filteredUsers.length > 0 && (
-                <div className="px-3 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Colaboradores</div>
+                <div className="px-3 py-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">Colaboradores</div>
               )}
               {filteredUsers.map(u => (
                 <button 
@@ -1673,7 +1673,7 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
               {/* Custom Names already added */}
               {assignedUsers.filter(au => au.type === 'custom').length > 0 && (
                 <>
-                  <div className="px-3 py-1 mt-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-t border-slate-50 dark:border-slate-800">Outros atribuídos</div>
+                  <div className="px-3 py-1 mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-t border-slate-50 dark:border-slate-800">Outros atribuídos</div>
                   {assignedUsers.filter(au => au.type === 'custom').map(au => (
                     <div key={au.id} className="w-full flex items-center justify-between px-3 py-1.5 group">
                       <div className="flex items-center gap-3 min-w-0">

@@ -252,7 +252,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     <div className="space-y-6">
       {/* Create/Edit User Form */}
       {(canCreateUser || editingUserId) && (
-      <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold flex items-center text-black dark:text-white">
             <UserPlus className="w-6 h-6 mr-2 text-indigo-600 dark:text-indigo-400" />
@@ -275,7 +275,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={name}
               onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               required
               placeholder="Somente letras"
             />
@@ -286,7 +286,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={surname}
               onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               placeholder="Somente letras"
             />
           </div>
@@ -296,7 +296,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="email" 
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               placeholder="exemplo@exemplo.com"
             />
           </div>
@@ -306,7 +306,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               placeholder="xx-xxxxx-xxxx"
             />
           </div>
@@ -316,7 +316,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               required
             />
           </div>
@@ -326,7 +326,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text" 
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               placeholder="Defina uma senha"
               required
             />
@@ -337,7 +337,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               value={role}
               onChange={e => setRole(e.target.value as UserRole)}
               disabled={!isGestor}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-black text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-black dark:text-slate-200'}`}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
             >
               <option value="PROJETISTA">{t('projetista')}</option>
               <option value="GESTOR">{t('gestor')}</option>
@@ -356,7 +356,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                   setSalary(Number(val));
               }}
               disabled={!isEdson}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isEdson ? 'bg-gray-100 dark:bg-black text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-black dark:text-slate-200'}`}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${!isEdson ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
               placeholder={!isEdson ? '••••••' : 'Ex: 5000.00'}
             />
           </div>
@@ -375,7 +375,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       )}
 
       {/* Users List */}
-      <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
         <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
            <h3 className="font-bold text-black dark:text-white">Membros da Equipe</h3>
            {loadingList && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
@@ -399,7 +399,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                                 <h4 className="font-black text-gray-900 dark:text-white uppercase">{u.name} {u.surname}</h4>
                                 <div className="flex items-center gap-1">
                                     <span className="text-[10px] text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">@{u.username}</span>
-                                    {currentUser.id === u.id && <span className="text-[9px] text-blue-600 dark:text-blue-400 font-black uppercase bg-blue-50 dark:bg-blue-900/30 px-1.5 rounded">Você</span>}
+                                    {currentUser.id === u.id && <span className="text-[10px] text-blue-600 dark:text-blue-400 font-black uppercase bg-blue-50 dark:bg-blue-900/30 px-1.5 rounded">Você</span>}
                                 </div>
                             </div>
                         </div>
@@ -415,14 +415,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
 
                     <div className="grid grid-cols-2 gap-x-2 gap-y-3 mb-2">
                         <div>
-                            <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Função</span>
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700">
+                            <span className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Função</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700">
                                 {getRoleIcon(u.role)}
                                 {t(u.role.toLowerCase() as any)}
                             </span>
                         </div>
                         <div>
-                            <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Salário</span>
+                            <span className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Salário</span>
                             <span className="text-xs font-black text-gray-800 dark:text-slate-200">
                                 {isEdson
                                 ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
@@ -430,7 +430,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                             </span>
                         </div>
                         <div className="col-span-2">
-                             <span className="block text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Contato</span>
+                             <span className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Contato</span>
                              <div className="text-[11px] font-medium text-gray-700 dark:text-slate-300 truncate">{u.email || '-'}</div>
                              <div className="text-[10px] text-gray-500 font-bold">{u.phone || '-'}</div>
                         </div>
@@ -442,7 +442,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
 
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left min-w-[800px]">
-          <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium">
+          <thead className="bg-gray-50 dark:bg-slate-900 text-black dark:text-white font-medium">
             <tr>
               <th className="p-4">Nome</th>
               <th className="p-4">Usuário</th>
@@ -463,7 +463,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               <tr key={u.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${currentUser.id === u.id ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''}`}>
                 <td className="p-4 font-medium text-black dark:text-white">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-black flex items-center justify-center text-gray-500 dark:text-slate-400 font-bold flex-shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-slate-900 flex items-center justify-center text-gray-500 dark:text-slate-400 font-bold flex-shrink-0">
                       {u.name.charAt(0)}
                     </div>
                     <div>
@@ -482,7 +482,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                   ••••••
                 </td>
                 <td className="p-4">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-black text-black dark:text-white`}>
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center w-fit gap-1 bg-gray-100 dark:bg-slate-900 text-black dark:text-white`}>
                     {getRoleIcon(u.role)}
                     {t(u.role.toLowerCase() as any)}
                   </span>
@@ -529,7 +529,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       </div>
       {/* Data Maintenance Section - GESTOR ONLY */}
       {currentUser.role === 'GESTOR' && (
-        <div className="bg-white dark:bg-black p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30 mt-8">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30 mt-8">
             <h3 className="font-bold text-black dark:text-white mb-4 flex items-center">
             <Shield className="w-5 h-5 mr-2 text-orange-600 dark:text-orange-400" />
             Manutenção de Dados & Permissões
@@ -554,7 +554,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                                 value={webhookUrl}
                                 onChange={(e) => setWebhookUrl(e.target.value)}
                                 placeholder="https://prod-XX.westus.logic.azure.com:443/workflows/..."
-                                className="flex-1 p-2 border border-green-300 dark:border-emerald-900/50 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                                className="flex-1 p-2 border border-green-300 dark:border-emerald-900/50 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                             />
                             <button 
                                 onClick={handleSaveWebhook}
@@ -571,13 +571,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                         </button>
                         
                         {showWebhookHelp && (
-                            <div className="mt-4 bg-white dark:bg-black p-4 rounded border border-green-200 dark:border-emerald-900/30 text-sm text-gray-600 dark:text-slate-400 space-y-2">
+                            <div className="mt-4 bg-white dark:bg-slate-900 p-4 rounded border border-green-200 dark:border-emerald-900/30 text-sm text-gray-600 dark:text-slate-400 space-y-2">
                                 <p><strong>{t('stepByStepPowerAutomate')}</strong></p>
                                 <ol className="list-decimal pl-5 space-y-1">
                                     <li>{t('excelWebhookHelpLine1')}</li>
                                     <li>{t('excelWebhookHelpLine2')}</li>
                                     <li>{t('excelWebhookHelpLine3')}
-                                        <pre className="bg-gray-100 dark:bg-black p-2 rounded mt-1 text-xs font-mono dark:text-slate-300">
+                                        <pre className="bg-gray-100 dark:bg-slate-900 p-2 rounded mt-1 text-xs font-mono dark:text-slate-300">
 {`{
   "projetista": "Nome",
   "ns": "123456",
@@ -910,7 +910,7 @@ NOTIFY pgrst, 'reload config';`}
       {/* Delete Confirmation Modal */}
       {deleteConfirmationUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">{t('confirmDeletion')}</h3>
                 <p className="text-gray-600 dark:text-slate-400 mb-6">
                     {t('confirmDeletionDesc', { name: deleteConfirmationUser.name })}
@@ -918,7 +918,7 @@ NOTIFY pgrst, 'reload config';`}
                 <div className="flex justify-end gap-3">
                     <button 
                         onClick={() => setDeleteConfirmationUser(null)}
-                        className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
+                        className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
                     >
                         {t('cancel')}
                     </button>
@@ -935,7 +935,7 @@ NOTIFY pgrst, 'reload config';`}
       {/* Duplicate Resolution Modal */}
       {showDuplicateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col border border-gray-100 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-4xl p-6 max-h-[90vh] flex flex-col border border-gray-100 dark:border-slate-700">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
                         <AlertCircle className="w-6 h-6 mr-2 text-orange-600 dark:text-orange-400" />
@@ -948,9 +948,9 @@ NOTIFY pgrst, 'reload config';`}
                 
                 <div className="overflow-y-auto flex-1 space-y-4 pr-2">
                     {duplicateGroups.map((group, idx) => (
-                        <div key={idx} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 bg-gray-50 dark:bg-black grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+                        <div key={idx} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 bg-gray-50 dark:bg-slate-900 grid grid-cols-1 md:grid-cols-2 gap-4 relative">
                             {/* Keep */}
-                            <div className="bg-white dark:bg-black p-3 rounded border border-green-200 dark:border-emerald-900/30 shadow-sm">
+                            <div className="bg-white dark:bg-slate-900 p-3 rounded border border-green-200 dark:border-emerald-900/30 shadow-sm">
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="bg-green-100 dark:bg-emerald-900/40 text-green-800 dark:text-emerald-400 text-xs font-bold px-2 py-1 rounded">{t('keep')}</span>
                                     <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.keep.id.slice(-4)}</span>
@@ -965,7 +965,7 @@ NOTIFY pgrst, 'reload config';`}
                             </div>
 
                             {/* Discard */}
-                            <div className="bg-white dark:bg-black p-3 rounded border border-red-200 dark:border-red-900/30 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
+                            <div className="bg-white dark:bg-slate-900 p-3 rounded border border-red-200 dark:border-red-900/30 shadow-sm opacity-75 hover:opacity-100 transition-opacity">
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-400 text-xs font-bold px-2 py-1 rounded">{t('discard')}</span>
                                     <span className="text-xs text-gray-400 dark:text-slate-500">ID: ...{group.discard.id.slice(-4)}</span>
@@ -1010,7 +1010,7 @@ NOTIFY pgrst, 'reload config';`}
                                 </button>
                             </div>
                             
-                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-black rounded-full p-1 border border-gray-200 dark:border-slate-700 shadow-sm z-10 hidden md:block">
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-slate-900 rounded-full p-1 border border-gray-200 dark:border-slate-700 shadow-sm z-10 hidden md:block">
                                 <div className="text-gray-400 dark:text-slate-500 text-xs font-bold">VS</div>
                             </div>
                         </div>
@@ -1029,7 +1029,7 @@ NOTIFY pgrst, 'reload config';`}
                             setShowDuplicateModal(false);
                             window.location.reload();
                         }}
-                        className="px-4 py-2 bg-gray-800 dark:bg-black hover:bg-gray-900 dark:hover:bg-slate-600 text-white rounded-lg font-medium text-sm"
+                        className="px-4 py-2 bg-gray-800 dark:bg-slate-900 hover:bg-gray-900 dark:hover:bg-slate-600 text-white rounded-lg font-medium text-sm"
                     >
                         {t('closeAndUpdate')}
                     </button>

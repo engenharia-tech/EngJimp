@@ -158,7 +158,7 @@ const ChartRenderer: React.FC<{ data: any }> = ({ data }) => {
               </div>
               <div className="text-right shrink-0 font-mono">
                 <span className="font-semibold text-gray-900 dark:text-slate-100">{item.value.toFixed(1)}h</span>
-                <span className="ml-1.5 text-[9px] text-emerald-600 dark:text-emerald-400 font-extrabold">{pct}%</span>
+                <span className="ml-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold">{pct}%</span>
               </div>
             </div>
           );
@@ -955,7 +955,7 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
   };
 
   return (
-    <div className={`flex flex-col h-full bg-white dark:bg-black border border-gray-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden transition-all duration-300 ${isExpanded ? 'fixed inset-4 z-50' : 'relative'}`}>
+    <div className={`flex flex-col h-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden transition-all duration-300 ${isExpanded ? 'fixed inset-4 z-50' : 'relative'}`}>
       {/* Header */}
       <div className="bg-blue-600 dark:bg-blue-900 p-4 flex justify-between items-center text-white">
         <div className="flex items-center gap-2">
@@ -1080,7 +1080,7 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
       </div>
 
       {/* Input */}
-      <div className="p-4 bg-white dark:bg-black border-t border-gray-200 dark:border-slate-800">
+      <div className="p-4 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
         {/* Quick Query Prompt Chips */}
         {!isRecording && (
           <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">

@@ -1067,7 +1067,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
 
             {/* Sidebar Summary Info */}
             <div className="p-3 border-t border-black/15 dark:border-white/10 text-center bg-black/10 dark:bg-black/40">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
                 {threads.length} {threads.length === 1 ? 'Conversa Ativa' : 'Conversas Salvas'}
               </span>
             </div>
@@ -1097,7 +1097,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
             <div>
               <h3 className="font-black text-sm tracking-tight flex items-center gap-2">
                 NEXUS IA 
-                <span className={`text-[8px] px-1.5 py-0.5 rounded border uppercase tracking-widest font-black ${
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border uppercase tracking-widest font-black ${
                   theme === 'dark' 
                     ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' 
                     : 'bg-blue-50 text-blue-600 border-blue-100'
@@ -1157,7 +1157,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
           <div className="flex justify-center mb-4">
             <div className={`px-3 py-1 ${theme === 'dark' ? 'bg-blue-500/10 border-blue-500/20' : 'bg-blue-50 border-blue-100'} border rounded-full flex items-center gap-2`}>
               <ShieldCheck className="w-3 h-3 text-blue-500" />
-              <span className={`text-[9px] font-black ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'} uppercase tracking-widest`}>Conexão Segura E2E</span>
+              <span className={`text-[10px] font-black ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'} uppercase tracking-widest`}>Conexão Segura E2E</span>
             </div>
           </div>
 
@@ -1201,7 +1201,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
 
                     {msg.chartData && <ChartRenderer data={msg.chartData} theme={theme} />}
 
-                    <div className={`flex items-center gap-2 mt-3 pt-2 border-t border-black/5 dark:border-white/5 text-[9px] font-black uppercase tracking-widest opacity-40 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`flex items-center gap-2 mt-3 pt-2 border-t border-black/5 dark:border-white/5 text-[10px] font-black uppercase tracking-widest opacity-40 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       <span>
                         {msg.timestamp instanceof Date 
                           ? msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -1433,7 +1433,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
           )}
           <div className="flex items-center justify-center gap-3 mt-3">
             <div className="h-[1px] flex-1 bg-gray-100 dark:bg-slate-800" />
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
               Nexus Intelligence Analytics System
             </p>
             <div className="h-[1px] flex-1 bg-gray-200 dark:bg-slate-800" />

@@ -77,7 +77,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
   }, [state.users, tasks]);
 
   return (
-    <div className="h-full bg-slate-50 dark:bg-black overflow-y-auto p-6 space-y-6 select-none font-sans">
+    <div className="h-full bg-slate-50 dark:bg-slate-900 overflow-y-auto p-6 space-y-6 select-none font-sans">
       {/* Top Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard 

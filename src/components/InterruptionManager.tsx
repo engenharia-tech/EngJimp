@@ -570,7 +570,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
           {canManage && (
             <button 
               onClick={() => setIsTypeManagerOpen(true)}
-              className="bg-slate-100 dark:bg-black text-slate-600 dark:text-slate-300 px-4 py-2 rounded-lg font-bold flex items-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700"
+              className="bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 px-4 py-2 rounded-lg font-bold flex items-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700"
             >
               <Settings className="w-5 h-5 mr-2" />
               {t('categories')}
@@ -580,7 +580,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       </div>
 
       {/* Filters */}
-      <div className="bg-white dark:bg-black p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
           <input
@@ -588,13 +588,13 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             placeholder={t('searchByNs')}
             value={filterNs}
             onChange={(e) => setFilterNs(e.target.value)}
-            className="w-full pl-10 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-black dark:text-white"
+            className="w-full pl-10 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900 dark:text-white"
           />
         </div>
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-black dark:text-white"
+          className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900 dark:text-white"
         >
           <option value="ALL">{t('allStatus')}</option>
           {Object.values(InterruptionStatus).map(s => <option key={s} value={s}>{t(s.toLowerCase())}</option>)}
@@ -602,7 +602,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
         <select
           value={filterArea}
           onChange={(e) => setFilterArea(e.target.value)}
-          className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-black dark:text-white"
+          className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900 dark:text-white"
         >
           <option value="ALL">{t('allAreas')}</option>
           {Object.values(InterruptionArea).map(a => <option key={a} value={a}>{t(a.toLowerCase())}</option>)}
@@ -612,7 +612,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
+            className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm bg-white dark:bg-slate-900 dark:text-white"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -620,7 +620,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
+            className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm bg-white dark:bg-slate-900 dark:text-white"
           />
         </div>
       </div>
@@ -646,7 +646,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             const elapsed = getElapsedTime(i.startTime, i.endTime);
             
             return (
-              <div key={i.id} className={`bg-white dark:bg-black p-5 rounded-xl shadow-sm border ${alert === 'red' ? 'border-red-500' : alert === 'yellow' ? 'border-amber-500' : 'border-gray-100 dark:border-slate-700'} hover:shadow-md transition-all relative group`}>
+              <div key={i.id} className={`bg-white dark:bg-slate-900 p-5 rounded-xl shadow-sm border ${alert === 'red' ? 'border-red-500' : alert === 'yellow' ? 'border-amber-500' : 'border-gray-100 dark:border-slate-700'} hover:shadow-md transition-all relative group`}>
                 
                 {alert && (
                   <div className={`absolute -top-2 -right-2 px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm ${alert === 'red' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'}`}>
@@ -662,7 +662,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                         i.status === InterruptionStatus.OPEN ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                         i.status === InterruptionStatus.WAITING ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
                         i.status === InterruptionStatus.RESOLVED ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                        'bg-gray-50 text-gray-700 dark:bg-black dark:text-slate-400'
+                        'bg-gray-50 text-gray-700 dark:bg-slate-900 dark:text-slate-400'
                       }`}>
                         {t(i.status.toLowerCase())}
                       </span>
@@ -687,7 +687,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                       <div className="flex items-center text-gray-500 dark:text-slate-400">
                         <UserIcon className="w-3 h-3 mr-1" />
                         {t('responsible')}: <span className="ml-1 font-semibold text-black dark:text-white">{i.responsiblePerson}</span>
-                        <span className="ml-1 px-1.5 py-0.5 bg-slate-100 dark:bg-black rounded text-[10px] uppercase">{t(i.responsibleArea.toLowerCase())}</span>
+                        <span className="ml-1 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-900 rounded text-[10px] uppercase">{t(i.responsibleArea.toLowerCase())}</span>
                       </div>
                       <div className="flex items-center text-gray-400 dark:text-slate-500">
                         <Calendar className="w-3 h-3 mr-1" />
@@ -742,7 +742,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             );
           })
         ) : (
-          <div className="text-center py-20 bg-white dark:bg-black rounded-2xl border border-dashed border-gray-200 dark:border-slate-700">
+          <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-gray-200 dark:border-slate-700">
             <PauseCircle className="w-12 h-12 mx-auto text-gray-200 dark:text-slate-700 mb-4" />
             <h3 className="text-lg font-bold text-gray-400 dark:text-slate-500">{t('noStopsRecorded')}</h3>
             <p className="text-gray-400 dark:text-slate-600 text-sm">{t('manageBottlenecks')}</p>
@@ -753,8 +753,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       {/* Form Modal */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border dark:border-slate-700">
-            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border dark:border-slate-700">
+            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900">
               <h2 className="text-xl font-bold text-black dark:text-white flex items-center">
                 {editingInterruption ? <Edit className="w-6 h-6 mr-2 text-amber-500" /> : <Plus className="w-6 h-6 mr-2 text-amber-500" />}
                 {editingInterruption ? t('editInterruption') : t('newInterruption')}
@@ -773,7 +773,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   <select 
                     value={formDesignerId}
                     onChange={e => setFormDesignerId(e.target.value)}
-                    className="w-full p-2.5 border border-amber-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-black text-black dark:text-white text-sm"
+                    className="w-full p-2.5 border border-amber-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900 text-black dark:text-white text-sm"
                     required
                   >
                     <option value="">Selecione o Projetista</option>
@@ -793,7 +793,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                     type="text" 
                     value={ns}
                     onChange={e => setNs(e.target.value)}
-                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
+                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
                     placeholder={t('nsPlaceholder')}
                     required
                   />
@@ -804,7 +804,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                     type="text" 
                     value={client}
                     onChange={e => setClient(e.target.value)}
-                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
+                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
                     placeholder={t('clientName')}
                   />
                 </div>
@@ -816,7 +816,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   <select 
                     value={problemType}
                     onChange={e => setProblemType(e.target.value)}
-                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
+                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
                     required
                   >
                     <option value="">{t('selectActivityType')}</option>
@@ -830,7 +830,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   <select 
                     value={area}
                     onChange={e => setArea(e.target.value as InterruptionArea)}
-                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
+                    className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
                     required
                   >
                     {Object.values(InterruptionArea).map(a => <option key={a} value={a}>{t(a.toLowerCase())}</option>)}
@@ -844,7 +844,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   type="text" 
                   value={responsible}
                   onChange={e => setResponsible(e.target.value)}
-                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white"
+                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white"
                   placeholder={t('responsiblePerson')}
                 />
               </div>
@@ -855,7 +855,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   value={description}
                   onChange={e => setDescription(e.target.value)}
                   rows={3}
-                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white resize-none"
+                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white resize-none"
                   placeholder={t('interruptionDescription')}
                   required
                 />
@@ -867,7 +867,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   value={otherLosses}
                   onChange={e => setOtherLosses(e.target.value)}
                   rows={2}
-                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white resize-none"
+                  className="w-full p-2.5 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white resize-none"
                   placeholder={t('additionalLosses')}
                 />
               </div>
@@ -905,14 +905,14 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                       value={formStartDate}
                       onChange={e => setFormStartDate(e.target.value)}
                       disabled={!canManage}
-                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm disabled:opacity-50"
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white text-sm disabled:opacity-50"
                     />
                     <input 
                       type="time"
                       value={formStartTime}
                       onChange={e => setFormStartTime(e.target.value)}
                       disabled={!canManage}
-                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm disabled:opacity-50"
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white text-sm disabled:opacity-50"
                     />
                   </div>
                 </div>
@@ -924,14 +924,14 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                       value={formEndDate}
                       onChange={e => setFormEndDate(e.target.value)}
                       disabled={!canManage}
-                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm disabled:opacity-50"
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white text-sm disabled:opacity-50"
                     />
                     <input 
                       type="time"
                       value={formEndTime}
                       onChange={e => setFormEndTime(e.target.value)}
                       disabled={!canManage}
-                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm disabled:opacity-50"
+                      className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white text-sm disabled:opacity-50"
                     />
                   </div>
                 </div>
@@ -949,7 +949,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                         className={`p-2 text-xs font-bold rounded-lg border transition-all ${
                           status === s 
                             ? 'bg-amber-600 border-amber-600 text-white shadow-md' 
-                            : 'bg-white dark:bg-black border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:border-amber-300'
+                            : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:border-amber-300'
                         }`}
                       >
                         {t(s.toLowerCase())}
@@ -966,7 +966,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
               )}
             </form>
 
-            <div className="p-6 bg-gray-50 dark:bg-black border-t dark:border-slate-700 flex justify-end gap-3">
+            <div className="p-6 bg-gray-50 dark:bg-slate-900 border-t dark:border-slate-700 flex justify-end gap-3">
               <button 
                 onClick={resetForm}
                 className="px-6 py-2.5 text-gray-600 dark:text-slate-300 font-bold hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
@@ -988,8 +988,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       {/* Type Manager Modal */}
       {isTypeManagerOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border dark:border-slate-700">
-            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border dark:border-slate-700">
+            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900">
               <h2 className="text-xl font-bold text-black dark:text-white flex items-center">
                 <Settings className="w-6 h-6 mr-2 text-slate-500" />
                 {t('problemCategories')}
@@ -1005,7 +1005,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   type="text" 
                   value={newTypeName}
                   onChange={e => setNewTypeName(e.target.value)}
-                  className="flex-1 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-black dark:text-white text-sm"
+                  className="flex-1 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none dark:bg-slate-900 dark:text-white text-sm"
                   placeholder={t('newCategory')}
                 />
                 <button 
@@ -1018,7 +1018,7 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
 
               <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
                 {data.interruptionTypes.map(t => (
-                  <div key={t.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-black rounded-lg border dark:border-slate-700">
+                  <div key={t.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border dark:border-slate-700">
                     <span className={`text-sm font-medium ${t.isActive ? 'text-gray-700 dark:text-slate-200' : 'text-gray-400 line-through'}`}>
                       {t.name}
                     </span>
@@ -1065,8 +1065,8 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       {/* View Details Modal */}
       {viewingInterruption && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border dark:border-slate-700">
-            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border dark:border-slate-700">
+            <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900">
               <h2 className="text-xl font-bold text-black dark:text-white flex items-center">
                 <Info className="w-6 h-6 mr-2 text-blue-500" />
                 {t('interruptionDetails')}
@@ -1091,14 +1091,14 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
               <div>
                 <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">{t('problem')}</label>
                 <p className="text-lg font-bold text-black dark:text-white">{viewingInterruption.problemType}</p>
-                <span className="px-2 py-0.5 bg-slate-100 dark:bg-black rounded text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">
+                <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-900 rounded text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">
                   {t('area')}: {t(viewingInterruption.responsibleArea.toLowerCase())}
                 </span>
               </div>
 
               <div>
                 <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">{t('description')}</label>
-                <div className="mt-1 p-4 bg-gray-50 dark:bg-black rounded-xl border dark:border-slate-700 text-black dark:text-white text-sm leading-relaxed">
+                <div className="mt-1 p-4 bg-gray-50 dark:bg-slate-900 rounded-xl border dark:border-slate-700 text-black dark:text-white text-sm leading-relaxed">
                   {viewingInterruption.description}
                 </div>
               </div>
@@ -1117,10 +1117,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
               </div>
             </div>
 
-            <div className="p-6 bg-gray-50 dark:bg-black border-t dark:border-slate-700 flex justify-end">
+            <div className="p-6 bg-gray-50 dark:bg-slate-900 border-t dark:border-slate-700 flex justify-end">
               <button 
                 onClick={() => setViewingInterruption(null)}
-                className="px-6 py-2.5 bg-gray-800 dark:bg-black text-white font-bold rounded-xl hover:bg-gray-900 dark:hover:bg-slate-600 transition-colors"
+                className="px-6 py-2.5 bg-gray-800 dark:bg-slate-900 text-white font-bold rounded-xl hover:bg-gray-900 dark:hover:bg-slate-600 transition-colors"
               >
                 {t('close')}
               </button>

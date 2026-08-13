@@ -395,7 +395,7 @@ const KanbanCard = ({ task, users, onEdit, isOverlay = false }: { task: GanttTas
     >
       {/* Category and more icon */}
       <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700">
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-800 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700">
           <Tag size={10} className="text-slate-300 dark:text-slate-600" />
           {task.category || 'Nexus'}
         </div>
@@ -417,7 +417,7 @@ const KanbanCard = ({ task, users, onEdit, isOverlay = false }: { task: GanttTas
       {/* Bottom section */}
       <div className="flex items-center justify-between mt-auto">
         <div className="flex flex-col gap-1.5">
-            <div className={`flex items-center gap-1 text-[9px] font-black tracking-widest ${getPriorityColor(task.priority)}`}>
+            <div className={`flex items-center gap-1 text-[10px] font-black tracking-widest ${getPriorityColor(task.priority)}`}>
                 <ChevronUp size={10} className="stroke-[3]" />
                 {getPriorityLabel(task.priority)}
             </div>

@@ -447,7 +447,7 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
                      return (
                        <div 
                         key={uid} 
-                        className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[8px] font-bold text-slate-800 border border-slate-200/50 shadow-sm transition-transform hover:scale-110 hover:z-20"
+                        className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[10px] font-bold text-slate-800 border border-slate-200/50 shadow-sm transition-transform hover:scale-110 hover:z-20"
                         title={u?.name}
                        >
                          {u?.name.charAt(0)}
@@ -460,14 +460,14 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-[60] bg-slate-900/95 backdrop-blur text-white p-3 rounded-xl shadow-2xl hidden group-hover/bar:block border border-white/10 min-w-40">
                    <div className="flex justify-between items-start gap-4 mb-1">
                       <p className="text-sm font-bold truncate pr-4">{task.title}</p>
-                      <div className={`px-1.5 py-0.5 rounded text-[8px] uppercase ${task.color}`}>Task</div>
+                      <div className={`px-1.5 py-0.5 rounded text-[10px] uppercase ${task.color}`}>Task</div>
                    </div>
                    <p className="text-[10px] text-indigo-300 font-mono mb-2">
                       {format(new Date(task.startDate), 'dd MMM')} - {format(new Date(task.endDate), 'dd MMM')}
                     </p>
                    {task.assignedTo.length > 0 && (
                      <div className="pt-2 border-t border-white/10 space-y-1">
-                       <p className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">{t('assignedTo')}</p>
+                       <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{t('assignedTo')}</p>
                        <div className="flex flex-wrap gap-1">
                           {task.assignedTo.map(uid => (
                             <span key={uid} className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-slate-200">
@@ -479,7 +479,7 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
                    )}
                    {task.progress > 0 && (
                      <div className="mt-2">
-                        <div className="flex justify-between text-[8px] font-bold uppercase text-slate-400 mb-1">
+                        <div className="flex justify-between text-[10px] font-bold uppercase text-slate-400 mb-1">
                           <span>{t('completion')}</span>
                           <span>{task.progress}%</span>
                         </div>
@@ -503,7 +503,7 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
                 onClick={() => handleEditTask(task)}
               >
                 <div className={`w-4 h-4 bg-amber-600 rotate-45 shadow-lg border-2 border-white transition-transform group-hover/ms:scale-125 group-hover/ms:rotate-90 group-hover/ms:bg-amber-500`} />
-                <span className="mt-1 text-[8px] font-bold text-slate-500 whitespace-nowrap bg-white/80 rounded px-1 group-hover/ms:text-amber-600">
+                <span className="mt-1 text-[10px] font-bold text-slate-500 whitespace-nowrap bg-white/80 rounded px-1 group-hover/ms:text-amber-600">
                   {task.title}
                 </span>
                 
@@ -679,7 +679,7 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
                 className={`flex-shrink-0 border-r border-slate-200 flex flex-col items-center justify-center transition-colors ${isSameDay(day, new Date()) ? 'bg-indigo-50 border-indigo-200' : isWeekend(day) ? 'bg-slate-50' : ''}`}
                 style={{ width: `${zoomLevel}px` }}
               >
-                <div className="text-[9px] uppercase font-bold text-slate-400">
+                <div className="text-[10px] uppercase font-bold text-slate-400">
                   {format(day, 'EEE', { locale: language === 'pt-BR' ? ptBR : undefined }).substring(0, 1)}
                 </div>
                 <div className={`text-[10px] font-bold ${isSameDay(day, new Date()) ? 'text-indigo-600' : 'text-slate-600'}`}>
@@ -792,7 +792,7 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
                             return (
                               <div 
                                key={uid} 
-                               className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-[7px] font-bold text-slate-600 border border-white"
+                               className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 border border-white"
                                title={u?.name}
                               >
                                 {u?.name.charAt(0)}

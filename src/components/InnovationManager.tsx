@@ -505,10 +505,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
   const getStatusColor = (status: string) => {
       switch(status) {
-          case 'APPROVED': return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-black dark:text-blue-400 dark:border-blue-800';
-          case 'IMPLEMENTED': return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-black dark:text-emerald-400 dark:border-emerald-800';
-          case 'REJECTED': return 'bg-red-50 text-red-600 border-red-100 dark:bg-black dark:text-red-400 dark:border-red-900';
-          default: return 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-black dark:text-slate-400 dark:border-slate-700';
+          case 'APPROVED': return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-slate-900 dark:text-blue-400 dark:border-blue-800';
+          case 'IMPLEMENTED': return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-slate-900 dark:text-emerald-400 dark:border-emerald-800';
+          case 'REJECTED': return 'bg-red-50 text-red-600 border-red-100 dark:bg-slate-900 dark:text-red-400 dark:border-red-900';
+          default: return 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-700';
       }
   }
 
@@ -590,13 +590,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                       placeholder={t('searchInnovations')}
                       value={filterText}
                       onChange={e => setFilterText(e.target.value)}
-                      className="w-full pl-10 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200 shadow-sm"
+                      className="w-full pl-10 p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200 shadow-sm"
                   />
               </div>
               <select 
                   value={filterType}
                   onChange={e => setFilterType(e.target.value)}
-                  className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200 shadow-sm text-sm"
+                  className="p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200 shadow-sm text-sm"
               >
                   <option value="">{t('allTypes')}</option>
                   <option value={InnovationType.PRODUCT_IMPROVEMENT}>{t('productImprovement')}</option>
@@ -619,7 +619,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 bg-white dark:bg-black p-3 rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm">
+        <div className="flex flex-wrap items-center gap-4 bg-white dark:bg-slate-900 p-3 rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm">
             <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-400 dark:text-slate-500" />
                 <span className="text-xs font-medium text-black dark:text-white uppercase tracking-wider">{t('filterByDate')}</span>
@@ -630,7 +630,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     type="date"
                     value={startDate}
                     onChange={e => setStartDate(e.target.value)}
-                    className="p-1.5 border dark:border-slate-700 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                    className="p-1.5 border dark:border-slate-700 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                 />
             </div>
             <div className="flex items-center gap-2">
@@ -639,7 +639,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     type="date"
                     value={endDate}
                     onChange={e => setEndDate(e.target.value)}
-                    className="p-1.5 border dark:border-slate-700 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                    className="p-1.5 border dark:border-slate-700 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                 />
             </div>
             {(startDate || endDate || filterText || filterType) && (
@@ -669,7 +669,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-black p-6 rounded-xl shadow-2xl border border-blue-100 dark:border-blue-900/30 w-full max-w-4xl max-h-[95vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200 cursor-default"
+            className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl border border-blue-100 dark:border-blue-900/30 w-full max-w-4xl max-h-[95vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200 cursor-default"
           >
             <div className="flex justify-between items-center border-b dark:border-slate-700 pb-4 mb-6">
               <h3 className="font-bold text-lg text-black dark:text-white flex items-center">
@@ -697,7 +697,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   type="text" 
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                  className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                   placeholder={t('improvementTitlePlaceholder')}
                   required
                 />
@@ -710,7 +710,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 <select 
                   value={authorId}
                   onChange={e => setAuthorId(e.target.value)}
-                  className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                  className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                   required
                 >
                   <option value="">{language === 'pt' ? 'Selecionar Autor...' : (language === 'es' ? 'Seleccionar Autor...' : 'Select Author...')}</option>
@@ -727,7 +727,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 <select 
                   value={type}
                   onChange={e => setType(e.target.value as InnovationType)}
-                  className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                  className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                 >
                   <option value={InnovationType.PRODUCT_IMPROVEMENT}>{t('productImprovement')}</option>
                   <option value={InnovationType.PROCESS_OPTIMIZATION}>{t('processOptimization')}</option>
@@ -744,7 +744,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     step="0.01"
                     value={investmentCost}
                     onChange={e => setInvestmentCost(e.target.value)}
-                    className="w-full pl-10 p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                    className="w-full pl-10 p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                     placeholder="0.00"
                   />
                 </div>
@@ -752,7 +752,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             </div>
 
             {/* Calculation Logic */}
-            <div className="bg-gray-50 dark:bg-black p-6 rounded-lg border border-gray-200 dark:border-slate-700">
+            <div className="bg-gray-50 dark:bg-slate-900 p-6 rounded-lg border border-gray-200 dark:border-slate-700">
                 <h4 className="text-sm font-bold text-black dark:text-white mb-4 uppercase tracking-wider">{t('financialImpactMethod')}</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-1">
@@ -760,7 +760,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         <select 
                             value={calculationType}
                             onChange={e => setCalculationType(e.target.value as CalculationType)}
-                            className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                            className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                         >
                             <option value={CalculationType.RECURRING_MONTHLY}>{t('recurringMonthly')}</option>
                             <option value={CalculationType.PER_UNIT}>{t('perUnit')}</option>
@@ -783,7 +783,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 step="0.01"
                                 value={unitSavings}
                                 onChange={e => setUnitSavings(e.target.value)}
-                                className="w-full pl-10 p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                                className="w-full pl-10 p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                                 placeholder="0.00"
                                 required
                             />
@@ -802,7 +802,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 step="0.01"
                                 value={effectiveAnnualSavings}
                                 onChange={e => setEffectiveAnnualSavings(e.target.value)}
-                                className="w-full pl-10 p-3 border border-blue-200 dark:border-blue-900/50 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-blue-50/30 dark:bg-black dark:text-slate-200"
+                                className="w-full pl-10 p-3 border border-blue-200 dark:border-blue-900/50 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-blue-50/30 dark:bg-slate-900 dark:text-slate-200"
                                 placeholder="Final após implantação"
                             />
                         </div>
@@ -822,7 +822,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     type="number" 
                                     value={quantity}
                                     onChange={e => setQuantity(e.target.value)}
-                                    className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                                    className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                                     placeholder={t('quantityPlaceholder')}
                                     required
                                 />
@@ -837,7 +837,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             </div>
 
             {/* Materials Section */}
-            <div className="bg-white dark:bg-black p-6 rounded-lg border border-gray-200 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-lg border border-gray-200 dark:border-slate-700">
                 <h4 className="text-sm font-bold text-black dark:text-white mb-4 uppercase tracking-wider flex items-center">
                     <PlusCircle className="w-4 h-4 mr-2 text-emerald-500" />
                     {t('materialsSection')}
@@ -855,7 +855,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     addMaterial();
                                 }
                             }}
-                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                         />
                     </div>
                     <div className="md:col-span-1">
@@ -872,7 +872,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                         addMaterial();
                                     }
                                 }}
-                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                             />
                         </div>
                     </div>
@@ -888,14 +888,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     addMaterial();
                                 }
                             }}
-                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                         />
                     </div>
                     <div className="md:col-span-1">
                         <select 
                             value={matType}
                             onChange={e => setMatType(e.target.value as 'ADD' | 'REMOVE')}
-                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 dark:text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
                         >
                             <option value="REMOVE">{t('removeGain')}</option>
                             <option value="ADD">{t('addSpend')}</option>
@@ -908,7 +908,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             disabled={!matName.trim() || matUnitCost === ''}
                             className={`flex-1 p-2 rounded-lg flex items-center justify-center font-bold transition-all shadow-sm ${
                                 !matName.trim() || matUnitCost === '' 
-                                ? 'bg-gray-200 dark:bg-black text-gray-400 dark:text-slate-500 cursor-not-allowed' 
+                                ? 'bg-gray-200 dark:bg-slate-900 text-gray-400 dark:text-slate-500 cursor-not-allowed' 
                                 : editingMaterialId
                                     ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200'
                                     : matType === 'ADD' 
@@ -923,7 +923,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             <button
                                 type="button"
                                 onClick={cancelEditMaterial}
-                                className="p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-gray-100 hover:bg-gray-200 dark:bg-black dark:hover:bg-slate-900 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-all flex items-center justify-center min-w-[38px]"
+                                className="p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-gray-100 hover:bg-gray-200 dark:bg-slate-900 dark:hover:bg-slate-900 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-all flex items-center justify-center min-w-[38px]"
                                 title={t('cancel')}
                             >
                                 <X className="w-4 h-4" />
@@ -940,13 +940,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 className={`flex items-center justify-between p-2 rounded-lg border text-sm transition-all ${
                                     editingMaterialId === m.id
                                     ? 'border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 shadow-inner'
-                                    : 'bg-gray-50 dark:bg-black border-gray-100 dark:border-slate-700'
+                                    : 'bg-gray-50 dark:bg-slate-900 border-gray-100 dark:border-slate-700'
                                 }`}
                             >
                                 <div className="flex items-center">
                                     {m.type === 'REMOVE' ? <TrendingUp className="w-4 h-4 mr-2 text-emerald-500" /> : <TrendingDown className="w-4 h-4 mr-2 text-red-500" />}
                                     <span className="font-medium dark:text-slate-300">{m.name}</span>
-                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${m.type === 'REMOVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-black dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-black dark:text-red-400'}`}>
+                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${m.type === 'REMOVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-slate-900 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-slate-900 dark:text-red-400'}`}>
                                         {m.type === 'REMOVE' ? t('removed') : t('added')}
                                     </span>
                                     {(m.unitCost !== undefined || m.multiplier !== undefined) && (
@@ -996,7 +996,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             </div>
 
             {/* Machine Section */}
-            <div className="bg-white dark:bg-black p-6 rounded-lg border border-gray-200 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-lg border border-gray-200 dark:border-slate-700">
                 <h4 className="text-sm font-bold text-black dark:text-white mb-4 uppercase tracking-wider flex items-center">
                     <Settings className="w-4 h-4 mr-2 text-blue-500" />
                     {t('machineSection')}
@@ -1011,7 +1011,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 setMacName(e.target.value);
                                 updateMachine(e.target.value, macCost, macDepYears);
                             }}
-                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 dark:text-slate-200"
                         />
                     </div>
                     <div className="md:col-span-1">
@@ -1025,7 +1025,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     setMacCost(e.target.value);
                                     updateMachine(macName, e.target.value, macDepYears);
                                 }}
-                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 dark:text-slate-200"
                             />
                         </div>
                     </div>
@@ -1038,7 +1038,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 setMacDepYears(e.target.value);
                                 updateMachine(macName, macCost, e.target.value);
                             }}
-                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 dark:text-slate-200"
                         />
                     </div>
                     <div className="md:col-span-1 flex items-center">
@@ -1052,7 +1052,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
             </div>
 
             {/* Productivity Yield Section */}
-            <div className="bg-white dark:bg-black p-6 rounded-lg border border-gray-200 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-lg border border-gray-200 dark:border-slate-700">
                 <h4 className="text-sm font-bold text-black dark:text-white mb-4 uppercase tracking-wider flex items-center">
                     <TrendingUp className="w-4 h-4 mr-2 text-blue-500" />
                     {t('productivityYield')}
@@ -1064,7 +1064,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             type="number" 
                             value={productivityBefore}
                             onChange={e => setProductivityBefore(e.target.value)}
-                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 dark:text-slate-200"
                             placeholder={t('exampleValue5')}
                         />
                     </div>
@@ -1074,7 +1074,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             type="number" 
                             value={productivityAfter}
                             onChange={e => setProductivityAfter(e.target.value)}
-                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                            className="w-full p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 dark:text-slate-200"
                             placeholder={t('exampleValue7')}
                         />
                     </div>
@@ -1086,7 +1086,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 type="number" 
                                 value={unitProductCost}
                                 onChange={e => setUnitProductCost(e.target.value)}
-                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 dark:text-slate-200"
                                 placeholder={t('exampleValue15')}
                             />
                         </div>
@@ -1099,7 +1099,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                 type="number" 
                                 value={unitProductValue}
                                 onChange={e => setUnitProductValue(e.target.value)}
-                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-black dark:text-slate-200"
+                                className="w-full pl-7 p-2 border dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 dark:text-slate-200"
                                 placeholder={t('exampleValue')}
                             />
                         </div>
@@ -1186,7 +1186,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 rows={3}
-                className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-black dark:text-slate-200"
+                className="w-full p-3 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
                 placeholder={t('technicalDetailsPlaceholder')}
                 required
               />
@@ -1216,7 +1216,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
       )}
 
       {/* List / Cards */}
-      <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
         {/* Mobile View */}
         <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-800">
            {sortedInnovations.length === 0 && (
@@ -1226,7 +1226,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
               </div>
            )}
            {sortedInnovations.map((inv) => (
-             <div key={inv.id} className="p-4 bg-white dark:bg-black">
+             <div key={inv.id} className="p-4 bg-white dark:bg-slate-900">
                 <div className="flex justify-between items-start mb-2">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border tracking-widest ${
                         inv.type === InnovationType.NEW_PROJECT ? 'bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-900/30 dark:text-purple-400' : 
@@ -1244,7 +1244,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 
                 <div className="flex flex-col gap-2 mb-4 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800">
                     <div className="flex justify-between items-center">
-                        <span className="text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest leading-none">{t('projectedValue')}</span>
+                        <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest leading-none">{t('projectedValue')}</span>
                         <span className={`text-sm font-black ${
                             inv.status === 'REJECTED' ? 'text-gray-400 dark:text-slate-600 line-through decoration-2' : 
                             inv.status === 'PENDING' ? 'text-gray-500 dark:text-slate-500' :
@@ -1255,14 +1255,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     </div>
                     {inv.effectiveAnnualSavings !== undefined && inv.effectiveAnnualSavings > 0 && (
                         <div className="flex justify-between items-center border-t border-gray-200 dark:border-slate-800 pt-2">
-                            <span className="text-[8px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest leading-none">{t('effectiveValue')}</span>
+                            <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest leading-none">{t('effectiveValue')}</span>
                             <span className="text-sm font-black text-blue-700 dark:text-blue-300">
                                 {formatCurrency(inv.effectiveAnnualSavings)}
                             </span>
                         </div>
                     )}
                     <div className="flex justify-between items-center border-t border-gray-200 dark:border-slate-800 pt-2">
-                        <span className="text-[8px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest leading-none">{t('calculationCol')}</span>
+                        <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest leading-none">{t('calculationCol')}</span>
                         <span className="text-[10px] font-bold text-gray-700 dark:text-slate-300 truncate max-w-[120px]">
                             {inv.calculationType === CalculationType.ONE_TIME || inv.calculationType === CalculationType.ADD_EXPENSE ? (
                                 <span className={inv.calculationType === CalculationType.ADD_EXPENSE ? 'text-red-500' : ''}>
@@ -1363,7 +1363,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
         </div>
 
         <table className="hidden md:table w-full text-sm text-left">
-          <thead className="bg-gray-50 dark:bg-black text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
+          <thead className="bg-gray-50 dark:bg-slate-900 text-black dark:text-white font-medium border-b border-gray-100 dark:border-slate-700">
             <tr>
               <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('title')}>
                 <div className="flex items-center">{t('improvementCol')} <SortIcon columnKey="title" /></div>
@@ -1401,7 +1401,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 </td>
                 <td className="p-4 text-gray-600 dark:text-slate-400">
                    {inv.calculationType === CalculationType.ONE_TIME || inv.calculationType === CalculationType.ADD_EXPENSE ? (
-                       <span className={`text-xs px-2 py-1 rounded ${inv.calculationType === CalculationType.ADD_EXPENSE ? 'bg-red-50 text-red-600 border border-red-100 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800' : 'bg-gray-100 text-gray-600 dark:bg-black dark:text-slate-300'}`}>
+                       <span className={`text-xs px-2 py-1 rounded ${inv.calculationType === CalculationType.ADD_EXPENSE ? 'bg-red-50 text-red-600 border border-red-100 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800' : 'bg-gray-100 text-gray-600 dark:bg-slate-900 dark:text-slate-300'}`}>
                            {inv.calculationType === CalculationType.ADD_EXPENSE ? t('expenseAbbr') : t('oneTimeAbbr')}
                        </span>
                    ) : (
@@ -1468,14 +1468,14 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                         <button 
                                             onClick={() => onStatusChange(inv.id, 'APPROVED')}
                                             title={t('approve')}
-                                            className="p-1.5 bg-green-50 dark:bg-black text-green-600 dark:text-green-400 rounded-md border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-black hover:border-green-300 dark:hover:border-green-700 transition shadow-sm"
+                                            className="p-1.5 bg-green-50 dark:bg-slate-900 text-green-600 dark:text-green-400 rounded-md border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-black hover:border-green-300 dark:hover:border-green-700 transition shadow-sm"
                                         >
                                             <Check className="w-4 h-4" />
                                         </button>
                                         <button 
                                             onClick={() => onStatusChange(inv.id, 'REJECTED')}
                                             title={t('reject')}
-                                            className="p-1.5 bg-red-50 dark:bg-black text-red-600 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-black hover:border-red-300 dark:hover:border-red-700 transition shadow-sm"
+                                            className="p-1.5 bg-red-50 dark:bg-slate-900 text-red-600 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-black hover:border-red-300 dark:hover:border-red-700 transition shadow-sm"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
@@ -1553,9 +1553,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
           >
               <div 
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border dark:border-slate-700 cursor-default"
+                className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border dark:border-slate-700 cursor-default"
               >
-                  <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-black">
+                  <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900">
                       <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center">
                           <Info className="w-6 h-6 mr-2 text-blue-600" />
                           {t('innovationDetails')}
@@ -1572,13 +1572,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-b dark:border-slate-700 pb-4">
                           <div>
                               <h4 className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">{t('innovationType')}</h4>
-                               <span className="px-2 py-1 bg-blue-50 text-blue-700 dark:bg-black dark:text-blue-400 rounded text-xs font-bold border border-blue-100 dark:border-blue-800">
+                               <span className="px-2 py-1 bg-blue-50 text-blue-700 dark:bg-slate-900 dark:text-blue-400 rounded text-xs font-bold border border-blue-100 dark:border-blue-800">
                                    {getInnovationTypeLabel(viewingInnovation.type)}
                                </span>
                           </div>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-blue-50/30 dark:bg-black p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-blue-50/30 dark:bg-slate-900 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
                           <div>
                               <h4 className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-1">{t('projectedValue')}</h4>
                               <p className="text-2xl font-mono font-black text-emerald-600 dark:text-emerald-400">{formatCurrency(viewingInnovation.totalAnnualSavings)}</p>
@@ -1592,7 +1592,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                       </div>
                       <div>
                           <h4 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t('descriptionTechnical')}</h4>
-                          <div className="bg-gray-50 dark:bg-black p-4 rounded-lg border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                          <div className="bg-gray-50 dark:bg-slate-900 p-4 rounded-lg border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
                               {viewingInnovation.description}
                           </div>
                       </div>
@@ -1605,7 +1605,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                       <h4 className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-2">{t('impactedMaterials')}</h4>
                                       <div className="space-y-1">
                                           {viewingInnovation.materials.map(m => (
-                                              <div key={m.id} className="flex justify-between items-center text-xs p-1.5 bg-gray-50 dark:bg-black rounded border border-gray-100 dark:border-slate-700">
+                                              <div key={m.id} className="flex justify-between items-center text-xs p-1.5 bg-gray-50 dark:bg-slate-900 rounded border border-gray-100 dark:border-slate-700">
                                                   <div className="flex flex-col">
                                                       <span className="flex items-center font-medium dark:text-slate-300">
                                                           {m.type === 'REMOVE' ? <TrendingUp className="w-3 h-3 mr-1 text-emerald-500" /> : <TrendingDown className="w-3 h-3 mr-1 text-red-500" />}
@@ -1633,7 +1633,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                               {viewingInnovation.machine && (
                                   <div>
                                       <h4 className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-2">{t('machineEquipment')}</h4>
-                                      <div className="p-2 bg-blue-50 dark:bg-black rounded border border-blue-100 dark:border-blue-800 text-xs">
+                                      <div className="p-2 bg-blue-50 dark:bg-slate-900 rounded border border-blue-100 dark:border-blue-800 text-xs">
                                           <div className="font-bold text-blue-800 dark:text-blue-300">{viewingInnovation.machine.name}</div>
                                           <div className="flex justify-between mt-1 text-blue-600 dark:text-blue-400">
                                               <span>{t('machineCost')}: {formatCurrency(viewingInnovation.machine.cost)}</span>
@@ -1656,11 +1656,11 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                   {t('productivityYield')}
                               </h4>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                  <div className="bg-gray-50 dark:bg-black p-3 rounded-lg border border-gray-100 dark:border-slate-800">
+                                  <div className="bg-gray-50 dark:bg-slate-900 p-3 rounded-lg border border-gray-100 dark:border-slate-800">
                                       <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">{t('productivityBefore')}</div>
                                       <div className="text-lg font-bold dark:text-slate-200">{viewingInnovation.productivityBefore || 0} {t('unitsAbbr')}</div>
                                   </div>
-                                  <div className="bg-gray-50 dark:bg-black p-3 rounded-lg border border-gray-100 dark:border-slate-800">
+                                  <div className="bg-gray-50 dark:bg-slate-900 p-3 rounded-lg border border-gray-100 dark:border-slate-800">
                                       <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">{t('productivityAfter')}</div>
                                       <div className="text-lg font-bold dark:text-slate-200">{viewingInnovation.productivityAfter || 0} {t('unitsAbbr')}</div>
                                   </div>
@@ -1696,7 +1696,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                               )}
 
                               {viewingInnovation.unitProductCost && viewingInnovation.unitProductCost > 0 && (
-                                  <div className="mt-4 p-4 bg-gray-50 dark:bg-black border border-gray-100 dark:border-slate-800 rounded-lg">
+                                  <div className="mt-4 p-4 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-lg">
                                       <div className="grid grid-cols-2 gap-4">
                                           <div>
                                               <div className="text-[10px] text-gray-400 uppercase font-bold">{t('costPerUnit')} ({t('current')})</div>
@@ -1727,10 +1727,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                           <span>{t('author', { name: usersMap[viewingInnovation.authorId || ''] || '...' })}</span>
                       </div>
                   </div>
-                  <div className="p-4 bg-gray-50 dark:bg-black border-t dark:border-slate-700 flex justify-end">
+                  <div className="p-4 bg-gray-50 dark:bg-slate-900 border-t dark:border-slate-700 flex justify-end">
                       <button 
                         onClick={() => setViewingInnovation(null)}
-                        className="px-6 py-2 bg-gray-800 dark:bg-black text-white rounded-lg font-bold hover:bg-gray-900 dark:hover:bg-slate-600 transition-colors"
+                        className="px-6 py-2 bg-gray-800 dark:bg-slate-900 text-white rounded-lg font-bold hover:bg-gray-900 dark:hover:bg-slate-600 transition-colors"
                       >
                           {t('close')}
                       </button>
@@ -1742,7 +1742,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
       {/* Delete Confirmation Modal */}
       {deleteConfirmationId && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">{t('confirmDeletion')}</h3>
                 <p className="text-gray-600 dark:text-slate-400 mb-6">
                     {t('confirmDeleteInnovation')}
@@ -1750,7 +1750,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                 <div className="flex justify-end gap-3">
                     <button 
                         onClick={() => setDeleteConfirmationId(null)}
-                        className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-black hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors border dark:border-slate-700"
+                        className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors border dark:border-slate-700"
                     >
                         {t('cancel')}
                     </button>

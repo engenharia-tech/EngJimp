@@ -1265,7 +1265,7 @@ export const SEOManager: React.FC<SEOManagerProps> = ({ currentUser, theme }) =>
                           {task.title}
                         </p>
                         <div className="flex items-center gap-3 mt-1.5">
-                          <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                          <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
                             task.priority === 'HIGH' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
                             task.priority === 'MEDIUM' ? 'bg-orange-500/10 text-orange-500 border-orange-500/25' :
                             'bg-blue-500/10 text-blue-500 border-blue-500/20'

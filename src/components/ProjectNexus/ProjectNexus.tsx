@@ -152,9 +152,9 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-black overflow-hidden">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900 overflow-hidden">
       {/* Top Header - Independent from Projects */}
-      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-black shadow-sm">
+      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-blue-600 text-white rounded-lg shadow-blue-200 shadow-lg">
             <GanttIcon size={20} />
@@ -190,7 +190,7 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
       </div>
 
       {/* Main Tabs */}
-      <div className="px-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black flex items-center overflow-x-auto no-scrollbar">
+      <div className="px-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center overflow-x-auto no-scrollbar">
         <nav className="flex gap-1">
           <TabButton 
             active={activeTab === 'gantt'} 

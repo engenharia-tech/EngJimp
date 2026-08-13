@@ -146,7 +146,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-black rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] border border-gray-100 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] border border-gray-100 dark:border-slate-700">
         {/* Header */}
         <div className="bg-indigo-600 dark:bg-indigo-700 p-6 text-white flex justify-between items-start">
             <div>
@@ -166,7 +166,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
 
         <div className="p-6 overflow-y-auto space-y-6">
             {/* Editable Info */}
-            <div className="bg-gray-50 dark:bg-black p-4 rounded-lg border border-gray-100 dark:border-slate-700 space-y-3">
+            <div className="bg-gray-50 dark:bg-slate-900 p-4 rounded-lg border border-gray-100 dark:border-slate-700 space-y-3">
                 <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 pb-2 mb-2">
                     <span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">Informações Pessoais</span>
                     <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-full flex items-center">
@@ -182,7 +182,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                             type="text" 
                             value={name}
                             onChange={e => setName(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-slate-900 dark:text-white"
                         />
                     </div>
                     <div>
@@ -191,7 +191,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                             type="text" 
                             value={surname}
                             onChange={e => setSurname(e.target.value.replace(/[^a-zA-ZÀ-ÿ\s]/g, ''))}
-                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-slate-900 dark:text-white"
                         />
                     </div>
                 </div>
@@ -204,7 +204,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                         type="email" 
                         value={email}
                         onChange={e => setEmail(e.target.value)}
-                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
+                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-slate-900 dark:text-white"
                     />
                 </div>
 
@@ -216,7 +216,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                         type="text" 
                         value={phone}
                         onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
-                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-black dark:text-white"
+                        className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white dark:bg-slate-900 dark:text-white"
                         placeholder="Somente números"
                     />
                 </div>
@@ -235,7 +235,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                             type="password" 
                             value={currentPasswordInput}
                             onChange={e => setCurrentPasswordInput(e.target.value)}
-                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-black dark:text-white"
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-slate-900 dark:text-white"
                             placeholder="Digite sua senha atual para confirmar alterações"
                             required
                         />
@@ -247,7 +247,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                             type="password" 
                             value={newPassword}
                             onChange={e => setNewPassword(e.target.value)}
-                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-black dark:text-white"
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-slate-900 dark:text-white"
                             placeholder="Digite a nova senha para alterar"
                         />
                     </div>
@@ -257,7 +257,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                             type="password" 
                             value={confirmPassword}
                             onChange={e => setConfirmPassword(e.target.value)}
-                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-black dark:text-white"
+                            className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-slate-900 dark:text-white"
                             placeholder="Confirme a nova senha"
                         />
                     </div>
@@ -298,7 +298,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-black flex justify-end gap-3">
+        <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 flex justify-end gap-3">
             <button 
                 onClick={onClose}
                 className="px-4 py-2 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
