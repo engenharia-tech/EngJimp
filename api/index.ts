@@ -446,6 +446,75 @@ app.post("/api/auth/set-password", async (req, res) => {
   return res.json({ success: true });
 });
 
+// ============================================================
+// GESTAO DE USUARIOS (mediada pelo servidor) — C1 da auditoria.
+// Escritas em `users` param de sair do navegador. O servidor confere o
+// CARGO no cracha (JWT) e escreve via service_role. Assim, um projetista
+// nao pode mais mudar o proprio cargo p/ CEO nem sobrescrever a senha de
+// ninguem falando direto com o banco.
+// ============================================================
+const ADMIN_ROLES = ["GESTOR", "CEO", "COORDENADOR"];
+
+// POST /api/users/save { mode: 'create'|'update', user }
+app.post("/api/users/save", async (req, res) => {
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+
+  const { mode, user } = req.body || {};
+  if (!user || !user.username) return res.status(400).json({ success: false, error: "Dados incompletos." });
+  const isAdmin = ADMIN_ROLES.includes(claims.app_role);
+  const isSelf = !!user.id && user.id === claims.sub;
+
+  if (mode === "create") {
+    if (!isAdmin) return res.status(403).json({ success: false, error: "Sem permissao para criar usuarios." });
+    const { data: existing } = await admin.from("users").select("id").ilike("username", user.username).limit(1);
+    if (existing && existing.length) return res.json({ success: false, message: "Nome de usuário já existe." });
+    const { error } = await admin.from("users").insert([{
+      id: user.id, name: user.name, surname: user.surname, email: user.email, phone: user.phone,
+      username: user.username, password: user.password, role: user.role, salary: user.salary || 0,
+    }]);
+    if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
+    return res.json({ success: true });
+  }
+
+  // update
+  if (!user.id) return res.status(400).json({ success: false, error: "id ausente." });
+  if (!isAdmin && !isSelf) return res.status(403).json({ success: false, error: "Sem permissao." });
+  // Todos podem editar dados de contato; SO admin muda username/role/salary/senha.
+  const patch: any = { name: user.name, surname: user.surname, email: user.email, phone: user.phone };
+  if (isAdmin) {
+    patch.username = user.username;
+    patch.role = user.role;
+    patch.salary = user.salary || 0;
+    if (user.password) patch.password = user.password;
+  }
+  const { error } = await admin.from("users").update(patch).eq("id", user.id);
+  if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
+  return res.json({ success: true });
+});
+
+// POST /api/users/delete { id } — so admin, nao pode excluir a si mesmo
+app.post("/api/users/delete", async (req, res) => {
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  if (!ADMIN_ROLES.includes(claims.app_role)) return res.status(403).json({ success: false, error: "Sem permissao." });
+
+  const { id } = req.body || {};
+  if (!id) return res.status(400).json({ success: false, error: "id ausente." });
+  if (id === claims.sub) return res.status(400).json({ success: false, error: "Nao e possivel excluir o proprio usuario." });
+
+  await admin.from("projects").update({ user_id: null }).eq("user_id", id);
+  await admin.from("innovations").update({ author_id: null }).eq("author_id", id);
+  const { data, error } = await admin.from("users").delete().eq("id", id).select();
+  if (error) return res.json({ success: false, message: `Erro ao excluir: ${error.message}` });
+  if (!data || data.length === 0) return res.json({ success: false, message: "Usuario nao encontrado." });
+  return res.json({ success: true });
+});
+
 // Global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Global Error:", err);

@@ -4,7 +4,7 @@ import { SEOKeyword, SEOMetric, SEOTask, SEOData } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser } from '../utils/userUtils';
-import { getAuthToken } from './authToken';
+import { getAuthToken, authHeaders } from './authToken';
 
 // Supabase Configuration
 const getSupabaseConfig = () => {
@@ -1594,125 +1594,55 @@ export const fetchUsers = async (): Promise<User[]> => {
 };
 
 // Updated signature to return detail info
+// Gestao de usuarios agora e MEDIADA PELO SERVIDOR (C1 da auditoria): o
+// navegador nao escreve mais direto na tabela users. O servidor confere o
+// cargo no cracha e escreve via service_role. Isso impede escalada de
+// privilegio (virar CEO) e tomada de conta (sobrescrever senha alheia).
 export const registerUser = async (user: User): Promise<{ success: boolean; message?: string }> => {
   try {
-    const { data: existing } = await supabase
-      .from('users')
-      .select('id')
-      .ilike('username', user.username)
-      .single();
-
-    if (existing) {
-        return { success: false, message: 'Nome de usuário já existe.' };
-    }
-
-    const { error } = await supabase.from('users').insert([{
-      id: user.id,
-      name: user.name,
-      surname: user.surname,
-      email: user.email,
-      phone: user.phone,
-      username: user.username,
-      password: user.password,
-      role: user.role,
-      salary: user.salary || 0
-    }]);
-
-    if (error) {
-        // Return the specific DB error to help debugging
-        return { success: false, message: `Erro DB: ${error.message}` };
-    }
-    
-    return { success: true };
+    const res = await fetch('/api/users/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ mode: 'create', user }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) return { success: true };
+    return { success: false, message: data.message || data.error || 'Erro ao criar usuário.' };
   } catch (error: any) {
     console.error("FAILED TO REGISTER USER", error);
-    return { success: false, message: error.message || 'Erro desconhecido.' };
+    return { success: false, message: 'Erro ao conectar ao servidor.' };
   }
 };
 
 export const updateUser = async (user: User): Promise<{ success: boolean; message?: string }> => {
   try {
-    const { error } = await supabase
-      .from('users')
-      .update({
-        name: user.name,
-        surname: user.surname,
-        email: user.email,
-        phone: user.phone,
-        username: user.username,
-        password: user.password,
-        role: user.role,
-        salary: user.salary || 0
-      })
-      .eq('id', user.id);
-
-    if (error) {
-      return { success: false, message: `Erro DB: ${error.message}` };
-    }
-    
-    return { success: true };
+    const res = await fetch('/api/users/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ mode: 'update', user }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) return { success: true };
+    return { success: false, message: data.message || data.error || 'Erro ao atualizar usuário.' };
   } catch (error: any) {
     console.error("FAILED TO UPDATE USER", error);
-    return { success: false, message: error.message || 'Erro desconhecido.' };
+    return { success: false, message: 'Erro ao conectar ao servidor.' };
   }
 };
 
 export const deleteUser = async (id: string): Promise<{ success: boolean; message?: string }> => {
   try {
-    // 1. Unlink from Projects (set user_id to null)
-    // We ignore errors here because the user might not have projects, or RLS might block update but we still want to try delete.
-    // However, if FK exists and is RESTRICT, this is crucial.
-    const { error: projError } = await supabase
-      .from('projects')
-      .update({ user_id: null })
-      .eq('user_id', id);
-    
-    if (projError) {
-        console.error("ERROR UNLINKING PROJECTS:", projError);
-        // We continue, hoping it's not a blocking FK constraint
-    }
-
-    // 2. Unlink from Innovations
-    const { error: innError } = await supabase
-      .from('innovations')
-      .update({ author_id: null })
-      .eq('author_id', id);
-
-    if (innError) {
-         console.error("ERROR UNLINKING INNOVATIONS:", innError);
-    }
-
-    // 3. Unlink from Issues
-    const { error: issueError } = await supabase
-      .from('issues')
-      .update({ reported_by: null })
-      .eq('reported_by', id);
-
-    if (issueError) {
-         console.error("ERROR UNLINKING ISSUES:", issueError);
-    }
-
-    // 4. Delete User
-    // Use select() to confirm deletion occurred (RLS check)
-    const { error, data } = await supabase.from('users').delete().eq('id', id).select();
-    
-    if (error) {
-      console.error("ERROR DELETING USER:", error);
-      return { success: false, message: `Erro ao excluir usuário: ${error.message}` };
-    }
-    
-    // Check if any row was actually deleted
-    if (!data || data.length === 0) {
-        return { 
-            success: false, 
-            message: "A exclusão falhou silenciosamente. Verifique se as Políticas de Segurança (RLS) do Supabase permitem que você exclua usuários." 
-        };
-    }
-    
-    return { success: true };
+    const res = await fetch('/api/users/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) return { success: true };
+    return { success: false, message: data.message || data.error || 'Erro ao excluir usuário.' };
   } catch (error: any) {
     console.error("FAILED TO DELETE USER", error);
-    return { success: false, message: error.message || 'Erro desconhecido.' };
+    return { success: false, message: 'Erro ao conectar ao servidor.' };
   }
 };
 
