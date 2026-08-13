@@ -58,6 +58,7 @@ const logoImg = '/logo.svg';
 const COMPANY_LOGO_URL = logoImg;
 
 import { Logo } from './components/Logo';
+import { Dialog } from './components/Dialog';
 import { ProjectNexus } from './components/ProjectNexus/ProjectNexus';
 import { ToastProvider, useToast } from './components/Toast';
 import { useLanguage } from './i18n/LanguageContext';
@@ -1889,28 +1890,31 @@ const AppContent: React.FC = () => {
 
           {/* Delete Confirmation Modal */}
           {deleteConfirmationId && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-                <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t('confirmDeletion').toUpperCase()}</h3>
-                    <p className="text-gray-600 dark:text-slate-400 mb-6">
-                        {t('confirmDeletionDesc').toUpperCase()}
-                    </p>
-                    <div className="flex justify-end gap-3">
-                        <button 
-                            onClick={() => setDeleteConfirmationId(null)}
-                            className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors"
-                        >
-                            {t('cancel').toUpperCase()}
-                        </button>
-                        <button 
-                            onClick={confirmDelete}
-                            className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors shadow-sm"
-                        >
-                            {t('yesDelete').toUpperCase()}
-                        </button>
-                    </div>
-                </div>
-            </div>
+            <Dialog
+              onClose={() => setDeleteConfirmationId(null)}
+              label={t('confirmDeletion')}
+              zClassName="z-50"
+              panelClassName="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 border dark:border-slate-700 outline-none"
+            >
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t('confirmDeletion').toUpperCase()}</h3>
+              <p className="text-gray-600 dark:text-slate-400 mb-6">
+                {t('confirmDeletionDesc').toUpperCase()}
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setDeleteConfirmationId(null)}
+                  className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors"
+                >
+                  {t('cancel').toUpperCase()}
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors shadow-sm"
+                >
+                  {t('yesDelete').toUpperCase()}
+                </button>
+              </div>
+            </Dialog>
           )}
 
           {/* User Profile Modal */}
