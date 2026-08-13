@@ -65,6 +65,68 @@ export const resolveLocalQueryFallback = (
     targetMonthName = yyyyMmMatch[0];
   }
 
+  // --- HANDLER: HORAS EXTRAS (horas além do normal) ---
+  // Precisa vir ANTES da ficha de entregas: a pergunta cita um usuário, mas a
+  // intenção é hora extra, não volume de projetos.
+  const isOvertimeQuery =
+    normalized.includes('hora extra') || normalized.includes('horas extra') ||
+    normalized.includes('esforco adicional') || normalized.includes('trabalho extra') ||
+    normalized.includes('overtime') || normalized.includes('alem do normal') ||
+    normalized.includes('alem das horas') || normalized.includes('acima do normal') ||
+    normalized.includes('fim de semana') || normalized.includes('final de semana') ||
+    ((normalized.includes('a mais') || normalized.includes('extra')) &&
+      (normalized.includes('hora') || normalized.includes('trabalh') || normalized.includes('normal')));
+
+  if (isOvertimeQuery) {
+    const target = mentionedUser || currentUser;
+    const isSelf = target.id === currentUser.id;
+    const activities = appState.operationalActivities || [];
+    const otItems: { start: string; secs: number }[] = [];
+    activities.forEach(a => {
+      if (a.userId === target.id && a.isOvertime && a.startTime) {
+        otItems.push({ start: a.startTime, secs: a.durationSeconds || 0 });
+      }
+    });
+    projects.forEach(p => {
+      if (p.userId === target.id && (p as any).isOvertime && p.startTime) {
+        otItems.push({ start: p.startTime, secs: p.totalActiveSeconds || 0 });
+      }
+    });
+    const inScope = targetMonthCode
+      ? otItems.filter(i => { const d = new Date(i.start); return String(d.getMonth() + 1).padStart(2, '0') === targetMonthCode; })
+      : otItems;
+    const byMonth: Record<string, { secs: number; n: number }> = {};
+    let totalSecs = 0, totalN = 0;
+    inScope.forEach(i => {
+      const d = new Date(i.start);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!byMonth[key]) byMonth[key] = { secs: 0, n: 0 };
+      byMonth[key].secs += i.secs; byMonth[key].n += 1;
+      totalSecs += i.secs; totalN += 1;
+    });
+    const totalH = (totalSecs / 3600).toFixed(1);
+    const whoDid = isSelf ? 'Você fez' : `${target.name} fez`;
+    const periodStr = targetMonthName ? ` em ${targetMonthName}` : '';
+    if (totalN === 0) {
+      return `### ⏱️ Horas Extras: ${target.name}${isSelf ? ' (Você)' : ''}
+
+Nenhuma hora extra registrada${periodStr} para ${isSelf ? 'você' : target.name}.
+
+_Hora extra = atividade marcada como "Hora Extra" + projeto marcado como hora extra._`;
+    }
+    const rows = Object.keys(byMonth).sort().map(k => `| ${k} | **${(byMonth[k].secs / 3600).toFixed(1)}h** | ${byMonth[k].n} |`).join('\n');
+    return `### ⏱️ Horas Extras — Horas Além do Normal: ${target.name}${isSelf ? ' (Você)' : ''}
+
+${whoDid} **${totalH}h** de hora extra${periodStr || ' no total registrado'}, em **${totalN}** lançamentos.
+
+| Mês | Horas extra | Lançamentos |
+|---|---|---|
+${rows}
+| **TOTAL** | **${totalH}h** | **${totalN}** |
+
+_Hora extra = atividade marcada como "Hora Extra" + projeto marcado como hora extra. Dados em tempo real do banco._`;
+  }
+
   // If a specific collaborator was named (excluding common "quem sou eu" questions)
   if (mentionedUser && !normalized.includes("quem sou eu") && !normalized.includes("meu nome")) {
     const isSelfStr = mentionedUser.id === currentUser.id ? " (Você)" : "";
@@ -633,9 +695,10 @@ const hasFactualIntent = (query: string, appState: AppState, currentUser: User):
            'quantos eu', 'meu volume', 'e eu?', 'meus lancamentos'])) return true;
   if (normalized.includes('quantos') && normalized.includes('projeto') &&
       any(['lancei', 'entreguei', 'fiz', 'liberei'])) return true;
-  // 6. Horas extras / esforco adicional
+  // 6. Horas extras / esforco adicional / horas alem do normal
   if (any(['hora extra', 'horas extras', 'esforco adicional', 'trabalho extra', 'esforco extra',
-           'trabalhei a mais', 'fim de semana', 'final de semana', 'finais de semana'])) return true;
+           'trabalhei a mais', 'trabalhou a mais', 'a mais', 'alem do normal', 'alem das horas',
+           'acima do normal', 'overtime', 'fim de semana', 'final de semana', 'finais de semana'])) return true;
   // 7. Quem sou eu / meu perfil
   if (any(['quem sou eu', 'quem eu sou', 'meu nome', 'qual o meu nome', 'meu perfil', 'minha conta'])) return true;
   // 8. Por que nao apareco no grafico
