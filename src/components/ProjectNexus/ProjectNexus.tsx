@@ -25,7 +25,7 @@ import { CalendarView } from './CalendarView';
 import { WorkloadView } from './WorkloadView';
 import { PeopleView } from './PeopleView';
 import { DashboardView } from './DashboardView';
-import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog } from '../../services/storageService';
+import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog, saveNexusHiddenUsers } from '../../services/storageService';
 import { User } from '../../types';
 
 interface ProjectNexusProps {
@@ -47,8 +47,6 @@ const ROLE_LABEL: Record<string, string> = {
   QUALIDADE: 'Qualidade',
 };
 
-const HIDDEN_USERS_KEY = 'nexus_hidden_user_ids';
-
 export type NexusTab = 'gantt' | 'kanban' | 'list' | 'calendar' | 'workload' | 'people' | 'dashboard';
 
 export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState, onRefresh, onOpenSettings, currentUser }) => {
@@ -61,23 +59,35 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
   const [editingTask, setEditingTask] = useState<GanttTask | null>(null);
 
   // Configurações do Nexus (engrenagem): pessoas ocultas nas visualizações.
-  // Persistido no navegador (localStorage) — não altera o banco.
+  // GLOBAL para todos — vindo do servidor (settings.nexusHiddenUsers), fonte
+  // única no estado. A gravação é mediada pelo servidor (admin/Edson).
   const [showNexusSettings, setShowNexusSettings] = useState(false);
-  const [hiddenUserIds, setHiddenUserIds] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(HIDDEN_USERS_KEY);
-      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-    } catch { return new Set<string>(); }
-  });
+  const hiddenUserIds = useMemo(
+    () => new Set<string>(state.settings?.nexusHiddenUsers || []),
+    [state.settings]
+  );
 
-  const persistHidden = (next: Set<string>) => {
-    setHiddenUserIds(next);
-    try { localStorage.setItem(HIDDEN_USERS_KEY, JSON.stringify([...next])); } catch { /* ignora */ }
+  // Mesma regra do servidor: só admin (GESTOR/CEO/COORDENADOR) ou o Edson editam.
+  const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
+  const canEditNexusSettings = isEdson || ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser?.role as string);
+
+  // Aplica a nova lista: otimista no estado + persiste no servidor; reverte se
+  // falhar (ex.: 403 para quem não é admin).
+  const applyHidden = async (nextIds: string[]) => {
+    if (!canEditNexusSettings) { addToast('Só administradores alteram quem aparece.', 'error'); return; }
+    const prev = state.settings?.nexusHiddenUsers || [];
+    onUpdateState({ ...state, settings: { ...state.settings, nexusHiddenUsers: nextIds } });
+    try {
+      await saveNexusHiddenUsers(nextIds);
+    } catch (e) {
+      onUpdateState({ ...state, settings: { ...state.settings, nexusHiddenUsers: prev } });
+      addToast('Não deu para salvar. Você tem permissão de administrador?', 'error');
+    }
   };
   const toggleUserHidden = (id: string) => {
     const next = new Set<string>(hiddenUserIds);
     if (next.has(id)) next.delete(id); else next.add(id);
-    persistHidden(next);
+    applyHidden([...next]);
   };
 
   // Estado com as pessoas ocultas removidas — usado só nas visões que listam
@@ -366,13 +376,18 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
             <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
               <div className="flex items-center justify-between mb-1.5">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Pessoas nas visualizações</h3>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => persistHidden(new Set())} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">Mostrar todas</button>
-                  <span className="text-slate-300 dark:text-slate-700">·</span>
-                  <button onClick={() => persistHidden(new Set(state.users.map(u => u.id)))} className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:underline">Ocultar todas</button>
-                </div>
+                {canEditNexusSettings && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => applyHidden([])} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">Mostrar todas</button>
+                    <span className="text-slate-300 dark:text-slate-700">·</span>
+                    <button onClick={() => applyHidden(state.users.map(u => u.id))} className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:underline">Ocultar todas</button>
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Desmarque quem não deve aparecer na <b className="font-semibold text-slate-600 dark:text-slate-300">Carga de trabalho</b> e em <b className="font-semibold text-slate-600 dark:text-slate-300">Pessoas</b>.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Desmarque quem não deve aparecer na <b className="font-semibold text-slate-600 dark:text-slate-300">Carga de trabalho</b> e em <b className="font-semibold text-slate-600 dark:text-slate-300">Pessoas</b>. Vale <b className="font-semibold text-slate-600 dark:text-slate-300">para todos</b>.</p>
+              {!canEditNexusSettings && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 mb-3">Somente leitura — apenas administradores alteram quem aparece.</p>
+              )}
 
               <div className="space-y-1.5">
                 {state.users.map(u => {
@@ -381,7 +396,8 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
                     <button
                       key={u.id}
                       onClick={() => toggleUserHidden(u.id)}
-                      className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg border transition-colors text-left ${hidden ? 'border-slate-100 dark:border-slate-800 bg-transparent' : 'border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/30'}`}
+                      disabled={!canEditNexusSettings}
+                      className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg border transition-colors text-left ${canEditNexusSettings ? '' : 'cursor-default'} ${hidden ? 'border-slate-100 dark:border-slate-800 bg-transparent' : 'border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/30'}`}
                     >
                       <div className={`w-8 h-8 rounded-full grid place-items-center text-[11px] font-bold uppercase shrink-0 ${hidden ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'}`}>{(u.name || '?').charAt(0)}</div>
                       <div className="min-w-0 flex-1">
@@ -402,7 +418,7 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
 
             <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
               <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                {hiddenUserIds.size > 0 ? `${hiddenUserIds.size} oculta(s) · salvo neste navegador` : 'Todas visíveis · salvo neste navegador'}
+                {hiddenUserIds.size > 0 ? `${hiddenUserIds.size} oculta(s) · vale para todos` : 'Todas visíveis · vale para todos'}
               </span>
               {onOpenSettings && (
                 <button onClick={() => { setShowNexusSettings(false); onOpenSettings(); }} className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0">Config. do sistema →</button>
