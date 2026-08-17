@@ -75,7 +75,7 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
     try { localStorage.setItem(HIDDEN_USERS_KEY, JSON.stringify([...next])); } catch { /* ignora */ }
   };
   const toggleUserHidden = (id: string) => {
-    const next = new Set(hiddenUserIds);
+    const next = new Set<string>(hiddenUserIds);
     if (next.has(id)) next.delete(id); else next.add(id);
     persistHidden(next);
   };
