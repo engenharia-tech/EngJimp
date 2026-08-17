@@ -1,23 +1,17 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Filter, 
-  Download,
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import {
+  Filter,
   Calendar,
   AlertCircle,
-  Clock,
   User as UserIcon,
-  Search,
   ChevronDown
 } from 'lucide-react';
-import { 
-  format, 
-  addMonths, 
-  subMonths, 
-  startOfMonth, 
-  eachDayOfInterval, 
-  isSameDay, 
+import {
+  format,
+  addMonths,
+  startOfMonth,
+  eachDayOfInterval,
+  isSameDay,
   isWithinInterval,
   parseISO,
   isWeekend,
@@ -38,13 +32,44 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
 
   const timelineInterval = useMemo(() => {
     const start = startOfMonth(currentDate);
-    const end = addMonths(start, 3);
+    // Fecha exatamente no fim do 3o mes: evita um bloco de mes de 1 dia so
+    // (ex.: 01/08) transbordando o rotulo na ponta direita.
+    const end = addDays(addMonths(start, 3), -1);
     return { start, end };
   }, [currentDate]);
 
   const days = useMemo(() => {
     return eachDayOfInterval({ start: timelineInterval.start, end: timelineInterval.end });
   }, [timelineInterval]);
+
+  // Posição de "hoje" na grade (px). A coluna de nome tem 16rem (256px).
+  const todayLeft = differenceInDays(new Date(), timelineInterval.start) * zoomLevel;
+
+  // Refs para rolar até HOJE e manter o cabeçalho de dias sincronizado com o corpo.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const headerScrollRef = useRef<HTMLDivElement>(null);
+  const hasScrolled = useRef(false);
+
+  const scrollToToday = (smooth = true) => {
+    const target = Math.max(0, todayLeft - 80);
+    contentRef.current?.scrollTo({ left: target, behavior: smooth ? 'smooth' : 'auto' });
+    if (headerScrollRef.current) headerScrollRef.current.scrollLeft = target;
+  };
+
+  // Abre na DATA ATUAL (com uma folga à esquerda) assim que a grade carrega.
+  useEffect(() => {
+    if (!hasScrolled.current && contentRef.current) {
+      const target = Math.max(0, todayLeft - 80);
+      contentRef.current.scrollLeft = target;
+      if (headerScrollRef.current) headerScrollRef.current.scrollLeft = target;
+      hasScrolled.current = true;
+    }
+  }, [state.users.length, todayLeft]);
+
+  // Mantém o cabeçalho de dias acompanhando a rolagem horizontal do corpo.
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (headerScrollRef.current) headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+  };
 
   const getUserWorkloadForDay = (userId: string, day: Date) => {
     let total = 0;
@@ -83,7 +108,9 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
                 3 meses <ChevronDown size={14} />
               </div>
            </div>
-           <button className="text-xs font-black text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase tracking-widest">Dar o retorno</button>
+           <button onClick={() => scrollToToday(true)} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2.5 py-1 rounded-lg transition-colors uppercase tracking-wide">
+             <Calendar size={14} /> Ir para hoje
+           </button>
         </div>
 
         <div className="flex items-center gap-6">
@@ -109,45 +136,59 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
             <div className="w-64 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 p-3 flex items-end">
                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Recurso</span>
             </div>
-            <div className="flex-grow overflow-hidden flex flex-col">
-               <div className="flex h-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                  <div className="px-4 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800 uppercase tracking-widest">Abril 2026</div>
-                  <div className="px-4 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Maio 2026</div>
+            <div ref={headerScrollRef} className="flex-grow overflow-hidden flex flex-col">
+               <div className="flex h-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 min-w-max">
+                  {(() => {
+                    const months: { label: string, days: number }[] = [];
+                    let cur: string | null = null; let cnt = 0;
+                    days.forEach(day => {
+                      const m = format(day, 'MMMM yyyy', { locale: ptBR });
+                      if (m !== cur) { if (cur) months.push({ label: cur, days: cnt }); cur = m; cnt = 1; }
+                      else cnt++;
+                    });
+                    if (cur) months.push({ label: cur, days: cnt });
+                    return months.map((m, i) => (
+                      <div key={i} className="flex items-center px-4 py-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800 uppercase tracking-wide" style={{ width: `${m.days * zoomLevel}px` }}>{m.label}</div>
+                    ));
+                  })()}
                </div>
-               <div className="flex h-10 bg-white dark:bg-slate-900">
-                  {days.map((day, i) => (
-                    <div 
-                      key={i} 
-                      className={`flex-shrink-0 border-r border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center ${isSameDay(day, new Date()) ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-900/40' : isWeekend(day) ? 'bg-slate-50 dark:bg-slate-900/40' : ''}`}
+               <div className="flex h-10 bg-white dark:bg-slate-900 min-w-max">
+                  {days.map((day, i) => {
+                    const isToday = isSameDay(day, new Date());
+                    return (
+                    <div
+                      key={i}
+                      className={`flex-shrink-0 border-r border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center relative ${isToday ? 'bg-blue-500/[0.08] dark:bg-blue-400/10 border-blue-200 dark:border-blue-800/40' : isWeekend(day) ? 'bg-slate-50 dark:bg-slate-900/40' : ''}`}
                       style={{ width: `${zoomLevel}px` }}
                     >
-                      <span className={`text-[10px] font-bold ${isSameDay(day, new Date()) ? 'text-rose-500' : 'text-slate-300 dark:text-slate-600'}`}>
+                      <span className={`text-[11px] tabular-nums ${isToday ? 'font-bold text-blue-600 dark:text-blue-400' : 'font-medium text-slate-400 dark:text-slate-600'}`}>
                         {format(day, 'd')}
                       </span>
-                      {isSameDay(day, new Date()) && (
-                        <div className="absolute top-0 right-0 left-0 h-0.5 bg-rose-500" />
+                      {isToday && (
+                        <div className="absolute top-0 right-0 left-0 h-0.5 bg-blue-500" />
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                </div>
             </div>
          </div>
 
          {/* Grid Content */}
-         <div className="flex-grow overflow-auto flex flex-col relative no-scrollbar">
-            {/* Legend for "Today" line */}
-            <div 
-               className="absolute top-0 bottom-0 w-px bg-rose-400 z-10 pointer-events-none" 
-               style={{ left: `calc(16rem + ${differenceInDays(new Date(), timelineInterval.start) * zoomLevel}px)` }}
+         <div ref={contentRef} onScroll={handleScroll} className="flex-grow overflow-auto flex flex-col relative no-scrollbar">
+            {/* Linha do dia de HOJE */}
+            <div
+               className="absolute top-0 bottom-0 w-0.5 bg-blue-500 z-10 pointer-events-none"
+               style={{ left: `calc(16rem + ${todayLeft}px)` }}
             >
-               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-rose-400 text-white text-[10px] font-black px-1 py-0.5 rounded-t tracking-tighter uppercase whitespace-nowrap">Hoje</div>
+               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-blue-600 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-t whitespace-nowrap">Hoje</div>
             </div>
 
             {state.users.map(user => {
               const hasAlert = user.name === 'Edson Farias'; // Hardcoded matches Image 5 icons for visual parity
 
               return (
-                <div key={user.id} className="flex border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 group transition-colors">
+                <div key={user.id} className="flex min-w-max border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 group transition-colors">
                   <div className="w-64 flex-shrink-0 border-r border-slate-200 dark:border-slate-800 p-2 flex items-center justify-between sticky left-0 z-20 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80">
                     <div className="flex items-center gap-3">
                        <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700 uppercase overflow-hidden">
@@ -184,7 +225,7 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
             })}
 
             {/* "não atribuído" row */}
-            <div className="flex border-b border-slate-100 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 italic group transition-colors">
+            <div className="flex min-w-max border-b border-slate-100 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 italic group transition-colors">
                <div className="w-64 flex-shrink-0 border-r border-slate-200 dark:border-slate-800 p-2 flex items-center gap-3 sticky left-0 z-20 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80">
                   <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-600 border border-dashed border-slate-300 dark:border-slate-700 shadow-sm">
                     <UserIcon size={14} />

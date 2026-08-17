@@ -150,10 +150,6 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
               <Download size={16} />
               <span className="text-xs font-bold">Exportar</span>
            </div>
-           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors border border-slate-300 dark:border-slate-700 rounded px-2 py-1">
-              <span className="text-xs font-bold">Visualização</span>
-              <ChevronDown size={14} />
-           </div>
         </div>
       </div>
 
