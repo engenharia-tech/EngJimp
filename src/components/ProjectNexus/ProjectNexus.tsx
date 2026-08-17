@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { 
-  Settings, 
-  MoreHorizontal, 
+import React, { useState, useMemo } from 'react';
+import {
+  Settings,
+  MoreHorizontal,
   History,
   LayoutDashboard,
   Kanban,
@@ -10,7 +10,10 @@ import {
   Users2,
   BarChart3,
   LayoutList as GanttIcon,
-  Plus
+  Plus,
+  Eye,
+  EyeOff,
+  X
 } from 'lucide-react';
 import { AppState, GanttTask, GanttTaskStatus, TaskPriority } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
@@ -35,6 +38,17 @@ interface ProjectNexusProps {
 
 const generateId = () => crypto.randomUUID();
 
+const ROLE_LABEL: Record<string, string> = {
+  GESTOR: 'Gestor',
+  PROJETISTA: 'Projetista',
+  CEO: 'CEO',
+  COORDENADOR: 'Coordenador',
+  PROCESSOS: 'Processos',
+  QUALIDADE: 'Qualidade',
+};
+
+const HIDDEN_USERS_KEY = 'nexus_hidden_user_ids';
+
 export type NexusTab = 'gantt' | 'kanban' | 'list' | 'calendar' | 'workload' | 'people' | 'dashboard';
 
 export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState, onRefresh, onOpenSettings, currentUser }) => {
@@ -45,6 +59,34 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<GanttTask | null>(null);
+
+  // Configurações do Nexus (engrenagem): pessoas ocultas nas visualizações.
+  // Persistido no navegador (localStorage) — não altera o banco.
+  const [showNexusSettings, setShowNexusSettings] = useState(false);
+  const [hiddenUserIds, setHiddenUserIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(HIDDEN_USERS_KEY);
+      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
+
+  const persistHidden = (next: Set<string>) => {
+    setHiddenUserIds(next);
+    try { localStorage.setItem(HIDDEN_USERS_KEY, JSON.stringify([...next])); } catch { /* ignora */ }
+  };
+  const toggleUserHidden = (id: string) => {
+    const next = new Set(hiddenUserIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    persistHidden(next);
+  };
+
+  // Estado com as pessoas ocultas removidas — usado só nas visões que listam
+  // pessoas (Carga de trabalho e Pessoas). As demais telas veem todos os
+  // usuários (ex.: para atribuir tarefas).
+  const visibleState = useMemo(
+    () => ({ ...state, users: state.users.filter(u => !hiddenUserIds.has(u.id)) }),
+    [state, hiddenUserIds]
+  );
 
   const handleEditTask = (task: GanttTask) => {
     setEditingTask(task);
@@ -178,12 +220,15 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
           
           <div className="flex items-center gap-1">
             <button onClick={onRefresh} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 transition-colors" title="Atualizar dados"><History size={18} /></button>
-            <button 
-              onClick={onOpenSettings} 
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 transition-colors" 
-              title="Configurações do Sistema"
+            <button
+              onClick={() => setShowNexusSettings(true)}
+              className="relative p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 transition-colors"
+              title="Configurações do Nexus (pessoas na visualização)"
             >
               <Settings size={18} />
+              {hiddenUserIds.size > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold grid place-items-center">{hiddenUserIds.size}</span>
+              )}
             </button>
           </div>
         </div>
@@ -243,8 +288,8 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
         {activeTab === 'kanban' && <KanbanView state={state} onUpdateState={onUpdateState} onEditTask={handleEditTask} onRefresh={onRefresh} currentUser={currentUser} />}
         {activeTab === 'list' && <ListView state={state} onUpdateState={onUpdateState} onEditTask={handleEditTask} onRefresh={onRefresh} currentUser={currentUser} />}
         {activeTab === 'calendar' && <CalendarView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} currentUser={currentUser} />}
-        {activeTab === 'workload' && <WorkloadView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
-        {activeTab === 'people' && <PeopleView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'workload' && <WorkloadView state={visibleState} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
+        {activeTab === 'people' && <PeopleView state={visibleState} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
         {activeTab === 'dashboard' && <DashboardView state={state} onUpdateState={onUpdateState} onRefresh={onRefresh} />}
       </div>
 
@@ -291,7 +336,7 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
       )}
       {/* Global Task Editor Modal */}
       {isModalOpen && editingTask && (
-        <TaskEditorModal 
+        <TaskEditorModal
           isOpen={isModalOpen}
           task={editingTask}
           onClose={() => setIsModalOpen(false)}
@@ -300,6 +345,71 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
           users={state.users}
           tasks={state.ganttTasks}
         />
+      )}
+
+      {/* Configurações do Nexus (engrenagem) — pessoas exibidas nas visualizações */}
+      {showNexusSettings && (
+        <div
+          className="fixed inset-0 z-[200] flex justify-end bg-slate-900/40 backdrop-blur-sm"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowNexusSettings(false); }}
+        >
+          <div className="w-full max-w-sm h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col animate-in slide-in-from-right duration-300">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-600 text-white shadow-sm"><Settings size={16} /></div>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 leading-tight">Configurações do Nexus</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Preferências de visualização</p>
+              </div>
+              <button onClick={() => setShowNexusSettings(false)} className="ml-auto p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors" aria-label="Fechar"><X size={18} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+              <div className="flex items-center justify-between mb-1.5">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Pessoas nas visualizações</h3>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => persistHidden(new Set())} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">Mostrar todas</button>
+                  <span className="text-slate-300 dark:text-slate-700">·</span>
+                  <button onClick={() => persistHidden(new Set(state.users.map(u => u.id)))} className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:underline">Ocultar todas</button>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Desmarque quem não deve aparecer na <b className="font-semibold text-slate-600 dark:text-slate-300">Carga de trabalho</b> e em <b className="font-semibold text-slate-600 dark:text-slate-300">Pessoas</b>.</p>
+
+              <div className="space-y-1.5">
+                {state.users.map(u => {
+                  const hidden = hiddenUserIds.has(u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => toggleUserHidden(u.id)}
+                      className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg border transition-colors text-left ${hidden ? 'border-slate-100 dark:border-slate-800 bg-transparent' : 'border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/30'}`}
+                    >
+                      <div className={`w-8 h-8 rounded-full grid place-items-center text-[11px] font-bold uppercase shrink-0 ${hidden ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'}`}>{(u.name || '?').charAt(0)}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className={`text-sm font-medium truncate ${hidden ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{u.name}{u.surname ? ` ${u.surname}` : ''}</div>
+                        <div className="text-[11px] text-slate-400 dark:text-slate-500">{ROLE_LABEL[u.role] || u.role}</div>
+                      </div>
+                      {hidden
+                        ? <EyeOff size={16} className="text-slate-400 dark:text-slate-500 shrink-0" />
+                        : <Eye size={16} className="text-blue-500 shrink-0" />}
+                    </button>
+                  );
+                })}
+                {state.users.length === 0 && (
+                  <p className="text-sm text-slate-400 text-center py-6">Nenhum usuário cadastrado.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                {hiddenUserIds.size > 0 ? `${hiddenUserIds.size} oculta(s) · salvo neste navegador` : 'Todas visíveis · salvo neste navegador'}
+              </span>
+              {onOpenSettings && (
+                <button onClick={() => { setShowNexusSettings(false); onOpenSettings(); }} className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0">Config. do sistema →</button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
