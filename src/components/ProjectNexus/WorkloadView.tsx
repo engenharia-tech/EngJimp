@@ -3,7 +3,9 @@ import {
   Calendar,
   AlertCircle,
   User as UserIcon,
-  ChevronDown
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import {
   format,
@@ -119,26 +121,10 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
              <Calendar size={14} /> Ir para hoje
            </button>
         </div>
-
-        <div className="flex items-center gap-3">
-           <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">Zoom</span>
-           <div className="inline-flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
-             {[{ v: 28, l: 'Compacto' }, { v: 40, l: 'Normal' }, { v: 56, l: 'Amplo' }].map(o => (
-               <button
-                 key={o.v}
-                 onClick={() => setZoomLevel(o.v)}
-                 className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${zoomLevel === o.v ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-                 title={`Largura do dia: ${o.l}`}
-               >
-                 {o.l}
-               </button>
-             ))}
-           </div>
-        </div>
       </div>
 
       {/* Resource Grid Header */}
-      <div className="flex-grow flex flex-col overflow-hidden">
+      <div className="flex-grow flex flex-col overflow-hidden relative">
          <div className="flex flex-shrink-0 sticky top-0 z-40 bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
             <div className="w-64 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 p-3 flex items-end">
                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Recurso</span>
@@ -245,6 +231,11 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
                  ))}
                </div>
             </div>
+         </div>
+         {/* Navegação flutuante — rolar pelos dias (igual ao Gantt) */}
+         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 z-40 pointer-events-none">
+           <button onClick={() => contentRef.current?.scrollBy({ left: -zoomLevel * 7, behavior: 'smooth' })} className="p-2.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur shadow-xl rounded-full border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto" title="Dias anteriores"><ChevronLeft size={22} /></button>
+           <button onClick={() => contentRef.current?.scrollBy({ left: zoomLevel * 7, behavior: 'smooth' })} className="p-2.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur shadow-xl rounded-full border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto" title="Próximos dias"><ChevronRight size={22} /></button>
          </div>
       </div>
     </div>
