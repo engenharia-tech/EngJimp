@@ -327,7 +327,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       supabase.from('operational_activities').select('*').order('start_time', { ascending: false }),
       supabase.from('project_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('users').select(USER_SAFE_COLUMNS),
-      supabase.from('gantt_tasks').select('*').order('order', { ascending: true }),
+      supabase.from('gantt_tasks').select('*').is('deleted_at', null).order('order', { ascending: true }),
       supabase.from('audit_logs').select('*').order('timestamp', { ascending: false }).limit(500),
       fetchSettings(),
       fetchAutoHourlyCost(),   // [12] media custo/hora (servidor, sem salario individual)
@@ -511,35 +511,7 @@ export const fetchAppState = async (): Promise<AppState> => {
     } catch (e) { console.error("ProjectRequests mapping error:", e); }
 
     try {
-      ganttTasks = (ganttTasksRes.data || []).map((t: any) => {
-        try {
-          return {
-            id: t.id,
-            title: t.title,
-            description: t.description,
-            parentId: t.parent_id || null, // Ensure null fallback
-            startDate: t.start_date,
-            endDate: t.end_date,
-            color: t.color,
-            isMilestone: t.is_milestone,
-            assignedTo: parseSafeJson(t.assigned_to, []),
-            progress: t.progress || 0,
-            attachments: parseSafeJson(t.attachments, []),
-            createdAt: t.created_at,
-            updatedAt: t.updated_at,
-            workload: t.workload,
-            reports: t.reports,
-            order: t.order,
-            status: t.status || 'todo',
-            priority: t.priority || 'medium',
-            category: t.category,
-            dependencies: parseSafeJson(t.dependencies, [])
-          };
-        } catch (e) {
-          console.error("Mapping error for task:", t.id, e);
-          return null;
-        }
-      }).filter(Boolean) as GanttTask[];
+      ganttTasks = (ganttTasksRes.data || []).map(mapGanttRow).filter(Boolean) as GanttTask[];
       console.log(`FETCHED ${ganttTasks.length} GANTT TASKS`);
     } catch (e) { console.error("GanttTasks mapping error:", e); }
 
@@ -2165,6 +2137,38 @@ export const removeDuplicateProjects = async (): Promise<{ success: boolean; mes
   return { success: true, message: `Removidos ${deletedCount} duplicatas.`, count: deletedCount };
 };
 
+// Mapeia uma linha do banco (snake_case) para GanttTask. Reaproveitado pelo
+// fetchAppState e pelo fetchDeletedGanttTasks.
+export const mapGanttRow = (t: any): GanttTask | null => {
+  try {
+    return {
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      parentId: t.parent_id || null,
+      startDate: t.start_date,
+      endDate: t.end_date,
+      color: t.color,
+      isMilestone: t.is_milestone,
+      assignedTo: parseSafeJson(t.assigned_to, []),
+      progress: t.progress || 0,
+      attachments: parseSafeJson(t.attachments, []),
+      createdAt: t.created_at,
+      updatedAt: t.updated_at,
+      workload: t.workload,
+      reports: t.reports,
+      order: t.order,
+      status: t.status || 'todo',
+      priority: t.priority || 'medium',
+      category: t.category,
+      dependencies: parseSafeJson(t.dependencies, [])
+    } as GanttTask;
+  } catch (e) {
+    console.error("Mapping error for gantt task:", t?.id, e);
+    return null;
+  }
+};
+
 export const addGanttTask = async (task: GanttTask): Promise<AppState> => {
   try {
     const payload: any = {
@@ -2379,17 +2383,62 @@ export const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Prom
   }
 };
 
+// SOFT-DELETE: marca deleted_at em vez de apagar. A tarefa sai do gráfico e da
+// lista ativa, mas continua no banco — pesquisável e restaurável no painel
+// "Excluídas". Ver fetchDeletedGanttTasks / restoreGanttTask / purgeGanttTask.
 export const deleteGanttTask = async (taskId: string): Promise<AppState> => {
   try {
     const { error } = await supabase
       .from('gantt_tasks')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', taskId);
 
     if (error) throw error;
     return fetchAppState();
   } catch (error) {
-    console.error("FAILED TO DELETE GANTT TASK", error);
+    console.error("FAILED TO SOFT-DELETE GANTT TASK", error);
+    throw error;
+  }
+};
+
+// Busca as tarefas EXCLUÍDAS (soft-deleted) para o painel "Excluídas".
+export const fetchDeletedGanttTasks = async (): Promise<GanttTask[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('gantt_tasks')
+      .select('*')
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapGanttRow).filter(Boolean) as GanttTask[];
+  } catch (error) {
+    console.error("FAILED TO FETCH DELETED GANTT TASKS", error);
+    return [];
+  }
+};
+
+// Restaura uma tarefa excluída (deleted_at = null) — volta ao gráfico/lista.
+export const restoreGanttTask = async (taskId: string): Promise<AppState> => {
+  try {
+    const { error } = await supabase
+      .from('gantt_tasks')
+      .update({ deleted_at: null })
+      .eq('id', taskId);
+    if (error) throw error;
+    return fetchAppState();
+  } catch (error) {
+    console.error("FAILED TO RESTORE GANTT TASK", error);
+    throw error;
+  }
+};
+
+// Exclusão PERMANENTE (purga) — só a partir do painel "Excluídas".
+export const purgeGanttTask = async (taskId: string): Promise<void> => {
+  try {
+    const { error } = await supabase.from('gantt_tasks').delete().eq('id', taskId);
+    if (error) throw error;
+  } catch (error) {
+    console.error("FAILED TO PURGE GANTT TASK", error);
     throw error;
   }
 };

@@ -146,13 +146,16 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     }
   }, [state.ganttTasks]);
 
-  // Auto-scroll to today on mount
+  // Rola para o INÍCIO das tarefas ativas assim que carregam (a janela já
+  // começa logo antes da primeira tarefa). Antes rolava para "hoje", que podia
+  // ficar longe das barras.
+  const hasAutoScrolled = useRef(false);
   useEffect(() => {
-    if (rowsAreaRef.current) {
-      const scrollPos = todayLeft - 200; // Show a bit before today
-      rowsAreaRef.current.scrollLeft = Math.max(0, scrollPos);
+    if (!hasAutoScrolled.current && rowsAreaRef.current && state.ganttTasks.length > 0) {
+      rowsAreaRef.current.scrollLeft = 0;
+      hasAutoScrolled.current = true;
     }
-  }, []); // Only once
+  }, [state.ganttTasks.length]);
 
   const [sidebarWidth, setSidebarWidth] = useState(window.innerWidth < 768 ? 180 : 450);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -300,11 +303,31 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     return isValid(d) ? d : new Date();
   };
 
+  // Tarefas que DE FATO entram no gráfico: ativas (a fazer + em andamento).
+  // Concluídas, fechadas e excluídas saem do gráfico (ficam nos painéis).
+  const activeForTimeline = useMemo(
+    () => state.ganttTasks.filter(t => t.status !== GanttTaskStatus.CLOSED && t.status !== GanttTaskStatus.DONE),
+    [state.ganttTasks]
+  );
+
+  // A janela de tempo se AJUSTA ao período real das tarefas ativas (+ hoje),
+  // com folga. Antes abria fixo em torno de "hoje" e as barras (no passado)
+  // ficavam fora da tela — o gráfico parecia vazio.
   const timelineInterval = useMemo(() => {
-    const start = startOfMonth(subMonths(currentDate, 1));
-    const end = addMonths(start, 6);
+    const times: number[] = [new Date().getTime()];
+    activeForTimeline.forEach(t => {
+      const s = parseISO(t.startDate); const e = parseISO(t.endDate);
+      if (isValid(s)) times.push(s.getTime());
+      if (isValid(e)) times.push(e.getTime());
+    });
+    const minD = new Date(Math.min(...times));
+    const maxD = new Date(Math.max(...times));
+    const start = startOfMonth(addDays(minD, -8));
+    let end = addDays(maxD, 12);
+    const minEnd = addMonths(start, 2); // largura mínima de ~2 meses
+    if (end < minEnd) end = minEnd;
     return { start, end };
-  }, [currentDate]);
+  }, [activeForTimeline]);
 
   const days = useMemo(() => {
     return eachDayOfInterval({ start: timelineInterval.start, end: timelineInterval.end });
@@ -312,11 +335,13 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
 
   const todayLeft = differenceInDays(new Date(), timelineInterval.start) * zoomLevel;
 
-  const { rootTasks, closedTasks } = useMemo(() => {
+  const { rootTasks, closedTasks, doneTasks } = useMemo(() => {
     const buildTree = (parentId: string | null = null, depth = 0): (GanttTask & { children: any[] })[] => {
       if (depth > 20) return []; // Safety recursion break
       return state.ganttTasks
-        .filter(t => t.status !== GanttTaskStatus.CLOSED) // Filter out closed tasks from the active tree
+        // Ativo = a fazer + em andamento. Concluídas (done) e fechadas saem do
+        // gráfico e vão para os painéis pesquisáveis.
+        .filter(t => t.status !== GanttTaskStatus.CLOSED && t.status !== GanttTaskStatus.DONE)
         .filter(t => {
           // A task is a root task if its parentId is null, empty, or points to a non-existent task
           if (parentId === null) {
@@ -337,7 +362,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     
     return {
       rootTasks: buildTree(null),
-      closedTasks: state.ganttTasks.filter(t => t.status === GanttTaskStatus.CLOSED)
+      closedTasks: state.ganttTasks.filter(t => t.status === GanttTaskStatus.CLOSED),
+      doneTasks: state.ganttTasks.filter(t => t.status === GanttTaskStatus.DONE)
     };
   }, [state.ganttTasks]);
 
