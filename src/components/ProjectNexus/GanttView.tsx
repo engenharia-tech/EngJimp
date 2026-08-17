@@ -122,6 +122,14 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   }, []);
   useEffect(() => { reloadDeleted(); }, [reloadDeleted, state.ganttTasks.length]);
 
+  // Fecha o painel de arquivo (Concluídas/Excluídas) com Escape.
+  useEffect(() => {
+    if (!archiveView) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setArchiveView(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [archiveView]);
+
   const [interactingTask, setInteractingTask] = useState<{
     id: string;
     type: 'drag' | 'resize';
@@ -255,7 +263,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
           });
         } catch (error) { 
           console.error("Gantt drag/resize sync error:", error);
-          alert("Erro ao sincronizar movimento: " + (error instanceof Error ? error.message : "Desconhecido"));
+          addToast("Não deu para sincronizar o movimento.", "error");
         }
       }
       setInteractingTask(null);
@@ -474,17 +482,23 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
 
     if (task.isMilestone) {
       return (
-        <div 
-          className="absolute h-full flex items-center justify-center group z-10"
+        <div
+          className="absolute h-full flex items-center group z-10"
           style={{ left: `${left}px`, width: `${zoomLevel}px` }}
         >
-          <div 
-            className="w-4 h-4 rotate-45 transform border-2 border-white dark:border-slate-900 shadow-lg transition-transform group-hover:scale-125" 
+          <div
+            className="mx-auto w-3.5 h-3.5 rotate-45 ring-2 ring-white dark:ring-slate-900 shadow-sm transition-transform group-hover:scale-125"
             style={{ backgroundColor: taskColor }}
           />
-          <div className="absolute top-0 left-full ml-3 opacity-0 group-hover:opacity-100 bg-slate-900 text-white text-[10px] px-2 py-1 rounded shadow-xl whitespace-nowrap z-50 pointer-events-none font-black transition-all">
-             {task.title || 'Marco'}
-          </div>
+          {zoomLevel >= 32 ? (
+            task.title && (
+              <span className="absolute left-full ml-2 text-[10px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap pointer-events-none">{task.title}</span>
+            )
+          ) : (
+            <div className="absolute top-0 left-full ml-3 opacity-0 group-hover:opacity-100 bg-slate-900 text-white text-[10px] px-2 py-1 rounded shadow-xl whitespace-nowrap z-50 pointer-events-none font-semibold transition-all">
+               {task.title || 'Marco'}
+            </div>
+          )}
         </div>
       );
     }
@@ -512,42 +526,48 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       : null;
     const assigneeInitial = firstAssignee ? (firstAssignee.name?.charAt(0) || '?').toUpperCase() : null;
     const pct = Math.min(100, Math.max(0, task.progress || 0));
+    // Cor do texto pela LUMINÂNCIA da barra: branco em cores escuras, ardósia em
+    // cores claras (âmbar/ciano) — antes o título branco sumia sobre elas.
+    const lum = parseInt(taskColor.slice(1, 3), 16) * 0.299 + parseInt(taskColor.slice(3, 5), 16) * 0.587 + parseInt(taskColor.slice(5, 7), 16) * 0.114;
+    const onDark = lum <= 150; // fundo escuro → texto branco
+    const isInteracting = interactingTask?.id === task.id;
 
     return (
       <motion.div
         initial={{ opacity: 0, scaleX: 0.85 }}
         animate={{ opacity: 1, scaleX: 1 }}
         onMouseDown={(e) => { e.stopPropagation(); setInteractingTask({ id: task.id, type: 'drag', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate }); }}
-        className="task-bar absolute h-8 top-1 rounded-lg flex items-center cursor-grab active:cursor-grabbing group/bar z-10 overflow-hidden ring-1 ring-black/10 dark:ring-white/10 shadow-sm hover:shadow-lg hover:-translate-y-px transition-all"
+        className={`task-bar absolute h-8 top-1 rounded-lg flex items-center cursor-grab active:cursor-grabbing group/bar z-10 hover:z-30 ring-1 ring-black/10 dark:ring-white/10 shadow-sm hover:shadow-lg hover:-translate-y-px transition-[transform,box-shadow] duration-150 ${isInteracting ? 'z-30 ring-2 ring-blue-400 shadow-xl' : ''}`}
         style={{
           left: `${left}px`,
           width: `${width}px`,
           backgroundColor: taskColor,
           backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,.20), rgba(0,0,0,.10))',
+          transformOrigin: 'left center',
         }}
       >
         {/* trilho de progresso na base */}
-        <div className="absolute left-1.5 right-1.5 bottom-1 h-1 rounded-full bg-black/25 overflow-hidden">
-          <div className="h-full rounded-full bg-white/90 transition-all duration-700" style={{ width: `${pct}%` }} />
+        <div className={`absolute left-1.5 right-1.5 bottom-1 h-1 rounded-full overflow-hidden ${onDark ? 'bg-black/25' : 'bg-black/15'}`}>
+          <div className={`h-full rounded-full transition-all duration-700 ${onDark ? 'bg-white/90' : 'bg-slate-900/70'}`} style={{ width: `${pct}%` }} />
         </div>
 
         <div className="relative z-10 flex items-center gap-1.5 px-2.5 min-w-0 w-full">
-          <span className="text-[11px] font-semibold text-white truncate drop-shadow-sm">{task.title}</span>
+          <span className={`text-[11px] font-semibold truncate ${onDark ? 'text-white drop-shadow-sm' : 'text-slate-900'}`}>{task.title}</span>
           {width > 92 && (
-            <span className="ml-auto text-[10px] font-bold text-white/90 tabular-nums shrink-0 opacity-0 group-hover/bar:opacity-100 transition-opacity">{pct}%</span>
+            <span className={`ml-auto text-[10px] font-bold tabular-nums shrink-0 opacity-0 group-hover/bar:opacity-100 transition-opacity ${onDark ? 'text-white/90' : 'text-slate-900/80'}`}>{pct}%</span>
           )}
           {assigneeInitial && width > 62 && (
-            <span className={`shrink-0 w-5 h-5 rounded-full bg-white/25 ring-1 ring-white/50 text-white text-[9px] font-black grid place-items-center ${width > 92 ? '' : 'ml-auto'}`} title={firstAssignee?.name}>{assigneeInitial}</span>
+            <span className={`shrink-0 w-5 h-5 rounded-full grid place-items-center text-[9px] font-black ${onDark ? 'bg-white/25 ring-1 ring-white/50 text-white' : 'bg-slate-900/15 ring-1 ring-slate-900/25 text-slate-900'} ${width > 92 ? '' : 'ml-auto'}`} title={firstAssignee?.name}>{assigneeInitial}</span>
           )}
         </div>
 
         <div
           onMouseDown={(e) => { e.stopPropagation(); setInteractingTask({ id: task.id, type: 'resize', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate }); }}
-          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover/bar:opacity-100 bg-white/25 transition-opacity"
+          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover/bar:opacity-100 bg-white/25 rounded-r-lg transition-opacity"
         />
 
-        {/* Tooltip */}
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 border border-slate-700 text-white rounded-xl opacity-0 group-hover/bar:opacity-100 transition-all scale-90 group-hover/bar:scale-100 pointer-events-none whitespace-nowrap z-50 shadow-2xl">
+        {/* Tooltip — aparece no hover e também enquanto arrasta/redimensiona */}
+        <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 border border-slate-700 text-white rounded-xl transition-all pointer-events-none whitespace-nowrap z-50 shadow-2xl ${isInteracting ? 'opacity-100 scale-100' : 'opacity-0 scale-90 group-hover/bar:opacity-100 group-hover/bar:scale-100'}`}>
            <div className="flex items-center gap-2 mb-1">
              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: taskColor }} />
              <div className="font-semibold uppercase tracking-wider text-[10px] opacity-60">{getStatusLabel(task.status)}</div>
@@ -631,11 +651,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
 
   const getStatusColor = (status: GanttTaskStatus) => {
     switch (status) {
-      case GanttTaskStatus.TODO: return 'bg-slate-100 text-slate-600';
-      case GanttTaskStatus.IN_PROGRESS: return 'bg-amber-100 text-amber-600';
-      case GanttTaskStatus.DONE: return 'bg-cyan-100 text-cyan-600';
-      case GanttTaskStatus.CLOSED: return 'bg-emerald-100 text-emerald-600';
-      default: return 'bg-slate-100 text-slate-600';
+      case GanttTaskStatus.TODO: return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+      case GanttTaskStatus.IN_PROGRESS: return 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400';
+      case GanttTaskStatus.DONE: return 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400';
+      case GanttTaskStatus.CLOSED: return 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
+      default: return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
     }
   };
 
@@ -648,9 +668,6 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       default: return status;
     }
   };
-
-  const [showFiltroSidebar, setShowFiltroSidebar] = useState(false);
-  const [showCamposSidebar, setShowCamposSidebar] = useState(false);
 
   const handleUpdateField = async (taskId: string, field: string, value: any) => {
     const task = state.ganttTasks.find(t => t.id === taskId);
@@ -677,7 +694,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       });
     } catch (error) { 
       console.error("Gantt update field error:", error);
-      alert("Erro ao sincronizar alteração. " + (error instanceof Error ? error.message : "Verifique sua conexão."));
+      addToast("Não deu para sincronizar a alteração. Verifique a conexão.", "error");
       // Don't reload, let the optimistic state stay or suggest refresh
     }
   };
@@ -698,11 +715,12 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!window.confirm("Tem certeza que deseja excluir esta tarefa?")) return;
     try {
       const taskToDelete = state.ganttTasks.find(t => t.id === taskId);
       const newState = await deleteGanttTask(taskId);
       onUpdateState(newState);
+      await reloadDeleted();
+      addToast('Tarefa movida para Excluídas — dá para restaurar.', 'success');
 
       // Audit Log
       if (taskToDelete) {
@@ -718,7 +736,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       }
     } catch (error) {
       console.error(error);
-      alert("Erro ao excluir tarefa.");
+      addToast('Erro ao excluir tarefa.', 'error');
     }
   };
 
@@ -768,7 +786,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       });
     } catch (error) { 
       console.error("Save error:", error);
-      alert("Erro ao salvar tarefa: " + (error instanceof Error ? error.message : "Erro desconhecido"));
+      addToast("Erro ao salvar tarefa. " + (error instanceof Error ? error.message : ""), "error");
       // Revert optimistic update
       onUpdateState(state);
     } finally {
@@ -832,7 +850,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                           setEditingTitleValue(task.title);
                         }}
                       >
-                        <span className={`${isMobile ? 'text-[11px]' : 'text-sm'} truncate ${isTopLevel ? 'font-black text-slate-900 dark:text-white' : 'font-bold text-slate-700 dark:text-slate-300'}`}>
+                        <span className={`${isMobile ? 'text-[11px]' : 'text-sm'} truncate ${isTopLevel ? 'font-semibold text-slate-800 dark:text-slate-100' : 'font-normal text-slate-600 dark:text-slate-300'}`}>
                           {task.title || 'Tarefa sem nome'}
                         </span>
                         <div className={`flex items-center gap-1 transition-opacity ${isMobile ? 'opacity-40' : 'opacity-0 group-hover/title:opacity-100'}`}>
@@ -913,7 +931,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                           className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-white dark:bg-slate-900 transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 opacity-0 border-none' : 'opacity-100'}`} 
                           style={{ paddingLeft: `${(depth + 1) * (isMobile ? 12 : 20) + (isMobile ? 16 : 28)}px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
                         >
-                         <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] font-bold text-[#0070e0] dark:text-blue-400 opacity-60 hover:opacity-100 transition-opacity">
+                         <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] font-bold text-blue-600 dark:text-blue-400 opacity-60 hover:opacity-100 transition-opacity">
                             <button onClick={() => setInlineAdding({ parentId: task.id, type: 'task' })} className="flex items-center gap-1.5 hover:underline whitespace-nowrap">
                               <Plus size={14} /> {isMobile ? "Tarefa" : "Adicionar uma tarefa"}
                             </button>
@@ -960,22 +978,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                 <span className="text-[10px] font-bold uppercase hidden md:inline">Hoje</span>
              </button>
 
-             <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 ml-1">
-               <button 
-                onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-                className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded text-slate-500 transition-all"
-               >
-                 <ChevronLeft size={14} />
-               </button>
-               <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 px-2 min-w-24 text-center whitespace-nowrap">
-                 {format(currentDate, 'MMMM yyyy', { locale: language === 'pt-BR' ? ptBR : undefined }).toUpperCase()}
+             <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg px-2.5 py-1 ml-1">
+               <Calendar size={12} className="text-slate-400 dark:text-slate-500" />
+               <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 whitespace-nowrap capitalize">
+                 {format(timelineInterval.start, 'MMM', { locale: language === 'pt-BR' ? ptBR : undefined })} — {format(timelineInterval.end, 'MMM yyyy', { locale: language === 'pt-BR' ? ptBR : undefined })}
                </span>
-               <button 
-                onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-                className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded text-slate-500 transition-all"
-               >
-                 <ChevronRight size={14} />
-               </button>
              </div>
           </div>
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1 flex-shrink-0" />
@@ -996,8 +1003,6 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
             title="Ajustar largura"
             className="hidden sm:flex" 
           />
-          <ToolbarButton icon={<ArrowDownWideNarrow size={16} />} className="hidden sm:flex" />
-          
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1 flex-shrink-0" />
           
           <button 
@@ -1062,62 +1067,29 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
           >
             <Trash2 size={14} /><span className="hidden sm:inline">Excluídas</span> {deletedTasks.length}
           </button>
-          <SidebarButton
-            icon={<Columns size={16} />}
-            label={isMobile ? "" : "Campos"}
-            onClick={() => setShowCamposSidebar(true)} 
-            active={showCamposSidebar}
-          />
-          <SidebarButton 
-            icon={<Filter size={16} />} 
-            label={isMobile ? "" : "Filtro"} 
-            onClick={() => setShowFiltroSidebar(true)}
-            active={showFiltroSidebar}
-          />
-
           {!isMobile && (
-            <div className="flex items-center gap-2 ml-2">
-              <div className="w-24 h-5 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center px-1 relative">
-                <button 
-                  onClick={() => setZoomLevel(16)}
-                  className={`absolute left-[20%] w-2 h-2 rounded-full transition-all ${zoomLevel === 16 ? 'bg-blue-500 scale-125 z-10 shadow-sm' : 'bg-slate-400 dark:bg-slate-600 hover:bg-slate-500'}`} 
-                  title="Meses"
-                />
-                <button 
-                  onClick={() => setZoomLevel(32)}
-                  className={`absolute left-[45%] w-2 h-2 rounded-full transition-all ${zoomLevel === 32 ? 'bg-blue-500 scale-125 z-10 shadow-sm' : 'bg-slate-400 dark:bg-slate-600 hover:bg-slate-500'}`}
-                  title="Dias"
-                />
-                <button 
-                  onClick={() => setZoomLevel(48)}
-                  className={`absolute left-[70%] w-2 h-2 rounded-full transition-all ${zoomLevel === 48 ? 'bg-blue-500 scale-125 z-10 shadow-sm' : 'bg-slate-400 dark:bg-slate-600 hover:bg-slate-500'}`}
-                  title="Semanas"
-                />
-                <button 
-                  onClick={() => setZoomLevel(64)}
-                  className={`absolute left-[90%] w-2 h-2 rounded-full transition-all ${zoomLevel === 64 ? 'bg-blue-500 scale-125 z-10 shadow-sm' : 'bg-slate-400 dark:bg-slate-600 hover:bg-slate-500'}`}
-                  title="Detalhado"
-                />
-              </div>
-              <span className="text-[10px] font-bold text-slate-400">
-                {zoomLevel === 16 ? 'Meses' : zoomLevel === 32 ? 'Dias' : zoomLevel === 48 ? 'Semanas' : 'Foco'}
-              </span>
+            <div className="inline-flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5 ml-2">
+              {[{ v: 16, l: 'Mês' }, { v: 32, l: 'Semana' }, { v: 48, l: 'Dia' }, { v: 64, l: 'Foco' }].map(o => (
+                <button
+                  key={o.v}
+                  onClick={() => setZoomLevel(o.v)}
+                  className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${zoomLevel === o.v ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                  title={`Zoom: ${o.l}`}
+                >
+                  {o.l}
+                </button>
+              ))}
             </div>
           )}
 
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
 
-          <button 
+          <button
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors"
           >
             <Download size={14} />
             Exportar
-          </button>
-          
-          <button className="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 transition-colors">
-            Visualização
-            <ChevronDown size={14} />
           </button>
         </div>
       </div>
@@ -1131,12 +1103,12 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
             style={{ width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
           >
             <div className="flex items-center gap-2 sm:gap-8 w-full">
-              <span className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 w-4">#</span>
-              <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 flex-grow text-[10px] sm:text-[10px] uppercase tracking-wider truncate">Nome de tarefa</span>
+              <span className="w-4 text-[11px] font-medium text-slate-400 dark:text-slate-500">#</span>
+              <span className="flex-grow truncate text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Nome de tarefa</span>
               {!isMobile && (
                 <>
-                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-16 text-[10px] uppercase tracking-wider">Atribuído</span>
-                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-24 text-center text-[10px] uppercase tracking-wider">Estado</span>
+                  <span className="w-16 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Atribuído</span>
+                  <span className="w-24 text-center text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Estado</span>
                 </>
               )}
               <Plus size={16} className="text-slate-300 dark:text-slate-600 cursor-pointer hover:text-blue-500 transition-colors flex-shrink-0" onClick={() => handleAddTask(null)} />
@@ -1172,9 +1144,9 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                   if (currentMonth) months.push({ label: currentMonth.toUpperCase(), days: currentMonthDays });
 
                   return months.map((m, i) => (
-                    <div 
-                      key={i} 
-                      className={`h-full border-r border-slate-300 dark:border-slate-700 flex items-center px-4 text-[10px] font-black tracking-widest transition-colors ${i % 2 === 0 ? 'text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800' : 'text-blue-600 dark:text-blue-400 bg-blue-100/30 dark:bg-blue-900/40'}`}
+                    <div
+                      key={i}
+                      className={`h-full border-r border-slate-200 dark:border-slate-800 flex items-center px-4 text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400 transition-colors ${i % 2 === 0 ? 'bg-slate-50 dark:bg-slate-800/40' : 'bg-slate-100/70 dark:bg-slate-800/70'}`}
                       style={{ width: `${m.days * zoomLevel}px` }}
                     >
                       {m.label}
@@ -1183,20 +1155,25 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                 })()}
             </div>
             <div className="flex h-8 bg-white dark:bg-slate-900 min-w-max transition-colors">
-              {days.map((day, i) => (
-                <div 
-                  key={i} 
-                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center transition-colors ${isSameDay(day, new Date()) ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 z-10' : isWeekend(day) ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
+              {days.map((day, i) => {
+                const isToday = isSameDay(day, new Date());
+                return (
+                <div
+                  key={i}
+                  className={`flex-shrink-0 border-r border-slate-100/70 dark:border-white/[0.04] flex flex-col items-center justify-center transition-colors ${isToday ? 'bg-blue-500/[0.08] dark:bg-blue-400/10 z-10' : (isWeekend(day) && zoomLevel > 16) ? 'bg-slate-100/70 dark:bg-slate-800/50' : ''}`}
                   style={{ width: `${zoomLevel}px` }}
                 >
-                  <span className={`text-[10px] font-black ${isSameDay(day, new Date()) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                  <span className={`text-[11px] tabular-nums ${isToday ? 'font-bold text-blue-600 dark:text-blue-400' : 'font-medium text-slate-500 dark:text-slate-400'}`}>
                     {format(day, 'd')}
                   </span>
-                  <span className={`text-[10px] font-black uppercase ${isSameDay(day, new Date()) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-600'}`}>
-                    {format(day, 'EEE', { locale: language === 'pt-BR' ? ptBR : undefined }).substring(0, 1)}
-                  </span>
+                  {zoomLevel >= 28 && (
+                    <span className={`text-[9px] uppercase ${isToday ? 'font-semibold text-blue-500 dark:text-blue-400' : 'font-normal text-slate-400 dark:text-slate-500'}`}>
+                      {format(day, 'EEE', { locale: language === 'pt-BR' ? ptBR : undefined }).substring(0, 1)}
+                    </span>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1208,45 +1185,35 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
           onMouseDown={handlePanStart}
           ref={rowsAreaRef}
         >
-          {/* Floating Navigation Controls */}
-          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 z-[60] pointer-events-none">
-            <button 
-              onClick={() => rowsAreaRef.current?.scrollBy({ left: -400, behavior: 'smooth' })}
-              className="p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur shadow-2xl rounded-full border border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto"
-              title="Rolar para esquerda"
-            >
-              <ChevronLeft size={24} />
-            </button>
-            <button 
-              onClick={() => rowsAreaRef.current?.scrollBy({ left: 400, behavior: 'smooth' })}
-              className="p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur shadow-2xl rounded-full border border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto"
-              title="Rolar para direita"
-            >
-              <ChevronRight size={24} />
-            </button>
-          </div>
-          <div className="relative min-w-max">
+          <div className="relative min-w-max min-h-[340px]">
             {/* Grid Background Lines for Tasks */}
             <div className="absolute inset-0 flex pointer-events-none z-0">
               {/* Sidebar Spacer */}
               {isSidebarVisible && (
                 <div style={{ width: `${sidebarWidth}px` }} className="flex-shrink-0 border-r-2 border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40" />
               )}
-              {days.map((day, i) => (
-                <div 
-                  key={i} 
-                  className={`flex-shrink-0 border-r transition-colors ${
-                    isSameDay(day, new Date())
-                      ? 'bg-blue-50/30 dark:bg-blue-900/10 border-blue-100/40 dark:border-blue-800/20'
-                      : isWeekend(day) 
-                        ? 'bg-slate-100/40 dark:bg-slate-800/20 border-slate-200/30 dark:border-slate-700/20' 
-                        : i % 2 === 0 
-                          ? 'bg-slate-50/30 dark:bg-slate-900/50 border-slate-100/50 dark:border-slate-800/10' 
-                          : 'border-slate-100/30 dark:border-slate-800/5'
-                  } ${day.getDate() === 1 ? 'border-slate-300 dark:border-slate-600 border-r-2' : ''}`}
-                  style={{ width: `${zoomLevel}px` }}
-                />
-              ))}
+              {days.map((day, i) => {
+                // Bandas suaves POR SEMANA (não por dia) — a régua respira e as
+                // barras deixam de competir com uma cerca de colunas.
+                const isToday = isSameDay(day, new Date());
+                const weekIdx = Math.floor(differenceInDays(day, timelineInterval.start) / 7);
+                const bg = isToday
+                  ? 'bg-blue-500/[0.06] dark:bg-blue-400/[0.08]'
+                  : (isWeekend(day) && zoomLevel > 16)
+                    ? 'bg-slate-500/[0.05] dark:bg-slate-400/[0.04]'
+                    : weekIdx % 2 === 0
+                      ? ''
+                      : 'bg-slate-500/[0.028] dark:bg-white/[0.018]';
+                // Ritmo escalonado no INÍCIO da coluna: mês > segunda-feira > dia.
+                const border = day.getDate() === 1
+                  ? 'border-l-2 border-slate-300 dark:border-white/10'
+                  : day.getDay() === 1
+                    ? 'border-l border-slate-200/70 dark:border-white/[0.06]'
+                    : 'border-l border-slate-100/50 dark:border-white/[0.03]';
+                return (
+                  <div key={i} className={`flex-shrink-0 transition-colors ${bg} ${border}`} style={{ width: `${zoomLevel}px` }} />
+                );
+              })}
             </div>
             {/* Today Line (Indicator of current day) */}
             <div 
@@ -1254,28 +1221,45 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               style={{ left: isSidebarVisible ? `${sidebarWidth}px` : '0px', width: `${days.length * zoomLevel}px` }}
             >
               <div
-                className="absolute top-0 bottom-0 w-px bg-indigo-500/80"
+                className="absolute top-0 bottom-0 w-0.5 bg-blue-500 shadow-[0_0_0_3px_rgba(59,130,246,0.10)]"
                 style={{ left: `${todayLeft}px` }}
               >
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-b-md shadow-sm whitespace-nowrap">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-b-md shadow-sm whitespace-nowrap">
                   Hoje
                 </div>
               </div>
             </div>
 
-            {/* Empty State */}
+            {/* Estado vazio — nenhuma tarefa no Gantt */}
             {state.ganttTasks.length === 0 && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center p-20 text-slate-400 bg-white/50 dark:bg-slate-900/50 z-20">
-                <Target size={48} className="mb-4 opacity-20" />
-                <p className="text-sm font-medium">Nenhuma tarefa encontrada no Gantt</p>
-                <p className="text-xs mt-1">Use os botões acima para criar a primeira tarefa ou marco.</p>
-                <button 
-                  onClick={() => handleAddTask(null)}
-                  className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors"
-                >
-                  Criar Nova Tarefa
-                </button>
-              </div>
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center bg-white/50 dark:bg-slate-900/50 z-20">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/20 grid place-items-center ring-1 ring-blue-100 dark:ring-blue-900/40 mb-4">
+                  <Target className="text-blue-500" size={28} />
+                </div>
+                <p className="text-base font-bold text-slate-700 dark:text-slate-200">Comece o seu plano</p>
+                <p className="text-xs mt-1 text-slate-400 dark:text-slate-500">Crie a primeira tarefa ou marco para desenhar a linha do tempo.</p>
+                <div className="mt-4 flex items-center gap-2">
+                  <button onClick={() => handleAddTask(null)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-blue-700 transition-colors">Nova tarefa</button>
+                  <button onClick={() => setInlineAdding({ parentId: null, type: 'milestone' })} className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Adicionar um marco</button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Estado "tudo em dia" — há tarefas, mas nenhuma ATIVA (todas concluídas/fechadas) */}
+            {state.ganttTasks.length > 0 && flattenedTasks.length === 0 && (
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center bg-white/60 dark:bg-slate-900/60 z-20">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 grid place-items-center ring-1 ring-emerald-100 dark:ring-emerald-900/40 mb-4">
+                  <CheckCircle2 className="text-emerald-500" size={28} />
+                </div>
+                <p className="text-base font-bold text-slate-700 dark:text-slate-200">Tudo em dia</p>
+                <p className="text-xs mt-1 text-slate-400 dark:text-slate-500">Nenhuma tarefa ativa no momento — o trabalho concluído fica guardado.</p>
+                <div className="mt-4 flex items-center gap-2">
+                  <button onClick={() => handleAddTask(null)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-blue-700 transition-colors">Nova tarefa</button>
+                  {doneTasks.length > 0 && (
+                    <button onClick={() => setArchiveView('done')} className="px-4 py-2 rounded-lg text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors">Ver concluídas ({doneTasks.length})</button>
+                  )}
+                </div>
+              </motion.div>
             )}
              <svg 
                 className="absolute top-0 z-0 pointer-events-none" 
@@ -1348,7 +1332,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                   className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 z-10 bg-white dark:bg-slate-900 transition-all duration-300 overflow-hidden ${!isSidebarVisible ? 'w-0 opacity-0 border-none' : 'opacity-100'}`} 
                   style={{ paddingLeft: `12px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
                 >
-                  <div className="flex items-center gap-4 text-[11px] font-bold text-[#0070e0] dark:text-blue-400 opacity-60 hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-4 text-[11px] font-bold text-blue-600 dark:text-blue-400 opacity-60 hover:opacity-100 transition-opacity">
                     <button onClick={() => setInlineAdding({ parentId: null, type: 'task' })} className="flex items-center gap-1.5 hover:underline">
                       <Plus size={16} /> Adicionar uma tarefa
                     </button>
@@ -1369,7 +1353,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                     className="flex items-center gap-2 px-4 py-3 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors w-full bg-slate-50/30 dark:bg-slate-900/10"
                   >
                     <History size={16} className={showClosedTasks ? 'text-blue-500' : ''} />
-                    <span className="text-[11px] font-black uppercase tracking-widest">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide">
                       Tarefas Fechadas / Canceladas ({closedTasks.length})
                     </span>
                     <ChevronDown size={14} className={`transition-transform duration-200 ml-auto ${showClosedTasks ? 'rotate-180' : ''}`} />
@@ -1423,6 +1407,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
 
             </div>
           </div>
+        </div>
+        {/* Navegação flutuante de rolagem — presa à ÁREA do gráfico (absolute), não à viewport, para não vazar sobre o resto do app */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 z-40 pointer-events-none">
+          <button onClick={() => rowsAreaRef.current?.scrollBy({ left: -400, behavior: 'smooth' })} className="p-2.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur shadow-xl rounded-full border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto" title="Rolar para esquerda"><ChevronLeft size={22} /></button>
+          <button onClick={() => rowsAreaRef.current?.scrollBy({ left: 400, behavior: 'smooth' })} className="p-2.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur shadow-xl rounded-full border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 hover:scale-110 active:scale-95 transition-all pointer-events-auto" title="Rolar para direita"><ChevronRight size={22} /></button>
         </div>
       </div>
 
@@ -1550,25 +1539,12 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                   const newState = await deleteGanttTask(contextMenu.taskId);
                   onUpdateState(newState);
                   setContextMenu(null);
-                } catch (error) { console.error(error); }
+                  await reloadDeleted();
+                  addToast('Tarefa movida para Excluídas — dá para restaurar.', 'success');
+                } catch (error) { console.error(error); addToast('Erro ao excluir tarefa.', 'error'); }
               }} />
             </motion.div>
           </>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {showFiltroSidebar && (
-          <FiltroSidebar 
-            isOpen={showFiltroSidebar} 
-            onClose={() => setShowFiltroSidebar(false)} 
-            users={state.users}
-          />
-        )}
-        {showCamposSidebar && (
-          <CamposSidebar 
-            isOpen={showCamposSidebar} 
-            onClose={() => setShowCamposSidebar(false)} 
-          />
         )}
       </AnimatePresence>
     </div>
@@ -1630,8 +1606,8 @@ const StatusPicker = ({ status, onUpdate, onOpenChange }: { status: GanttTaskSta
   const options = [
     { id: GanttTaskStatus.TODO, label: 'Aberto', color: 'bg-slate-400' },
     { id: GanttTaskStatus.IN_PROGRESS, label: 'Em projeto', color: 'bg-amber-400' },
-    { id: GanttTaskStatus.DONE, label: 'Feito', color: 'bg-cyan-400' },
-    { id: GanttTaskStatus.CLOSED, label: 'Fechado', color: 'bg-emerald-400' },
+    { id: GanttTaskStatus.DONE, label: 'Feito', color: 'bg-emerald-500' },
+    { id: GanttTaskStatus.CLOSED, label: 'Fechado', color: 'bg-slate-400' },
   ];
 
   const current = options.find(o => o.id === status) || options[0];
@@ -1708,20 +1684,20 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
             {assignedUsers.slice(0, 2).map((u) => (
               <div 
                 key={u.id} 
-                className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold overflow-hidden shadow-sm ${u.type === 'user' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-600'}`}
+                className={`w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center text-[10px] font-bold overflow-hidden shadow-sm ${u.type === 'user' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}
                 title={u.name}
               >
                  {u.name.charAt(0).toUpperCase()}
               </div>
             ))}
             {assignedUsers.length > 2 && (
-              <div className="w-6 h-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-400">
+              <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-white dark:border-slate-900 flex items-center justify-center text-[10px] font-bold text-slate-400 dark:text-slate-500">
                 +{assignedUsers.length - 2}
               </div>
             )}
           </>
         ) : (
-          <div className="w-6 h-6 rounded-full bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:border-slate-400 hover:text-slate-400 transition-colors">
+          <div className="w-6 h-6 rounded-full bg-slate-50 dark:bg-slate-800/50 border-2 border-dashed border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-300 dark:text-slate-600 hover:border-slate-400 hover:text-slate-400 transition-colors">
             <UserIcon size={12} />
           </div>
         )}
@@ -1754,7 +1730,7 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
             
             <div className="max-h-48 overflow-y-auto py-1">
               {filteredUsers.length > 0 && (
-                <div className="px-3 py-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">Colaboradores</div>
+                <div className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Colaboradores</div>
               )}
               {filteredUsers.map(u => (
                 <button 
@@ -1791,7 +1767,7 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
               {/* Custom Names already added */}
               {assignedUsers.filter(au => au.type === 'custom').length > 0 && (
                 <>
-                  <div className="px-3 py-1 mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-t border-slate-50 dark:border-slate-800">Outros atribuídos</div>
+                  <div className="px-3 py-1 mt-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide border-t border-slate-50 dark:border-slate-800">Outros atribuídos</div>
                   {assignedUsers.filter(au => au.type === 'custom').map(au => (
                     <div key={au.id} className="w-full flex items-center justify-between px-3 py-1.5 group">
                       <div className="flex items-center gap-3 min-w-0">
@@ -1882,7 +1858,7 @@ const FiltroSidebar = ({ isOpen, onClose, users }: any) => {
 
       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2 transition-colors">
          <button className="w-full py-2 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">Limpar filtro</button>
-         <button className="w-full py-2 bg-blue-50/50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-[#0070e0] dark:text-blue-400 font-bold text-xs rounded hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors">Salvar filtro</button>
+         <button className="w-full py-2 bg-blue-50/50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold text-xs rounded hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors">Salvar filtro</button>
       </div>
     </motion.div>
   );
@@ -1962,6 +1938,13 @@ const FieldTypeItem = ({ icon, label, active = false }: any) => (
 export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users, tasks }: any) => {
   const [formData, setFormData] = useState<GanttTask>(task);
 
+  // Fecha o modal com Escape.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const COLORS = [
     '#3b82f6', // Azul
     '#10b981', // Esmeralda
@@ -1982,33 +1965,33 @@ export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users
         className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 transition-colors"
       >
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800 transition-colors">
-          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 uppercase tracking-tight">Editar Tarefa</h2>
+          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Editar tarefa</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-400"><X size={18} /></button>
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome da Tarefa</label>
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">Nome da Tarefa</label>
             <input 
               type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})}
-              className="w-full px-3 py-2 bg-slate-100 rounded border-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 outline-none transition-all"
+              className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded border border-transparent dark:border-slate-700 focus:ring-2 focus:ring-blue-500 font-semibold text-slate-700 dark:text-slate-100 outline-none transition-all"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Início</label>
-                <input type="date" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} className="w-full px-3 py-2 bg-slate-100 rounded border-none font-bold text-slate-700 outline-none" />
+                <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">Início</label>
+                <input type="date" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded border border-transparent dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]" />
              </div>
              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Fim</label>
-                <input type="date" value={formData.endDate} onChange={e => setFormData({...formData, endDate: e.target.value})} className="w-full px-3 py-2 bg-slate-100 rounded border-none font-bold text-slate-700 outline-none" />
+                <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">Fim</label>
+                <input type="date" value={formData.endDate} onChange={e => setFormData({...formData, endDate: e.target.value})} className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded border border-transparent dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]" />
              </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Estado</label>
+                <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">Estado</label>
                 <select 
                   value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as GanttTaskStatus})}
-                  className="w-full px-3 py-2 bg-slate-100 rounded border-none font-bold text-slate-700 outline-none"
+                  className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded border border-transparent dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]"
                 >
                   <option value={GanttTaskStatus.TODO}>Aberto</option>
                   <option value={GanttTaskStatus.IN_PROGRESS}>Em projeto</option>
@@ -2017,10 +2000,10 @@ export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users
                 </select>
              </div>
              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Prioridade</label>
+                <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">Prioridade</label>
                 <select 
                   value={formData.priority} onChange={e => setFormData({...formData, priority: e.target.value as TaskPriority})}
-                  className="w-full px-3 py-2 bg-slate-100 rounded border-none font-bold text-slate-700 outline-none"
+                  className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded border border-transparent dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]"
                 >
                   <option value={TaskPriority.LOW}>Baixa</option>
                   <option value={TaskPriority.MEDIUM}>Média</option>
@@ -2030,7 +2013,7 @@ export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users
              </div>
           </div>
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Responsáveis</label>
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">Responsáveis</label>
             <div className="flex flex-wrap gap-1">
                {users.map((u:any) => (
                  <button 
@@ -2038,7 +2021,7 @@ export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users
                     const next = formData.assignedTo.includes(u.id) ? formData.assignedTo.filter(id => id !== u.id) : [...formData.assignedTo, u.id];
                     setFormData({...formData, assignedTo: next});
                   }}
-                  className={`px-3 py-1 rounded text-[10px] font-bold transition-all border ${formData.assignedTo.includes(u.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
+                  className={`px-3 py-1 rounded text-[10px] font-bold transition-all border ${formData.assignedTo.includes(u.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'}`}
                  >
                    {u.name}
                  </button>
@@ -2046,38 +2029,38 @@ export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users
             </div>
           </div>
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Anotações Detalhadas</label>
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">Anotações Detalhadas</label>
             <textarea 
               value={formData.reports || ''} 
               onChange={e => setFormData({...formData, reports: e.target.value})}
               placeholder="Descreva os detalhes da tarefa, anotações, impedimentos ou observações importantes..."
-              className="w-full px-3 py-2 bg-slate-100 rounded border-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 outline-none transition-all min-h-[100px] text-sm resize-none"
+              className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded border border-transparent dark:border-slate-700 focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 dark:text-slate-100 outline-none transition-all min-h-[100px] text-sm resize-none"
             />
           </div>
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Cor da Tarefa</label>
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-2">Cor da Tarefa</label>
             <div className="flex flex-wrap gap-2">
                {COLORS.map(c => (
                  <button 
                   key={c}
                   onClick={() => setFormData({...formData, color: c})}
-                  className={`w-6 h-6 rounded-full border-2 transition-all ${formData.color === c ? 'border-slate-900 scale-125 shadow-md' : 'border-transparent hover:scale-110'}`}
+                  className={`w-6 h-6 rounded-full border-2 transition-all ${formData.color === c ? 'border-slate-900 dark:border-white scale-125 shadow-md' : 'border-transparent hover:scale-110'}`}
                   style={{ backgroundColor: c }}
                  />
                ))}
             </div>
           </div>
         </div>
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between gap-2">
-           <button 
-             onClick={() => onDelete?.(formData.id)} 
-             className="px-4 py-2 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-2"
+        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex justify-between gap-2 transition-colors">
+           <button
+             onClick={() => onDelete?.(formData.id)}
+             className="px-4 py-2 text-xs font-bold text-red-500 dark:text-rose-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors flex items-center gap-2"
            >
              <Trash2 size={14} /> Excluir
            </button>
            <div className="flex gap-2">
-             <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
-             <button onClick={() => onSave(formData)} className="px-6 py-2 bg-blue-600 text-white rounded text-xs font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all">Salvar Alterações</button>
+             <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">Cancelar</button>
+             <button onClick={() => onSave(formData)} className="px-6 py-2 bg-blue-600 text-white rounded text-xs font-bold shadow-lg shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all">Salvar alterações</button>
            </div>
         </div>
       </motion.div>
