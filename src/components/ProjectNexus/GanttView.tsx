@@ -55,7 +55,7 @@ import {
 import { ptBR } from 'date-fns/locale';
 import { AppState, GanttTask, User as AppUser, GanttTaskStatus, TaskPriority } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog } from '../../services/storageService';
+import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog, fetchDeletedGanttTasks, restoreGanttTask, purgeGanttTask } from '../../services/storageService';
 import { useToast } from '../Toast';
 import { User } from '../../types';
 
@@ -112,6 +112,15 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   const [editingTitleValue, setEditingTitleValue] = useState('');
   const [statusPickerOpenId, setStatusPickerOpenId] = useState<string | null>(null);
   const [showClosedTasks, setShowClosedTasks] = useState(false);
+  const [showDoneTasks, setShowDoneTasks] = useState(false);
+  const [showDeletedTasks, setShowDeletedTasks] = useState(false);
+  const [deletedTasks, setDeletedTasks] = useState<GanttTask[]>([]);
+
+  // Carrega as tarefas EXCLUÍDAS (soft-deleted) para o painel pesquisável.
+  const reloadDeleted = React.useCallback(async () => {
+    try { setDeletedTasks(await fetchDeletedGanttTasks()); } catch { /* silencioso */ }
+  }, []);
+  useEffect(() => { reloadDeleted(); }, [reloadDeleted, state.ganttTasks.length]);
 
   const [interactingTask, setInteractingTask] = useState<{
     id: string;
@@ -480,68 +489,72 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     }
 
     if (hasChildren || isLevelZero) {
-      const parentColor = task.color && task.color.startsWith('#') ? task.color : (isLevelZero ? '#0f172a' : '#475569');
+      const parentColor = task.color && task.color.startsWith('#') ? task.color : (isLevelZero ? '#334155' : '#475569');
       return (
-        <div 
-          className="absolute h-6 top-1.5 flex flex-col pointer-events-none z-10"
+        <div
+          className="absolute h-8 top-1 flex items-center pointer-events-none z-10 group/grp"
           style={{ left: `${left}px`, width: `${width}px` }}
         >
-          <div className="h-1.5 w-full rounded-t-sm shadow-sm opacity-90" style={{ backgroundColor: parentColor }} />
-          <div className="flex justify-between w-full h-full px-0">
-            <div className="w-0.5 h-full opacity-40" style={{ backgroundColor: parentColor }} />
-            <div className="w-0.5 h-full opacity-40" style={{ backgroundColor: parentColor }} />
+          <div className="relative w-full h-2.5 rounded-full shadow-sm" style={{ backgroundColor: parentColor }}>
+            <div className="absolute -left-px top-1/2 -translate-y-1/2 w-1.5 h-4 rounded-[3px]" style={{ backgroundColor: parentColor }} />
+            <div className="absolute -right-px top-1/2 -translate-y-1/2 w-1.5 h-4 rounded-[3px]" style={{ backgroundColor: parentColor }} />
           </div>
         </div>
       );
     }
 
+    const firstAssignee = (task.assignedTo && task.assignedTo.length > 0)
+      ? state.users.find(u => u.id === task.assignedTo[0])
+      : null;
+    const assigneeInitial = firstAssignee ? (firstAssignee.name?.charAt(0) || '?').toUpperCase() : null;
+    const pct = Math.min(100, Math.max(0, task.progress || 0));
+
     return (
-      <motion.div 
-        initial={{ opacity: 0, scaleX: 0.8 }}
+      <motion.div
+        initial={{ opacity: 0, scaleX: 0.85 }}
         animate={{ opacity: 1, scaleX: 1 }}
         onMouseDown={(e) => { e.stopPropagation(); setInteractingTask({ id: task.id, type: 'drag', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate }); }}
-        className="task-bar absolute h-7 top-1.5 rounded-md shadow-md border flex items-center px-3 cursor-grab active:cursor-grabbing hover:brightness-110 transition-all group/bar z-10 overflow-hidden border-black/10"
-        style={{ 
-          left: `${left}px`, 
+        className="task-bar absolute h-8 top-1 rounded-lg flex items-center cursor-grab active:cursor-grabbing group/bar z-10 overflow-hidden ring-1 ring-black/10 dark:ring-white/10 shadow-sm hover:shadow-lg hover:-translate-y-px transition-all"
+        style={{
+          left: `${left}px`,
           width: `${width}px`,
-          backgroundColor: isDone ? '#f1f5f9' : taskColor,
+          backgroundColor: taskColor,
+          backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,.20), rgba(0,0,0,.10))',
         }}
       >
-        {/* Progress Overlay */}
-        <div 
-          className="absolute inset-y-0 left-0 transition-all duration-700 bg-black/15 pointer-events-none" 
-          style={{ width: `${task.progress}%` }} 
-        />
-        
-        <div className="relative z-10 flex items-center justify-between w-full min-w-0 gap-2">
-          <span className={`text-[10px] font-black truncate drop-shadow-md ${isDone ? 'text-slate-500' : 'text-white'}`}>
-            {task.title}
-          </span>
-          <span className={`text-[10px] font-black drop-shadow-md shrink-0 ${isDone ? 'text-slate-400' : 'text-white'}`}>
-            {task.progress}%
-          </span>
+        {/* trilho de progresso na base */}
+        <div className="absolute left-1.5 right-1.5 bottom-1 h-1 rounded-full bg-black/25 overflow-hidden">
+          <div className="h-full rounded-full bg-white/90 transition-all duration-700" style={{ width: `${pct}%` }} />
         </div>
-        
-        <div 
+
+        <div className="relative z-10 flex items-center gap-1.5 px-2.5 min-w-0 w-full">
+          <span className="text-[11px] font-semibold text-white truncate drop-shadow-sm">{task.title}</span>
+          {width > 92 && (
+            <span className="ml-auto text-[10px] font-bold text-white/90 tabular-nums shrink-0 opacity-0 group-hover/bar:opacity-100 transition-opacity">{pct}%</span>
+          )}
+          {assigneeInitial && width > 62 && (
+            <span className={`shrink-0 w-5 h-5 rounded-full bg-white/25 ring-1 ring-white/50 text-white text-[9px] font-black grid place-items-center ${width > 92 ? '' : 'ml-auto'}`} title={firstAssignee?.name}>{assigneeInitial}</span>
+          )}
+        </div>
+
+        <div
           onMouseDown={(e) => { e.stopPropagation(); setInteractingTask({ id: task.id, type: 'resize', startX: e.clientX, originalStartDate: task.startDate, originalEndDate: task.endDate }); }}
-          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize group-hover/bar:bg-white/10 transition-colors" 
+          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover/bar:opacity-100 bg-white/25 transition-opacity"
         />
 
-        {/* Floating Tooltip */}
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 border border-slate-700 text-white rounded-xl opacity-0 group-hover/bar:opacity-100 transition-all scale-75 group-hover/bar:scale-100 pointer-events-none whitespace-nowrap z-50 shadow-2xl">
+        {/* Tooltip */}
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 border border-slate-700 text-white rounded-xl opacity-0 group-hover/bar:opacity-100 transition-all scale-90 group-hover/bar:scale-100 pointer-events-none whitespace-nowrap z-50 shadow-2xl">
            <div className="flex items-center gap-2 mb-1">
              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: taskColor }} />
-             <div className="font-black uppercase tracking-widest text-[10px] opacity-50">{task.status}</div>
+             <div className="font-semibold uppercase tracking-wider text-[10px] opacity-60">{getStatusLabel(task.status)}</div>
            </div>
-           <div className="font-black text-xs">{task.title || 'Sem título'}</div>
+           <div className="font-bold text-xs">{task.title || 'Sem título'}</div>
            {task.reports && (
-             <div className="text-[10px] italic text-blue-300 mt-1 max-w-[150px] truncate">
-               "{task.reports}"
-             </div>
+             <div className="text-[10px] italic text-blue-300 mt-1 max-w-[180px] truncate">"{task.reports}"</div>
            )}
-           <div className="text-[10px] font-bold opacity-60 mt-1 flex items-center gap-1">
+           <div className="text-[10px] font-medium opacity-70 mt-1 flex items-center gap-1">
              <Clock size={10} />
-             {format(start, 'dd/MM')} — {format(end, 'dd/MM')}
+             {format(start, 'dd/MM')} — {format(end, 'dd/MM')} · {pct}%
            </div>
         </div>
       </motion.div>
@@ -1019,9 +1032,19 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <SidebarButton 
-            icon={<Columns size={16} />} 
-            label={isMobile ? "" : "Campos"} 
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar tarefa…"
+              aria-label="Buscar tarefa"
+              className="w-32 sm:w-48 pl-8 pr-2 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all"
+            />
+          </div>
+          <SidebarButton
+            icon={<Columns size={16} />}
+            label={isMobile ? "" : "Campos"}
             onClick={() => setShowCamposSidebar(true)} 
             active={showCamposSidebar}
           />
@@ -1373,6 +1396,80 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                               </div>
                             ))}
                          </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
+              {/* Concluídas — fora do gráfico, mas pesquisáveis */}
+              {doneTasks.length > 0 && (
+                <div className="mt-1 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => setShowDoneTasks(!showDoneTasks)}
+                    className="flex items-center gap-2 px-4 py-3 w-full text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10 transition-colors"
+                  >
+                    <CheckCircle2 size={16} />
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Concluídas ({doneTasks.length})</span>
+                    <ChevronDown size={14} className={`ml-auto transition-transform ${showDoneTasks ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {showDoneTasks && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                        <div className="flex flex-col px-4 pb-2 max-h-72 overflow-y-auto custom-scrollbar">
+                          {doneTasks.filter(t => !searchTerm.trim() || (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase())).map((task) => (
+                            <div key={task.id} className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800/60 group">
+                              <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                              <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">{task.title}</span>
+                              <span className="text-[10px] text-slate-400 shrink-0 hidden sm:inline tabular-nums">{format(safeParseDate(task.startDate), 'dd/MM/yy')} — {format(safeParseDate(task.endDate), 'dd/MM/yy')}</span>
+                              <button onClick={() => handleEditTask(task)} className="ml-auto p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Ver"><Eye size={13} /></button>
+                            </div>
+                          ))}
+                          {searchTerm.trim() && doneTasks.filter(t => (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase())).length === 0 && (
+                            <div className="text-[11px] text-slate-400 py-3">Nenhuma concluída para “{searchTerm}”.</div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
+              {/* Excluídas — soft-delete: pesquisáveis e restauráveis */}
+              {deletedTasks.length > 0 && (
+                <div className="mt-1 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => setShowDeletedTasks(!showDeletedTasks)}
+                    className="flex items-center gap-2 px-4 py-3 w-full text-rose-500 dark:text-rose-400 hover:bg-rose-50/40 dark:hover:bg-rose-900/10 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Excluídas ({deletedTasks.length})</span>
+                    <ChevronDown size={14} className={`ml-auto transition-transform ${showDeletedTasks ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {showDeletedTasks && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                        <div className="flex flex-col px-4 pb-2 max-h-72 overflow-y-auto custom-scrollbar">
+                          {deletedTasks.filter(t => !searchTerm.trim() || (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase())).map((task) => (
+                            <div key={task.id} className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800/60 group">
+                              <Trash2 size={14} className="text-rose-400 shrink-0" />
+                              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate line-through">{task.title}</span>
+                              <div className="ml-auto flex items-center gap-1 shrink-0">
+                                <button
+                                  onClick={async () => { try { const ns = await restoreGanttTask(task.id); onUpdateState(ns); await reloadDeleted(); addToast('Tarefa restaurada.', 'success'); } catch { addToast('Erro ao restaurar.', 'error'); } }}
+                                  className="px-2 py-1 rounded text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                                >Restaurar</button>
+                                <button
+                                  onClick={async () => { if (!window.confirm(`Excluir "${task.title}" PERMANENTEMENTE? Não dá para desfazer.`)) return; try { await purgeGanttTask(task.id); await reloadDeleted(); addToast('Excluída em definitivo.', 'success'); } catch { addToast('Erro ao excluir.', 'error'); } }}
+                                  className="p-1 rounded text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="Excluir em definitivo"
+                                ><X size={13} /></button>
+                              </div>
+                            </div>
+                          ))}
+                          {searchTerm.trim() && deletedTasks.filter(t => (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase())).length === 0 && (
+                            <div className="text-[11px] text-slate-400 py-3">Nenhuma excluída para “{searchTerm}”.</div>
+                          )}
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
