@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  Filter,
   Calendar,
   AlertCircle,
   User as UserIcon,
@@ -27,16 +26,17 @@ interface WorkloadViewProps {
 }
 
 export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState }) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [zoomLevel, setZoomLevel] = useState(40); // px per day
+  const [currentDate] = useState(new Date());
+  const [zoomLevel, setZoomLevel] = useState(40); // px por dia (zoom)
+  const [periodMonths, setPeriodMonths] = useState(3); // janela de tempo em meses
 
   const timelineInterval = useMemo(() => {
     const start = startOfMonth(currentDate);
-    // Fecha exatamente no fim do 3o mes: evita um bloco de mes de 1 dia so
-    // (ex.: 01/08) transbordando o rotulo na ponta direita.
-    const end = addDays(addMonths(start, 3), -1);
+    // Fecha exatamente no fim do último mês da janela: evita um bloco de mês
+    // de 1 dia só (ex.: 01/08) transbordando o rótulo na ponta direita.
+    const end = addDays(addMonths(start, periodMonths), -1);
     return { start, end };
-  }, [currentDate]);
+  }, [currentDate, periodMonths]);
 
   const days = useMemo(() => {
     return eachDayOfInterval({ start: timelineInterval.start, end: timelineInterval.end });
@@ -48,7 +48,6 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
   // Refs para rolar até HOJE e manter o cabeçalho de dias sincronizado com o corpo.
   const contentRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
-  const hasScrolled = useRef(false);
 
   const scrollToToday = (smooth = true) => {
     const target = Math.max(0, todayLeft - 80);
@@ -56,15 +55,13 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
     if (headerScrollRef.current) headerScrollRef.current.scrollLeft = target;
   };
 
-  // Abre na DATA ATUAL (com uma folga à esquerda) assim que a grade carrega.
+  // Abre na DATA ATUAL e reposiciona quando muda o zoom ou o período (mantém
+  // "hoje" sempre visível perto da esquerda).
   useEffect(() => {
-    if (!hasScrolled.current && contentRef.current) {
-      const target = Math.max(0, todayLeft - 80);
-      contentRef.current.scrollLeft = target;
-      if (headerScrollRef.current) headerScrollRef.current.scrollLeft = target;
-      hasScrolled.current = true;
-    }
-  }, [state.users.length, todayLeft]);
+    const target = Math.max(0, todayLeft - 80);
+    if (contentRef.current) contentRef.current.scrollLeft = target;
+    if (headerScrollRef.current) headerScrollRef.current.scrollLeft = target;
+  }, [state.users.length, zoomLevel, periodMonths, todayLeft]);
 
   // Mantém o cabeçalho de dias acompanhando a rolagem horizontal do corpo.
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -95,17 +92,27 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
     <div className="h-full bg-white dark:bg-slate-900 flex flex-col overflow-hidden">
       {/* Toolbar */}
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between z-30 shadow-sm font-sans">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-5">
+           {/* Modo: só existe "Horas" nesta visão — rótulo estático (não é dropdown) */}
            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Modo:</span>
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs font-black text-blue-600 dark:text-blue-400 cursor-pointer">
-                Horas <ChevronDown size={14} />
-              </div>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Modo:</span>
+              <span className="px-2.5 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs font-semibold text-slate-600 dark:text-slate-300">Horas</span>
            </div>
+           {/* Período: dropdown REAL que muda a janela de tempo */}
            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Período:</span>
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs font-black text-blue-600 dark:text-blue-400 cursor-pointer">
-                3 meses <ChevronDown size={14} />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Período:</span>
+              <div className="relative">
+                <select
+                  value={periodMonths}
+                  onChange={e => setPeriodMonths(Number(e.target.value))}
+                  className="appearance-none pl-3 pr-8 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs font-semibold text-blue-600 dark:text-blue-400 cursor-pointer outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]"
+                >
+                  <option value={1}>1 mês</option>
+                  <option value={2}>2 meses</option>
+                  <option value={3}>3 meses</option>
+                  <option value={6}>6 meses</option>
+                </select>
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none" />
               </div>
            </div>
            <button onClick={() => scrollToToday(true)} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2.5 py-1 rounded-lg transition-colors uppercase tracking-wide">
@@ -113,19 +120,19 @@ export const WorkloadView: React.FC<WorkloadViewProps> = ({ state, onUpdateState
            </button>
         </div>
 
-        <div className="flex items-center gap-6">
-           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer font-bold text-xs uppercase tracking-widest">
-              <Filter size={16} />
-              <span>Filtro</span>
-           </div>
-           <div className="flex items-center gap-2 ml-2">
-              <div className="w-24 h-5 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center px-1 relative">
-                 <div className="absolute left-[20%] w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600" />
-                 <div className="absolute left-[40%] w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600" />
-                 <div className="absolute left-[60%] w-3 h-3 rounded-full bg-blue-500 border-2 border-white dark:border-slate-900 shadow-sm" />
-                 <div className="absolute left-[80%] w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600" />
-              </div>
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Dias</span>
+        <div className="flex items-center gap-3">
+           <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">Zoom</span>
+           <div className="inline-flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
+             {[{ v: 28, l: 'Compacto' }, { v: 40, l: 'Normal' }, { v: 56, l: 'Amplo' }].map(o => (
+               <button
+                 key={o.v}
+                 onClick={() => setZoomLevel(o.v)}
+                 className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${zoomLevel === o.v ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                 title={`Largura do dia: ${o.l}`}
+               >
+                 {o.l}
+               </button>
+             ))}
            </div>
         </div>
       </div>

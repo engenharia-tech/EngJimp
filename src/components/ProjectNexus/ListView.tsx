@@ -115,10 +115,41 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
     switch (status) {
       case GanttTaskStatus.TODO: return 'bg-slate-400';
       case GanttTaskStatus.IN_PROGRESS: return 'bg-amber-500';
-      case GanttTaskStatus.DONE: return 'bg-cyan-500';
-      case GanttTaskStatus.CLOSED: return 'bg-emerald-500';
+      case GanttTaskStatus.DONE: return 'bg-emerald-500';
+      case GanttTaskStatus.CLOSED: return 'bg-slate-400';
       default: return 'bg-slate-400';
     }
+  };
+
+  // Exporta a lista (tarefas ativas) para CSV — mesmo padrão do Gantt.
+  const handleExportCSV = () => {
+    const headers = ['#', 'Titulo', 'Inicio', 'Fim', 'Estado', 'Prioridade', 'Progresso', 'Responsaveis', 'Registro de tempo (h)'];
+    const rows = state.ganttTasks
+      .filter(t => t.status !== GanttTaskStatus.CLOSED)
+      .map((t, i) => {
+        const assignees = t.assignedTo
+          .map(uid => state.users.find(u => u.id === uid)?.name || uid)
+          .join('; ');
+        const tempo = Object.values(t.workload || {}).reduce((a: any, b: any) => (a as number) + (b as number), 0);
+        return [
+          i + 1,
+          `"${(t.title || '').replace(/"/g, '""')}"`,
+          t.startDate,
+          t.endDate,
+          getStatusLabel(t.status),
+          t.priority,
+          (t.progress || 0) + '%',
+          `"${assignees.replace(/"/g, '""')}"`,
+          tempo,
+        ];
+      });
+    const csv = 'data:text/csv;charset=utf-8,﻿' + [headers, ...rows].map(r => r.join(',')).join('\n');
+    const link = document.createElement('a');
+    link.setAttribute('href', encodeURI(csv));
+    link.setAttribute('download', `lista_tarefas_${format(new Date(), 'yyyyMMdd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -126,30 +157,19 @@ export const ListView: React.FC<ListViewProps> = ({ state, onUpdateState, onRefr
       {/* List Toolbar */}
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900">
         <div className="flex items-center gap-2">
-           <button 
+           <button
             onClick={() => setInlineAdding(true)}
             className="flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded text-sm font-bold shadow-md hover:bg-blue-700 transition-all"
            >
              <Plus size={16} /> Adicionar
            </button>
-           <button className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 transition-colors">
-              <ChevronDown size={18} />
-           </button>
         </div>
 
         <div className="flex items-center gap-6">
-           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors">
-              <Group size={16} />
-              <span className="text-xs font-bold">Campos</span>
-           </div>
-           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors">
-              <Filter size={16} />
-              <span className="text-xs font-bold">Filtro</span>
-           </div>
-           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer transition-colors">
+           <button onClick={handleExportCSV} className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors" title="Exportar tarefas ativas para CSV">
               <Download size={16} />
               <span className="text-xs font-bold">Exportar</span>
-           </div>
+           </button>
         </div>
       </div>
 
@@ -320,8 +340,8 @@ const StatusPicker = ({ status, onUpdate, onOpenChange }: { status: GanttTaskSta
   const options = [
     { id: GanttTaskStatus.TODO, label: 'Aberto', color: 'bg-slate-400' },
     { id: GanttTaskStatus.IN_PROGRESS, label: 'Em projeto', color: 'bg-amber-400' },
-    { id: GanttTaskStatus.DONE, label: 'Feito', color: 'bg-cyan-400' },
-    { id: GanttTaskStatus.CLOSED, label: 'Fechado', color: 'bg-emerald-400' },
+    { id: GanttTaskStatus.DONE, label: 'Feito', color: 'bg-emerald-500' },
+    { id: GanttTaskStatus.CLOSED, label: 'Fechado', color: 'bg-slate-400' },
   ];
 
   const current = options.find(o => o.id === status) || options[0];
