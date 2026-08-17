@@ -194,7 +194,8 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     lunchStart: localStorage.getItem('lunch_start') || "12:30",
     lunchEnd: localStorage.getItem('lunch_end') || "13:30",
     language: (localStorage.getItem('language') as any) || "pt-BR",
-    autoLockTimeout: localStorage.getItem('auto_lock_timeout') === null ? 15 : (parseSafeNumber(localStorage.getItem('auto_lock_timeout')) ?? 15)
+    autoLockTimeout: localStorage.getItem('auto_lock_timeout') === null ? 15 : (parseSafeNumber(localStorage.getItem('auto_lock_timeout')) ?? 15),
+    nexusHiddenUsers: parseSafeJson(localStorage.getItem('nexus_hidden_user_ids'), [] as string[])
   };
 
   try {
@@ -234,6 +235,12 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (row.lunch_end) settings.lunchEnd = row.lunch_end;
       if (row.language) settings.language = row.language;
       if (row.auto_lock_timeout !== undefined && row.auto_lock_timeout !== null) settings.autoLockTimeout = parseSafeNumber(row.auto_lock_timeout);
+      // Pessoas ocultas nas visualizações do Nexus (GLOBAL). jsonb → array.
+      if (row.nexus_hidden_users != null) {
+        settings.nexusHiddenUsers = Array.isArray(row.nexus_hidden_users)
+          ? row.nexus_hidden_users.map(String)
+          : parseSafeJson(typeof row.nexus_hidden_users === 'string' ? row.nexus_hidden_users : '[]', [] as string[]);
+      }
 
       // Sync to localStorage for offline fallback
       localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
@@ -251,6 +258,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       if (settings.lunchEnd) localStorage.setItem('lunch_end', settings.lunchEnd);
       if (settings.language) localStorage.setItem('language', settings.language);
       if (settings.autoLockTimeout !== undefined) localStorage.setItem('auto_lock_timeout', settings.autoLockTimeout.toString());
+      if (settings.nexusHiddenUsers) localStorage.setItem('nexus_hidden_user_ids', JSON.stringify(settings.nexusHiddenUsers));
     }
   } catch (e) {
     console.warn("Error fetching settings from Supabase, using localStorage/defaults:", e);
@@ -768,6 +776,22 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
   } catch (error) {
     console.error("FAILED TO UPDATE SETTINGS IN SUPABASE", error);
     return fetchAppState();
+  }
+};
+
+// Grava a lista GLOBAL de pessoas ocultas nas visualizações do Nexus. Escrita
+// mediada pelo servidor (mesma porta Edson/admin de updateSettings). Lança em
+// caso de falha (ex.: 403 para quem não é admin) para o front reverter/avisar.
+export const saveNexusHiddenUsers = async (ids: string[]): Promise<void> => {
+  try { localStorage.setItem('nexus_hidden_user_ids', JSON.stringify(ids)); } catch { /* cache */ }
+  const res = await fetch('/api/settings/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ row: { nexus_hidden_users: ids } }),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || !out.success) {
+    throw new Error(out.message || out.error || 'Falha ao salvar (sem permissão?).');
   }
 };
 

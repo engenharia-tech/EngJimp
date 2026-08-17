@@ -655,6 +655,7 @@ const SETTINGS_WRITABLE = new Set([
   "interruption_email_to", "interruption_email_template", "completion_email_template",
   "workday_start", "workday_end", "workdays", "lunch_start", "lunch_end",
   "language", "auto_lock_timeout", "logo_url",
+  "nexus_hidden_users",
 ]);
 app.post("/api/settings/save", async (req, res) => {
   const claims = verifyBearerToken(req);
