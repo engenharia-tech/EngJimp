@@ -112,9 +112,9 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   const [editingTitleValue, setEditingTitleValue] = useState('');
   const [statusPickerOpenId, setStatusPickerOpenId] = useState<string | null>(null);
   const [showClosedTasks, setShowClosedTasks] = useState(false);
-  const [showDoneTasks, setShowDoneTasks] = useState(false);
-  const [showDeletedTasks, setShowDeletedTasks] = useState(false);
   const [deletedTasks, setDeletedTasks] = useState<GanttTask[]>([]);
+  // Painel de arquivo (Concluídas / Excluídas) — aberto pelos botões do topo.
+  const [archiveView, setArchiveView] = useState<'done' | 'deleted' | null>(null);
 
   // Carrega as tarefas EXCLUÍDAS (soft-deleted) para o painel pesquisável.
   const reloadDeleted = React.useCallback(async () => {
@@ -161,7 +161,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
   const hasAutoScrolled = useRef(false);
   useEffect(() => {
     if (!hasAutoScrolled.current && rowsAreaRef.current && state.ganttTasks.length > 0) {
-      rowsAreaRef.current.scrollLeft = 0;
+      // Abre na DATA ATUAL (com uma folga à esquerda), não no início do período.
+      rowsAreaRef.current.scrollLeft = Math.max(0, todayLeft - 100);
       hasAutoScrolled.current = true;
     }
   }, [state.ganttTasks.length]);
@@ -331,8 +332,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
     });
     const minD = new Date(Math.min(...times));
     const maxD = new Date(Math.max(...times));
-    const start = startOfMonth(addDays(minD, -8));
-    let end = addDays(maxD, 12);
+    const start = startOfMonth(minD);
+    let end = addDays(maxD, 14);
     const minEnd = addMonths(start, 2); // largura mínima de ~2 meses
     if (end < minEnd) end = minEnd;
     return { start, end };
@@ -787,7 +788,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               <div className={`flex h-10 border-b border-slate-100 dark:border-slate-800 items-stretch hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group ${isTopLevel ? 'bg-white dark:bg-slate-900' : ''}`}>
                 {/* Left Side: Task Info */}
                 <div 
-                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 bg-inherit group-hover:bg-slate-50 dark:group-hover:bg-slate-800 shadow-[4px_0_4px_-4px_rgba(0,0,0,0.1)] transition-all duration-300 ${isSidebarVisible ? 'overflow-visible' : 'overflow-hidden opacity-0'} ${statusPickerOpenId === task.id ? 'z-50' : 'z-10'} ${!isSidebarVisible ? 'w-0 border-r-0' : ''}`}
+                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-800 flex items-center pr-2 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800 shadow-[4px_0_6px_-4px_rgba(0,0,0,0.15)] transition-all duration-300 ${isSidebarVisible ? 'overflow-visible' : 'overflow-hidden opacity-0'} ${statusPickerOpenId === task.id ? 'z-50' : 'z-20'} ${!isSidebarVisible ? 'w-0 border-r-0' : ''}`}
                   style={{ paddingLeft: `${depth * (isMobile ? 12 : 20) + 8}px`, width: isSidebarVisible ? `${sidebarWidth}px` : '0px' }}
                 >
                   <div className="flex items-center gap-2 w-full overflow-visible">
@@ -1042,6 +1043,24 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               className="w-32 sm:w-48 pl-8 pr-2 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all"
             />
           </div>
+          {doneTasks.length > 0 && (
+            <button
+              onClick={() => setArchiveView('done')}
+              title="Ver tarefas concluídas (fora do gráfico, guardadas)"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 border border-emerald-200/60 dark:border-emerald-800/40 transition-colors whitespace-nowrap"
+            >
+              <CheckCircle2 size={14} /><span className="hidden sm:inline">Concluídas</span> {doneTasks.length}
+            </button>
+          )}
+          {deletedTasks.length > 0 && (
+            <button
+              onClick={() => setArchiveView('deleted')}
+              title="Ver tarefas excluídas (recuperáveis)"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/30 border border-rose-200/60 dark:border-rose-800/40 transition-colors whitespace-nowrap"
+            >
+              <Trash2 size={14} /><span className="hidden sm:inline">Excluídas</span> {deletedTasks.length}
+            </button>
+          )}
           <SidebarButton
             icon={<Columns size={16} />}
             label={isMobile ? "" : "Campos"}
@@ -1401,83 +1420,59 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                 </div>
               )}
 
-              {/* Concluídas — fora do gráfico, mas pesquisáveis */}
-              {doneTasks.length > 0 && (
-                <div className="mt-1 border-t border-slate-100 dark:border-slate-800">
-                  <button
-                    onClick={() => setShowDoneTasks(!showDoneTasks)}
-                    className="flex items-center gap-2 px-4 py-3 w-full text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10 transition-colors"
-                  >
-                    <CheckCircle2 size={16} />
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Concluídas ({doneTasks.length})</span>
-                    <ChevronDown size={14} className={`ml-auto transition-transform ${showDoneTasks ? 'rotate-180' : ''}`} />
-                  </button>
-                  <AnimatePresence>
-                    {showDoneTasks && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                        <div className="flex flex-col px-4 pb-2 max-h-72 overflow-y-auto custom-scrollbar">
-                          {doneTasks.filter(t => !searchTerm.trim() || (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase())).map((task) => (
-                            <div key={task.id} className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800/60 group">
-                              <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-                              <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">{task.title}</span>
-                              <span className="text-[10px] text-slate-400 shrink-0 hidden sm:inline tabular-nums">{format(safeParseDate(task.startDate), 'dd/MM/yy')} — {format(safeParseDate(task.endDate), 'dd/MM/yy')}</span>
-                              <button onClick={() => handleEditTask(task)} className="ml-auto p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Ver"><Eye size={13} /></button>
-                            </div>
-                          ))}
-                          {searchTerm.trim() && doneTasks.filter(t => (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase())).length === 0 && (
-                            <div className="text-[11px] text-slate-400 py-3">Nenhuma concluída para “{searchTerm}”.</div>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-
-              {/* Excluídas — soft-delete: pesquisáveis e restauráveis */}
-              {deletedTasks.length > 0 && (
-                <div className="mt-1 border-t border-slate-100 dark:border-slate-800">
-                  <button
-                    onClick={() => setShowDeletedTasks(!showDeletedTasks)}
-                    className="flex items-center gap-2 px-4 py-3 w-full text-rose-500 dark:text-rose-400 hover:bg-rose-50/40 dark:hover:bg-rose-900/10 transition-colors"
-                  >
-                    <Trash2 size={16} />
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Excluídas ({deletedTasks.length})</span>
-                    <ChevronDown size={14} className={`ml-auto transition-transform ${showDeletedTasks ? 'rotate-180' : ''}`} />
-                  </button>
-                  <AnimatePresence>
-                    {showDeletedTasks && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                        <div className="flex flex-col px-4 pb-2 max-h-72 overflow-y-auto custom-scrollbar">
-                          {deletedTasks.filter(t => !searchTerm.trim() || (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase())).map((task) => (
-                            <div key={task.id} className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800/60 group">
-                              <Trash2 size={14} className="text-rose-400 shrink-0" />
-                              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate line-through">{task.title}</span>
-                              <div className="ml-auto flex items-center gap-1 shrink-0">
-                                <button
-                                  onClick={async () => { try { const ns = await restoreGanttTask(task.id); onUpdateState(ns); await reloadDeleted(); addToast('Tarefa restaurada.', 'success'); } catch { addToast('Erro ao restaurar.', 'error'); } }}
-                                  className="px-2 py-1 rounded text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
-                                >Restaurar</button>
-                                <button
-                                  onClick={async () => { if (!window.confirm(`Excluir "${task.title}" PERMANENTEMENTE? Não dá para desfazer.`)) return; try { await purgeGanttTask(task.id); await reloadDeleted(); addToast('Excluída em definitivo.', 'success'); } catch { addToast('Erro ao excluir.', 'error'); } }}
-                                  className="p-1 rounded text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="Excluir em definitivo"
-                                ><X size={13} /></button>
-                              </div>
-                            </div>
-                          ))}
-                          {searchTerm.trim() && deletedTasks.filter(t => (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase())).length === 0 && (
-                            <div className="text-[11px] text-slate-400 py-3">Nenhuma excluída para “{searchTerm}”.</div>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Painel de arquivo: Concluídas / Excluídas (fora do gráfico, guardadas) */}
+      {archiveView && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setArchiveView(null); }}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
+              {archiveView === 'done' ? <CheckCircle2 className="text-emerald-500" size={20} /> : <Trash2 className="text-rose-500" size={20} />}
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white">{archiveView === 'done' ? 'Tarefas Concluídas' : 'Tarefas Excluídas'}</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{archiveView === 'done' ? 'Fora do gráfico, guardadas e pesquisáveis.' : 'Recuperáveis — nada some de vez.'}</p>
+              </div>
+              <button onClick={() => setArchiveView(null)} className="ml-auto p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400" aria-label="Fechar"><X size={18} /></button>
+            </div>
+            <div className="px-5 pt-3">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar…" className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500/40" />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-3">
+              {(archiveView === 'done' ? doneTasks : deletedTasks)
+                .filter(t => !searchTerm.trim() || (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase()))
+                .map((task) => (
+                  <div key={task.id} className="flex items-center gap-3 py-2.5 border-b border-slate-100 dark:border-slate-800/60">
+                    {archiveView === 'done' ? <CheckCircle2 size={15} className="text-emerald-500 shrink-0" /> : <Trash2 size={15} className="text-rose-400 shrink-0" />}
+                    <div className="min-w-0">
+                      <div className={`text-sm font-medium text-slate-700 dark:text-slate-200 truncate ${archiveView === 'deleted' ? 'line-through opacity-70' : ''}`}>{task.title || 'Sem título'}</div>
+                      <div className="text-[11px] text-slate-400 tabular-nums">{format(safeParseDate(task.startDate), 'dd/MM/yy')} — {format(safeParseDate(task.endDate), 'dd/MM/yy')}{typeof task.progress === 'number' ? ` · ${task.progress}%` : ''}</div>
+                    </div>
+                    <div className="ml-auto flex items-center gap-1 shrink-0">
+                      {archiveView === 'done' && (
+                        <button onClick={() => { setArchiveView(null); handleEditTask(task); }} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5"><Eye size={13} /> Ver</button>
+                      )}
+                      {archiveView === 'deleted' && (
+                        <>
+                          <button onClick={async () => { try { const ns = await restoreGanttTask(task.id); onUpdateState(ns); await reloadDeleted(); addToast('Tarefa restaurada.', 'success'); } catch { addToast('Erro ao restaurar.', 'error'); } }} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors">Restaurar</button>
+                          <button onClick={async () => { if (!window.confirm(`Excluir "${task.title}" PERMANENTEMENTE? Não dá para desfazer.`)) return; try { await purgeGanttTask(task.id); await reloadDeleted(); addToast('Excluída em definitivo.', 'success'); } catch { addToast('Erro ao excluir.', 'error'); } }} className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="Excluir em definitivo"><X size={15} /></button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              {(archiveView === 'done' ? doneTasks : deletedTasks).filter(t => !searchTerm.trim() || (t.title || '').toLowerCase().includes(searchTerm.trim().toLowerCase())).length === 0 && (
+                <div className="text-center text-sm text-slate-400 py-10">{searchTerm.trim() ? `Nada encontrado para “${searchTerm}”.` : 'Nenhuma tarefa aqui.'}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reusing Modal logic but matching design */}
       {isModalOpen && (
