@@ -489,7 +489,10 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
       );
     }
 
-    if (hasChildren || isLevelZero) {
+    // Só é barra-resumo (grupo) quem TEM filhos de fato. Antes, toda tarefa de
+    // nível-raiz virava uma barrinha-resumo fininha — como o Gantt aqui é plano
+    // (sem hierarquia), NENHUMA tarefa desenhava a barra de verdade.
+    if (hasChildren) {
       const parentColor = task.color && task.color.startsWith('#') ? task.color : (isLevelZero ? '#334155' : '#475569');
       return (
         <div
@@ -1052,15 +1055,13 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               <CheckCircle2 size={14} /><span className="hidden sm:inline">Concluídas</span> {doneTasks.length}
             </button>
           )}
-          {deletedTasks.length > 0 && (
-            <button
-              onClick={() => setArchiveView('deleted')}
-              title="Ver tarefas excluídas (recuperáveis)"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/30 border border-rose-200/60 dark:border-rose-800/40 transition-colors whitespace-nowrap"
-            >
-              <Trash2 size={14} /><span className="hidden sm:inline">Excluídas</span> {deletedTasks.length}
-            </button>
-          )}
+          <button
+            onClick={() => setArchiveView('deleted')}
+            title="Ver tarefas excluídas (recuperáveis)"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/30 border border-rose-200/60 dark:border-rose-800/40 transition-colors whitespace-nowrap"
+          >
+            <Trash2 size={14} /><span className="hidden sm:inline">Excluídas</span> {deletedTasks.length}
+          </button>
           <SidebarButton
             icon={<Columns size={16} />}
             label={isMobile ? "" : "Campos"}
