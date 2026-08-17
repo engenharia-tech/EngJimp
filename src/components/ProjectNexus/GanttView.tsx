@@ -1166,13 +1166,13 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               {days.map((day, i) => (
                 <div 
                   key={i} 
-                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center transition-colors ${isSameDay(day, new Date()) ? 'bg-rose-100 dark:bg-rose-900/50 border-rose-300 dark:border-rose-600 z-10 scale-y-105 shadow-sm' : isWeekend(day) ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
+                  className={`flex-shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center transition-colors ${isSameDay(day, new Date()) ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 z-10' : isWeekend(day) ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
                   style={{ width: `${zoomLevel}px` }}
                 >
-                  <span className={`text-[10px] font-black ${isSameDay(day, new Date()) ? 'text-rose-700 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                  <span className={`text-[10px] font-black ${isSameDay(day, new Date()) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>
                     {format(day, 'd')}
                   </span>
-                  <span className={`text-[10px] font-black uppercase ${isSameDay(day, new Date()) ? 'text-rose-700 dark:text-rose-300' : 'text-slate-400 dark:text-slate-600'}`}>
+                  <span className={`text-[10px] font-black uppercase ${isSameDay(day, new Date()) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-600'}`}>
                     {format(day, 'EEE', { locale: language === 'pt-BR' ? ptBR : undefined }).substring(0, 1)}
                   </span>
                 </div>
@@ -1216,8 +1216,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
                 <div 
                   key={i} 
                   className={`flex-shrink-0 border-r transition-colors ${
-                    isSameDay(day, new Date()) 
-                      ? 'bg-rose-50/40 dark:bg-rose-900/20 border-rose-200/50 dark:border-rose-700/30' 
+                    isSameDay(day, new Date())
+                      ? 'bg-blue-50/30 dark:bg-blue-900/10 border-blue-100/40 dark:border-blue-800/20'
                       : isWeekend(day) 
                         ? 'bg-slate-100/40 dark:bg-slate-800/20 border-slate-200/30 dark:border-slate-700/20' 
                         : i % 2 === 0 
@@ -1233,13 +1233,12 @@ export const GanttView: React.FC<GanttViewProps> = ({ state, onUpdateState, onRe
               className="absolute top-0 bottom-0 pointer-events-none z-[15]"
               style={{ left: isSidebarVisible ? `${sidebarWidth}px` : '0px', width: `${days.length * zoomLevel}px` }}
             >
-              <div 
-                className="absolute top-0 bottom-0 w-0.5 bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
+              <div
+                className="absolute top-0 bottom-0 w-px bg-indigo-500/80"
                 style={{ left: `${todayLeft}px` }}
               >
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-rose-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded shadow-lg flex items-center gap-1 border border-white/20 whitespace-nowrap">
-                  <Target size={8} className="animate-pulse" />
-                  HOJE
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-b-md shadow-sm whitespace-nowrap">
+                  Hoje
                 </div>
               </div>
             </div>
