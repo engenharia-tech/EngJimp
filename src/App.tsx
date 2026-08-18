@@ -50,7 +50,7 @@ import {
 } from './services/storageService';
 import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { notifyProjectCompletion } from './services/notificationService';
-import { isTokenExpired, getAuthToken } from './services/authToken';
+import { isTokenExpired, getAuthToken, setAuthToken } from './services/authToken';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -438,6 +438,18 @@ const AppContent: React.FC = () => {
           // apenas para uso manual/controlado, nunca automatico.
           const appData = await fetchAppState();
           setData(appData);
+          // Guardião REATIVO de sessão: se HÁ token mas o banco devolveu ZERO
+          // usuários, a sessão está anônima/vencida (o servidor não reconhece o
+          // token → RLS devolve vazio → "sumiu tudo", sem perda real). Isso
+          // escapa do guardião por-exp quando o exp do JWT não é legível. Aqui
+          // encerramos a sessão e mandamos ao login com aviso claro, em vez de
+          // deixar a tela vazia e assustadora.
+          if (getAuthToken() && (!appData.users || appData.users.length === 0)) {
+            setAuthToken(null);
+            setCurrentUser(null);
+            setActiveTab('tracker');
+            addToast('Sua sessão expirou. Faça login novamente para recarregar seus dados (nada foi perdido).', 'error');
+          }
         })();
 
         await Promise.race([initializationPromise, timeoutPromise]);
