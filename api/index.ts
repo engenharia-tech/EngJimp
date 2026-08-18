@@ -346,7 +346,7 @@ function signSupabaseJwt(user: any): string | null {
     email: user.email || undefined,
     username: user.username,
     iat: now,
-    exp: now + 12 * 3600,            // 12h (uma jornada)
+    exp: now + 24 * 3600,            // 24h
   }));
   const sig = b64url(createHmac("sha256", secret).update(`${header}.${payload}`).digest() as any);
   return `${header}.${payload}.${sig}`;
