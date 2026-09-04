@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { AppState, User } from '../types';
-import { setAuthToken } from '../services/authToken';
+import { setAuthToken, getAuthToken, isTokenExpired } from '../services/authToken';
 
 interface StateContextType {
   data: AppState;
@@ -55,7 +55,18 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [currentUser, setCurrentUserState] = useState<User | null>(() => {
     try {
       const saved = sessionStorage.getItem('nexus_user');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      // Só restaura a sessão se houver um token VÁLIDO e NÃO VENCIDO. Sem isto,
+      // quando o navegador restaura a aba no dia seguinte ("continuar de onde
+      // parou"), volta o usuário salvo + um token já expirado → o app abre
+      // "logado", a carga vira anônima (RLS vazio) e o guardião desloga →
+      // loop entra/cai. Aqui reconciliamos ANTES de renderizar como logado.
+      if (!getAuthToken() || isTokenExpired()) {
+        sessionStorage.removeItem('nexus_user');
+        setAuthToken(null);
+        return null;
+      }
+      return JSON.parse(saved);
     } catch {
       return null;
     }
