@@ -445,10 +445,19 @@ const AppContent: React.FC = () => {
           // encerramos a sessão e mandamos ao login com aviso claro, em vez de
           // deixar a tela vazia e assustadora.
           if (getAuthToken() && (!appData.users || appData.users.length === 0)) {
-            setAuthToken(null);
-            setCurrentUser(null);
-            setActiveTab('tracker');
-            addToast('Sua sessão expirou. Faça login novamente para recarregar seus dados (nada foi perdido).', 'error');
+            if (isTokenExpired()) {
+              // Sessão REALMENTE vencida → encerra e manda ao login com aviso.
+              setAuthToken(null);
+              setCurrentUser(null);
+              setActiveTab('tracker');
+              addToast('Sua sessão expirou. Faça login novamente para recarregar seus dados (nada foi perdido).', 'error');
+            } else {
+              // Token ainda VÁLIDO mas o banco veio vazio: NÃO desloga — era isto
+              // que causava o loop entra/cai (uma carga vazia momentânea derrubava
+              // a sessão boa). Avisa para atualizar; os dados não foram perdidos.
+              console.warn('[sessao] carga vazia com token válido — não deslogando (evita loop).');
+              addToast('Não consegui carregar os dados agora. Tente atualizar a página (F5).', 'error');
+            }
           }
         })();
 
