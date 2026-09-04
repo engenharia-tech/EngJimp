@@ -445,19 +445,14 @@ const AppContent: React.FC = () => {
           // encerramos a sessão e mandamos ao login com aviso claro, em vez de
           // deixar a tela vazia e assustadora.
           if (getAuthToken() && (!appData.users || appData.users.length === 0)) {
-            if (isTokenExpired()) {
-              // Sessão REALMENTE vencida → encerra e manda ao login com aviso.
-              setAuthToken(null);
-              setCurrentUser(null);
-              setActiveTab('tracker');
-              addToast('Sua sessão expirou. Faça login novamente para recarregar seus dados (nada foi perdido).', 'error');
-            } else {
-              // Token ainda VÁLIDO mas o banco veio vazio: NÃO desloga — era isto
-              // que causava o loop entra/cai (uma carga vazia momentânea derrubava
-              // a sessão boa). Avisa para atualizar; os dados não foram perdidos.
-              console.warn('[sessao] carga vazia com token válido — não deslogando (evita loop).');
-              addToast('Não consegui carregar os dados agora. Tente atualizar a página (F5).', 'error');
-            }
+            // NUNCA deslogar a partir daqui. Uma carga sem usuários — seja
+            // transitória, seja de sessão já vencida — NÃO pode derrubar a
+            // sessão nem redirecionar: era exatamente isso que criava o loop
+            // "entra/cai" logo após o login. O vencimento REAL é tratado só
+            // pelo guardião por-expiração (intervalo/foco), que nunca dispara
+            // logo após um login válido. Aqui apenas avisamos.
+            console.warn('[sessao] carga sem usuários — NÃO deslogando (evita loop). token expirado?', isTokenExpired());
+            addToast('Não consegui carregar os dados agora. Atualize a página (F5); se persistir, faça logout e login.', 'error');
           }
         })();
 
