@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2 } from 'lucide-react';
-import { User } from '../types';
-import { fetchOkr, saveOkr, addAuditLog } from '../services/storageService';
+import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy } from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, CartesianGrid, Legend } from 'recharts';
+import { User, ProjectSession, OperationalActivity, ActivityType } from '../types';
+import { fetchOkr, saveOkr, addAuditLog, enableOkrShare, fetchPublicOkr } from '../services/storageService';
 import {
   OkrData, OkrKeyResult, OkrObjective, OkrCheckin, PortfolioItem,
   DEFAULT_OKR, DEFAULT_PORTFOLIO, krProgress, objProgress, overallProgress, progressColor, fmtValue,
@@ -23,14 +24,80 @@ const fmtDue = (iso: string) => {
   try { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; } catch { return iso; }
 };
 
-export const OkrView: React.FC<{ currentUser: User }> = ({ currentUser }) => {
+const StatTile: React.FC<{ label: string; value: string; color: string; icon: React.ReactNode }> = ({ label, value, color, icon }) => (
+  <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-gray-200 dark:border-slate-700">
+    <div className="flex items-center gap-1.5 text-slate-400 mb-1">{icon}<span className="text-[10px] font-bold uppercase tracking-wide">{label}</span></div>
+    <div className={`text-2xl font-black tabular-nums ${color}`}>{value}</div>
+  </div>
+);
+
+const ChartCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-gray-200 dark:border-slate-700">
+    <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">{title}</h4>
+    {children}
+  </div>
+);
+
+interface OkrViewProps {
+  currentUser: User;
+  projects?: ProjectSession[];
+  activities?: OperationalActivity[];
+  activityTypes?: ActivityType[];
+  readOnly?: boolean;   // modo público (link externo): sem edição
+  external?: OkrData;   // dados vindos do link público (não busca no supabase)
+}
+
+const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
+
+export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external }) => {
   const { addToast } = useToast();
-  const [okr, setOkr] = useState<OkrData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [okr, setOkr] = useState<OkrData | null>(external || null);
+  const [loading, setLoading] = useState(!external);
   const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [shareLink, setShareLink] = useState<string>('');
+  const [sharing, setSharing] = useState(false);
+
+  // Métricas de atividade (só as MINHAS, do Desempenho Operacional).
+  const activity = useMemo(() => {
+    const uid = currentUser.id;
+    const myProjects = (projects || []).filter(p => p.userId === uid && p.status === 'COMPLETED');
+    const myActs = (activities || []).filter(a => a.userId === uid);
+    const typeName: Record<string, string> = {};
+    (activityTypes || []).forEach(t => { typeName[t.id] = t.name; });
+
+    // Horas por tipo de atividade
+    const byType: Record<string, number> = {};
+    myActs.forEach(a => { const k = typeName[a.activityTypeId] || 'Outros'; byType[k] = (byType[k] || 0) + (a.durationSeconds || 0); });
+    const hoursByType = Object.entries(byType).map(([name, s]) => ({ name, horas: +(s / 3600).toFixed(1) })).sort((a, b) => b.horas - a.horas).slice(0, 8);
+
+    // Liberações (projetos concluídos) por mês — últimos 6 meses
+    const months: { key: string, label: string, n: number }[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString('pt-BR', { month: 'short' }), n: 0 });
+    }
+    myProjects.forEach(p => {
+      const d = p.endTime ? new Date(p.endTime) : new Date(p.startTime);
+      const k = `${d.getFullYear()}-${d.getMonth()}`;
+      const m = months.find(x => x.key === k); if (m) m.n++;
+    });
+
+    const totalHoras = myActs.reduce((a, x) => a + (x.durationSeconds || 0), 0) / 3600 + myProjects.reduce((a, x) => a + (x.totalActiveSeconds || 0), 0) / 3600;
+    const horasExtra = (myActs.filter(a => a.isOvertime).reduce((a, x) => a + (x.durationSeconds || 0), 0) + myProjects.filter(p => p.isOvertime).reduce((a, x) => a + (x.totalActiveSeconds || 0), 0)) / 3600;
+
+    return {
+      liberacoes: myProjects.length,
+      totalHoras: Math.round(totalHoras),
+      horasExtra: +horasExtra.toFixed(1),
+      hoursByType,
+      libByMonth: months.map(m => ({ name: m.label, liberações: m.n })),
+    };
+  }, [projects, activities, activityTypes, currentUser.id]);
 
   // Carrega; se ainda não existe no banco, semeia com o OKR do xlsx.
   useEffect(() => {
+    if (external) { setOkr(external); setLoading(false); return; } // modo público
     (async () => {
       setLoading(true);
       try {
@@ -50,6 +117,7 @@ export const OkrView: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   }, []);
 
   const persist = useCallback(async (next: OkrData) => {
+    if (readOnly) return; // link público: sem edição, no-op total
     setOkr(next);
     setSaving('saving');
     try {
@@ -75,7 +143,42 @@ export const OkrView: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     persist(next);
   };
 
+  const handleShare = async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const token = await enableOkrShare();
+      const link = `${window.location.origin}/?okr=${token}`;
+      setShareLink(link);
+      try { await navigator.clipboard.writeText(link); addToast('Link copiado! Quem abrir só visualiza (sem editar).', 'success'); }
+      catch { addToast('Link gerado (somente leitura).', 'success'); }
+    } catch (e) {
+      console.error(e);
+      addToast('Não consegui gerar o link de compartilhamento.', 'error');
+    } finally { setSharing(false); }
+  };
+  const handleExport = () => window.print();
+
   const overall = useMemo(() => okr ? overallProgress(okr) : 0, [okr]);
+  // Dados dos gráficos do OKR.
+  const objChart = useMemo(() => (okr?.objectives || []).map(o => ({ name: o.id, progresso: Math.round(objProgress(o) * 100) })), [okr]);
+  const krStatusChart = useMemo(() => {
+    const krs = (okr?.objectives || []).flatMap(o => o.keyResults);
+    const b = { 'Concluído': 0, 'Em andamento': 0, 'Em risco': 0, 'Não iniciado': 0 } as Record<string, number>;
+    krs.forEach(k => {
+      const p = krProgress(k);
+      if (p >= 1 || k.status === 'Concluído') b['Concluído']++;
+      else if (k.status === 'Em risco') b['Em risco']++;
+      else if (k.status === 'Em andamento' || p > 0) b['Em andamento']++;
+      else b['Não iniciado']++;
+    });
+    return Object.entries(b).map(([name, value]) => ({ name, value }));
+  }, [okr]);
+  const pfChart = useMemo(() => {
+    const b: Record<string, number> = {};
+    (okr?.portfolio || []).forEach(i => { b[i.status] = (b[i.status] || 0) + 1; });
+    return Object.entries(b).map(([name, value]) => ({ name, value }));
+  }, [okr]);
   const totals = useMemo(() => {
     if (!okr) return { krs: 0, done: 0, risk: 0 };
     const krs = okr.objectives.flatMap(o => o.keyResults);
@@ -123,7 +226,87 @@ export const OkrView: React.FC<{ currentUser: User }> = ({ currentUser }) => {
           <span className="text-[11px] font-medium px-2.5 py-1 rounded-full text-slate-400">
             {saving === 'saving' ? 'salvando…' : saving === 'saved' ? 'salvo ✓' : saving === 'error' ? 'erro ao salvar' : `atualizado ${okr.updatedAt ? new Date(okr.updatedAt).toLocaleString('pt-BR') : ''}`}
           </span>
+          {!readOnly && (
+            <div className="ml-auto flex items-center gap-2 no-print">
+              <button onClick={handleExport} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"><Printer size={14} /> Exportar PDF</button>
+              <button onClick={handleShare} disabled={sharing} className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50"><Share2 size={14} /> {sharing ? 'Gerando…' : 'Compartilhar'}</button>
+            </div>
+          )}
         </div>
+        {shareLink && (
+          <div className="mt-3 flex items-center gap-2 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40 no-print">
+            <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 shrink-0">Link (só leitura):</span>
+            <input readOnly value={shareLink} onFocus={e => e.target.select()} className="flex-1 min-w-0 bg-transparent text-xs text-slate-600 dark:text-slate-300 outline-none" />
+            <button onClick={() => { navigator.clipboard?.writeText(shareLink); addToast('Copiado!', 'success'); }} className="shrink-0 text-blue-600 dark:text-blue-400"><Copy size={14} /></button>
+          </div>
+        )}
+      </div>
+
+      {/* Painel visual */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatTile label="Progresso geral" value={`${Math.round(overall * 100)}%`} color={textColor(overall)} icon={<Flag size={16} />} />
+        {!readOnly && <StatTile label="Liberações (minhas)" value={`${activity.liberacoes}`} color="text-blue-600 dark:text-blue-400" icon={<CheckCircle2 size={16} />} />}
+        {!readOnly && <StatTile label="Horas no período" value={`${activity.totalHoras}h`} color="text-slate-700 dark:text-slate-200" icon={<Clock size={16} />} />}
+        {!readOnly && <StatTile label="Horas extra" value={`${activity.horasExtra}h`} color="text-amber-600 dark:text-amber-400" icon={<ActivityIcon size={16} />} />}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <ChartCard title="Progresso por objetivo">
+          <ResponsiveContainer width="100%" height={190}>
+            <BarChart data={objChart} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.4} />
+              <XAxis dataKey="name" tick={{ fontSize: 12 }} /><YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: any) => `${v}%`} />
+              <Bar dataKey="progresso" radius={[6, 6, 0, 0]}>{objChart.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}</Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Status dos KRs">
+          <ResponsiveContainer width="100%" height={190}>
+            <PieChart>
+              <Pie data={krStatusChart} dataKey="value" nameKey="name" innerRadius={42} outerRadius={72} paddingAngle={2}>
+                {krStatusChart.map((e, i) => <Cell key={i} fill={e.name === 'Concluído' ? '#10b981' : e.name === 'Em andamento' ? '#f59e0b' : e.name === 'Em risco' ? '#ef4444' : '#94a3b8'} />)}
+              </Pie>
+              <Tooltip /><Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Portfólio por status">
+          <ResponsiveContainer width="100%" height={190}>
+            <PieChart>
+              <Pie data={pfChart} dataKey="value" nameKey="name" innerRadius={42} outerRadius={72} paddingAngle={2}>
+                {pfChart.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+              </Pie>
+              <Tooltip /><Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        {!readOnly && (<>
+        <ChartCard title="Minhas horas por atividade">
+          <ResponsiveContainer width="100%" height={190}>
+            <BarChart data={activity.hoursByType} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.4} />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={40} /><YAxis tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: any) => `${v} h`} />
+              <Bar dataKey="horas" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Minhas liberações por mês">
+          <ResponsiveContainer width="100%" height={190}>
+            <BarChart data={activity.libByMonth} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.4} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar dataKey="liberações" fill="#10b981" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+        </>)}
       </div>
 
       {/* Objetivos */}
@@ -213,10 +396,32 @@ export const OkrView: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       })}
 
       {/* Portfólio de inovação (KR1.2) */}
-      <PortfolioPanel okr={okr} persist={persist} />
+      <PortfolioPanel okr={okr} persist={persist} readOnly={readOnly} />
 
-      {/* Check-ins */}
-      <CheckinsPanel okr={okr} persist={persist} currentUser={currentUser} />
+      {/* Check-ins (só no modo interno) */}
+      {!readOnly && <CheckinsPanel okr={okr} persist={persist} currentUser={currentUser} />}
+    </div>
+  );
+};
+
+// Página pública (sem login): abre o OKR pelo token do link, somente leitura.
+export const OkrPublicPage: React.FC<{ token: string }> = ({ token }) => {
+  const [data, setData] = useState<OkrData | null>(null);
+  const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
+  useEffect(() => {
+    (async () => {
+      const d = await fetchPublicOkr(token);
+      if (d && (d as any).objectives) { setData(d); setState('ok'); } else setState('error');
+    })();
+  }, [token]);
+  if (state === 'loading') return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-400"><RefreshCw className="animate-spin" size={20} /></div>;
+  if (state === 'error' || !data) return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-500 p-6 text-center">Link inválido ou indisponível.</div>;
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-8">
+      <div className="max-w-6xl mx-auto">
+        <OkrView external={data} readOnly currentUser={{ id: '', name: data.owner } as User} />
+        <p className="text-center text-[11px] text-slate-400 mt-6">Visualização somente leitura · JimpNexus</p>
+      </div>
     </div>
   );
 };
@@ -229,7 +434,7 @@ const statusStyle = (s: string) =>
   : s === 'Pausado' ? 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400'
   : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
 
-const PortfolioPanel: React.FC<{ okr: OkrData; persist: (d: OkrData) => Promise<void> }> = ({ okr, persist }) => {
+const PortfolioPanel: React.FC<{ okr: OkrData; persist: (d: OkrData) => Promise<void>; readOnly?: boolean }> = ({ okr, persist, readOnly }) => {
   const items = okr.portfolio || [];
   const update = (id: string, patch: Partial<PortfolioItem>) => {
     persist({ ...okr, portfolio: items.map(i => i.id === id ? { ...i, ...patch } : i) });
@@ -245,7 +450,7 @@ const PortfolioPanel: React.FC<{ okr: OkrData; persist: (d: OkrData) => Promise<
     <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-gray-200 dark:border-slate-700">
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-base font-bold text-slate-800 dark:text-white flex items-center gap-2"><Layers size={18} className="text-blue-600" /> Portfólio de Inovação</h3>
-        <button onClick={add} className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"><Plus size={14} /> Adicionar</button>
+        {!readOnly && <button onClick={add} className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"><Plus size={14} /> Adicionar</button>}
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Os projetos/apps que você construiu (é o KR1.2). {items.length} projetos · {prod} em produção.</p>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -257,7 +462,7 @@ const PortfolioPanel: React.FC<{ okr: OkrData; persist: (d: OkrData) => Promise<
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{i.what}</p>
                 {i.url && <a href={`https://${i.url}`} target="_blank" rel="noreferrer" className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline">{i.url}</a>}
               </div>
-              <button onClick={() => remove(i.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all shrink-0" title="Remover"><Trash2 size={14} /></button>
+              {!readOnly && <button onClick={() => remove(i.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all shrink-0" title="Remover"><Trash2 size={14} /></button>}
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-3">
               <select value={i.status} onChange={e => update(i.id, { status: e.target.value })}
