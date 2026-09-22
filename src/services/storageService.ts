@@ -5,6 +5,7 @@ import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser } from '../utils/userUtils';
 import { getAuthToken, authHeaders } from './authToken';
+import { OkrData } from '../okr/okr';
 
 // Supabase Configuration
 const getSupabaseConfig = () => {
@@ -793,6 +794,26 @@ export const saveNexusHiddenUsers = async (ids: string[]): Promise<void> => {
   if (!res.ok || !out.success) {
     throw new Error(out.message || out.error || 'Falha ao salvar (sem permissão?).');
   }
+};
+
+// OKR pessoal do Edson. A RLS da tabela `okr_state` só libera para o JWT do
+// Edson — para qualquer outro usuário a leitura volta vazia e a escrita é negada.
+export const fetchOkr = async (): Promise<OkrData | null> => {
+  try {
+    const { data, error } = await supabase.from('okr_state').select('data').eq('owner_key', 'edson').limit(1);
+    if (error) { console.warn('fetchOkr:', error.message); return null; }
+    if (data && data.length > 0) return (data[0] as any).data as OkrData;
+    return null;
+  } catch (e) { console.warn('fetchOkr erro:', e); return null; }
+};
+
+export const saveOkr = async (okr: OkrData): Promise<void> => {
+  const payload: OkrData = { ...okr, updatedAt: new Date().toISOString() };
+  const { error } = await supabase.from('okr_state').upsert(
+    { owner_key: 'edson', data: payload, updated_at: new Date().toISOString() },
+    { onConflict: 'owner_key' }
+  );
+  if (error) throw new Error(error.message);
 };
 
 export const addProject = async (project: ProjectSession): Promise<AppState> => {

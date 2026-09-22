@@ -51,6 +51,8 @@ import {
 import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { notifyProjectCompletion } from './services/notificationService';
 import { isTokenExpired, getAuthToken, setAuthToken } from './services/authToken';
+import { Target } from 'lucide-react';
+import { OkrView } from './okr/OkrView';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -644,6 +646,13 @@ const AppContent: React.FC = () => {
       if (!currentUser) return false;
       // CEO cannot use tracker
       return ['PROJETISTA', 'GESTOR', 'COORDENADOR'].includes(currentUser.role);
+  }, [currentUser]);
+
+  // OKR pessoal: SÓ o Edson (dono). Ninguém mais vê a aba nem o conteúdo.
+  const isEdsonOwner = useMemo(() => {
+      const email = currentUser?.email?.trim().toLowerCase();
+      const uname = currentUser?.username?.trim().toLowerCase();
+      return email === 'efariaseng0@gmail.com' || uname === 'edson';
   }, [currentUser]);
 
   // Who can manage Innovations? (CEO, Manager, Designer, Coordinator, Processos)
@@ -1530,6 +1539,7 @@ const AppContent: React.FC = () => {
           <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
 
           <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
+          {isEdsonOwner && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
 
           {canUseTracker && (
             <>
@@ -1641,6 +1651,7 @@ const AppContent: React.FC = () => {
             
             <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            {isEdsonOwner && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {canUseTracker && (
               <>
                 <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
@@ -1795,6 +1806,12 @@ const AppContent: React.FC = () => {
               onUpdate={onUpdateInterruption}
               addToast={addToast}
             />
+          )}
+
+          {activeTab === 'okr' && isEdsonOwner && currentUser && (
+            <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
+              <OkrView currentUser={currentUser} />
+            </div>
           )}
 
           {activeTab === 'operational' && canUseTracker && (

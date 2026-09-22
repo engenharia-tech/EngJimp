@@ -2,6 +2,12 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Lightbulb, Plus, TrendingDown, TrendingUp, DollarSign, Calendar, User as UserIcon, Check, X, PlayCircle, Trash2, Calculator, ArrowRight, Eye, Edit, Info, MinusCircle, PlusCircle, Settings, ArrowUpDown, ArrowUp, ArrowDown, Search, RotateCcw } from 'lucide-react';
 import { InnovationType, InnovationRecord, User, AppState, CalculationType, InnovationMaterial, InnovationMachine } from '../types';
 import { fetchUsers } from '../services/storageService';
+import {
+  calcularEconomiaAnual,
+  calcularEconomiaAnualDoRegistro,
+  parseNumero,
+  totalGravadoConfere
+} from '../services/innovationCalc';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface InnovationManagerProps {
@@ -97,24 +103,9 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     return values[0] as T;
   };
 
-  const safeParse = (val: any): number => {
-    if (val === null || val === undefined || val === '') return 0;
-    if (typeof val === 'number') return isNaN(val) ? 0 : val;
-    
-    let str = val.toString().trim();
-    
-    // If it has a comma, it's likely European/pt-BR format (e.g. 1.234,56)
-    if (str.includes(',')) {
-      // Remove all thousand separator dots, then replace comma with decimal dot
-      str = str.replace(/\./g, '').replace(',', '.');
-    }
-    
-    // Remove any remaining non-numeric characters except minus and decimal dot
-    const cleaned = str.replace(/[^\d.-]/g, '');
-    
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? 0 : parsed;
-  };
+  // Um único conversor de número no app inteiro (mora em services/innovationCalc.ts,
+  // junto da conta que o usa) — evita duas leituras diferentes do mesmo campo.
+  const safeParse = parseNumero;
 
   const isEdson = useMemo(() => {
     const email = currentUser?.email?.trim().toLowerCase();
@@ -256,14 +247,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [innovations, sortKey, sortDirection]);
+    // Dependências completas: os filtros de texto/tipo/data e o mapa de autores
+    // são lidos dentro deste memo. Sem eles, digitar na busca não refazia a lista.
+  }, [innovations, sortKey, sortDirection, filterText, filterType, startDate, endDate, usersMap]);
 
   // Calculate totals - ONLY APPROVED or IMPLEMENTED
   const totalStats = useMemo(() => {
-    const processUserIds = new Set(Object.keys(usersMap).length === 0 ? [] : []); // This is tricky since usersMap is async
-    // Better to just filter by role if we had it, but we only have IDs here.
-    // However, innovations already has authorId.
-    
     return innovations.reduce((acc, curr) => {
       // If we don't know the author or they are in the map (which only has non-process users), we count them.
       // If authorId is missing, we assume it's okay for now or legacy.
@@ -277,63 +266,29 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
          };
       }
       return acc;
+      // usersMap entra nas dependências: ele carrega de forma assíncrona e o
+      // total do cabeçalho depende dele. (Conferido em 17/08: nenhum registro
+      // tem autor fora da tabela de usuários, então o total não muda por isso.)
     }, { savings: 0, count: 0 });
-  }, [innovations]);
+  }, [innovations, usersMap]);
 
-  // Preview Calculation for Form
-  const previewAnnualSavings = useMemo(() => {
-    const unit = safeParse(unitSavings);
-    let qty = safeParse(quantity);
+  // Preview do formulário — UMA conta só, em services/innovationCalc.ts.
+  // O detalhamento (base, materiais, máquina, mão de obra, capacidade) é o mesmo
+  // objeto que alimenta os painéis abaixo, para que tela e banco nunca divirjam.
+  const previewCalc = useMemo(() => calcularEconomiaAnual({
+      calculationType,
+      unitSavings,
+      quantity,
+      materials,
+      machine,
+      productivityBefore,
+      productivityAfter,
+      unitProductCost,
+      unitProductValue,
+      hourlyCost: settings?.hourlyCost
+  }), [unitSavings, quantity, calculationType, materials, machine, productivityBefore, productivityAfter, unitProductCost, unitProductValue, settings]);
 
-    // If it's recurring monthly and no quantity is set, assume 12 months/year
-    if (calculationType === CalculationType.RECURRING_MONTHLY && qty === 0) {
-        qty = 12;
-    }
-    
-    let base = 0;
-    if (calculationType === CalculationType.ONE_TIME) {
-        base = unit;
-    } else if (calculationType === CalculationType.ADD_EXPENSE) {
-        base = -unit;
-    } else {
-        base = unit * qty;
-    }
-
-    // Material Impact
-    const materialImpact = materials.reduce((acc, m) => {
-        const mCost = (m.cost || 0) * (calculationType === CalculationType.ONE_TIME ? 1 : qty);
-        if (m.type === 'REMOVE') return acc + mCost;
-        return acc - mCost;
-    }, 0);
-
-    // Machine Impact (Depreciation is annual)
-    const machineImpact = machine ? -(safeParse(machine.annualDepreciation)) : 0;
-
-    // Productivity Impact
-    let productivityImpact = 0;
-    const prodBefore = safeParse(productivityBefore);
-    const prodAfter = safeParse(productivityAfter);
-    const prodCost = safeParse(unitProductCost);
-    const prodValue = safeParse(unitProductValue);
-
-    if (prodBefore > 0 && prodAfter > 0 && qty > 0) {
-        // Labor Saving per unit = (Time Before - Time After) * Hourly Cost
-        const timeBefore = 1 / prodBefore;
-        const timeAfter = 1 / prodAfter;
-        const laborSaving = (timeBefore - timeAfter) * (settings?.hourlyCost || 0) * qty;
-
-        // Profit from Extra Capacity
-        // Extra Units = qty * (prodAfter / prodBefore - 1)
-        const extraUnits = qty * (prodAfter / prodBefore - 1);
-        const profitFromExtraUnits = extraUnits * (prodValue - prodCost);
-
-        // If product value is provided, we assume the goal is increasing capacity/profit
-        productivityImpact = prodValue > 0 ? profitFromExtraUnits : laborSaving;
-    }
-
-    const total = base + materialImpact + machineImpact + productivityImpact;
-    return isNaN(total) ? 0 : total;
-  }, [unitSavings, quantity, calculationType, materials, machine, productivityBefore, productivityAfter, unitProductCost, unitProductValue, settings]);
+  const previewAnnualSavings = previewCalc.total;
 
   const addMaterial = () => {
     if (matName.trim() === '' || matUnitCost === '') return;
@@ -415,6 +370,21 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     e.preventDefault();
     
     const total = previewAnnualSavings;
+
+    // Proteção de dado: registros com valor fixo/legado (ex.: "Furgão Elétrico
+    // 2026", R$ 150.000 que não sai de fórmula nenhuma) seriam zerados sem aviso
+    // ao serem abertos e salvos. Agora o app pergunta antes de apagar o valor.
+    if (editingInnovation) {
+      const anterior = safeParse(editingInnovation.totalAnnualSavings);
+      if (anterior !== 0 && total === 0) {
+        const segue = window.confirm(
+          `Este registro tem R$ ${anterior.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} gravado, ` +
+          `mas os campos atuais calculam R$ 0,00.\n\nSalvar vai substituir o valor por zero. Continuar?`
+        );
+        if (!segue) return;
+      }
+    }
+
     const invest = safeParse(investmentCost);
     const prodBefore = productivityBefore ? safeParse(productivityBefore) : undefined;
     const prodAfter = productivityAfter ? safeParse(productivityAfter) : undefined;
@@ -1118,10 +1088,15 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                     <div className="border-l border-blue-200 dark:border-blue-800 pl-8">
                                         <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase">{t('profitFromCapacity')}</div>
                                         <div className="text-2xl font-black text-emerald-600">
-                                            {formatCurrency(safeParse(quantity) * (safeParse(productivityAfter) / safeParse(productivityBefore) - 1) * (safeParse(unitProductValue) - safeParse(unitProductCost)))}
+                                            {formatCurrency(previewCalc.ganhoCapacidade)}
                                         </div>
                                         <div className="text-[10px] text-gray-400">
-                                            ({(safeParse(quantity) * (safeParse(productivityAfter) / safeParse(productivityBefore) - 1)).toFixed(0)} {t('extraUnits')} / {t('year')})
+                                            ({previewCalc.unidadesExtras.toFixed(0)} {t('extraUnits')} / {t('year')})
+                                        </div>
+                                        <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 italic max-w-[16rem]">
+                                            {previewCalc.capacidadeContaNoTotal
+                                              ? 'Margem de venda da capacidade liberada — está SOMADA na economia anual e supõe vender tudo o que produzir.'
+                                              : 'Margem de venda da capacidade liberada — informativa, NÃO está somada na economia anual.'}
                                         </div>
                                     </div>
                                 )}
@@ -1163,6 +1138,25 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                         </div>
                         <div className="text-[10px] text-gray-500 mt-1 uppercase italic">
                           {t('consideringBaseMaterials')}
+                        </div>
+                        {/* Memória de cálculo aberta: todo desconto/acréscimo aparece. */}
+                        <div className="mt-2 text-[11px] font-mono text-gray-600 dark:text-slate-400 space-y-0.5">
+                            <div>Base ({formatCurrency(safeParse(unitSavings))} x {previewCalc.quantidade}): {formatCurrency(previewCalc.base)}</div>
+                            {previewCalc.materiais !== 0 && <div>Materiais: {formatCurrency(previewCalc.materiais)}</div>}
+                            {previewCalc.maquina !== 0 && <div>Máquina (depreciação/ano): {formatCurrency(previewCalc.maquina)}</div>}
+                            {previewCalc.maoDeObra !== 0 && (
+                              <div className={previewCalc.maoDeObraContaNoTotal ? '' : 'opacity-60 line-through'}>
+                                Mão de obra evitada: {formatCurrency(previewCalc.maoDeObra)}
+                              </div>
+                            )}
+                            {previewCalc.ganhoCapacidade !== 0 && (
+                              <div className={previewCalc.capacidadeContaNoTotal ? '' : 'opacity-60 line-through'}>
+                                Capacidade liberada (margem de venda): {formatCurrency(previewCalc.ganhoCapacidade)}
+                              </div>
+                            )}
+                            <div className="pt-0.5 border-t border-gray-200 dark:border-slate-700 font-bold">
+                                Total: {formatCurrency(previewCalc.total)}
+                            </div>
                         </div>
                     </div>
                     
@@ -1426,7 +1420,30 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                     }`}>
                       {formatCurrency(inv.totalAnnualSavings)}
                     </div>
-                    
+
+                    {/* Reconciliação: por que "unit x qtde" não fecha com o total. */}
+                    {(() => {
+                       const c = calcularEconomiaAnualDoRegistro(inv, settings?.hourlyCost);
+                       if (!totalGravadoConfere(inv, settings?.hourlyCost)) {
+                         return (
+                           <div className="text-[10px] text-amber-600 dark:text-amber-500 italic leading-tight mt-0.5" title="Valor gravado à mão: não sai da fórmula.">
+                             valor fixo (não calculado)
+                           </div>
+                         );
+                       }
+                       const partes: string[] = [];
+                       if (c.materiais !== 0) partes.push(`mat ${formatCurrency(c.materiais)}`);
+                       if (c.maquina !== 0) partes.push(`máq ${formatCurrency(c.maquina)}`);
+                       if (c.maoDeObra !== 0 && c.maoDeObraContaNoTotal) partes.push(`m.obra ${formatCurrency(c.maoDeObra)}`);
+                       if (c.ganhoCapacidade !== 0 && c.capacidadeContaNoTotal) partes.push(`capacidade ${formatCurrency(c.ganhoCapacidade)}`);
+                       if (partes.length === 0) return null;
+                       return (
+                         <div className="text-[10px] text-gray-400 dark:text-slate-500 leading-tight mt-0.5 text-right max-w-[14rem]">
+                           base {formatCurrency(c.base)} · {partes.join(' · ')}
+                         </div>
+                       );
+                    })()}
+
                     {inv.effectiveAnnualSavings !== undefined && inv.effectiveAnnualSavings > 0 && (
                        <div className="mt-1 pt-1 border-t border-gray-100 dark:border-slate-800 w-full flex flex-col items-end">
                          <div className="text-[10px] text-blue-500 uppercase font-bold leading-tight">{t('effectiveValue')}</div>
@@ -1685,10 +1702,15 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                           </div>
                                           <div className="text-right">
                                               <div className="text-2xl font-black text-emerald-600">
-                                                  {formatCurrency(viewingInnovation.quantity * ((viewingInnovation.productivityAfter || 1) / (viewingInnovation.productivityBefore || 1) - 1) * (viewingInnovation.unitProductValue - viewingInnovation.unitProductCost))}
+                                                  {formatCurrency(calcularEconomiaAnualDoRegistro(viewingInnovation, settings?.hourlyCost).ganhoCapacidade)}
                                               </div>
                                               <div className="text-[10px] text-gray-400">
-                                                  {(viewingInnovation.quantity * ((viewingInnovation.productivityAfter || 1) / (viewingInnovation.productivityBefore || 1) - 1)).toFixed(0)} {t('extraUnits')} / {t('year')}
+                                                  {calcularEconomiaAnualDoRegistro(viewingInnovation, settings?.hourlyCost).unidadesExtras.toFixed(0)} {t('extraUnits')} / {t('year')}
+                                              </div>
+                                              <div className="text-[10px] text-gray-500 dark:text-slate-400 italic max-w-[18rem]">
+                                                  {calcularEconomiaAnualDoRegistro(viewingInnovation, settings?.hourlyCost).capacidadeContaNoTotal
+                                                    ? 'Somada na economia anual (supõe vender toda a capacidade liberada).'
+                                                    : 'Informativa: não somada na economia anual.'}
                                               </div>
                                           </div>
                                       </div>
