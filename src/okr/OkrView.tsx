@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw } from 'lucide-react';
+import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2 } from 'lucide-react';
 import { User } from '../types';
 import { fetchOkr, saveOkr, addAuditLog } from '../services/storageService';
 import {
-  OkrData, OkrKeyResult, OkrObjective, OkrCheckin,
-  DEFAULT_OKR, krProgress, objProgress, overallProgress, progressColor, fmtValue,
+  OkrData, OkrKeyResult, OkrObjective, OkrCheckin, PortfolioItem,
+  DEFAULT_OKR, DEFAULT_PORTFOLIO, krProgress, objProgress, overallProgress, progressColor, fmtValue,
 } from './okr';
 import { useToast } from '../components/Toast';
 
@@ -36,6 +36,8 @@ export const OkrView: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       try {
         const data = await fetchOkr();
         if (data && data.objectives?.length) {
+          if (!data.portfolio || data.portfolio.length === 0) data.portfolio = DEFAULT_PORTFOLIO;
+          if (!data.checkins) data.checkins = [];
           setOkr(data);
         } else {
           setOkr(DEFAULT_OKR);
@@ -210,8 +212,69 @@ export const OkrView: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         );
       })}
 
+      {/* Portfólio de inovação (KR1.2) */}
+      <PortfolioPanel okr={okr} persist={persist} />
+
       {/* Check-ins */}
       <CheckinsPanel okr={okr} persist={persist} currentUser={currentUser} />
+    </div>
+  );
+};
+
+const PF_STATUS = ['Produção', 'Desenvolvimento', 'Protótipo', 'Ferramenta', 'Pausado'];
+const statusStyle = (s: string) =>
+  s === 'Produção' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
+  : s === 'Desenvolvimento' ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
+  : s === 'Ferramenta' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+  : s === 'Pausado' ? 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400'
+  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+
+const PortfolioPanel: React.FC<{ okr: OkrData; persist: (d: OkrData) => Promise<void> }> = ({ okr, persist }) => {
+  const items = okr.portfolio || [];
+  const update = (id: string, patch: Partial<PortfolioItem>) => {
+    persist({ ...okr, portfolio: items.map(i => i.id === id ? { ...i, ...patch } : i) });
+  };
+  const remove = (id: string) => persist({ ...okr, portfolio: items.filter(i => i.id !== id) });
+  const add = () => {
+    const id = `p${Date.now().toString(36)}`;
+    persist({ ...okr, portfolio: [...items, { id, name: 'Novo projeto', what: '', category: 'Sistemas', status: 'Desenvolvimento', nextMilestone: '' }] });
+  };
+  const prod = items.filter(i => i.status === 'Produção').length;
+
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-gray-200 dark:border-slate-700">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-base font-bold text-slate-800 dark:text-white flex items-center gap-2"><Layers size={18} className="text-blue-600" /> Portfólio de Inovação</h3>
+        <button onClick={add} className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"><Plus size={14} /> Adicionar</button>
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Os projetos/apps que você construiu (é o KR1.2). {items.length} projetos · {prod} em produção.</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {items.map(i => (
+          <div key={i.id} className="rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/30 p-4 group">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-800 dark:text-white">{i.name}</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{i.what}</p>
+                {i.url && <a href={`https://${i.url}`} target="_blank" rel="noreferrer" className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline">{i.url}</a>}
+              </div>
+              <button onClick={() => remove(i.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all shrink-0" title="Remover"><Trash2 size={14} /></button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <select value={i.status} onChange={e => update(i.id, { status: e.target.value })}
+                className={`text-[11px] font-bold px-2 py-1 rounded-full border-0 outline-none cursor-pointer ${statusStyle(i.status)}`}>
+                {PF_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
+                {!PF_STATUS.includes(i.status) && <option value={i.status}>{i.status}</option>}
+              </select>
+              <span className="text-[10px] text-slate-400">{i.category}</span>
+            </div>
+            <div className="mt-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Próximo marco</span>
+              <input defaultValue={i.nextMilestone} onBlur={e => update(i.id, { nextMilestone: e.target.value })} placeholder="—"
+                className="w-full mt-0.5 px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
