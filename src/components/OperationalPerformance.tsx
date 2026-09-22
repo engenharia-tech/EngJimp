@@ -38,14 +38,18 @@ import {
   Pie,
   Cell
 } from 'recharts';
-import { 
-  OperationalActivity, 
-  ActivityType, 
-  User, 
+import {
+  OperationalActivity,
+  ActivityType,
+  User,
   ProjectSession,
   AppSettings,
-  InterruptionRecord
+  InterruptionRecord,
+  ProjectType,
+  ImplementType,
+  AppState
 } from '../types';
+import { PROJECT_TYPES, IMPLEMENT_TYPES } from '../constants';
 import { format, startOfDay, endOfDay, isWithinInterval, parseISO, differenceInSeconds, addSeconds, subDays, addDays } from 'date-fns';
 import { addAuditLog } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
@@ -75,6 +79,8 @@ interface OperationalPerformanceProps {
   onUpdateActivityType: (type: ActivityType) => Promise<void>;
   onDeleteActivityType: (id: string) => Promise<void>;
   onUpdateProject: (project: ProjectSession) => Promise<void>;
+  onCreateProject?: (project: ProjectSession) => Promise<AppState | undefined>;
+  effectiveHourlyCost?: number;
   onDeleteProject?: (id: string) => Promise<void>;
   onUpdateInterruption: (interruption: InterruptionRecord) => Promise<void>;
   onDeleteInterruption?: (id: string) => Promise<void>;
@@ -98,6 +104,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   onUpdateActivityType,
   onDeleteActivityType,
   onUpdateProject,
+  onCreateProject,
+  effectiveHourlyCost,
   onDeleteProject,
   onUpdateInterruption,
   onDeleteInterruption,
@@ -110,8 +118,93 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'month' | 'year'>('day');
   const [selectedUserId, setSelectedUserId] = useState<string>(currentUser.id);
-  const [activeTab, setActiveTab] = useState<'tracker' | 'dashboard' | 'engineering' | 'management'>('tracker');
+  const [activeTab, setActiveTab] = useState<'tracker' | 'dashboard' | 'engineering' | 'management' | 'retroactive'>('tracker');
   const [isUserSelectorOpen, setIsUserSelectorOpen] = useState(false);
+
+  // --- Liberação retroativa: registrar um projeto JÁ CONCLUÍDO com data passada
+  // (projeto que foi liberado antes e não foi lançado na hora). Cada projetista
+  // lança o SEU (o userId é forçado para o usuário logado na gravação).
+  const [retroNs, setRetroNs] = useState('');
+  const [retroClient, setRetroClient] = useState('');
+  const [retroCode, setRetroCode] = useState('');
+  const [retroType, setRetroType] = useState<ProjectType>(ProjectType.RELEASE);
+  const [retroImplement, setRetroImplement] = useState<ImplementType>(ImplementType.OUTROS);
+  const [retroDate, setRetroDate] = useState<string>(format(subDays(new Date(), 1), 'yyyy-MM-dd'));
+  const [retroHours, setRetroHours] = useState('');
+  const [retroMinutes, setRetroMinutes] = useState('');
+  const [retroOvertime, setRetroOvertime] = useState(false);
+  const [retroNotes, setRetroNotes] = useState('');
+  const [retroSaving, setRetroSaving] = useState(false);
+
+  const handleSaveRetroactive = async () => {
+    if (retroSaving) return;
+    if (!onCreateProject) { addToast('Gravação não disponível nesta tela.', 'error'); return; }
+    const ns = retroNs.trim();
+    if (!ns) { addToast('Informe a NS / identificação do projeto.', 'error'); return; }
+    const totalActiveSeconds = (parseInt(retroHours) || 0) * 3600 + (parseInt(retroMinutes) || 0) * 60;
+    if (totalActiveSeconds <= 0) { addToast('Informe as horas trabalhadas (maior que zero).', 'error'); return; }
+    if (!retroDate) { addToast('Escolha a data de liberação.', 'error'); return; }
+
+    // Monta início/fim na DATA escolhida. Ancoramos o início no começo da
+    // jornada (o filtro dos painéis usa o startTime), e o fim = início + duração.
+    const [y, mo, d] = retroDate.split('-').map(Number);
+    const [wh, wm] = (settings.workdayStart || '07:30').split(':').map(Number);
+    const start = new Date(y, (mo || 1) - 1, d || 1, wh || 7, wm || 30, 0, 0);
+    if (start.getTime() > Date.now()) { addToast('A data de liberação não pode ser no futuro.', 'error'); return; }
+    const end = new Date(start.getTime() + totalActiveSeconds * 1000);
+
+    const hourlyRate = (effectiveHourlyCost ?? settings.hourlyCost) || 0;
+    const productiveCost = (totalActiveSeconds / 3600) * hourlyRate;
+
+    const project: ProjectSession = {
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: ns,
+      ns,
+      clientName: retroClient.trim() || undefined,
+      projectCode: retroCode.trim() || undefined,
+      type: retroType,
+      implementType: retroImplement,
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      estimatedSeconds: totalActiveSeconds,
+      totalActiveSeconds,
+      interruptionSeconds: 0,
+      totalSeconds: totalActiveSeconds,
+      productiveCost,
+      interruptionCost: 0,
+      totalCost: productiveCost,
+      pauses: [],
+      variations: [],
+      status: 'COMPLETED',
+      notes: retroNotes.trim() || undefined,
+      userId: currentUser.id,
+      isOvertime: retroOvertime,
+    };
+
+    setRetroSaving(true);
+    try {
+      await onCreateProject(project);
+      addAuditLog({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        action: 'CREATE',
+        entityType: 'PROJECT',
+        entityId: project.id,
+        entityName: ns,
+        details: `Liberação RETROATIVA lançada por ${currentUser.name}: "${ns}" (${retroType}) na data ${retroDate}, ${(totalActiveSeconds/3600).toFixed(2)}h.`,
+      });
+      addToast('Liberação retroativa registrada!', 'success');
+      // limpa para o próximo lançamento
+      setRetroNs(''); setRetroClient(''); setRetroCode('');
+      setRetroHours(''); setRetroMinutes(''); setRetroNotes('');
+      setRetroOvertime(false);
+    } catch (e) {
+      console.error('Erro na liberação retroativa:', e);
+      addToast('Não consegui registrar. Tente novamente.', 'error');
+    } finally {
+      setRetroSaving(false);
+    }
+  };
   const userSelectorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1333,6 +1426,18 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
             <BarChart3 size={18} />
             <span className="hidden sm:inline">{t('dashboard').toUpperCase()}</span>
           </button>
+          <button
+            onClick={() => setActiveTab('retroactive')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+              activeTab === 'retroactive'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700'
+            }`}
+            title="Registrar um projeto liberado em data passada"
+          >
+            <Save size={18} />
+            <span className="hidden sm:inline">LIBERAÇÃO RETROATIVA</span>
+          </button>
           {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
             <>
               <button
@@ -1813,8 +1918,87 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       </div>
       )}
 
+      {activeTab === 'retroactive' && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+          <div className="mb-5">
+            <h3 className={`text-lg font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Liberação Retroativa</h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
+              Registrar um projeto que você <b>já liberou</b> em um dia anterior e esqueceu de lançar na hora.
+              Entra como projeto <b>concluído</b> na data escolhida e conta nas suas métricas daquele dia.
+              O lançamento fica no <b>seu</b> nome ({currentUser.name}).
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Data de liberação</label>
+              <input type="date" value={retroDate} max={format(new Date(), 'yyyy-MM-dd')} onChange={e => setRetroDate(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">NS / Identificação</label>
+              <input type="text" value={retroNs} onChange={e => setRetroNs(e.target.value)} placeholder="Ex.: 22942"
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Cliente <span className="text-gray-400 normal-case font-normal">(opcional)</span></label>
+              <input type="text" value={retroClient} onChange={e => setRetroClient(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Código do projeto <span className="text-gray-400 normal-case font-normal">(opcional)</span></label>
+              <input type="text" value={retroCode} onChange={e => setRetroCode(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Tipo</label>
+              <select value={retroType} onChange={e => setRetroType(e.target.value as ProjectType)}
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]">
+                {PROJECT_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Implemento</label>
+              <select value={retroImplement} onChange={e => setRetroImplement(e.target.value as ImplementType)}
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]">
+                {IMPLEMENT_TYPES.map(it => <option key={it} value={it}>{t(it.toLowerCase())}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Horas trabalhadas</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min="0" value={retroHours} onChange={e => setRetroHours(e.target.value)} placeholder="horas"
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                <span className="text-gray-400 font-bold">h</span>
+                <input type="number" min="0" max="59" value={retroMinutes} onChange={e => setRetroMinutes(e.target.value)} placeholder="min"
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                <span className="text-gray-400 font-bold">min</span>
+              </div>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 cursor-pointer select-none px-3 py-2">
+                <input type="checkbox" checked={retroOvertime} onChange={e => setRetroOvertime(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+                <span className="text-sm font-medium text-gray-700 dark:text-slate-300">Hora extra</span>
+              </label>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Anotações <span className="text-gray-400 normal-case font-normal">(opcional)</span></label>
+              <textarea value={retroNotes} onChange={e => setRetroNotes(e.target.value)} rows={2} placeholder="Ex.: estava preso aguardando aprovação; liberado no dia anterior."
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 mt-6">
+            <button onClick={handleSaveRetroactive} disabled={retroSaving}
+              className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold shadow-md transition-all active:scale-95">
+              <Save size={18} /> {retroSaving ? 'Registrando…' : 'Registrar liberação'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'engineering' && (
-        <EngineeringDashboard 
+        <EngineeringDashboard
           projects={engineeringProjects}
           activities={engineeringActivities}
           activityTypes={activityTypes}

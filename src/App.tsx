@@ -1813,6 +1813,8 @@ const AppContent: React.FC = () => {
               onUpdateActivityType={onUpdateActivityType}
               onDeleteActivityType={onDeleteActivityType}
               onUpdateProject={handleProjectUpdate}
+              onCreateProject={handleProjectCreate}
+              effectiveHourlyCost={effectiveSettings.hourlyCost}
               onDeleteProject={onDeleteProjectFromPerformance}
               onUpdateInterruption={onUpdateInterruption}
               onDeleteInterruption={onDeleteInterruption}
