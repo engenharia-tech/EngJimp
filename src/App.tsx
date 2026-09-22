@@ -52,7 +52,7 @@ import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { notifyProjectCompletion } from './services/notificationService';
 import { isTokenExpired, getAuthToken, setAuthToken } from './services/authToken';
 import { Target } from 'lucide-react';
-import { OkrView } from './okr/OkrView';
+import { OkrView, OkrPublicPage } from './okr/OkrView';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -1411,6 +1411,12 @@ const AppContent: React.FC = () => {
     });
   };
 
+  // Link público do OKR (só leitura, sem login): kpieng.jimpnexus.com/?okr=<token>
+  const okrShareToken = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('okr') : null;
+  if (okrShareToken) {
+    return <OkrPublicPage token={okrShareToken} />;
+  }
+
   if (!currentUser) {
     return <Login onLogin={handleLogin} />;
   }
@@ -1810,7 +1816,12 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'okr' && isEdsonOwner && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              <OkrView currentUser={currentUser} />
+              <OkrView
+                currentUser={currentUser}
+                projects={data.projects}
+                activities={data.operationalActivities}
+                activityTypes={data.activityTypes}
+              />
             </div>
           )}
 

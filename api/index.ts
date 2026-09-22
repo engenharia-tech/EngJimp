@@ -2,7 +2,7 @@ import express from "express";
 import nodemailer from "nodemailer";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
-import { createHmac } from "crypto";
+import { createHmac, randomBytes } from "crypto";
 
 const app = express();
 app.use(express.json({ limit: "50mb" }));
@@ -681,6 +681,37 @@ app.post("/api/settings/save", async (req, res) => {
     if (error) return res.json({ success: false, message: error.message });
   }
   return res.json({ success: true });
+});
+
+// ========================= OKR (Edson) =========================
+// POST /api/okr/share — gera (ou reusa) o token do link publico. So o Edson.
+app.post("/api/okr/share", async (req, res) => {
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  if (!claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Sem permissao." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+
+  const { data: row } = await admin.from("okr_state").select("share_token").eq("owner_key", "edson").limit(1);
+  let token = row && row[0] && (row[0] as any).share_token;
+  if (!token) {
+    token = randomBytes(16).toString("hex");
+    const { error } = await admin.from("okr_state").update({ share_token: token }).eq("owner_key", "edson");
+    if (error) return res.json({ success: false, message: error.message });
+  }
+  return res.json({ success: true, token });
+});
+
+// GET /api/okr/public?token=... — leitura PUBLICA (sem login) do OKR. So leitura.
+app.get("/api/okr/public", async (req, res) => {
+  const token = String((req.query && (req.query as any).token) || "").trim();
+  if (!token) return res.status(400).json({ success: false, error: "token ausente." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  const { data, error } = await admin.from("okr_state").select("data").eq("share_token", token).limit(1);
+  if (error) return res.status(500).json({ success: false, error: "Erro ao ler." });
+  if (!data || data.length === 0) return res.status(404).json({ success: false, error: "Link invalido." });
+  return res.json({ success: true, data: (data[0] as any).data });
 });
 
 // POST /api/users/delete { id } — so admin, nao pode excluir a si mesmo

@@ -816,6 +816,24 @@ export const saveOkr = async (okr: OkrData): Promise<void> => {
   if (error) throw new Error(error.message);
 };
 
+// Gera/retorna o token do link público (só-leitura). Edson-only, via servidor.
+export const enableOkrShare = async (): Promise<string> => {
+  const res = await fetch('/api/okr/share', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || !out.success || !out.token) throw new Error(out.error || out.message || 'Falha ao compartilhar.');
+  return out.token as string;
+};
+
+// Lê o OKR pelo token público (sem login), via servidor.
+export const fetchPublicOkr = async (token: string): Promise<OkrData | null> => {
+  try {
+    const res = await fetch(`/api/okr/public?token=${encodeURIComponent(token)}`);
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out.success) return null;
+    return out.data as OkrData;
+  } catch { return null; }
+};
+
 export const addProject = async (project: ProjectSession): Promise<AppState> => {
   try {
     const { error } = await supabase.from('projects').insert([{
