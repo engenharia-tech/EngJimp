@@ -4,7 +4,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pi
 import { User, ProjectSession, OperationalActivity, ActivityType } from '../types';
 import { fetchOkr, saveOkr, addAuditLog, enableOkrShare, fetchPublicOkr } from '../services/storageService';
 import {
-  OkrData, OkrKeyResult, OkrObjective, OkrCheckin, PortfolioItem,
+  OkrData, OkrKeyResult, OkrObjective, OkrCheckin, PortfolioItem, OkrTask,
   DEFAULT_OKR, DEFAULT_PORTFOLIO, krProgress, objProgress, overallProgress, progressColor, fmtValue,
 } from './okr';
 import { useToast } from '../components/Toast';
@@ -37,6 +37,37 @@ const ChartCard: React.FC<{ title: string; children: React.ReactNode }> = ({ tit
     {children}
   </div>
 );
+
+// Checklist de ATIVIDADES/entregas dentro de um KR (o Edson pediu para
+// cadastrar várias por KR). Marca feito, adiciona e remove.
+const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onChange: (tasks: OkrTask[]) => void }> = ({ kr, readOnly, onChange }) => {
+  const [text, setText] = useState('');
+  const tasks = kr.tasks || [];
+  const add = () => { if (!text.trim()) return; onChange([...tasks, { id: newId(), text: text.trim(), done: false }]); setText(''); };
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-800">
+      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Atividades {tasks.length > 0 && `· ${tasks.filter(t => t.done).length}/${tasks.length}`}</span>
+      <div className="space-y-1 mt-1.5">
+        {tasks.map(t => (
+          <div key={t.id} className="flex items-center gap-2 group/task">
+            <input type="checkbox" checked={t.done} disabled={readOnly} onChange={() => onChange(tasks.map(x => x.id === t.id ? { ...x, done: !x.done } : x))} className="w-3.5 h-3.5 accent-blue-600 shrink-0" />
+            <span className={`text-xs flex-1 min-w-0 ${t.done ? 'line-through text-slate-400' : 'text-slate-600 dark:text-slate-300'}`}>{t.text}</span>
+            {!readOnly && <button onClick={() => onChange(tasks.filter(x => x.id !== t.id))} className="opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={12} /></button>}
+          </div>
+        ))}
+        {tasks.length === 0 && <p className="text-[11px] text-slate-400 italic">Nenhuma atividade cadastrada.</p>}
+      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-2 mt-2">
+          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} placeholder="+ nova atividade / entrega"
+            className="flex-1 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+          <button onClick={add} className="flex items-center gap-1 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1.5 rounded-lg transition-colors"><Plus size={14} /></button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface OkrViewProps {
   currentUser: User;
@@ -387,6 +418,8 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                         {k.notes && <p className="italic">{k.notes}</p>}
                       </div>
                     )}
+
+                    <KrTasks kr={k} readOnly={readOnly} onChange={tasks => updateKr(o.id, k.id, { tasks })} />
                   </div>
                 );
               })}
