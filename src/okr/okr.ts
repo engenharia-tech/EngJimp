@@ -5,6 +5,12 @@
 export type OkrFormat = 'bin' | 'pct' | 'num';
 export type OkrStatus = 'Não iniciado' | 'Em andamento' | 'Concluído' | 'Em risco';
 
+export interface OkrTask {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 export interface OkrKeyResult {
   id: string;            // ex.: "KR1.1"
   title: string;
@@ -14,7 +20,8 @@ export interface OkrKeyResult {
   current: number;
   format: OkrFormat;     // bin (0/1) | pct (0..1 exibido em %) | num (contagem 0..target)
   due: string;           // ISO yyyy-mm-dd
-  initiatives: string;
+  initiatives: string;   // texto livre (mantido); as atividades detalhadas vão em tasks
+  tasks?: OkrTask[];     // atividades/entregas do KR (checklist editável)
   status: OkrStatus | string;
   notes?: string;
 }
@@ -120,7 +127,7 @@ export const DEFAULT_OKR: OkrData = {
       title: 'Consolidar a área de Pesquisa e Inovação como função formal da empresa',
       keyResults: [
         kr('KR1.1', 'Aprovar com a direção o documento de escopo da área (missão, portfólio, critérios de priorização e rotina de reporte)', 'Documento aprovado (0/1)', 1, 'bin', '2026-10-31', 'Redigir proposta de escopo; revisar com o diretor; definir cadência de reporte mensal', 'Não iniciado', 'Base para os demais objetivos'),
-        kr('KR1.2', 'Cadastrar 100% dos projetos ativos de inovação no portfólio, com dono, status e próximo marco', '% dos projetos cadastrados', 1, 'pct', '2026-11-15', 'Levantar lista completa de projetos (Claude Code, engenharia, sistemas); montar quadro de portfólio', 'Não iniciado'),
+        { ...kr('KR1.2', 'Cadastrar 100% dos projetos ativos de inovação no portfólio, com dono, status e próximo marco', '% dos projetos cadastrados', 1, 'pct', '2026-11-15', 'Levantar lista completa de projetos (Claude Code, engenharia, sistemas); montar quadro de portfólio', 'Concluído', 'Portfólio cadastrado na própria aba (12 projetos).'), current: 1 },
         kr('KR1.3', 'Concluir e enviar o questionário PINTEC 2025 (IBGE) com evidências de P&D interno documentadas', 'Questionário enviado (0/1)', 1, 'bin', '2026-10-31', 'Finalizar respostas pendentes (15_D e valores de receita/pessoal com contabilidade e RH); enviar', 'Em andamento'),
         kr('KR1.4', 'Avaliar elegibilidade da empresa em 3 mecanismos de fomento à inovação (Lei do Bem, Finep, Embrapii/SENAI)', 'Pareceres concluídos (0 a 3)', 3, 'num', '2026-12-15', 'Levantar requisitos de cada mecanismo; cruzar com o VPC e os sistemas internos; parecer de 1 página por mecanismo'),
       ],
@@ -139,7 +146,7 @@ export const DEFAULT_OKR: OkrData = {
       id: 'O3',
       title: 'Acelerar o desenvolvimento de produto com engenharia baseada em simulação',
       keyResults: [
-        kr('KR3.1', 'Fechar o ciclo de validação do VPC com relatório consolidado (FEA e vibração) e ações de projeto implementadas', 'Relatório consolidado (0/1)', 1, 'bin', '2026-11-30', 'Consolidar laudos externos; listar alterações de projeto; registrar as implementadas', 'Não iniciado'),
+        kr('KR3.1', 'Fechar o ciclo de validação do VPC com relatório consolidado (FEA e vibração) e ações de projeto implementadas', 'Relatório consolidado (0/1)', 1, 'bin', '2026-11-30', 'Consolidar laudos externos; listar alterações de projeto; registrar as implementadas', 'Em andamento', 'VPC fechado (jul/2026): reta + VPC porta-container validados no motor (vpc_jimp.py / vpc_bracos_jimp.py) contra o memorial Samuel 1998 e a PC ESTUDO. Método analítico (viga/seção variável mm a mm), não FEA. Pendência aberta: reforço em diagonal do braço reprova no LNE-38.'),
         kr('KR3.2', 'Reduzir a massa estrutural em 5% em ao menos um modelo, mantidos os requisitos de resistência e durabilidade', '% de redução de massa', 0.05, 'pct', '2026-12-31', 'Selecionar modelo alvo; comparar configurações estruturais; validar por cálculo e simulação', 'Não iniciado', 'Meta de 5% é proposta inicial, ajustar'),
         kr('KR3.3', 'Homologar 2 fornecedores alternativos de componentes críticos com protocolo de teste (lote de 100 unidades)', 'Fornecedores homologados (0 a 2)', 2, 'num', '2026-11-30', 'Iniciar pelo parafuso autoperfurante (Ø4,2 x 25, DIN 7504 P); solicitar amostras; teste de torque e instalação', 'Não iniciado'),
         kr('KR3.4', 'Padronizar o protocolo de homologação de componentes e travar descrições críticas no ERP', 'Protocolo publicado (0/1)', 1, 'bin', '2026-12-15', 'Documento de 2 páginas com etapas, critérios e responsáveis; ajuste das descrições no ERP', 'Não iniciado'),
