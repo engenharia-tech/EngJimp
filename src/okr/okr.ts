@@ -34,13 +34,43 @@ export interface OkrCheckin {
   next: string;
 }
 
+// Portfólio de inovação (KR1.2): os projetos/apps ativos, com status e próximo
+// marco. Semeado com o inventário REAL do que foi construído.
+export type PortfolioStatus = 'Produção' | 'Desenvolvimento' | 'Protótipo' | 'Ferramenta' | 'Pausado';
+export interface PortfolioItem {
+  id: string;
+  name: string;
+  what: string;            // o que é (1 linha)
+  category: string;        // Engenharia | Sistemas | Dados | Outros
+  status: PortfolioStatus | string;
+  url?: string;
+  nextMilestone: string;
+}
+
 export interface OkrData {
   period: string;
   owner: string;
   objectives: OkrObjective[];
+  portfolio: PortfolioItem[];
   checkins: OkrCheckin[];
   updatedAt?: string;
 }
+
+// Portfólio real (inventariado do repositório app/, exceto Michela).
+export const DEFAULT_PORTFOLIO: PortfolioItem[] = [
+  { id: 'kpi', name: 'KPI Engenharia', what: 'Gestão de projetos, KPIs, paradas e OKR da engenharia', category: 'Sistemas', status: 'Produção', url: 'kpieng.jimpnexus.com', nextMilestone: 'Consolidar OKR + notificações de paradas' },
+  { id: 'pedidos', name: 'Pedidos Eletrônicos (Configurador)', what: 'Pedido de venda + ordem de produção do furgão/baú, quantidades por fórmula', category: 'Sistemas', status: 'Produção', url: 'pedidos.jimpnexus.com', nextMilestone: 'Unificar de-para com o ERP e as regras das 43 perguntas' },
+  { id: 'appcustos', name: 'APPCUSTOS', what: 'Custeio de produtos com motor próprio, distribuído como .exe', category: 'Sistemas', status: 'Produção', nextMilestone: 'Mapear a análise de custo dos modelos restantes' },
+  { id: 'calculista', name: 'JimpNexus Calculista (cálculo estrutural / VPC)', what: 'Verificação estrutural de semirreboques (NBR 9500 / Res. 882), memorial PDF assinado, licenciado', category: 'Engenharia', status: 'Produção', nextMilestone: 'Validar famílias Beta (bobineiro, florestal…) contra as planilhas de referência' },
+  { id: 'quality', name: 'QualityTracker', what: 'Liberações, tempo de projeto e ocorrências dos projetistas', category: 'Sistemas', status: 'Produção', url: 'qualitytracker-pied.vercel.app', nextMilestone: 'Migrar para domínio próprio qualidade.jimpnexus.com' },
+  { id: 'cmms', name: 'CMMS JIMP (Manutenção)', what: 'Gestão de manutenção industrial: equipamentos, OS, preventivas, QR Code', category: 'Sistemas', status: 'Produção', nextMilestone: 'Deduplicar patrimônios e ajustar prazos de preventiva' },
+  { id: 'portal', name: 'Portal Nexus', what: 'Portal interno da engenharia, porta de entrada dos sistemas', category: 'Sistemas', status: 'Produção', url: 'jimpnexus.com', nextMilestone: 'Deploy automático (Vercel) + analytics' },
+  { id: 'vendas', name: 'Vendas-NS', what: 'Base de inteligência de vendas: 2.482 fichas históricas para cruzar preço/cliente/config', category: 'Dados', status: 'Ferramenta', nextMilestone: 'Consolidar padrões para alimentar preços e de-para do Configurador' },
+  { id: 'plaquetas', name: 'Plaquetas', what: 'Geração de plaquetas de identificação (patrimônio/chassi) + entregas', category: 'Sistemas', status: 'Desenvolvimento', nextMilestone: 'Deploy formal e consolidação da autenticação' },
+  { id: 'n8n', name: 'Notificações de paradas (n8n)', what: 'WhatsApp em tempo real de paradas + relatório semanal', category: 'Sistemas', status: 'Desenvolvimento', nextMilestone: 'Trocar o trigger simples pelo robusto (outbox) e subir no n8n' },
+  { id: 'taesa', name: 'TAESA Pós-Vendas', what: 'App de pós-venda (clientes, produtos, calendário) — outro domínio', category: 'Outros', status: 'Produção', url: 'taesa-posvendas.vercel.app', nextMilestone: 'Expandir alertas/calendário e onboarding' },
+  { id: 'viverbem', name: 'Viver Bem Imóveis', what: 'Site/portal imobiliário — outro domínio', category: 'Outros', status: 'Desenvolvimento', nextMilestone: 'Finalizar o admin PHP com conteúdo real e publicar' },
+];
 
 // Progresso = (atual - baseline) / (meta - baseline), limitado a [0,1].
 export const krProgress = (kr: OkrKeyResult): number => {
@@ -85,6 +115,7 @@ export const DEFAULT_OKR: OkrData = {
   period: '01/10/2026 a 31/12/2026',
   owner: 'Edson Farias',
   checkins: [],
+  portfolio: DEFAULT_PORTFOLIO,
   objectives: [
     {
       id: 'O1',
