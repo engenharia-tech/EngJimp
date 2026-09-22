@@ -68,8 +68,6 @@ export const DEFAULT_PORTFOLIO: PortfolioItem[] = [
   { id: 'vendas', name: 'Vendas-NS', what: 'Base de inteligência de vendas: 2.482 fichas históricas para cruzar preço/cliente/config', category: 'Dados', status: 'Ferramenta', nextMilestone: 'Consolidar padrões para alimentar preços e de-para do Configurador' },
   { id: 'plaquetas', name: 'Plaquetas', what: 'Geração de plaquetas de identificação (patrimônio/chassi) + entregas', category: 'Sistemas', status: 'Desenvolvimento', nextMilestone: 'Deploy formal e consolidação da autenticação' },
   { id: 'n8n', name: 'Notificações de paradas (n8n)', what: 'WhatsApp em tempo real de paradas + relatório semanal', category: 'Sistemas', status: 'Desenvolvimento', nextMilestone: 'Trocar o trigger simples pelo robusto (outbox) e subir no n8n' },
-  { id: 'taesa', name: 'TAESA Pós-Vendas', what: 'App de pós-venda (clientes, produtos, calendário) — outro domínio', category: 'Outros', status: 'Produção', url: 'taesa-posvendas.vercel.app', nextMilestone: 'Expandir alertas/calendário e onboarding' },
-  { id: 'viverbem', name: 'Viver Bem Imóveis', what: 'Site/portal imobiliário — outro domínio', category: 'Outros', status: 'Desenvolvimento', nextMilestone: 'Finalizar o admin PHP com conteúdo real e publicar' },
 ];
 
 // Progresso = (atual - baseline) / (meta - baseline), limitado a [0,1].
