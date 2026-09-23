@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Compass, Activity, Gauge, Users as UsersIcon, Plus, Trash2, RefreshCw, CalendarClock, CheckSquare, Lock } from 'lucide-react';
-import { fetchOkr, saveOkr } from '../services/storageService';
-import { OkrStore, OkrGovState, OkrGovReview, OkrGovAction } from './okr';
+import { fetchOkr, saveOkr, addAuditLog } from '../services/storageService';
+import { OkrStore, OkrGovState, OkrGovReview } from './okr';
+import { User } from '../types';
 import { useToast } from '../components/Toast';
 
 const CADENCE = [
@@ -20,11 +21,22 @@ const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypt
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (iso: string) => { try { const [y, m, d] = iso.split('-'); return d ? `${d}/${m}/${y}` : iso; } catch { return iso; } };
 
-export const OkrGovernance: React.FC<{ editable: boolean }> = ({ editable }) => {
+export const OkrGovernance: React.FC<{ editable: boolean; currentUser: User }> = ({ editable, currentUser }) => {
   const { addToast } = useToast();
   const [store, setStore] = useState<OkrStore | null>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => { (async () => { setLoading(true); try { setStore(await fetchOkr('edson')); } finally { setLoading(false); } })(); }, []);
+
+  const logDelete = (entity: string, name: string) => {
+    try {
+      addAuditLog({
+        userId: currentUser.id,
+        userName: `${currentUser.name}${currentUser.surname ? ' ' + currentUser.surname : ''}`.trim(),
+        action: 'DELETE' as any, entityType: 'OKR', entityId: 'edson', entityName: name || entity,
+        details: `${currentUser.name} excluiu ${entity}${name ? ` "${name}"` : ''} na Governança do ciclo`,
+      });
+    } catch { /* auditoria nunca trava a ação */ }
+  };
 
   const gov: OkrGovState = store?.governance || { reviews: [], actions: [] };
   const persist = async (g: OkrGovState) => {
@@ -44,7 +56,7 @@ export const OkrGovernance: React.FC<{ editable: boolean }> = ({ editable }) => 
     persist({ ...gov, reviews: [{ id: newId(), date: rDate, cadence: rCad, notes: rNotes.trim(), next: rNext.trim() }, ...gov.reviews] });
     setRNotes(''); setRNext('');
   };
-  const delReview = (id: string) => { if (window.confirm('Excluir esta revisão?')) persist({ ...gov, reviews: gov.reviews.filter(r => r.id !== id) }); };
+  const delReview = (id: string) => { const r = gov.reviews.find(x => x.id === id); if (window.confirm('Excluir esta revisão?')) { logDelete('revisão do ciclo', r ? `${r.cadence} · ${r.notes.slice(0, 40)}` : ''); persist({ ...gov, reviews: gov.reviews.filter(x => x.id !== id) }); } };
 
   // ---- decisões & ações ----
   const [aText, setAText] = useState('');
@@ -56,7 +68,7 @@ export const OkrGovernance: React.FC<{ editable: boolean }> = ({ editable }) => 
     setAText(''); setAOwner(''); setADue('');
   };
   const toggleAction = (id: string) => persist({ ...gov, actions: gov.actions.map(a => a.id === id ? { ...a, done: !a.done } : a) });
-  const delAction = (id: string) => persist({ ...gov, actions: gov.actions.filter(a => a.id !== id) });
+  const delAction = (id: string) => { const a = gov.actions.find(x => x.id === id); if (window.confirm('Excluir esta ação?')) { logDelete('ação da governança', a?.text || ''); persist({ ...gov, actions: gov.actions.filter(x => x.id !== id) }); } };
 
   const openActions = gov.actions.filter(a => !a.done).length;
 

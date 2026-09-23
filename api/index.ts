@@ -345,6 +345,7 @@ function signSupabaseJwt(user: any): string | null {
     app_role: user.role,             // cargo do app (GESTOR, PROJETISTA, ...)
     email: user.email || undefined,
     username: user.username,
+    okr_admin: user.okr_admin ? "true" : undefined, // admin de OKR (lê/escreve todos)
     iat: now,
     exp: now + 24 * 3600,            // 24h
   }));
@@ -503,6 +504,7 @@ app.post("/api/auth/login", async (req, res) => {
     email: user.email, phone: user.phone, role: user.role,
     must_set_password: user.must_set_password,
     okr_enabled: user.okr_enabled, okr_only: user.okr_only, sector: user.sector,
+    okr_admin: user.okr_admin,
   };
   return res.json({ success: true, user: safeUser, token });
 });

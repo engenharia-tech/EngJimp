@@ -688,30 +688,38 @@ const AppContent: React.FC = () => {
       return email === 'efariaseng0@gmail.com' || uname === 'edson';
   }, [currentUser]);
 
-  // Quem tem o OKR: os usuários marcados com okrEnabled (na tela de Usuários).
-  // Cada um vê/edita SÓ o seu; o Edson vê e edita o de todos. A chave de dono
-  // do OKR é o username em minúsculas (bate com a RLS de okr_state).
-  const okrPeople = useMemo(
-    () => (data.users || []).filter(u => u.okrEnabled && (u.username || '').trim().toLowerCase() !== 'edson'),
-    [data.users]
-  );
+  // Admin de OKR: vê/edita o OKR de todos (como o Edson), mas sem engenharia.
+  const isOkrAdmin = useMemo(() => {
+    const me = (data.users || []).find(u => u.id === currentUser?.id);
+    return !!(me?.okrAdmin ?? currentUser?.okrAdmin);
+  }, [data.users, currentUser]);
+  // Quem manda no OKR de todos (switcher + editar geral): Edson ou admin de OKR.
+  const isOkrMaster = isEdsonOwner || isOkrAdmin;
   const myOkrOwnerKey = useMemo(() => (currentUser?.username || '').trim().toLowerCase(), [currentUser]);
+  // Lista de pessoas com OKR para o switcher — todas menos o próprio (que é "Meu OKR").
+  const okrPeople = useMemo(
+    () => (data.users || []).filter(u => u.okrEnabled && (u.username || '').trim().toLowerCase() !== myOkrOwnerKey),
+    [data.users, myOkrOwnerKey]
+  );
   const canUseOkr = useMemo(() => {
     if (isEdsonOwner || isOkrOnly) return true;
     const me = (data.users || []).find(u => u.id === currentUser?.id);
     return !!(me?.okrEnabled ?? currentUser?.okrEnabled);
   }, [isEdsonOwner, isOkrOnly, data.users, currentUser]);
-  // Indicadores de OKR (visão macro por setor): só Edson e o CEO (só leitura).
+  // Indicadores / Linha do tempo / Governança: Edson, CEO ou admin de OKR.
   const canSeeOkrIndicators = useMemo(
-    () => isEdsonOwner || currentUser?.role === 'CEO',
-    [isEdsonOwner, currentUser]
+    () => isEdsonOwner || isOkrAdmin || currentUser?.role === 'CEO',
+    [isEdsonOwner, isOkrAdmin, currentUser]
   );
   // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou o username de outro.
   const [okrTarget, setOkrTarget] = useState<string>('self');
 
-  // Usuário "somente OKR" nunca sai da aba OKR (nem por link/estado antigo).
+  // Usuário "somente OKR" só circula pelas abas da família OKR (Meu OKR e,
+  // para o admin, Indicadores/Linha do tempo/Governança). Qualquer outra aba
+  // (engenharia) é redirecionada para "okr".
   useEffect(() => {
-    if (isOkrOnly && activeTab !== 'okr') setActiveTab('okr');
+    const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov'];
+    if (isOkrOnly && !okrTabs.includes(activeTab)) setActiveTab('okr');
   }, [isOkrOnly, activeTab, setActiveTab]);
 
   // Who can manage Innovations? (CEO, Manager, Designer, Coordinator, Processos)
@@ -1898,7 +1906,7 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'okr' && canUseOkr && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              {isEdsonOwner ? (
+              {isOkrMaster ? (
                 (() => {
                   const target = okrTarget !== 'self' && okrPeople.some(u => (u.username || '').trim().toLowerCase() === okrTarget) ? okrTarget : 'self';
                   const person = okrPeople.find(u => (u.username || '').trim().toLowerCase() === target);
@@ -1917,15 +1925,16 @@ const AppContent: React.FC = () => {
                       </div>
                       {target === 'self' ? (
                         <OkrView
-                          key="okr-edson"
+                          key={`okr-self-${myOkrOwnerKey}`}
                           currentUser={currentUser}
                           projects={data.projects}
                           activities={data.operationalActivities}
                           activityTypes={data.activityTypes}
-                          ownerKey="edson"
+                          ownerKey={myOkrOwnerKey}
                           heading="Meu OKR"
+                          seedEmpty={!isEdsonOwner}
                           canShare
-                          showActivity
+                          showActivity={isEdsonOwner}
                         />
                       ) : (
                         <OkrView
@@ -1978,7 +1987,7 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'okr_gov' && canSeeOkrIndicators && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              <OkrGovernance editable={isEdsonOwner} />
+              <OkrGovernance editable={isOkrMaster} currentUser={currentUser} />
             </div>
           )}
 
