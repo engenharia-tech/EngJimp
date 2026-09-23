@@ -31,14 +31,18 @@ export const OkrTimeline: React.FC<Props> = ({ users }) => {
 
   const byKey = useMemo(() => { const m: Record<string, User> = {}; (users || []).forEach(u => { m[(u.username || '').trim().toLowerCase()] = u; }); return m; }, [users]);
 
-  const { bars, refYear } = useMemo(() => {
-    const bars: Bar[] = [];
+  const { bars, refYear, waiting } = useMemo(() => {
+    const bars: Bar[] = []; let waiting = 0;
     (rows || []).forEach(r => {
       const u = byKey[r.ownerKey]; const person = u?.name || r.store.owner || r.ownerKey; const sector = (u?.sector || '').trim();
       const ap = activePeriod(r.store); const { ps, pe } = periodBounds(ap);
       (ap?.objectives || []).forEach(o => o.keyResults.forEach(k => {
         if (k.archived) return;
-        const concl = krProgress(k) >= 1 || String(k.status) === 'Concluído';
+        const p = krProgress(k);
+        const concl = p >= 1 || String(k.status) === 'Concluído';
+        const hasDue = !!parse(k.due);
+        // "Aguardando": não começou (0%), sem data de FIM e não concluído — fica FORA do gráfico.
+        if (!hasDue && p <= 0 && !concl) { waiting++; return; }
         // início: o preenchido, senão o começo do período.
         const start = parse((k as any).start) || ps;
         // fim: o preenchido; senão, concluído termina quando foi dado como feito
@@ -99,7 +103,7 @@ export const OkrTimeline: React.FC<Props> = ({ users }) => {
 
       {bars.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-10 shadow-sm border border-gray-200 dark:border-slate-700 text-center text-slate-400">
-          <Clock size={28} className="mx-auto mb-3 opacity-50" /> Nenhum KR para exibir ainda.
+          <Clock size={28} className="mx-auto mb-3 opacity-50" /> Nenhum KR andou ainda — todos aguardando (sem data e sem progresso).{waiting > 0 ? ` (${waiting} aguardando)` : ''}
         </div>
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-gray-200 dark:border-slate-700 overflow-x-auto">
@@ -137,7 +141,7 @@ export const OkrTimeline: React.FC<Props> = ({ users }) => {
                 })}
               </div>
             ))}
-            <p className="text-[10px] text-slate-400 mt-3">Sem datas preenchidas, o KR corre do início do período até dez/2026. Preencha início e fim no KR para ajustar a barra.</p>
+            <p className="text-[10px] text-slate-400 mt-3">Só entram KRs que já andaram (com progresso, com data ou concluídos). Um KR em andamento sem fim corre até dez/2026; concluído termina quando foi feito.{waiting > 0 ? ` · ${waiting} KR(s) aguardando (sem data e sem progresso) fora do gráfico.` : ''}</p>
           </div>
         </div>
       )}
