@@ -158,9 +158,9 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
     const uid = currentUser.id;
     const myProjects = (projects || []).filter(p => p.userId === uid && p.status === 'COMPLETED');
     const typeName: Record<string, string> = {}; (activityTypes || []).forEach(t => { typeName[t.id] = t.name; });
-    // Ausência (folga, falta, atestado, férias, feriado) NÃO é hora de trabalho:
-    // fica fora do gráfico "minhas horas por atividade" e do total de horas.
-    const isAbsence = (name?: string) => !!name && /folga|falta|atestado|f[ée]rias|feriado/i.test(name);
+    // Ausência/intervalo (folga, falta, atestado, férias, feriado, almoço) NÃO é
+    // hora de trabalho: fica fora do gráfico "minhas horas" e do total de horas.
+    const isAbsence = (name?: string) => !!name && /folga|falta|atestado|f[ée]rias|feriado|almo[çc]o/i.test(name);
     const myActs = (activities || []).filter(a => a.userId === uid);
     const workActs = myActs.filter(a => !isAbsence(typeName[a.activityTypeId]));
     const byType: Record<string, number> = {}; workActs.forEach(a => { const k = typeName[a.activityTypeId] || 'Outros'; byType[k] = (byType[k] || 0) + (a.durationSeconds || 0); });
