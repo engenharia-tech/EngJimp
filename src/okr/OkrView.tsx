@@ -54,9 +54,10 @@ interface OkrViewProps {
   canShare?: boolean;         // mostra o botão de link público. Padrão: !readOnly.
   privacyNote?: string;       // selo de privacidade. Padrão: 'Só você vê'.
   seedEmpty?: boolean;        // ao não existir, cria VAZIO (dono preenche) em vez do padrão do Edson.
+  ownerName?: string;         // nome do dono ao criar um store vazio. Padrão: o usuário atual.
 }
 
-export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external, ownerKey = 'edson', heading = 'Meu OKR', canShare, privacyNote = 'Só você vê', seedEmpty = false }) => {
+export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external, ownerKey = 'edson', heading = 'Meu OKR', canShare, privacyNote = 'Só você vê', seedEmpty = false, ownerName }) => {
   const { addToast } = useToast();
   const [store, setStore] = useState<OkrStore | null>(external || null);
   const [loading, setLoading] = useState(!external);
@@ -72,7 +73,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
         const s = await fetchOkr(ownerKey);
         if (s && s.periods?.length) setStore(s);
         else if (readOnly) setStore(null); // quem só olha não cria; mostra "ainda não criou"
-        else { const d = seedEmpty ? EMPTY_STORE(currentUser.name || currentUser.username) : DEFAULT_STORE(); setStore(d); try { await saveOkr(d, ownerKey); } catch {} }
+        else { const d = seedEmpty ? EMPTY_STORE(ownerName || currentUser.name || currentUser.username) : DEFAULT_STORE(); setStore(d); try { await saveOkr(d, ownerKey); } catch {} }
       } finally { setLoading(false); }
     })();
   }, [ownerKey, readOnly, seedEmpty]);
