@@ -427,7 +427,7 @@ function tooMany(res: express.Response, retryAfterSeconds: number) {
 // exige token, mas ainda aceitava `to` livre: um logado poderia mandar e-mail
 // com o dominio da empresa (SPF/DKIM valido) para uma vitima EXTERNA (phishing).
 // Restringe a: dominios da empresa + os enderecos configurados em `settings`.
-const ALLOWED_EMAIL_DOMAINS = ["joinvilleimplementos.com.br", "furgoesjoinville.com.br"];
+const ALLOWED_EMAIL_DOMAINS = ["joinvilleimplementos.com.br", "furgoesjoinville.com.br", "jimp.com.br"];
 async function configuredRecipients(admin: any): Promise<Set<string>> {
   const set = new Set<string>();
   try {
