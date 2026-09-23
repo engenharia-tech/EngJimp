@@ -1833,7 +1833,7 @@ const AppContent: React.FC = () => {
                   {/* Só o Edson escolhe entre o dele e o do Matheus (só leitura). */}
                   <div className="flex items-center gap-2 mb-4">
                     <button onClick={() => setOkrTarget('self')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${okrTarget === 'self' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>Meu OKR</button>
-                    <button onClick={() => setOkrTarget('matheus')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${okrTarget === 'matheus' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>OKR do Matheus · só leitura</button>
+                    <button onClick={() => setOkrTarget('matheus')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${okrTarget === 'matheus' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>OKR do Matheus</button>
                   </div>
                   {okrTarget === 'self' ? (
                     <OkrView
@@ -1855,7 +1855,9 @@ const AppContent: React.FC = () => {
                       activityTypes={data.activityTypes}
                       ownerKey="matheus"
                       heading="OKR — Matheus"
-                      readOnly
+                      ownerName="Matheus"
+                      seedEmpty
+                      privacyNote="Você edita o do Matheus"
                     />
                   )}
                 </>
