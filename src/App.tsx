@@ -1897,6 +1897,7 @@ const AppContent: React.FC = () => {
                           heading={`OKR — ${person?.name || target}${person?.sector ? ` · ${person.sector}` : ''}`}
                           ownerName={person?.name || target}
                           seedEmpty
+                          canShare
                           privacyNote={`Você edita o de ${person?.name || target}`}
                         />
                       )}

@@ -700,8 +700,14 @@ app.post("/api/okr/share", async (req, res) => {
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
 
-  const ownerKey = String(claims.username || "").trim().toLowerCase();
+  const self = String(claims.username || "").trim().toLowerCase();
+  const requested = String((req.body && (req.body as any).ownerKey) || "").trim().toLowerCase();
+  const ownerKey = requested || self;
   if (!ownerKey) return res.status(400).json({ success: false, error: "Usuario invalido." });
+  // Cada um compartilha o SEU OKR; o Edson pode compartilhar o de qualquer um.
+  if (ownerKey !== self && !claimsAreEdson(claims)) {
+    return res.status(403).json({ success: false, error: "Sem permissao para compartilhar este OKR." });
+  }
 
   const { data: row } = await admin.from("okr_state").select("share_token").eq("owner_key", ownerKey).limit(1);
   if (!row || !row[0]) return res.json({ success: false, message: "OKR ainda nao criado." });

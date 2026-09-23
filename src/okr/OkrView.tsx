@@ -95,6 +95,12 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
   };
   const updateKr = (objId: string, krId: string, patch: Partial<OkrKeyResult>) =>
     patchActive(p => ({ ...p, objectives: p.objectives.map(o => o.id !== objId ? o : { ...o, keyResults: o.keyResults.map(k => k.id !== krId ? k : { ...k, ...patch }) }) }));
+  // Muda o progresso E registra um ponto no histórico do KR.
+  const setProgress = (objId: string, kr: OkrKeyResult, current: number, patch: Partial<OkrKeyResult> = {}) => {
+    if (current === kr.current && Object.keys(patch).length === 0) return;
+    const point = { date: new Date().toISOString(), value: current, by: currentUser.name };
+    updateKr(objId, kr.id, { current, history: [...(kr.history || []), point], ...patch });
+  };
   const updateObj = (objId: string, patch: Partial<OkrObjective>) =>
     patchActive(p => ({ ...p, objectives: p.objectives.map(o => o.id === objId ? { ...o, ...patch } : o) }));
   const addKr = (objId: string) => patchActive(p => ({ ...p, objectives: p.objectives.map(o => o.id !== objId ? o : { ...o, keyResults: [...o.keyResults, emptyKr(`KR${o.id.replace(/\D/g, '')}.${o.keyResults.length + 1}`)] }) }));
@@ -124,7 +130,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
   const handleShare = async () => {
     if (sharing) return; setSharing(true);
     try {
-      const token = await enableOkrShare();
+      const token = await enableOkrShare(ownerKey);
       const link = `${window.location.origin}/?okr=${token}`;
       setShareLink(link);
       try { await navigator.clipboard.writeText(link); addToast('Link copiado! Quem abrir só visualiza.', 'success'); } catch { addToast('Link gerado.', 'success'); }

@@ -19,11 +19,22 @@ export interface OkrKeyResult {
   target: number;
   current: number;
   format: OkrFormat;     // bin (0/1) | pct (0..1 exibido em %) | num (contagem 0..target)
-  due: string;           // ISO yyyy-mm-dd
+  due: string;           // ISO yyyy-mm-dd — FIM do período do KR (prazo)
   initiatives: string;   // texto livre (mantido); as atividades detalhadas vão em tasks
   tasks?: OkrTask[];     // atividades/entregas do KR (checklist editável)
   status: OkrStatus | string;
   notes?: string;
+  // ---- Fase 2 (todos opcionais, retrocompatíveis) ----
+  owner?: string;        // responsável pelo KR
+  start?: string;        // ISO yyyy-mm-dd — INÍCIO do período do KR
+  archived?: boolean;    // KR arquivado (some da lista, sem apagar)
+  history?: OkrProgressPoint[]; // histórico de progresso (cada mudança do "atual")
+}
+
+export interface OkrProgressPoint {
+  date: string;          // ISO datetime
+  value: number;         // valor "current" registrado
+  by?: string;           // quem registrou (nome)
 }
 
 export interface OkrObjective {
