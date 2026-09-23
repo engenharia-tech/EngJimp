@@ -26,6 +26,9 @@ const mapUser = (u: any): User => ({
   phone: u.phone || undefined,
   role: u.role,
   salary: Number(u.salary) || 0,
+  okrEnabled: !!u.okr_enabled,
+  okrOnly: !!u.okr_only,
+  sector: u.sector || '',
 });
 
 export const loginViaServer = async (username: string, password: string): Promise<LoginResult> => {
