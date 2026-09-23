@@ -134,6 +134,11 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
       return dayOfWeek !== 0 && dayOfWeek !== 6; // Skip weekends
     });
 
+    // Ausência não é falta de preenchimento: um dia de folga/férias/atestado/
+    // feriado/falta abonada não conta nem como cumprido nem como não cumprido —
+    // ele simplesmente sai da conta (não entra em esperado nem em reportado).
+    const isAbsenceName = (n?: string) => !!n && /folga|falta|atestado|f[ée]rias|feriado/i.test(n);
+
     return designers.map(designer => {
       let totalExpectedSeconds = 0;
       let totalReportedSeconds = 0;
@@ -142,11 +147,22 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
       const userProjects = projects.filter(p => p.userId === designer.id);
       const userActivities = activities.filter(a => a.userId === designer.id);
       const userInterruptions = interruptions.filter(i => i.designerId === designer.id);
+      const userAbsences = userActivities.filter(a => isAbsenceName(a.activityName));
 
       const dailyData = periodDays.map(day => {
         const dayStart = startOfDay(day);
         const dayEnd = endOfDay(day);
         const now = new Date();
+
+        // Dia com ausência declarada → fora da conta de conformidade.
+        const isAbsenceDay = userAbsences.some(a => {
+          const s = parseISO(a.startTime);
+          const e = a.endTime ? parseISO(a.endTime) : s;
+          return isSameDay(s, day) || (s < dayEnd && e > dayStart);
+        });
+        if (isAbsenceDay) {
+          return { date: format(day, 'dd/MM'), compliance: 100, gapMinutes: 0, absence: true };
+        }
 
         // Expected work window
         const workStart = new Date(day);
