@@ -1800,7 +1800,7 @@ const AppContent: React.FC = () => {
             </div>
           )}
 
-          {activeTab === 'dashboard' && (
+          {activeTab === 'dashboard' && !isOkrOnly && (
             <div className="space-y-6">
                <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                  <div className="flex items-center gap-4">
@@ -1966,11 +1966,11 @@ const AppContent: React.FC = () => {
              />
           )}
 
-          {activeTab === 'nexus' && (
+          {activeTab === 'nexus' && !isOkrOnly && (
             <NexusChat appState={data} currentUser={currentUser} theme={theme} />
           )}
 
-          {activeTab === 'gantt' && (
+          {activeTab === 'gantt' && !isOkrOnly && (
             <ProjectNexus 
               state={data} 
               onUpdateState={(newData) => setData(newData)} 
