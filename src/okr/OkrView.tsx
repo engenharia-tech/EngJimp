@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, Pencil, CalendarDays } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, CartesianGrid, Legend } from 'recharts';
 import { User, ProjectSession, OperationalActivity, ActivityType } from '../types';
 import { fetchOkr, saveOkr, addAuditLog, enableOkrShare, fetchPublicOkr } from '../services/storageService';
@@ -396,8 +396,33 @@ const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onChange: (tasks
   );
 };
 
-const PF_STATUS = ['Produção', 'Desenvolvimento', 'Protótipo', 'Ferramenta', 'Pausado'];
-const statusStyle = (s: string) => s === 'Produção' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : s === 'Desenvolvimento' ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' : s === 'Ferramenta' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : s === 'Pausado' ? 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+const PF_STATUS = ['Concluído', 'Produção', 'Desenvolvimento', 'Protótipo', 'Ferramenta', 'Pausado'];
+const statusStyle = (s: string) => s === 'Produção' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : s === 'Concluído' ? 'bg-teal-50 text-teal-600 dark:bg-teal-900/20 dark:text-teal-400' : s === 'Desenvolvimento' ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' : s === 'Ferramenta' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : s === 'Pausado' ? 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+const statusDot = (s: string) => s === 'Produção' ? 'bg-emerald-500' : s === 'Concluído' ? 'bg-teal-500' : s === 'Desenvolvimento' ? 'bg-amber-500' : s === 'Ferramenta' ? 'bg-blue-500' : s === 'Pausado' ? 'bg-rose-500' : 'bg-slate-400';
+
+// Seletor de status legível (pílula colorida fechada; menu com texto escuro).
+const StatusDropdown: React.FC<{ value: string; onChange: (v: string) => void; readOnly?: boolean }> = ({ value, onChange, readOnly }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, []);
+  if (readOnly) return <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full ${statusStyle(value)}`}><span className={`w-1.5 h-1.5 rounded-full ${statusDot(value)}`} />{value}</span>;
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)} className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full ${statusStyle(value)}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${statusDot(value)}`} />{value}<ChevronDown size={12} className="opacity-70" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 left-0 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 py-1">
+          {PF_STATUS.map(s => (
+            <button key={s} onClick={() => { onChange(s); setOpen(false); }} className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${s === value ? 'bg-slate-50 dark:bg-slate-700/60' : ''}`}>
+              <span className={`w-2 h-2 rounded-full ${statusDot(s)}`} />{s}{s === value && <CheckCircle2 size={13} className="ml-auto text-blue-500" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onChange: (pf: PortfolioItem[]) => void; readOnly?: boolean }> = ({ portfolio, onChange, readOnly }) => {
   const items = portfolio || [];
@@ -424,9 +449,7 @@ const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onChange: (pf: Port
               {!readOnly && <button onClick={() => remove(i.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={14} /></button>}
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-3">
-              <select value={i.status} disabled={readOnly} onChange={e => update(i.id, { status: e.target.value })} className={`text-[11px] font-bold px-2 py-1 rounded-full border-0 outline-none ${readOnly ? 'cursor-default' : 'cursor-pointer'} ${statusStyle(i.status)}`}>
-                {PF_STATUS.map(s => <option key={s} value={s}>{s}</option>)}{!PF_STATUS.includes(i.status) && <option value={i.status}>{i.status}</option>}
-              </select>
+              <StatusDropdown value={i.status} readOnly={readOnly} onChange={v => update(i.id, { status: v })} />
               <span className="text-[10px] text-slate-400">{i.category}</span>
             </div>
             <div className="mt-2">
