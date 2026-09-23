@@ -157,15 +157,19 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
   const activity = useMemo(() => {
     const uid = currentUser.id;
     const myProjects = (projects || []).filter(p => p.userId === uid && p.status === 'COMPLETED');
-    const myActs = (activities || []).filter(a => a.userId === uid);
     const typeName: Record<string, string> = {}; (activityTypes || []).forEach(t => { typeName[t.id] = t.name; });
-    const byType: Record<string, number> = {}; myActs.forEach(a => { const k = typeName[a.activityTypeId] || 'Outros'; byType[k] = (byType[k] || 0) + (a.durationSeconds || 0); });
+    // Ausência (folga, falta, atestado, férias, feriado) NÃO é hora de trabalho:
+    // fica fora do gráfico "minhas horas por atividade" e do total de horas.
+    const isAbsence = (name?: string) => !!name && /folga|falta|atestado|f[ée]rias|feriado/i.test(name);
+    const myActs = (activities || []).filter(a => a.userId === uid);
+    const workActs = myActs.filter(a => !isAbsence(typeName[a.activityTypeId]));
+    const byType: Record<string, number> = {}; workActs.forEach(a => { const k = typeName[a.activityTypeId] || 'Outros'; byType[k] = (byType[k] || 0) + (a.durationSeconds || 0); });
     const hoursByType = Object.entries(byType).map(([name, s]) => ({ name, horas: +(s / 3600).toFixed(1) })).sort((a, b) => b.horas - a.horas).slice(0, 8);
     const months: { key: string; label: string; n: number }[] = []; const now = new Date();
     for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString('pt-BR', { month: 'short' }), n: 0 }); }
     myProjects.forEach(p => { const d = p.endTime ? new Date(p.endTime) : new Date(p.startTime); const m = months.find(x => x.key === `${d.getFullYear()}-${d.getMonth()}`); if (m) m.n++; });
-    const totalHoras = myActs.reduce((a, x) => a + (x.durationSeconds || 0), 0) / 3600 + myProjects.reduce((a, x) => a + (x.totalActiveSeconds || 0), 0) / 3600;
-    const horasExtra = (myActs.filter(a => a.isOvertime).reduce((a, x) => a + (x.durationSeconds || 0), 0) + myProjects.filter(p => p.isOvertime).reduce((a, x) => a + (x.totalActiveSeconds || 0), 0)) / 3600;
+    const totalHoras = workActs.reduce((a, x) => a + (x.durationSeconds || 0), 0) / 3600 + myProjects.reduce((a, x) => a + (x.totalActiveSeconds || 0), 0) / 3600;
+    const horasExtra = (workActs.filter(a => a.isOvertime).reduce((a, x) => a + (x.durationSeconds || 0), 0) + myProjects.filter(p => p.isOvertime).reduce((a, x) => a + (x.totalActiveSeconds || 0), 0)) / 3600;
     return { liberacoes: myProjects.length, totalHoras: Math.round(totalHoras), horasExtra: +horasExtra.toFixed(1), hoursByType, libByMonth: months.map(m => ({ name: m.label, liberações: m.n })) };
   }, [projects, activities, activityTypes, currentUser.id]);
 
