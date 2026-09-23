@@ -55,9 +55,10 @@ interface OkrViewProps {
   privacyNote?: string;       // selo de privacidade. Padrão: 'Só você vê'.
   seedEmpty?: boolean;        // ao não existir, cria VAZIO (dono preenche) em vez do padrão do Edson.
   ownerName?: string;         // nome do dono ao criar um store vazio. Padrão: o usuário atual.
+  showActivity?: boolean;     // mostra métricas de atividade (liberações/horas). Só o Edson.
 }
 
-export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external, ownerKey = 'edson', heading = 'Meu OKR', canShare, privacyNote = 'Só você vê', seedEmpty = false, ownerName }) => {
+export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external, ownerKey = 'edson', heading = 'Meu OKR', canShare, privacyNote = 'Só você vê', seedEmpty = false, ownerName, showActivity = false }) => {
   const { addToast } = useToast();
   const [store, setStore] = useState<OkrStore | null>(external || null);
   const [loading, setLoading] = useState(!external);
@@ -227,9 +228,9 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
       {/* Painel visual */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatTile label="Progresso" value={`${Math.round(overall * 100)}%`} color={textColor(overall)} icon={<Flag size={16} />} />
-        {!readOnly && <StatTile label="Liberações (minhas)" value={`${activity.liberacoes}`} color="text-blue-600 dark:text-blue-400" icon={<CheckCircle2 size={16} />} />}
-        {!readOnly && <StatTile label="Horas no período" value={`${activity.totalHoras}h`} color="text-slate-700 dark:text-slate-200" icon={<Clock size={16} />} />}
-        {!readOnly && <StatTile label="Horas extra" value={`${activity.horasExtra}h`} color="text-amber-600 dark:text-amber-400" icon={<ActivityIcon size={16} />} />}
+        {showActivity && <StatTile label="Liberações (minhas)" value={`${activity.liberacoes}`} color="text-blue-600 dark:text-blue-400" icon={<CheckCircle2 size={16} />} />}
+        {showActivity && <StatTile label="Horas no período" value={`${activity.totalHoras}h`} color="text-slate-700 dark:text-slate-200" icon={<Clock size={16} />} />}
+        {showActivity && <StatTile label="Horas extra" value={`${activity.horasExtra}h`} color="text-amber-600 dark:text-amber-400" icon={<ActivityIcon size={16} />} />}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -260,7 +261,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
             </PieChart>
           </ResponsiveContainer>
         </ChartCard>
-        {!readOnly && (<>
+        {showActivity && (<>
           <ChartCard title="Minhas horas por atividade">
             <ResponsiveContainer width="100%" height={190}>
               <BarChart data={activity.hoursByType} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
