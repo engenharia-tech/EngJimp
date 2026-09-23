@@ -655,6 +655,18 @@ const AppContent: React.FC = () => {
       return email === 'efariaseng0@gmail.com' || uname === 'edson';
   }, [currentUser]);
 
+  // Matheus tem o OKR DELE. Edson vê o do Matheus (só leitura); o Matheus
+  // NUNCA vê o do Edson. A chave de dono do OKR é o username em minúsculas.
+  const isMatheus = useMemo(() => {
+      const email = currentUser?.email?.trim().toLowerCase();
+      const uname = currentUser?.username?.trim().toLowerCase();
+      return email === 'matheus.p@joinvilleimplementos.com.br' || uname === 'matheus';
+  }, [currentUser]);
+  const canUseOkr = isEdsonOwner || isMatheus;
+  const myOkrOwnerKey = useMemo(() => (currentUser?.username || '').trim().toLowerCase(), [currentUser]);
+  // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou 'matheus'.
+  const [okrTarget, setOkrTarget] = useState<'self' | 'matheus'>('self');
+
   // Who can manage Innovations? (CEO, Manager, Designer, Coordinator, Processos)
   const canSeeInnovations = useMemo(() => {
       if (!currentUser) return false;
@@ -1545,7 +1557,7 @@ const AppContent: React.FC = () => {
           <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
 
           <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
-          {isEdsonOwner && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
+          {canUseOkr && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
 
           {canUseTracker && (
             <>
@@ -1657,7 +1669,7 @@ const AppContent: React.FC = () => {
             
             <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-            {isEdsonOwner && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
+            {canUseOkr && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {canUseTracker && (
               <>
                 <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
@@ -1814,14 +1826,53 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'okr' && isEdsonOwner && currentUser && (
+          {activeTab === 'okr' && canUseOkr && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              <OkrView
-                currentUser={currentUser}
-                projects={data.projects}
-                activities={data.operationalActivities}
-                activityTypes={data.activityTypes}
-              />
+              {isEdsonOwner ? (
+                <>
+                  {/* Só o Edson escolhe entre o dele e o do Matheus (só leitura). */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <button onClick={() => setOkrTarget('self')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${okrTarget === 'self' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>Meu OKR</button>
+                    <button onClick={() => setOkrTarget('matheus')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${okrTarget === 'matheus' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>OKR do Matheus · só leitura</button>
+                  </div>
+                  {okrTarget === 'self' ? (
+                    <OkrView
+                      key="okr-edson"
+                      currentUser={currentUser}
+                      projects={data.projects}
+                      activities={data.operationalActivities}
+                      activityTypes={data.activityTypes}
+                      ownerKey="edson"
+                      heading="Meu OKR"
+                      canShare
+                    />
+                  ) : (
+                    <OkrView
+                      key="okr-matheus-view"
+                      currentUser={currentUser}
+                      projects={data.projects}
+                      activities={data.operationalActivities}
+                      activityTypes={data.activityTypes}
+                      ownerKey="matheus"
+                      heading="OKR — Matheus"
+                      readOnly
+                    />
+                  )}
+                </>
+              ) : (
+                // Matheus (e futuros donos): só o próprio OKR, editável, sem link público.
+                <OkrView
+                  key={`okr-${myOkrOwnerKey}`}
+                  currentUser={currentUser}
+                  projects={data.projects}
+                  activities={data.operationalActivities}
+                  activityTypes={data.activityTypes}
+                  ownerKey={myOkrOwnerKey}
+                  heading="Meu OKR"
+                  seedEmpty
+                  privacyNote="Só o Edson e você"
+                />
+              )}
             </div>
           )}
 

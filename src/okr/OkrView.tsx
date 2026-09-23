@@ -5,7 +5,7 @@ import { User, ProjectSession, OperationalActivity, ActivityType } from '../type
 import { fetchOkr, saveOkr, addAuditLog, enableOkrShare, fetchPublicOkr } from '../services/storageService';
 import {
   OkrStore, OkrPeriod, OkrKeyResult, OkrObjective, OkrCheckin, PortfolioItem, OkrTask,
-  DEFAULT_STORE, DEFAULT_PORTFOLIO, clonePeriodStructure, emptyKr,
+  DEFAULT_STORE, EMPTY_STORE, DEFAULT_PORTFOLIO, clonePeriodStructure, emptyKr,
   krProgress, objProgress, progressColor, fmtValue, OkrFormat,
 } from './okr';
 import { useToast } from '../components/Toast';
@@ -49,9 +49,14 @@ interface OkrViewProps {
   activityTypes?: ActivityType[];
   readOnly?: boolean;
   external?: OkrStore;
+  ownerKey?: string;          // qual OKR (owner_key) carregar/salvar. Padrão: 'edson'.
+  heading?: string;           // título no cabeçalho. Padrão: 'Meu OKR'.
+  canShare?: boolean;         // mostra o botão de link público. Padrão: !readOnly.
+  privacyNote?: string;       // selo de privacidade. Padrão: 'Só você vê'.
+  seedEmpty?: boolean;        // ao não existir, cria VAZIO (dono preenche) em vez do padrão do Edson.
 }
 
-export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external }) => {
+export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external, ownerKey = 'edson', heading = 'Meu OKR', canShare, privacyNote = 'Só você vê', seedEmpty = false }) => {
   const { addToast } = useToast();
   const [store, setStore] = useState<OkrStore | null>(external || null);
   const [loading, setLoading] = useState(!external);
@@ -64,19 +69,20 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
     (async () => {
       setLoading(true);
       try {
-        const s = await fetchOkr();
+        const s = await fetchOkr(ownerKey);
         if (s && s.periods?.length) setStore(s);
-        else { const d = DEFAULT_STORE(); setStore(d); try { await saveOkr(d); } catch {} }
+        else if (readOnly) setStore(null); // quem só olha não cria; mostra "ainda não criou"
+        else { const d = seedEmpty ? EMPTY_STORE(currentUser.name || currentUser.username) : DEFAULT_STORE(); setStore(d); try { await saveOkr(d, ownerKey); } catch {} }
       } finally { setLoading(false); }
     })();
-  }, []);
+  }, [ownerKey, readOnly, seedEmpty]);
 
   const persist = useCallback(async (next: OkrStore) => {
     if (readOnly) return;
     setStore(next); setSaving('saving');
-    try { await saveOkr(next); setSaving('saved'); setTimeout(() => setSaving('idle'), 1500); }
+    try { await saveOkr(next, ownerKey); setSaving('saved'); setTimeout(() => setSaving('idle'), 1500); }
     catch (e) { console.error('saveOkr', e); setSaving('error'); addToast('Não consegui salvar o OKR.', 'error'); }
-  }, [readOnly, addToast]);
+  }, [readOnly, ownerKey, addToast]);
 
   const active = useMemo(() => store?.periods.find(p => p.id === store.activePeriodId) || store?.periods[0], [store]);
 
@@ -151,8 +157,12 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
   const pfChart = useMemo(() => { const b: Record<string, number> = {}; (store?.portfolio || []).forEach(i => { b[i.status] = (b[i.status] || 0) + 1; }); return Object.entries(b).map(([name, value]) => ({ name, value })); }, [store]);
   const totals = useMemo(() => { const krs = (active?.objectives || []).flatMap(o => o.keyResults); return { krs: krs.length, done: krs.filter(k => krProgress(k) >= 1 || k.status === 'Concluído').length, risk: krs.filter(k => k.status === 'Em risco').length }; }, [active]);
 
-  if (loading) return <div className="p-10 text-center text-slate-400"><RefreshCw className="animate-spin inline mr-2" size={18} /> Carregando seu OKR…</div>;
-  if (!store || !active) return <div className="p-10 text-center text-slate-400">Não consegui carregar o OKR.</div>;
+  if (loading) return <div className="p-10 text-center text-slate-400"><RefreshCw className="animate-spin inline mr-2" size={18} /> Carregando o OKR…</div>;
+  if (!store || !active) return (
+    <div className="p-10 text-center text-slate-400">
+      {readOnly ? <>Este colaborador ainda não criou o OKR dele.</> : <>Não consegui carregar o OKR.</>}
+    </div>
+  );
 
   return (
     <div className="space-y-5">
@@ -162,10 +172,12 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-md"><Target size={22} /></div>
             <div className="min-w-0">
-              <h2 className="text-xl font-black text-slate-800 dark:text-white leading-tight">Meu OKR</h2>
+              <h2 className="text-xl font-black text-slate-800 dark:text-white leading-tight">{heading}</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">{store.owner}</p>
             </div>
-            {!readOnly && <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-full px-2 py-1"><Lock size={11} /> Só você vê</span>}
+            {readOnly
+              ? <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-full px-2 py-1"><Lock size={11} /> Só leitura</span>
+              : privacyNote && <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-full px-2 py-1"><Lock size={11} /> {privacyNote}</span>}
           </div>
           <div className="flex items-center gap-4 shrink-0">
             <div className="text-right">
@@ -198,7 +210,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
           {!readOnly && (
             <div className="flex items-center gap-2 no-print">
               <button onClick={handleExport} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"><Printer size={14} /> Exportar</button>
-              <button onClick={handleShare} disabled={sharing} className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"><Share2 size={14} /> {sharing ? 'Gerando…' : 'Compartilhar'}</button>
+              {canShare && <button onClick={handleShare} disabled={sharing} className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"><Share2 size={14} /> {sharing ? 'Gerando…' : 'Compartilhar'}</button>}
             </div>
           )}
         </div>
