@@ -827,9 +827,14 @@ export const saveOkr = async (store: OkrStore, ownerKey: string = 'edson'): Prom
   if (error) throw new Error(error.message);
 };
 
-// Gera/retorna o token do link público (só-leitura). Edson-only, via servidor.
-export const enableOkrShare = async (): Promise<string> => {
-  const res = await fetch('/api/okr/share', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } });
+// Gera/retorna o token do link público (só-leitura). Cada um compartilha o seu;
+// o Edson pode passar o ownerKey de outra pessoa. Via servidor.
+export const enableOkrShare = async (ownerKey?: string): Promise<string> => {
+  const res = await fetch('/api/okr/share', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(ownerKey ? { ownerKey } : {}),
+  });
   const out = await res.json().catch(() => ({}));
   if (!res.ok || !out.success || !out.token) throw new Error(out.error || out.message || 'Falha ao compartilhar.');
   return out.token as string;
