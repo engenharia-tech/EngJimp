@@ -28,6 +28,7 @@ const mapUser = (u: any): User => ({
   salary: Number(u.salary) || 0,
   okrEnabled: !!u.okr_enabled,
   okrOnly: !!u.okr_only,
+  okrAdmin: !!u.okr_admin,
   sector: u.sector || '',
 });
 

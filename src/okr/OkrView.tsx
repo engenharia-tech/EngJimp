@@ -104,6 +104,17 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
     const point = { date: new Date().toISOString(), value: current, by: currentUser.name };
     updateKr(objId, kr.id, { current, history: [...(kr.history || []), point], ...patch });
   };
+  // Log de auditoria de EXCLUSÕES dentro do OKR (quem apagou o quê e de quem).
+  const logDelete = (entity: string, name: string) => {
+    try {
+      addAuditLog({
+        userId: currentUser.id,
+        userName: `${currentUser.name}${currentUser.surname ? ' ' + currentUser.surname : ''}`.trim(),
+        action: 'DELETE' as any, entityType: 'OKR', entityId: ownerKey, entityName: name || entity,
+        details: `${currentUser.name} excluiu ${entity}${name ? ` "${name}"` : ''} no OKR de ${store?.owner || ownerKey}`,
+      });
+    } catch { /* auditoria nunca trava a ação */ }
+  };
   const updateObj = (objId: string, patch: Partial<OkrObjective>) =>
     patchActive(p => ({ ...p, objectives: p.objectives.map(o => o.id === objId ? { ...o, ...patch } : o) }));
   const addKr = (objId: string) => patchActive(p => ({ ...p, objectives: p.objectives.map(o => o.id !== objId ? o : { ...o, keyResults: [...o.keyResults, emptyKr(`KR${o.id.replace(/\D/g, '')}.${o.keyResults.length + 1}`)] }) }));
@@ -125,6 +136,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
   const removePeriod = () => {
     if (!store || !active || store.periods.length <= 1) return;
     if (!window.confirm(`Excluir o período "${active.label}"?`)) return;
+    logDelete('período', active.label);
     const rest = store.periods.filter(p => p.id !== active.id);
     persist({ ...store, periods: rest, activePeriodId: rest[0].id });
   };
@@ -316,7 +328,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                 <span className="tabular-nums">{o.keyResults.filter(k => !k.archived).length} KRs</span>
                 <ChevronDown size={16} className={`transition-transform ${openObjs[o.id] ? 'rotate-180' : ''}`} />
               </button>
-              {!readOnly && <button onClick={() => { if (window.confirm(`Excluir o objetivo ${o.id}?`)) removeObjective(o.id); }} className="text-slate-300 hover:text-rose-500 shrink-0" title="Excluir objetivo"><Trash2 size={15} /></button>}
+              {!readOnly && <button onClick={() => { if (window.confirm(`Excluir o objetivo ${o.id}?`)) { logDelete(`objetivo ${o.id}`, o.title); removeObjective(o.id); } }} className="text-slate-300 hover:text-rose-500 shrink-0" title="Excluir objetivo"><Trash2 size={15} /></button>}
             </div>
 
             {openObjs[o.id] && <div className="space-y-3">
@@ -343,7 +355,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={`text-sm font-black tabular-nums ${textColor(p)}`}>{Math.round(p * 100)}%</span>
-                        {!readOnly && <button onClick={() => removeKr(o.id, k.id)} className="text-slate-300 hover:text-rose-500" title="Excluir KR"><Trash2 size={13} /></button>}
+                        {!readOnly && <button onClick={() => { if (window.confirm(`Excluir o ${k.id}?`)) { logDelete(`resultado-chave ${k.id}`, k.title); removeKr(o.id, k.id); } }} className="text-slate-300 hover:text-rose-500" title="Excluir KR"><Trash2 size={13} /></button>}
                       </div>
                     </div>
 
@@ -392,7 +404,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                       </div>
                     </div>
 
-                    <KrTasks kr={k} readOnly={readOnly} onChange={tasks => updateKr(o.id, k.id, { tasks })} />
+                    <KrTasks kr={k} readOnly={readOnly} onChange={tasks => updateKr(o.id, k.id, { tasks })} onDeleteLog={t => logDelete(`atividade do ${k.id}`, t)} />
                     <KrHistory kr={k} />
                   </div>
                 );
@@ -408,7 +420,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
 
       {!readOnly && <button onClick={addObjective} className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"><Plus size={16} /> Adicionar objetivo</button>}
 
-      <PortfolioPanel portfolio={store.portfolio} onChange={pf => persist({ ...store, portfolio: pf })} readOnly={readOnly} />
+      <PortfolioPanel portfolio={store.portfolio} onChange={pf => persist({ ...store, portfolio: pf })} readOnly={readOnly} onDeleteLog={name => logDelete('projeto do portfólio', name)} />
 
       {!readOnly && <CheckinsPanel period={active} allKrs={active.objectives.flatMap(o => o.keyResults)} onAdd={c => patchActive(p => ({ ...p, checkins: [c, ...(p.checkins || [])] }))} currentUser={currentUser} />}
     </div>
@@ -416,7 +428,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
 };
 
 // Checklist de atividades por KR
-const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onChange: (tasks: OkrTask[]) => void }> = ({ kr, readOnly, onChange }) => {
+const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onChange: (tasks: OkrTask[]) => void; onDeleteLog?: (text: string) => void }> = ({ kr, readOnly, onChange, onDeleteLog }) => {
   const [text, setText] = useState('');
   const tasks = kr.tasks || [];
   const add = () => { if (!text.trim()) return; onChange([...tasks, { id: newId(), text: text.trim(), done: false }]); setText(''); };
@@ -428,7 +440,7 @@ const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onChange: (tasks
           <div key={t.id} className="flex items-center gap-2 group/task">
             <input type="checkbox" checked={t.done} disabled={readOnly} onChange={() => onChange(tasks.map(x => x.id === t.id ? { ...x, done: !x.done } : x))} className="w-3.5 h-3.5 accent-blue-600 shrink-0" />
             <span className={`text-xs flex-1 min-w-0 ${t.done ? 'line-through text-slate-400' : 'text-slate-600 dark:text-slate-300'}`}>{t.text}</span>
-            {!readOnly && <button onClick={() => onChange(tasks.filter(x => x.id !== t.id))} className="opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={12} /></button>}
+            {!readOnly && <button onClick={() => { onDeleteLog?.(t.text); onChange(tasks.filter(x => x.id !== t.id)); }} className="opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={12} /></button>}
           </div>
         ))}
         {tasks.length === 0 && <p className="text-[11px] text-slate-400 italic">Nenhuma atividade cadastrada.</p>}
@@ -493,10 +505,10 @@ const StatusDropdown: React.FC<{ value: string; onChange: (v: string) => void; r
   );
 };
 
-const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onChange: (pf: PortfolioItem[]) => void; readOnly?: boolean }> = ({ portfolio, onChange, readOnly }) => {
+const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onChange: (pf: PortfolioItem[]) => void; readOnly?: boolean; onDeleteLog?: (name: string) => void }> = ({ portfolio, onChange, readOnly, onDeleteLog }) => {
   const items = portfolio || [];
   const update = (id: string, patch: Partial<PortfolioItem>) => onChange(items.map(i => i.id === id ? { ...i, ...patch } : i));
-  const remove = (id: string) => onChange(items.filter(i => i.id !== id));
+  const remove = (id: string, name?: string) => { onDeleteLog?.(name || ''); onChange(items.filter(i => i.id !== id)); };
   const add = () => onChange([...items, { id: `p${Date.now().toString(36)}`, name: 'Novo projeto', what: '', category: 'Sistemas', status: 'Desenvolvimento', nextMilestone: '' }]);
   const prod = items.filter(i => i.status === 'Produção').length;
   return (
@@ -514,7 +526,7 @@ const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onChange: (pf: Port
                 <EditField value={i.name} onCommit={v => update(i.id, { name: v })} readOnly={readOnly} className="text-sm font-bold text-slate-800 dark:text-white block" placeholder="Nome" />
                 <EditField value={i.what} onCommit={v => update(i.id, { what: v })} readOnly={readOnly} className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block" placeholder="o que é" />
               </div>
-              {!readOnly && <button onClick={() => remove(i.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={14} /></button>}
+              {!readOnly && <button onClick={() => { if (window.confirm(`Remover "${i.name}" do portfólio?`)) remove(i.id, i.name); }} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={14} /></button>}
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-3">
               <StatusDropdown value={i.status} readOnly={readOnly} onChange={v => update(i.id, { status: v })} />
