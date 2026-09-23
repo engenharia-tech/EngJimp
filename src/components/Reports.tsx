@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { resolveUser } from '../utils/userUtils';
+import { isExcludedFromEngineering, usersIndex } from '../utils/pndSplit';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -143,7 +144,10 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   };
 
   const productivityData = useMemo(() => {
+    const pndIdx = usersIndex(data.users);
     const filtered = data.projects.filter(p => {
+      // Corte P&D: participação do Edson sai do relatório a partir de 01/09/2026.
+      if (isExcludedFromEngineering(p.userId, p.startTime, pndIdx)) return false;
       if (!isProjectInPeriod(p)) return false;
 
       // Role-based filtering: Designers only see their own
@@ -165,6 +169,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
     const filteredOperationalDevActivities = (data.operationalActivities || []).filter(a => {
       if (!a.startTime) return false;
+      // Corte P&D: atividades do Edson saem do relatório a partir de 01/09/2026.
+      if (isExcludedFromEngineering(a.userId, a.startTime, pndIdx)) return false;
       if (!isDateInPeriod(new Date(a.startTime))) return false;
 
       if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) {
@@ -339,7 +345,10 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   }, [data.interruptions, data.users, selectedMonth, selectedYear, currentUser, costPerSecond]);
 
   const designerData = useMemo(() => {
+    const pndIdx = usersIndex(data.users);
     const filtered = data.projects.filter(p => {
+      // Corte P&D: participação do Edson sai do ranking a partir de 01/09/2026.
+      if (isExcludedFromEngineering(p.userId, p.startTime, pndIdx)) return false;
       // Include all projects with activity in the period
       if (!isProjectInPeriod(p)) return false;
 
@@ -413,6 +422,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
     (data.operationalActivities || []).forEach(a => {
       if (!a.startTime) return;
+      // Corte P&D: atividades do Edson saem do ranking a partir de 01/09/2026.
+      if (isExcludedFromEngineering(a.userId, a.startTime, pndIdx)) return;
       if (!isDateInPeriod(new Date(a.startTime))) return;
       if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) return;
 
