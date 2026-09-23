@@ -1644,6 +1644,9 @@ const AppContent: React.FC = () => {
             <LogOut className={`w-4 h-4 ${isSidebarCollapsed ? '' : 'mr-2'}`} />
             {!isSidebarCollapsed && t('logout')}
           </button>
+          {!isSidebarCollapsed && (
+            <p className="text-[10px] text-slate-400 dark:text-slate-600 text-center pt-1 select-all">build 23/09 · v-okr-fase1</p>
+          )}
         </div>
       </aside>
 
@@ -1862,6 +1865,7 @@ const AppContent: React.FC = () => {
                     <>
                       {/* Só o Edson escolhe entre o dele e o de cada usuário habilitado. */}
                       <div className="flex items-center gap-2 mb-4 flex-wrap">
+                        <span className="text-xs font-bold uppercase tracking-wide text-slate-400 mr-1">Ver OKR de:</span>
                         <button onClick={() => setOkrTarget('self')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${target === 'self' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>Meu OKR</button>
                         {okrPeople.map(u => {
                           const uk = (u.username || '').trim().toLowerCase();
