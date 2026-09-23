@@ -330,9 +330,6 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={`text-sm font-black tabular-nums ${textColor(p)}`}>{Math.round(p * 100)}%</span>
-                        {!readOnly && (k.archived
-                          ? <button onClick={() => updateKr(o.id, k.id, { archived: false })} className="text-slate-300 hover:text-emerald-500" title="Desarquivar KR"><ArchiveRestore size={13} /></button>
-                          : <button onClick={() => updateKr(o.id, k.id, { archived: true })} className="text-slate-300 hover:text-amber-500" title="Arquivar KR"><Archive size={13} /></button>)}
                         {!readOnly && <button onClick={() => removeKr(o.id, k.id)} className="text-slate-300 hover:text-rose-500" title="Excluir KR"><Trash2 size={13} /></button>}
                       </div>
                     </div>
@@ -365,6 +362,9 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                         {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                         {!STATUS_OPTIONS.includes(k.status) && <option value={k.status}>{k.status}</option>}
                       </select>
+                      {!readOnly && (k.archived
+                        ? <button onClick={() => updateKr(o.id, k.id, { archived: false })} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"><ArchiveRestore size={13} /> Desarquivar</button>
+                        : <button onClick={() => updateKr(o.id, k.id, { archived: true })} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40"><Archive size={13} /> Arquivar</button>)}
                     </div>
 
                     {/* Iniciativas e Observações (editáveis) */}
