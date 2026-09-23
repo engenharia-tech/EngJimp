@@ -1978,7 +1978,7 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'okr_gov' && canSeeOkrIndicators && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              <OkrGovernance />
+              <OkrGovernance editable={isEdsonOwner} />
             </div>
           )}
 
