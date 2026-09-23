@@ -364,7 +364,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                       </select>
                       {!readOnly && (k.archived
                         ? <button onClick={() => updateKr(o.id, k.id, { archived: false })} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"><ArchiveRestore size={13} /> Desarquivar</button>
-                        : <button onClick={() => updateKr(o.id, k.id, { archived: true })} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40"><Archive size={13} /> Arquivar</button>)}
+                        : <button onClick={() => { if (window.confirm(`Arquivar o ${k.id}? Ele some da lista e para de contar no progresso — dá para desarquivar depois.`)) updateKr(o.id, k.id, { archived: true }); }} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40"><Archive size={13} /> Arquivar</button>)}
                     </div>
 
                     {/* Iniciativas e Observações (editáveis) */}
