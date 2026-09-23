@@ -84,6 +84,7 @@ export interface User {
   phone?: string;
   role: UserRole;
   salary?: number;
+  okrEnabled?: boolean; // se true, o usuário tem o próprio OKR (aba). Edson vê/edita todos.
 }
 
 export interface PauseRecord {
