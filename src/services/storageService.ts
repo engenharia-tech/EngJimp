@@ -798,19 +798,19 @@ export const saveNexusHiddenUsers = async (ids: string[]): Promise<void> => {
 
 // OKR pessoal do Edson. A RLS da tabela `okr_state` só libera para o JWT do
 // Edson — para qualquer outro usuário a leitura volta vazia e a escrita é negada.
-export const fetchOkr = async (): Promise<OkrStore | null> => {
+export const fetchOkr = async (ownerKey: string = 'edson'): Promise<OkrStore | null> => {
   try {
-    const { data, error } = await supabase.from('okr_state').select('data').eq('owner_key', 'edson').limit(1);
+    const { data, error } = await supabase.from('okr_state').select('data').eq('owner_key', ownerKey).limit(1);
     if (error) { console.warn('fetchOkr:', error.message); return null; }
     if (data && data.length > 0) return migrateToStore((data[0] as any).data);
     return null;
   } catch (e) { console.warn('fetchOkr erro:', e); return null; }
 };
 
-export const saveOkr = async (store: OkrStore): Promise<void> => {
+export const saveOkr = async (store: OkrStore, ownerKey: string = 'edson'): Promise<void> => {
   const payload: OkrStore = { ...store, updatedAt: new Date().toISOString() };
   const { error } = await supabase.from('okr_state').upsert(
-    { owner_key: 'edson', data: payload, updated_at: new Date().toISOString() },
+    { owner_key: ownerKey, data: payload, updated_at: new Date().toISOString() },
     { onConflict: 'owner_key' }
   );
   if (error) throw new Error(error.message);

@@ -87,7 +87,10 @@ export const migrateToStore = (raw: any): OkrStore => {
   if (raw && Array.isArray(raw.periods) && raw.periods.length) {
     return {
       owner: raw.owner || 'Edson Farias',
-      portfolio: (raw.portfolio && raw.portfolio.length) ? raw.portfolio : DEFAULT_PORTFOLIO,
+      // Só cai no portfólio padrão quando o campo NÃO existe. Um array vazio
+      // (dono que ainda não preencheu, ex.: Matheus) fica vazio — nunca herda
+      // o portfólio de outra pessoa.
+      portfolio: Array.isArray(raw.portfolio) ? raw.portfolio : DEFAULT_PORTFOLIO,
       periods: raw.periods,
       activePeriodId: raw.activePeriodId || raw.periods[0].id,
       updatedAt: raw.updatedAt,
@@ -96,7 +99,7 @@ export const migrateToStore = (raw: any): OkrStore => {
   if (raw && Array.isArray(raw.objectives)) {
     return {
       owner: raw.owner || 'Edson Farias',
-      portfolio: (raw.portfolio && raw.portfolio.length) ? raw.portfolio : DEFAULT_PORTFOLIO,
+      portfolio: Array.isArray(raw.portfolio) ? raw.portfolio : DEFAULT_PORTFOLIO,
       periods: [{ id: 'q4-2026', label: 'Q4 2026', range: raw.period || '01/10/2026 a 31/12/2026', objectives: raw.objectives, checkins: raw.checkins || [] }],
       activePeriodId: 'q4-2026',
       updatedAt: raw.updatedAt,
@@ -109,6 +112,15 @@ export const DEFAULT_STORE = (): OkrStore => ({
   owner: DEFAULT_OKR.owner,
   portfolio: DEFAULT_PORTFOLIO,
   periods: [{ id: 'q4-2026', label: 'Q4 2026', range: DEFAULT_OKR.period, objectives: DEFAULT_OKR.objectives, checkins: [] }],
+  activePeriodId: 'q4-2026',
+});
+
+// Store VAZIO, para um dono que vai preencher o seu próprio OKR do zero
+// (ex.: Matheus). Sem portfólio, um objetivo em branco para ele começar.
+export const EMPTY_STORE = (owner: string): OkrStore => ({
+  owner,
+  portfolio: [],
+  periods: [{ id: 'q4-2026', label: 'Q4 2026', range: '01/10/2026 a 31/12/2026', objectives: [{ id: 'O1', title: 'Novo objetivo', keyResults: [emptyKr('KR1.1')] }], checkins: [] }],
   activePeriodId: 'q4-2026',
 });
 
