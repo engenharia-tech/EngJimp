@@ -53,6 +53,7 @@ import { PROJECT_TYPES, IMPLEMENT_TYPES } from '../constants';
 import { format, startOfDay, endOfDay, isWithinInterval, parseISO, differenceInSeconds, addSeconds, subDays, addDays } from 'date-fns';
 import { addAuditLog } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
+import { isExcludedFromEngineering, usersIndex } from '../utils/pndSplit';
 import { ptBR, es, enUS } from 'date-fns/locale';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useToast } from './Toast';
@@ -377,7 +378,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   // For the global/engineering tab, we need all projects, activities and interruptions for the period (unfiltered by single user)
   const engineeringProjects = useMemo(() => {
+    const pndIdx = usersIndex(users);
     return projects.filter(p => {
+      // Corte P&D: participação do Edson sai do painel de engenharia a partir de 01/09/2026.
+      if (isExcludedFromEngineering(p.userId, p.startTime, pndIdx)) return false;
       const projectStart = parseISO(p.startTime);
       const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
 
@@ -392,10 +396,13 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return projectStart.getFullYear() === selectedDate.getFullYear();
       }
     });
-  }, [projects, selectedDate, viewMode]);
+  }, [projects, selectedDate, viewMode, users]);
 
   const engineeringActivities = useMemo(() => {
+    const pndIdx = usersIndex(users);
     return (activities || []).filter(a => {
+      // Corte P&D: atividades do Edson saem do painel de engenharia a partir de 01/09/2026.
+      if (isExcludedFromEngineering(a.userId, a.startTime, pndIdx)) return false;
       const activityStart = parseISO(a.startTime);
       const activityEnd = a.endTime ? parseISO(a.endTime) : new Date();
 
@@ -410,10 +417,13 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return activityStart.getFullYear() === selectedDate.getFullYear();
       }
     });
-  }, [activities, selectedDate, viewMode]);
+  }, [activities, selectedDate, viewMode, users]);
 
   const engineeringInterruptions = useMemo(() => {
+    const pndIdx = usersIndex(users);
     return (interruptions || []).filter(i => {
+      // Corte P&D: interrupções do Edson saem do painel de engenharia a partir de 01/09/2026.
+      if (isExcludedFromEngineering(i.designerId, i.startTime, pndIdx)) return false;
       const start = parseISO(i.startTime);
       const end = i.endTime ? parseISO(i.endTime) : new Date();
 
@@ -428,7 +438,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return start.getFullYear() === selectedDate.getFullYear();
       }
     });
-  }, [interruptions, selectedDate, viewMode]);
+  }, [interruptions, selectedDate, viewMode, users]);
 
   const currentActivity = useMemo(() => {
     return activities.find(a => !a.endTime && a.userId === selectedUserId);

@@ -18,6 +18,7 @@ import { PRODUCT_CATEGORIES, SUSPENSION_TYPES } from '../constants';
 import { parseISO } from 'date-fns';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser, getUserDisplayName } from '../utils/userUtils';
+import { isExcludedFromEngineering, usersIndex, isPndCarveoutUser } from '../utils/pndSplit';
 
 interface DashboardProps {
   data: AppState;
@@ -474,8 +475,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     });
   }, [data.projectRequests, selectedCategories, selectedSuspensions, selectedClients, startDate, endDate, nsFilterByPeriod]);
 
+  // Índice id→usuário para o corte gerencial de P&D (Edson sai do geral >= 01/09).
+  const pndUsersIdx = useMemo(() => usersIndex(data.users), [data.users]);
+
   const filteredProjects = useMemo(() => {
     return data.projects.filter(p => {
+      // Corte P&D: participação do Edson sai das horas gerais a partir de 01/09/2026.
+      if (isExcludedFromEngineering(p.userId, p.startTime, pndUsersIdx)) return false;
+
       // Exclude data from 'PROCESSOS' users
       const isSomeEdson = p.userId ? (() => {
         const u = data.users.find(x => x.id === p.userId);
@@ -549,7 +556,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       // A project is relevant if it overlaps with the selected range
       return pStart <= end && pEnd >= start;
     });
-  }, [data.projects, startDate, endDate, currentUser.role, currentUser.id, selectedCategories, selectedSuspensions, selectedClients, data.projectRequests, selectedDesignerForReleases]);
+  }, [data.projects, startDate, endDate, currentUser.role, currentUser.id, selectedCategories, selectedSuspensions, selectedClients, data.projectRequests, selectedDesignerForReleases, pndUsersIdx]);
 
   const filteredIssues = useMemo(() => {
      return data.issues.filter(i => {
@@ -604,6 +611,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   const filteredActivities = useMemo(() => {
     return (data.operationalActivities || []).filter(a => {
+      // Corte P&D: atividades do Edson saem das horas gerais a partir de 01/09/2026.
+      if (isExcludedFromEngineering(a.userId, a.startTime, pndUsersIdx)) return false;
+
       const isSomeEdson = a.userId ? (() => {
         const u = data.users.find(x => x.id === a.userId);
         return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
@@ -663,10 +673,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       return aStart <= end && aEnd >= start;
     });
-  }, [data.operationalActivities, data.users, data.activityTypes, processUserIds, currentUser.role, currentUser.id, selectedDesignerForReleases, startDate, endDate]);
+  }, [data.operationalActivities, data.users, data.activityTypes, processUserIds, currentUser.role, currentUser.id, selectedDesignerForReleases, startDate, endDate, pndUsersIdx]);
 
   const filteredInterruptions = useMemo(() => {
     return data.interruptions.filter(i => {
+      // Corte P&D: interrupções do Edson saem das horas gerais a partir de 01/09/2026.
+      if (isExcludedFromEngineering(i.designerId, i.startTime, pndUsersIdx)) return false;
+
       // Exclude data from 'PROCESSOS' users
       const isSomeEdson = i.designerId ? (() => {
         const u = data.users.find(x => x.id === i.designerId);
@@ -743,8 +756,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     currentUser, 
     selectedClients, 
     selectedSuspensions, 
-    selectedCategories, 
-    selectedInterruptionDesigner
+    selectedCategories,
+    selectedInterruptionDesigner,
+    pndUsersIdx
   ]);
 
 
@@ -779,6 +793,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     ];
 
     const yearlyProjects = data.projects.filter(p => {
+       // Corte P&D: participação do Edson sai do anual a partir de 01/09/2026.
+       if (isExcludedFromEngineering(p.userId, p.startTime, pndUsersIdx)) return false;
+
        // Apply same logic as filteredProjects but for the whole year
        const isSomeEdson = p.userId ? (() => {
          const u = data.users.find(x => x.id === p.userId);
@@ -847,7 +864,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       innovation: yearlyInnovationStats,
       monthly: monthly.filter(m => m.dev > 0 || m.release > 0 || m.variation > 0 || m.hours > 0)
     };
-  }, [data.projects, processUserIds, currentUser.role, currentUser.id]);
+  }, [data.projects, processUserIds, currentUser.role, currentUser.id, pndUsersIdx]);
 
   const devProjectsStats = useMemo(() => {
     const devProjects = filteredProjects.filter(p => 
@@ -1053,6 +1070,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     // Processar Atividades Operacionais (que já são produtivas por natureza)
     data.operationalActivities.forEach(a => {
+        // Corte P&D: atividades do Edson saem da hora geral a partir de 01/09/2026.
+        if (isExcludedFromEngineering(a.userId, a.startTime, pndUsersIdx)) return;
+
         // Skip weekend / off-time activities completely to prevent messing up stats
         const nameUpper = (a.activityName || '').toUpperCase();
         if (nameUpper.includes('FOLGA') || nameUpper.includes('FIM DE SEMANA')) {
@@ -1154,7 +1174,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     });
 
     return Math.round(totalWorkingSeconds / 3600);
-  }, [filteredProjects, data.operationalActivities, data.interruptions, startDate, endDate, settings, t, selectedDesignerForReleases]);
+  }, [filteredProjects, data.operationalActivities, data.interruptions, startDate, endDate, settings, t, selectedDesignerForReleases, pndUsersIdx]);
 
   const perCapitaStats = useMemo(() => {
     const start = startDate ? new Date(startDate) : new Date();
@@ -1167,8 +1187,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     // Months divisor to use
     const monthsInPeriod = overrideMonths !== null ? overrideMonths : calculatedMonthDiff;
 
-    // Use available designers excluding non-engineering roles
-    const engineeringUsers = availableDesigners.filter(u => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(u.role));
+    // Use available designers excluding non-engineering roles.
+    // Corte P&D: o Edson (P&D) sai do divisor de per capita — não é capacidade de entrega.
+    const engineeringUsers = availableDesigners.filter(u => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(u.role) && !isPndCarveoutUser(u));
     
     // Calculate sum of weights
     let totalWeight = 0;

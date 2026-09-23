@@ -34,9 +34,10 @@ import {
   AppSettings,
   ProjectType
 } from '../types';
-import { 
-  format, 
-  parseISO, 
+import { isPndCarveoutUser } from '../utils/pndSplit';
+import {
+  format,
+  parseISO,
   differenceInSeconds, 
   startOfDay, 
   endOfDay,
@@ -107,6 +108,8 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
 
   const designers = useMemo(() => {
     return users.filter(u => {
+      // Corte P&D: o Edson (P&D) tem painel próprio e sai da conformidade da engenharia.
+      if (isPndCarveoutUser(u)) return false;
       // Only show GESTOR role if the current user viewing IS a GESTOR
       if (u.role === 'GESTOR') {
         return currentUser.role === 'GESTOR';
