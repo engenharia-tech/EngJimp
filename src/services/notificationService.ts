@@ -17,7 +17,7 @@ import { authHeaders } from './authToken';
 // e pessoal e serve so para login/redefinicao de senha).
 // Para mudar quem recebe, edite estas constantes.
 // ====================================================================
-const EMAIL_ENGENHARIA  = 'engenharia@joinvilleimplementos.com.br'; // Edson / Engenharia
+const EMAIL_ENGENHARIA  = 'edson@jimp.com.br';                      // Edson / Engenharia (23/09: era engenharia@joinvilleimplementos.com.br)
 const EMAIL_COORDENACAO = 'matheus.p@joinvilleimplementos.com.br';  // Matheus (Coordenacao)
 const EMAIL_COMERCIAL   = 'comercial@furgoesjoinville.com.br';      // Vinicius (Comercial)
 
