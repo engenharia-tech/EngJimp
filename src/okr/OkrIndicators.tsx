@@ -7,7 +7,7 @@ import { OkrStore, OkrPeriod, krProgress } from './okr';
 
 // Progresso do período ativo de um OKR (média dos KRs).
 const periodProgress = (p?: OkrPeriod) => {
-  const krs = (p?.objectives || []).flatMap(o => o.keyResults);
+  const krs = (p?.objectives || []).flatMap(o => o.keyResults).filter(k => !k.archived);
   return krs.length ? krs.reduce((a, k) => a + krProgress(k), 0) / krs.length : 0;
 };
 const activePeriod = (s: OkrStore) => s.periods.find(p => p.id === s.activePeriodId) || s.periods[0];
@@ -42,7 +42,7 @@ export const OkrIndicators: React.FC<Props> = ({ users }) => {
     return (rows || []).map(r => {
       const u = byKey[r.ownerKey];
       const ap = activePeriod(r.store);
-      const krs = (ap?.objectives || []).flatMap(o => o.keyResults);
+      const krs = (ap?.objectives || []).flatMap(o => o.keyResults).filter(k => !k.archived);
       const done = krs.filter(k => krProgress(k) >= 1 || k.status === 'Concluído').length;
       const risk = krs.filter(k => k.status === 'Em risco').length;
       return {
