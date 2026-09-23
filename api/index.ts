@@ -690,20 +690,25 @@ app.post("/api/settings/save", async (req, res) => {
   return res.json({ success: true });
 });
 
-// ========================= OKR (Edson) =========================
-// POST /api/okr/share — gera (ou reusa) o token do link publico. So o Edson.
+// ========================= OKR =========================
+// POST /api/okr/share — gera (ou reusa) o token do link publico DO PROPRIO OKR.
+// Cada usuario logado compartilha o SEU (owner_key = username minusculo), para
+// mandar o link so-leitura ao gestor. O Edson compartilha o dele ('edson').
 app.post("/api/okr/share", async (req, res) => {
   const claims = verifyBearerToken(req);
   if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
-  if (!claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Sem permissao." });
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
 
-  const { data: row } = await admin.from("okr_state").select("share_token").eq("owner_key", "edson").limit(1);
-  let token = row && row[0] && (row[0] as any).share_token;
+  const ownerKey = String(claims.username || "").trim().toLowerCase();
+  if (!ownerKey) return res.status(400).json({ success: false, error: "Usuario invalido." });
+
+  const { data: row } = await admin.from("okr_state").select("share_token").eq("owner_key", ownerKey).limit(1);
+  if (!row || !row[0]) return res.json({ success: false, message: "OKR ainda nao criado." });
+  let token = (row[0] as any).share_token;
   if (!token) {
     token = randomBytes(16).toString("hex");
-    const { error } = await admin.from("okr_state").update({ share_token: token }).eq("owner_key", "edson");
+    const { error } = await admin.from("okr_state").update({ share_token: token }).eq("owner_key", ownerKey);
     if (error) return res.json({ success: false, message: error.message });
   }
   return res.json({ success: true, token });

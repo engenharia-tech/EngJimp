@@ -1891,7 +1891,8 @@ const AppContent: React.FC = () => {
                   );
                 })()
               ) : (
-                // Demais donos habilitados: só o próprio OKR, editável, sem link público.
+                // Demais donos habilitados: só o próprio OKR, editável, com botão
+                // de compartilhar (link só-leitura para o gestor dele).
                 <OkrView
                   key={`okr-${myOkrOwnerKey}`}
                   currentUser={currentUser}
@@ -1901,6 +1902,7 @@ const AppContent: React.FC = () => {
                   ownerKey={myOkrOwnerKey}
                   heading="Meu OKR"
                   seedEmpty
+                  canShare
                   privacyNote="Só o Edson e você"
                 />
               )}
