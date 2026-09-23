@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown } from 'lucide-react';
+import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown, Link2, ExternalLink } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, CartesianGrid, Legend } from 'recharts';
 import { User, ProjectSession, OperationalActivity, ActivityType } from '../types';
 import { fetchOkr, saveOkr, addAuditLog, enableOkrShare, fetchPublicOkr } from '../services/storageService';
@@ -444,7 +444,6 @@ const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onChange: (pf: Port
               <div className="min-w-0 flex-1">
                 <EditField value={i.name} onCommit={v => update(i.id, { name: v })} readOnly={readOnly} className="text-sm font-bold text-slate-800 dark:text-white block" placeholder="Nome" />
                 <EditField value={i.what} onCommit={v => update(i.id, { what: v })} readOnly={readOnly} className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block" placeholder="o que é" />
-                {i.url && <a href={`https://${i.url}`} target="_blank" rel="noreferrer" className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline">{i.url}</a>}
               </div>
               {!readOnly && <button onClick={() => remove(i.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={14} /></button>}
             </div>
@@ -455,6 +454,19 @@ const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onChange: (pf: Port
             <div className="mt-2">
               <span className="text-[10px] font-bold text-slate-400 uppercase">Próximo marco</span>
               <EditField value={i.nextMilestone} onCommit={v => update(i.id, { nextMilestone: v })} readOnly={readOnly} placeholder="—" className="text-xs text-slate-700 dark:text-white mt-0.5 block" />
+            </div>
+            <div className="mt-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1"><Link2 size={11} /> Link</span>
+              {readOnly ? (
+                i.url
+                  ? <a href={/^https?:\/\//.test(i.url) ? i.url : `https://${i.url}`} target="_blank" rel="noreferrer" className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-0.5 inline-flex items-center gap-1 break-all">{i.url.replace(/^https?:\/\//, '')} <ExternalLink size={11} /></a>
+                  : <span className="text-xs text-slate-400 mt-0.5 block">—</span>
+              ) : (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <EditField value={i.url || ''} onCommit={v => update(i.id, { url: v.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '') || undefined })} readOnly={false} placeholder="cole o endereço (ex.: cmms.jimpnexus.com)" className="text-xs text-blue-600 dark:text-blue-400 block flex-1 min-w-0" />
+                  {i.url && <a href={/^https?:\/\//.test(i.url) ? i.url : `https://${i.url}`} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-blue-600 shrink-0" title="Abrir"><ExternalLink size={13} /></a>}
+                </div>
+              )}
             </div>
           </div>
         ))}
