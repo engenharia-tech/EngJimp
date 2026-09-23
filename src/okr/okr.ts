@@ -63,6 +63,69 @@ export interface OkrData {
   updatedAt?: string;
 }
 
+// ---- Estrutura por PERÍODO (Q4 2026, Q1 2027, …) ----
+export interface OkrPeriod {
+  id: string;
+  label: string;          // "Q4 2026"
+  range: string;          // "01/10/2026 a 31/12/2026"
+  objectives: OkrObjective[];
+  checkins: OkrCheckin[];
+}
+
+// O que fica guardado: o portfólio (compartilhado entre períodos) + os períodos.
+export interface OkrStore {
+  owner: string;
+  portfolio: PortfolioItem[];
+  periods: OkrPeriod[];
+  activePeriodId: string;
+  updatedAt?: string;
+}
+
+// Aceita tanto o formato ANTIGO (OkrData: objectives no topo) quanto o novo
+// (OkrStore com periods) e sempre devolve um OkrStore.
+export const migrateToStore = (raw: any): OkrStore => {
+  if (raw && Array.isArray(raw.periods) && raw.periods.length) {
+    return {
+      owner: raw.owner || 'Edson Farias',
+      portfolio: (raw.portfolio && raw.portfolio.length) ? raw.portfolio : DEFAULT_PORTFOLIO,
+      periods: raw.periods,
+      activePeriodId: raw.activePeriodId || raw.periods[0].id,
+      updatedAt: raw.updatedAt,
+    };
+  }
+  if (raw && Array.isArray(raw.objectives)) {
+    return {
+      owner: raw.owner || 'Edson Farias',
+      portfolio: (raw.portfolio && raw.portfolio.length) ? raw.portfolio : DEFAULT_PORTFOLIO,
+      periods: [{ id: 'q4-2026', label: 'Q4 2026', range: raw.period || '01/10/2026 a 31/12/2026', objectives: raw.objectives, checkins: raw.checkins || [] }],
+      activePeriodId: 'q4-2026',
+      updatedAt: raw.updatedAt,
+    };
+  }
+  return DEFAULT_STORE();
+};
+
+export const DEFAULT_STORE = (): OkrStore => ({
+  owner: DEFAULT_OKR.owner,
+  portfolio: DEFAULT_PORTFOLIO,
+  periods: [{ id: 'q4-2026', label: 'Q4 2026', range: DEFAULT_OKR.period, objectives: DEFAULT_OKR.objectives, checkins: [] }],
+  activePeriodId: 'q4-2026',
+});
+
+// Cria um período novo copiando a ESTRUTURA do atual (KRs), zerando o progresso.
+export const clonePeriodStructure = (src: OkrPeriod, label: string, range: string): OkrPeriod => ({
+  id: `p${Date.now().toString(36)}`,
+  label,
+  range,
+  checkins: [],
+  objectives: src.objectives.map(o => ({
+    ...o,
+    keyResults: o.keyResults.map(k => ({ ...k, current: k.baseline, status: 'Não iniciado', tasks: (k.tasks || []).map(t => ({ ...t, done: false })) })),
+  })),
+});
+
+export const emptyKr = (id: string): OkrKeyResult => ({ id, title: 'Novo resultado-chave', metric: '', baseline: 0, target: 1, current: 0, format: 'bin', due: '', initiatives: '', tasks: [], status: 'Não iniciado' });
+
 // Portfólio real (inventariado do repositório app/, exceto Michela).
 export const DEFAULT_PORTFOLIO: PortfolioItem[] = [
   { id: 'kpi', name: 'KPI Engenharia', what: 'Gestão de projetos, KPIs, paradas e OKR da engenharia', category: 'Sistemas', status: 'Produção', url: 'kpieng.jimpnexus.com', nextMilestone: 'Consolidar OKR + notificações de paradas' },

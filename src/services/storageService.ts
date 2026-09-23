@@ -5,7 +5,7 @@ import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser } from '../utils/userUtils';
 import { getAuthToken, authHeaders } from './authToken';
-import { OkrData } from '../okr/okr';
+import { OkrData, OkrStore, migrateToStore } from '../okr/okr';
 
 // Supabase Configuration
 const getSupabaseConfig = () => {
@@ -798,17 +798,17 @@ export const saveNexusHiddenUsers = async (ids: string[]): Promise<void> => {
 
 // OKR pessoal do Edson. A RLS da tabela `okr_state` só libera para o JWT do
 // Edson — para qualquer outro usuário a leitura volta vazia e a escrita é negada.
-export const fetchOkr = async (): Promise<OkrData | null> => {
+export const fetchOkr = async (): Promise<OkrStore | null> => {
   try {
     const { data, error } = await supabase.from('okr_state').select('data').eq('owner_key', 'edson').limit(1);
     if (error) { console.warn('fetchOkr:', error.message); return null; }
-    if (data && data.length > 0) return (data[0] as any).data as OkrData;
+    if (data && data.length > 0) return migrateToStore((data[0] as any).data);
     return null;
   } catch (e) { console.warn('fetchOkr erro:', e); return null; }
 };
 
-export const saveOkr = async (okr: OkrData): Promise<void> => {
-  const payload: OkrData = { ...okr, updatedAt: new Date().toISOString() };
+export const saveOkr = async (store: OkrStore): Promise<void> => {
+  const payload: OkrStore = { ...store, updatedAt: new Date().toISOString() };
   const { error } = await supabase.from('okr_state').upsert(
     { owner_key: 'edson', data: payload, updated_at: new Date().toISOString() },
     { onConflict: 'owner_key' }
@@ -825,12 +825,12 @@ export const enableOkrShare = async (): Promise<string> => {
 };
 
 // Lê o OKR pelo token público (sem login), via servidor.
-export const fetchPublicOkr = async (token: string): Promise<OkrData | null> => {
+export const fetchPublicOkr = async (token: string): Promise<OkrStore | null> => {
   try {
     const res = await fetch(`/api/okr/public?token=${encodeURIComponent(token)}`);
     const out = await res.json().catch(() => ({}));
     if (!res.ok || !out.success) return null;
-    return out.data as OkrData;
+    return migrateToStore(out.data);
   } catch { return null; }
 };
 
