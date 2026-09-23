@@ -53,6 +53,7 @@ import { notifyProjectCompletion } from './services/notificationService';
 import { isTokenExpired, getAuthToken, setAuthToken } from './services/authToken';
 import { Target } from 'lucide-react';
 import { OkrView, OkrPublicPage } from './okr/OkrView';
+import { OkrIndicators } from './okr/OkrIndicators';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -677,6 +678,11 @@ const AppContent: React.FC = () => {
     const me = (data.users || []).find(u => u.id === currentUser?.id);
     return !!(me?.okrEnabled ?? currentUser?.okrEnabled);
   }, [isEdsonOwner, isOkrOnly, data.users, currentUser]);
+  // Indicadores de OKR (visão macro por setor): só Edson e o CEO (só leitura).
+  const canSeeOkrIndicators = useMemo(
+    () => isEdsonOwner || currentUser?.role === 'CEO',
+    [isEdsonOwner, currentUser]
+  );
   // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou o username de outro.
   const [okrTarget, setOkrTarget] = useState<string>('self');
 
@@ -1576,6 +1582,7 @@ const AppContent: React.FC = () => {
 
           {!isOkrOnly && <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
           {canUseOkr && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
+          {canSeeOkrIndicators && <NavItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
 
           {canUseTracker && (
             <>
@@ -1688,6 +1695,7 @@ const AppContent: React.FC = () => {
             {!isOkrOnly && <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {!isOkrOnly && <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {canUseOkr && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
+            {canSeeOkrIndicators && <NavItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {canUseTracker && (
               <>
                 <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
@@ -1907,6 +1915,12 @@ const AppContent: React.FC = () => {
                   privacyNote="Só o Edson e você"
                 />
               )}
+            </div>
+          )}
+
+          {activeTab === 'okr_ind' && canSeeOkrIndicators && currentUser && (
+            <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
+              <OkrIndicators currentUser={currentUser} users={data.users} />
             </div>
           )}
 

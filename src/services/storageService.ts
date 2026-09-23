@@ -808,6 +808,16 @@ export const fetchOkr = async (ownerKey: string = 'edson'): Promise<OkrStore | n
   } catch (e) { console.warn('fetchOkr erro:', e); return null; }
 };
 
+// Lê TODOS os OKRs (para os indicadores por setor). A RLS só libera para o
+// Edson e para o CEO; para os demais volta só o próprio (ou vazio).
+export const fetchAllOkr = async (): Promise<{ ownerKey: string; store: OkrStore }[]> => {
+  try {
+    const { data, error } = await supabase.from('okr_state').select('owner_key, data');
+    if (error) { console.warn('fetchAllOkr:', error.message); return []; }
+    return (data || []).map((r: any) => ({ ownerKey: r.owner_key, store: migrateToStore(r.data) }));
+  } catch (e) { console.warn('fetchAllOkr erro:', e); return []; }
+};
+
 export const saveOkr = async (store: OkrStore, ownerKey: string = 'edson'): Promise<void> => {
   const payload: OkrStore = { ...store, updatedAt: new Date().toISOString() };
   const { error } = await supabase.from('okr_state').upsert(
