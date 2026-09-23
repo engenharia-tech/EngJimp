@@ -502,6 +502,7 @@ app.post("/api/auth/login", async (req, res) => {
     id: user.id, username: user.username, name: user.name, surname: user.surname,
     email: user.email, phone: user.phone, role: user.role,
     must_set_password: user.must_set_password,
+    okr_enabled: user.okr_enabled, okr_only: user.okr_only, sector: user.sector,
   };
   return res.json({ success: true, user: safeUser, token });
 });
