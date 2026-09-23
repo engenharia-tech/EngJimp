@@ -56,6 +56,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('PROJETISTA');
   const [salary, setSalary] = useState<number>(0);
+  const [okrEnabled, setOkrEnabled] = useState<boolean>(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [deleteConfirmationUser, setDeleteConfirmationUser] = useState<User | null>(null);
@@ -85,7 +86,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       username,
       password,
       role,
-      salary
+      salary,
+      okrEnabled
     };
 
     let result;
@@ -206,6 +208,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setPassword('');
     setSalary(0);
     setRole('PROJETISTA');
+    setOkrEnabled(false);
     setEditingUserId(null);
   };
 
@@ -218,6 +221,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setPassword(''); // senha nao vem mais do banco; em branco = manter a atual
     setRole(user.role);
     setSalary(user.salary || 0);
+    setOkrEnabled(!!user.okrEnabled);
     setEditingUserId(user.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -365,8 +369,24 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               placeholder={!isEdson ? '••••••' : 'Ex: 5000.00'}
             />
           </div>
+          {isGestor && (
           <div className="md:col-span-2">
-            <button 
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={okrEnabled}
+                onChange={e => setOkrEnabled(e.target.checked)}
+                className="w-5 h-5 rounded accent-blue-600"
+              />
+              <span className="text-sm">
+                <span className="font-semibold text-black dark:text-white">Habilitar OKR para este usuário</span>
+                <span className="block text-xs text-gray-500 dark:text-slate-400">Dá a ele a aba "Meu OKR" (o dele, editável). O Edson vê e edita o de todos.</span>
+              </span>
+            </label>
+          </div>
+          )}
+          <div className="md:col-span-2">
+            <button
               type="submit"
               disabled={isRegistering}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center"

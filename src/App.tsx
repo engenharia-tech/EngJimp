@@ -655,17 +655,21 @@ const AppContent: React.FC = () => {
       return email === 'efariaseng0@gmail.com' || uname === 'edson';
   }, [currentUser]);
 
-  // Matheus tem o OKR DELE. Edson vê o do Matheus (só leitura); o Matheus
-  // NUNCA vê o do Edson. A chave de dono do OKR é o username em minúsculas.
-  const isMatheus = useMemo(() => {
-      const email = currentUser?.email?.trim().toLowerCase();
-      const uname = currentUser?.username?.trim().toLowerCase();
-      return email === 'matheus.p@joinvilleimplementos.com.br' || uname === 'matheus';
-  }, [currentUser]);
-  const canUseOkr = isEdsonOwner || isMatheus;
+  // Quem tem o OKR: os usuários marcados com okrEnabled (na tela de Usuários).
+  // Cada um vê/edita SÓ o seu; o Edson vê e edita o de todos. A chave de dono
+  // do OKR é o username em minúsculas (bate com a RLS de okr_state).
+  const okrPeople = useMemo(
+    () => (data.users || []).filter(u => u.okrEnabled && (u.username || '').trim().toLowerCase() !== 'edson'),
+    [data.users]
+  );
   const myOkrOwnerKey = useMemo(() => (currentUser?.username || '').trim().toLowerCase(), [currentUser]);
-  // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou 'matheus'.
-  const [okrTarget, setOkrTarget] = useState<'self' | 'matheus'>('self');
+  const canUseOkr = useMemo(() => {
+    if (isEdsonOwner) return true;
+    const me = (data.users || []).find(u => u.id === currentUser?.id);
+    return !!(me?.okrEnabled ?? currentUser?.okrEnabled);
+  }, [isEdsonOwner, data.users, currentUser]);
+  // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou o username de outro.
+  const [okrTarget, setOkrTarget] = useState<string>('self');
 
   // Who can manage Innovations? (CEO, Manager, Designer, Coordinator, Processos)
   const canSeeInnovations = useMemo(() => {
@@ -1829,40 +1833,51 @@ const AppContent: React.FC = () => {
           {activeTab === 'okr' && canUseOkr && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
               {isEdsonOwner ? (
-                <>
-                  {/* Só o Edson escolhe entre o dele e o do Matheus (só leitura). */}
-                  <div className="flex items-center gap-2 mb-4">
-                    <button onClick={() => setOkrTarget('self')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${okrTarget === 'self' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>Meu OKR</button>
-                    <button onClick={() => setOkrTarget('matheus')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${okrTarget === 'matheus' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>OKR do Matheus</button>
-                  </div>
-                  {okrTarget === 'self' ? (
-                    <OkrView
-                      key="okr-edson"
-                      currentUser={currentUser}
-                      projects={data.projects}
-                      activities={data.operationalActivities}
-                      activityTypes={data.activityTypes}
-                      ownerKey="edson"
-                      heading="Meu OKR"
-                      canShare
-                    />
-                  ) : (
-                    <OkrView
-                      key="okr-matheus-view"
-                      currentUser={currentUser}
-                      projects={data.projects}
-                      activities={data.operationalActivities}
-                      activityTypes={data.activityTypes}
-                      ownerKey="matheus"
-                      heading="OKR — Matheus"
-                      ownerName="Matheus"
-                      seedEmpty
-                      privacyNote="Você edita o do Matheus"
-                    />
-                  )}
-                </>
+                (() => {
+                  const target = okrTarget !== 'self' && okrPeople.some(u => (u.username || '').trim().toLowerCase() === okrTarget) ? okrTarget : 'self';
+                  const person = okrPeople.find(u => (u.username || '').trim().toLowerCase() === target);
+                  return (
+                    <>
+                      {/* Só o Edson escolhe entre o dele e o de cada usuário habilitado. */}
+                      <div className="flex items-center gap-2 mb-4 flex-wrap">
+                        <button onClick={() => setOkrTarget('self')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${target === 'self' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>Meu OKR</button>
+                        {okrPeople.map(u => {
+                          const uk = (u.username || '').trim().toLowerCase();
+                          return (
+                            <button key={u.id} onClick={() => setOkrTarget(uk)} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${target === uk ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>OKR — {u.name}</button>
+                          );
+                        })}
+                      </div>
+                      {target === 'self' ? (
+                        <OkrView
+                          key="okr-edson"
+                          currentUser={currentUser}
+                          projects={data.projects}
+                          activities={data.operationalActivities}
+                          activityTypes={data.activityTypes}
+                          ownerKey="edson"
+                          heading="Meu OKR"
+                          canShare
+                        />
+                      ) : (
+                        <OkrView
+                          key={`okr-view-${target}`}
+                          currentUser={currentUser}
+                          projects={data.projects}
+                          activities={data.operationalActivities}
+                          activityTypes={data.activityTypes}
+                          ownerKey={target}
+                          heading={`OKR — ${person?.name || target}`}
+                          ownerName={person?.name || target}
+                          seedEmpty
+                          privacyNote={`Você edita o de ${person?.name || target}`}
+                        />
+                      )}
+                    </>
+                  );
+                })()
               ) : (
-                // Matheus (e futuros donos): só o próprio OKR, editável, sem link público.
+                // Demais donos habilitados: só o próprio OKR, editável, sem link público.
                 <OkrView
                   key={`okr-${myOkrOwnerKey}`}
                   currentUser={currentUser}

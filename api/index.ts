@@ -620,6 +620,7 @@ app.post("/api/users/save", async (req, res) => {
       id: user.id, name: user.name, surname: user.surname, email: user.email, phone: user.phone,
       username: user.username, password: user.password, role: user.role,
       salary: claimsAreEdson(claims) ? (Number(user.salary) || 0) : 0,
+      okr_enabled: !!user.okrEnabled, // só admin chega aqui (create exige isAdmin)
     }]);
     if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
     return res.json({ success: true });
@@ -634,6 +635,7 @@ app.post("/api/users/save", async (req, res) => {
     patch.username = user.username;
     patch.role = user.role;
     if (user.password) patch.password = user.password;
+    patch.okr_enabled = !!user.okrEnabled; // habilita/desabilita o OKR do usuário
   }
   // Salario: leitura E escrita restritas ao Edson. Sem esta guarda, um admin
   // comum editando um usuario ZERARIA o salario real (o cliente dele tem 0).
