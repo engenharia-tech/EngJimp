@@ -57,6 +57,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   const [role, setRole] = useState<UserRole>('PROJETISTA');
   const [salary, setSalary] = useState<number>(0);
   const [okrEnabled, setOkrEnabled] = useState<boolean>(false);
+  const [okrOnly, setOkrOnly] = useState<boolean>(false);
+  const [sector, setSector] = useState<string>('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [deleteConfirmationUser, setDeleteConfirmationUser] = useState<User | null>(null);
@@ -87,7 +89,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       password,
       role,
       salary,
-      okrEnabled
+      okrEnabled: okrEnabled || okrOnly,
+      okrOnly,
+      sector
     };
 
     let result;
@@ -209,6 +213,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setSalary(0);
     setRole('PROJETISTA');
     setOkrEnabled(false);
+    setOkrOnly(false);
+    setSector('');
     setEditingUserId(null);
   };
 
@@ -222,6 +228,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setRole(user.role);
     setSalary(user.salary || 0);
     setOkrEnabled(!!user.okrEnabled);
+    setOkrOnly(!!user.okrOnly);
+    setSector(user.sector || '');
     setEditingUserId(user.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -369,18 +377,42 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               placeholder={!isEdson ? '••••••' : 'Ex: 5000.00'}
             />
           </div>
+          <div>
+            <label htmlFor="um-sector" className="block text-sm font-medium text-black dark:text-white mb-1">Setor</label>
+            <input
+              id="um-sector"
+              type="text"
+              value={sector}
+              onChange={e => setSector(e.target.value)}
+              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              placeholder="Ex.: Comercial, PCP, RH, Fábrica"
+            />
+          </div>
           {isGestor && (
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
                 type="checkbox"
-                checked={okrEnabled}
+                checked={okrEnabled || okrOnly}
+                disabled={okrOnly}
                 onChange={e => setOkrEnabled(e.target.checked)}
                 className="w-5 h-5 rounded accent-blue-600"
               />
               <span className="text-sm">
-                <span className="font-semibold text-black dark:text-white">Habilitar OKR para este usuário</span>
-                <span className="block text-xs text-gray-500 dark:text-slate-400">Dá a ele a aba "Meu OKR" (o dele, editável). O Edson vê e edita o de todos.</span>
+                <span className="font-semibold text-black dark:text-white">Habilitar OKR</span>
+                <span className="block text-xs text-gray-500 dark:text-slate-400">Dá a ele a aba "Meu OKR" (editável). O Edson vê e edita o de todos.</span>
+              </span>
+            </label>
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={okrOnly}
+                onChange={e => { setOkrOnly(e.target.checked); if (e.target.checked) setOkrEnabled(true); }}
+                className="w-5 h-5 rounded accent-amber-600"
+              />
+              <span className="text-sm">
+                <span className="font-semibold text-black dark:text-white">Somente OKR</span>
+                <span className="block text-xs text-gray-500 dark:text-slate-400">Ele vê SÓ a aba OKR — nada de engenharia (dashboard, projetos, etc.).</span>
               </span>
             </label>
           </div>

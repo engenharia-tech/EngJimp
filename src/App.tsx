@@ -642,11 +642,20 @@ const AppContent: React.FC = () => {
       return ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
   }, [currentUser]);
 
+  // "Somente OKR": usuário que só pode ver a aba OKR — nada de engenharia.
+  // Vem de users.okr_only (marcado na tela de Usuários). O Edson nunca é restrito.
+  const isOkrOnly = useMemo(() => {
+      const uname = (currentUser?.username || '').trim().toLowerCase();
+      if (uname === 'edson') return false;
+      const me = (data.users || []).find(u => u.id === currentUser?.id);
+      return !!(me?.okrOnly ?? currentUser?.okrOnly);
+  }, [data.users, currentUser]);
+
   const canUseTracker = useMemo(() => {
-      if (!currentUser) return false;
+      if (!currentUser || isOkrOnly) return false;
       // CEO cannot use tracker
       return ['PROJETISTA', 'GESTOR', 'COORDENADOR'].includes(currentUser.role);
-  }, [currentUser]);
+  }, [currentUser, isOkrOnly]);
 
   // OKR pessoal: SÓ o Edson (dono). Ninguém mais vê a aba nem o conteúdo.
   const isEdsonOwner = useMemo(() => {
@@ -664,28 +673,33 @@ const AppContent: React.FC = () => {
   );
   const myOkrOwnerKey = useMemo(() => (currentUser?.username || '').trim().toLowerCase(), [currentUser]);
   const canUseOkr = useMemo(() => {
-    if (isEdsonOwner) return true;
+    if (isEdsonOwner || isOkrOnly) return true;
     const me = (data.users || []).find(u => u.id === currentUser?.id);
     return !!(me?.okrEnabled ?? currentUser?.okrEnabled);
-  }, [isEdsonOwner, data.users, currentUser]);
+  }, [isEdsonOwner, isOkrOnly, data.users, currentUser]);
   // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou o username de outro.
   const [okrTarget, setOkrTarget] = useState<string>('self');
 
+  // Usuário "somente OKR" nunca sai da aba OKR (nem por link/estado antigo).
+  useEffect(() => {
+    if (isOkrOnly && activeTab !== 'okr') setActiveTab('okr');
+  }, [isOkrOnly, activeTab, setActiveTab]);
+
   // Who can manage Innovations? (CEO, Manager, Designer, Coordinator, Processos)
   const canSeeInnovations = useMemo(() => {
-      if (!currentUser) return false;
+      if (!currentUser || isOkrOnly) return false;
       return ['GESTOR', 'CEO', 'PROJETISTA', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
-  }, [currentUser]);
+  }, [currentUser, isOkrOnly]);
 
   const canSeeEngineeringPerformance = useMemo(() => {
-    if (!currentUser) return false;
+    if (!currentUser || isOkrOnly) return false;
     return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(currentUser.role);
-  }, [currentUser]);
+  }, [currentUser, isOkrOnly]);
 
   const canSeeAudit = useMemo(() => {
-    if (!currentUser) return false;
+    if (!currentUser || isOkrOnly) return false;
     return ['GESTOR', 'COORDENADOR'].includes(currentUser.role);
-  }, [currentUser]);
+  }, [currentUser, isOkrOnly]);
   
   // Who can see Dashboard? (Everyone)
   // Who can see Team? (Manager, Coordinator)
@@ -1556,11 +1570,11 @@ const AppContent: React.FC = () => {
           )}
         </div>
         <nav aria-label="Navegação principal" className="flex-1 mt-6 overflow-y-auto custom-scrollbar">
-          <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
+          {!isOkrOnly && <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
 
-          <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
+          {!isOkrOnly && <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
 
-          <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
+          {!isOkrOnly && <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
           {canUseOkr && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
 
           {canUseTracker && (
@@ -1584,19 +1598,19 @@ const AppContent: React.FC = () => {
              <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
-          {['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
+          {!isOkrOnly && ['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
             <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
-          {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
+          {!isOkrOnly && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
             <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
-          {['GESTOR', 'CEO'].includes(currentUser.role) && (
+          {!isOkrOnly && ['GESTOR', 'CEO'].includes(currentUser.role) && (
             <NavItem id="settings" labelKey="settings" icon={UserCog} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
-          
-          {['GESTOR', 'CEO'].includes(currentUser.role) && (
+
+          {!isOkrOnly && ['GESTOR', 'CEO'].includes(currentUser.role) && (
             <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
         </nav>
@@ -1669,10 +1683,10 @@ const AppContent: React.FC = () => {
               <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t('controlPanel')}</p>
               <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{currentUser.name}</p>
             </div>
-            <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-            
-            <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-            <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            {!isOkrOnly && <NavItem id="dashboard" labelKey="dashboard" icon={LayoutDashboard} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
+
+            {!isOkrOnly && <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
+            {!isOkrOnly && <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {canUseOkr && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {canUseTracker && (
               <>
@@ -1691,16 +1705,16 @@ const AppContent: React.FC = () => {
             {canSeeInnovations && (
                 <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
-            {['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
+            {!isOkrOnly && ['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
                 <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
-            {['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
+            {!isOkrOnly && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
                <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
-            {['GESTOR', 'CEO'].includes(currentUser.role) && (
+            {!isOkrOnly && ['GESTOR', 'CEO'].includes(currentUser.role) && (
                 <NavItem id="settings" labelKey="settings" icon={UserCog} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
-            {['GESTOR', 'CEO'].includes(currentUser.role) && (
+            {!isOkrOnly && ['GESTOR', 'CEO'].includes(currentUser.role) && (
                 <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             <div className="mt-auto p-4 border-t border-gray-100 dark:border-slate-800">
@@ -1844,7 +1858,7 @@ const AppContent: React.FC = () => {
                         {okrPeople.map(u => {
                           const uk = (u.username || '').trim().toLowerCase();
                           return (
-                            <button key={u.id} onClick={() => setOkrTarget(uk)} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${target === uk ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>OKR — {u.name}</button>
+                            <button key={u.id} onClick={() => setOkrTarget(uk)} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${target === uk ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>{u.name}{u.sector ? ` · ${u.sector}` : ''}</button>
                           );
                         })}
                       </div>
@@ -1867,7 +1881,7 @@ const AppContent: React.FC = () => {
                           activities={data.operationalActivities}
                           activityTypes={data.activityTypes}
                           ownerKey={target}
-                          heading={`OKR — ${person?.name || target}`}
+                          heading={`OKR — ${person?.name || target}${person?.sector ? ` · ${person.sector}` : ''}`}
                           ownerName={person?.name || target}
                           seedEmpty
                           privacyNote={`Você edita o de ${person?.name || target}`}
