@@ -1872,6 +1872,7 @@ const AppContent: React.FC = () => {
                           ownerKey="edson"
                           heading="Meu OKR"
                           canShare
+                          showActivity
                         />
                       ) : (
                         <OkrView
