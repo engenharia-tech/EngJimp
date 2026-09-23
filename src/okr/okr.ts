@@ -84,11 +84,31 @@ export interface OkrPeriod {
 }
 
 // O que fica guardado: o portfólio (compartilhado entre períodos) + os períodos.
+export interface OkrGovReview {
+  id: string;
+  date: string;                                  // yyyy-mm-dd
+  cadence: 'Semanal' | 'Mensal' | 'Trimestral';
+  notes: string;                                 // pauta / decisões
+  next: string;                                  // próximos passos
+}
+export interface OkrGovAction {
+  id: string;
+  text: string;
+  owner: string;                                 // responsável
+  due: string;                                   // yyyy-mm-dd
+  done: boolean;
+}
+export interface OkrGovState {
+  reviews: OkrGovReview[];
+  actions: OkrGovAction[];
+}
+
 export interface OkrStore {
   owner: string;
   portfolio: PortfolioItem[];
   periods: OkrPeriod[];
   activePeriodId: string;
+  governance?: OkrGovState;   // governança do ciclo (revisões + ações) — do dono
   updatedAt?: string;
 }
 
@@ -104,6 +124,7 @@ export const migrateToStore = (raw: any): OkrStore => {
       portfolio: Array.isArray(raw.portfolio) ? raw.portfolio : DEFAULT_PORTFOLIO,
       periods: raw.periods,
       activePeriodId: raw.activePeriodId || raw.periods[0].id,
+      governance: raw.governance,
       updatedAt: raw.updatedAt,
     };
   }
