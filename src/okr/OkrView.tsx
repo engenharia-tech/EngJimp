@@ -65,6 +65,8 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
   const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [shareLink, setShareLink] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [openObjs, setOpenObjs] = useState<Record<string, boolean>>({}); // KRs recolhidos por padrão
+  const toggleObj = (id: string) => setOpenObjs(m => ({ ...m, [id]: !m[id] }));
   const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
@@ -290,6 +292,13 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
       </div>
 
       {/* Objetivos (editáveis) */}
+      <div className="flex items-center justify-between px-1">
+        <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Objetivos & resultados-chave</h3>
+        <div className="flex gap-3">
+          <button onClick={() => setOpenObjs(Object.fromEntries(active.objectives.map(o => [o.id, true])))} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">Expandir tudo</button>
+          <button onClick={() => setOpenObjs({})} className="text-xs font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">Recolher tudo</button>
+        </div>
+      </div>
       {active.objectives.map(o => {
         const op = objProgress(o);
         return (
@@ -303,10 +312,14 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                   <span className={`text-sm font-black tabular-nums ${textColor(op)}`}>{Math.round(op * 100)}%</span>
                 </div>
               </div>
+              <button onClick={() => toggleObj(o.id)} className="shrink-0 flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800" title={openObjs[o.id] ? 'Recolher KRs' : 'Mostrar KRs'}>
+                <span className="tabular-nums">{o.keyResults.filter(k => !k.archived).length} KRs</span>
+                <ChevronDown size={16} className={`transition-transform ${openObjs[o.id] ? 'rotate-180' : ''}`} />
+              </button>
               {!readOnly && <button onClick={() => { if (window.confirm(`Excluir o objetivo ${o.id}?`)) removeObjective(o.id); }} className="text-slate-300 hover:text-rose-500 shrink-0" title="Excluir objetivo"><Trash2 size={15} /></button>}
             </div>
 
-            <div className="space-y-3">
+            {openObjs[o.id] && <div className="space-y-3">
               {o.keyResults.map(k => {
                 if (k.archived && !showArchived) return null;
                 const p = krProgress(k);
@@ -388,7 +401,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                 {!readOnly && <button onClick={() => addKr(o.id)} className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"><Plus size={14} /> Adicionar resultado-chave</button>}
                 {o.keyResults.some(k => k.archived) && <button onClick={() => setShowArchived(s => !s)} className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><Archive size={12} /> {showArchived ? 'Ocultar arquivados' : `Mostrar ${o.keyResults.filter(k => k.archived).length} arquivado(s)`}</button>}
               </div>
-            </div>
+            </div>}
           </div>
         );
       })}
