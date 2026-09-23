@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown, Link2, ExternalLink } from 'lucide-react';
+import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown, Link2, ExternalLink, UserRound, Archive, ArchiveRestore, History } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, CartesianGrid, Legend } from 'recharts';
 import { User, ProjectSession, OperationalActivity, ActivityType } from '../types';
 import { fetchOkr, saveOkr, addAuditLog, enableOkrShare, fetchPublicOkr } from '../services/storageService';
@@ -18,7 +18,7 @@ const barColor = (p: number) => { const c = progressColor(p); return c === 'gree
 const textColor = (p: number) => { const c = progressColor(p); return c === 'green' ? 'text-emerald-600 dark:text-emerald-400' : c === 'amber' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'; };
 const fmtDue = (iso: string) => { try { const [y, m, d] = iso.split('-'); return d ? `${d}/${m}/${y}` : iso; } catch { return iso; } };
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const periodProgress = (p?: OkrPeriod) => { const krs = (p?.objectives || []).flatMap(o => o.keyResults); return krs.length ? krs.reduce((a, k) => a + krProgress(k), 0) / krs.length : 0; };
+const periodProgress = (p?: OkrPeriod) => { const krs = (p?.objectives || []).flatMap(o => o.keyResults).filter(k => !k.archived); return krs.length ? krs.reduce((a, k) => a + krProgress(k), 0) / krs.length : 0; };
 
 // Campo editável inline (vira texto no modo leitura).
 const EditField: React.FC<{ value: string; onCommit: (v: string) => void; readOnly?: boolean; multiline?: boolean; placeholder?: string; className?: string }> = ({ value, onCommit, readOnly, multiline, placeholder, className }) => {
@@ -64,6 +64,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
   const [loading, setLoading] = useState(!external);
   const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [shareLink, setShareLink] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
@@ -307,15 +308,21 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
 
             <div className="space-y-3">
               {o.keyResults.map(k => {
+                if (k.archived && !showArchived) return null;
                 const p = krProgress(k);
                 return (
-                  <div key={k.id} className="rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/30 p-4">
+                  <div key={k.id} className={`rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/30 p-4 ${k.archived ? 'opacity-60' : ''}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] font-black text-blue-600 dark:text-blue-400">{k.id}</span>
-                          <span className="text-[11px] text-slate-400 flex items-center gap-1"><Clock size={11} />
-                            {readOnly ? fmtDue(k.due) : <input type="date" defaultValue={k.due} onBlur={e => e.target.value !== k.due && updateKr(o.id, k.id, { due: e.target.value })} className="bg-transparent text-[11px] text-slate-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />}
+                        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
+                          <span className="text-[11px] font-black text-blue-600 dark:text-blue-400">{k.id}{k.archived && <span className="ml-1 text-[9px] uppercase text-amber-500 font-bold">arquivado</span>}</span>
+                          <span className="text-[11px] text-slate-400 flex items-center gap-1" title="Período (início → fim)"><Clock size={11} />
+                            {readOnly
+                              ? <>{k.start ? fmtDue(k.start) : '—'} → {k.due ? fmtDue(k.due) : '—'}</>
+                              : <><input type="date" defaultValue={k.start || ''} onBlur={e => e.target.value !== (k.start || '') && updateKr(o.id, k.id, { start: e.target.value })} className="bg-transparent text-[11px] text-slate-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" title="Início" /><span className="text-slate-300">→</span><input type="date" defaultValue={k.due} onBlur={e => e.target.value !== k.due && updateKr(o.id, k.id, { due: e.target.value })} className="bg-transparent text-[11px] text-slate-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" title="Fim" /></>}
+                          </span>
+                          <span className="text-[11px] text-slate-400 flex items-center gap-1" title="Responsável"><UserRound size={11} />
+                            {readOnly ? (k.owner || '—') : <input defaultValue={k.owner || ''} onBlur={e => e.target.value !== (k.owner || '') && updateKr(o.id, k.id, { owner: e.target.value })} placeholder="responsável" className="bg-transparent text-[11px] text-slate-500 dark:text-slate-300 outline-none w-24 focus:w-40 transition-all placeholder:text-slate-300" />}
                           </span>
                         </div>
                         <EditField value={k.title} onCommit={v => updateKr(o.id, k.id, { title: v })} readOnly={readOnly} multiline className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-0.5 block" placeholder="Resultado-chave…" />
@@ -323,6 +330,9 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={`text-sm font-black tabular-nums ${textColor(p)}`}>{Math.round(p * 100)}%</span>
+                        {!readOnly && (k.archived
+                          ? <button onClick={() => updateKr(o.id, k.id, { archived: false })} className="text-slate-300 hover:text-emerald-500" title="Desarquivar KR"><ArchiveRestore size={13} /></button>
+                          : <button onClick={() => updateKr(o.id, k.id, { archived: true })} className="text-slate-300 hover:text-amber-500" title="Arquivar KR"><Archive size={13} /></button>)}
                         {!readOnly && <button onClick={() => removeKr(o.id, k.id)} className="text-slate-300 hover:text-rose-500" title="Excluir KR"><Trash2 size={13} /></button>}
                       </div>
                     </div>
@@ -334,13 +344,13 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Atual</span>
                         {k.format === 'bin' ? (
-                          <button disabled={readOnly} onClick={() => updateKr(o.id, k.id, { current: k.current >= 1 ? 0 : 1, status: k.current >= 1 ? 'Em andamento' : 'Concluído' })} className={`px-3 py-1 rounded-lg text-xs font-bold ${k.current >= 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'} ${readOnly ? 'cursor-default' : ''}`}>{k.current >= 1 ? 'Feito' : 'Marcar feito'}</button>
+                          <button disabled={readOnly} onClick={() => setProgress(o.id, k, k.current >= 1 ? 0 : 1, { status: k.current >= 1 ? 'Em andamento' : 'Concluído' })} className={`px-3 py-1 rounded-lg text-xs font-bold ${k.current >= 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'} ${readOnly ? 'cursor-default' : ''}`}>{k.current >= 1 ? 'Feito' : 'Marcar feito'}</button>
                         ) : k.format === 'pct' ? (
                           <div className="flex items-center gap-1">
-                            <input type="number" min={0} max={100} disabled={readOnly} defaultValue={Math.round(k.current * 100)} onBlur={e => updateKr(o.id, k.id, { current: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100 })} className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" /><span className="text-slate-400 text-sm">%</span>
+                            <input type="number" min={0} max={100} disabled={readOnly} defaultValue={Math.round(k.current * 100)} onBlur={e => setProgress(o.id, k, Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100)} className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" /><span className="text-slate-400 text-sm">%</span>
                           </div>
                         ) : (
-                          <input type="number" min={0} disabled={readOnly} defaultValue={k.current} onBlur={e => updateKr(o.id, k.id, { current: Math.max(0, parseFloat(e.target.value) || 0) })} className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                          <input type="number" min={0} disabled={readOnly} defaultValue={k.current} onBlur={e => setProgress(o.id, k, Math.max(0, parseFloat(e.target.value) || 0))} className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
                         )}
                         {!readOnly ? (
                           <span className="flex items-center gap-1 text-[11px] text-slate-400">meta <input type="number" disabled={readOnly} defaultValue={k.target} onBlur={e => updateKr(o.id, k.id, { target: parseFloat(e.target.value) || 1 })} className="w-14 px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-[11px] outline-none" /></span>
@@ -370,10 +380,14 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                     </div>
 
                     <KrTasks kr={k} readOnly={readOnly} onChange={tasks => updateKr(o.id, k.id, { tasks })} />
+                    <KrHistory kr={k} />
                   </div>
                 );
               })}
-              {!readOnly && <button onClick={() => addKr(o.id)} className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline mt-1"><Plus size={14} /> Adicionar resultado-chave</button>}
+              <div className="flex items-center gap-4 mt-1">
+                {!readOnly && <button onClick={() => addKr(o.id)} className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"><Plus size={14} /> Adicionar resultado-chave</button>}
+                {o.keyResults.some(k => k.archived) && <button onClick={() => setShowArchived(s => !s)} className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><Archive size={12} /> {showArchived ? 'Ocultar arquivados' : `Mostrar ${o.keyResults.filter(k => k.archived).length} arquivado(s)`}</button>}
+              </div>
             </div>
           </div>
         );
@@ -413,6 +427,28 @@ const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onChange: (tasks
         </div>
       )}
     </div>
+  );
+};
+
+// Histórico de progresso do KR (cada mudança do "atual").
+const KrHistory: React.FC<{ kr: OkrKeyResult }> = ({ kr }) => {
+  const h = kr.history || [];
+  if (h.length === 0) return null;
+  const fmt = (v: number) => kr.format === 'pct' ? `${Math.round(v * 100)}%` : kr.format === 'bin' ? (v >= 1 ? 'Feito' : '—') : String(v);
+  const d = (iso: string) => { try { const dt = new Date(iso); return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch { return iso; } };
+  return (
+    <details className="mt-2">
+      <summary className="text-[11px] font-bold text-slate-400 cursor-pointer select-none inline-flex items-center gap-1 hover:text-slate-600 dark:hover:text-slate-200"><History size={11} /> Histórico ({h.length})</summary>
+      <ul className="mt-1.5 space-y-1 pl-3 border-l border-slate-200 dark:border-slate-700">
+        {[...h].reverse().map((pt, i) => (
+          <li key={i} className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 flex-wrap">
+            <span className="font-mono tabular-nums text-slate-400">{d(pt.date)}</span>
+            <span className="font-bold text-slate-600 dark:text-slate-300">{fmt(pt.value)}</span>
+            {pt.by && <span className="text-slate-400">· {pt.by}</span>}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 };
 

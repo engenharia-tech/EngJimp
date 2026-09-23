@@ -172,8 +172,9 @@ export const krProgress = (kr: OkrKeyResult): number => {
 };
 
 export const objProgress = (o: OkrObjective): number => {
-  if (!o.keyResults.length) return 0;
-  return o.keyResults.reduce((a, k) => a + krProgress(k), 0) / o.keyResults.length;
+  const krs = o.keyResults.filter(k => !k.archived); // arquivados não contam
+  if (!krs.length) return 0;
+  return krs.reduce((a, k) => a + krProgress(k), 0) / krs.length;
 };
 
 export const overallProgress = (d: OkrData): number => {
