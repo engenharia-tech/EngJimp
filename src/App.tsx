@@ -78,29 +78,50 @@ interface NavItemProps {
   theme: string;
   t: any;
   isCollapsed?: boolean;
+  subItem?: boolean;   // item recuado (sub-item de outro), sem a borda-4 de ativo
   onClick: (id: any) => void;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ id, labelKey, icon: Icon, activeTab, theme, t, isCollapsed, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ id, labelKey, icon: Icon, activeTab, theme, t, isCollapsed, subItem, onClick }) => {
+  const active = activeTab === id;
+  if (subItem && !isCollapsed) {
+    return (
+      <button
+        onClick={() => onClick(id)}
+        aria-current={active ? 'page' : undefined}
+        aria-label={t(labelKey)}
+        className={`flex items-center w-full pl-5 pr-4 py-2.5 text-left transition-all rounded-l-lg ${
+          active
+            ? theme === 'dark' ? 'bg-blue-900/25 text-blue-300 font-semibold' : 'bg-blue-50 text-blue-700 font-semibold'
+            : theme === 'dark' ? 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-200' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+        }`}
+      >
+        <Icon className={`w-4 h-4 mr-2.5 shrink-0 ${active ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
+        <span className="truncate text-[11px] font-bold uppercase tracking-wide">{t(labelKey)}</span>
+      </button>
+    );
+  }
+  return (
   <button
     onClick={() => onClick(id)}
     title={isCollapsed ? t(labelKey) : undefined}
-    aria-current={activeTab === id ? 'page' : undefined}
+    aria-current={active ? 'page' : undefined}
     aria-label={t(labelKey)}
     className={`flex items-center w-full ${isCollapsed ? 'justify-center px-0' : 'px-6'} py-4 text-left transition-all border-l-4 ${
-      activeTab === id 
-        ? theme === 'dark' 
-          ? 'bg-blue-900/20 border-orange-500 text-blue-400 font-medium' 
+      active
+        ? theme === 'dark'
+          ? 'bg-blue-900/20 border-orange-500 text-blue-400 font-medium'
           : 'bg-blue-50 border-orange-500 text-blue-600 font-medium'
         : theme === 'dark'
           ? 'border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200'
           : 'border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900'
     }`}
   >
-    <Icon className={`w-5 h-5 ${isCollapsed ? '' : 'mr-3'} ${activeTab === id ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
+    <Icon className={`w-5 h-5 ${isCollapsed ? '' : 'mr-3'} ${active ? 'text-blue-400' : theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`} />
     {!isCollapsed && <span className="truncate">{t(labelKey).toUpperCase()}</span>}
   </button>
-);
+  );
+};
 
 const LanguageSwitcher = ({ 
   language, 
@@ -1584,9 +1605,19 @@ const AppContent: React.FC = () => {
 
           {!isOkrOnly && <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
           {canUseOkr && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
-          {canSeeOkrIndicators && <NavItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
-          {canSeeOkrIndicators && <NavItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
-          {canSeeOkrIndicators && <NavItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
+          {canSeeOkrIndicators && (isSidebarCollapsed ? (
+            <>
+              <NavItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
+              <NavItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
+              <NavItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
+            </>
+          ) : (
+            <div className="ml-8 my-0.5 border-l-2 border-slate-200 dark:border-slate-700/60">
+              <NavItem subItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              <NavItem subItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              <NavItem subItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+            </div>
+          ))}
 
           {canUseTracker && (
             <>
@@ -1702,9 +1733,13 @@ const AppContent: React.FC = () => {
             {!isOkrOnly && <NavItem id="nexus" labelKey="nexusAssistant" icon={Cpu} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {!isOkrOnly && <NavItem id="gantt" labelKey="ganttNexus" icon={LayoutList} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {canUseOkr && <NavItem id="okr" labelKey="okr" icon={Target} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
-            {canSeeOkrIndicators && <NavItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
-            {canSeeOkrIndicators && <NavItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
-            {canSeeOkrIndicators && <NavItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
+            {canSeeOkrIndicators && (
+              <div className="ml-8 my-0.5 border-l-2 border-slate-200 dark:border-slate-700/60">
+                <NavItem subItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+                <NavItem subItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+                <NavItem subItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              </div>
+            )}
             {canUseTracker && (
               <>
                 <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
