@@ -85,6 +85,8 @@ export interface User {
   role: UserRole;
   salary?: number;
   okrEnabled?: boolean; // se true, o usuário tem o próprio OKR (aba). Edson vê/edita todos.
+  okrOnly?: boolean;    // se true, o usuário só vê a aba OKR — nada de engenharia.
+  sector?: string;      // setor do usuário (Comercial, PCP, RH, Fábrica, ...).
 }
 
 export interface PauseRecord {

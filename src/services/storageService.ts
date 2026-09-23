@@ -285,7 +285,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
 // password, password_hash, reset_code_hash, reset_code_expires — sao segredos
 // que so o servidor (service_role) le. Trocar select('*') por esta lista fecha
 // o vazamento do C2 (o salario/senha vinham crus para todo cliente).
-const USER_SAFE_COLUMNS = 'id, username, name, surname, email, phone, role, okr_enabled, created_at';
+const USER_SAFE_COLUMNS = 'id, username, name, surname, email, phone, role, okr_enabled, okr_only, sector, created_at';
 
 // Media (custo/hora) calculada no servidor, sem expor salario individual.
 // Usada pelo "custo automatico" no app inteiro.
@@ -381,6 +381,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       users = (usersRes.data || []).map((u: any) => ({
         id: u.id, username: u.username, password: '', name: u.name, surname: u.surname,
         email: u.email, phone: u.phone, role: u.role, okrEnabled: !!u.okr_enabled,
+        okrOnly: !!u.okr_only, sector: u.sector || '',
         // salario so existe no cliente do Edson (via /api/users/salaries); 0 p/ o resto.
         salary: Number(edsonSalaries[u.id]) || 0
       })).sort((a, b) => a.name.localeCompare(b.name));
@@ -1678,6 +1679,8 @@ export const fetchUsers = async (): Promise<User[]> => {
       phone: u.phone,
       role: u.role,
       okrEnabled: !!u.okr_enabled,
+      okrOnly: !!u.okr_only,
+      sector: u.sector || '',
       salary: Number(edsonSalaries[u.id]) || 0
     })).sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
