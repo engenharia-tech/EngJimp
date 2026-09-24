@@ -24,9 +24,10 @@ import { EngineeringPerformance } from './components/EngineeringPerformance';
 import { Login } from './components/Login';
 import { 
   supabase,
-  fetchAppState, 
-  addProject, 
-  updateProject, 
+  fetchAppState,
+  addProject,
+  addProjectsBatch,
+  updateProject,
   deleteProject,
   addInnovation, 
   updateInnovationStatus,
@@ -807,6 +808,37 @@ const AppContent: React.FC = () => {
       } else {
           addToast(t('errorCreatingProject', { error: e.message || 'Verifique o console' }), 'error');
       }
+    }
+  };
+
+  // Liberação em lote: cria X liberações rápidas (já concluídas) de uma vez.
+  const handleProjectsBatchCreate = async (projects: ProjectSession[]): Promise<AppState | undefined> => {
+    const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'];
+    if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
+      addToast(t('noPermissionCreate'), 'error');
+      return;
+    }
+    if (!projects.length) return;
+    const withUser = projects.map(p => ({ ...p, userId: currentUser?.id }));
+    setData(prev => ({ ...prev, projects: [...withUser, ...prev.projects] }));
+    try {
+      const updatedData = await addProjectsBatch(withUser);
+      setData(updatedData);
+      addToast(`${withUser.length} liberações registradas em lote`, 'success');
+      addAuditLog({
+        userId: currentUser?.id,
+        userName: currentUser?.name,
+        action: 'CREATE',
+        entityType: 'PROJECT',
+        entityId: withUser[0].id,
+        entityName: `Lote: ${withUser[0].ns || withUser[0].name} (${withUser.length}x)`,
+        details: `Liberação em lote de ${withUser.length} projetos "${withUser[0].ns || withUser[0].name}" por ${currentUser?.name}`
+      });
+      return updatedData;
+    } catch (e: any) {
+      console.error("Batch creation failed:", e);
+      addToast(t('errorCreatingProject', { error: e.message || 'Verifique o console' }), 'error');
     }
   };
 
@@ -1828,6 +1860,7 @@ const AppContent: React.FC = () => {
               projectRequests={data.projectRequests}
               settings={effectiveSettings}
               onCreate={handleProjectCreate}
+              onCreateBatch={handleProjectsBatchCreate}
               onUpdate={handleProjectUpdate}
               onAddInterruption={onAddInterruption}
               onUpdateInterruption={onUpdateInterruption}

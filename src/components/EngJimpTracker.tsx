@@ -19,6 +19,7 @@ interface EngJimpTrackerProps {
   interruptions: InterruptionRecord[];
   settings: AppSettings;
   onCreate: (project: ProjectSession) => Promise<AppState | undefined>;
+  onCreateBatch: (projects: ProjectSession[]) => Promise<AppState | undefined>;
   onUpdate: (project: ProjectSession, isHeartbeat?: boolean) => void;
   onAddInterruption: (interruption: InterruptionRecord) => void;
   onUpdateInterruption: (interruption: InterruptionRecord, isHeartbeat?: boolean) => void;
@@ -37,8 +38,9 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   allProjects,
   interruptions, 
   settings, 
-  onCreate, 
-  onUpdate, 
+  onCreate,
+  onCreateBatch,
+  onUpdate,
   onAddInterruption,
   onUpdateInterruption,
   projectRequests,
@@ -130,6 +132,16 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
   const [estHours, setEstHours] = useState<string>('');
   const [estMinutes, setEstMinutes] = useState<string>('');
   const [isOvertime, setIsOvertime] = useState(false);
+
+  // Liberação em lote: X projetos iguais → X liberações rápidas (~1 min cada).
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchNs, setBatchNs] = useState('');
+  const [batchClient, setBatchClient] = useState('');
+  const [batchImplement, setBatchImplement] = useState<ImplementType>(ImplementType.BASE);
+  const [batchQty, setBatchQty] = useState('');
+  const [batchMinutes, setBatchMinutes] = useState('1');
+  const [batchNotes, setBatchNotes] = useState('');
+  const [batchIsOvertime, setBatchIsOvertime] = useState(false);
 
   const aggregatedInfo = useMemo(() => {
     if (!ns.trim()) return null;
@@ -367,6 +379,75 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     };
   }, [activeProject, showPauseModal, showPickModal, showFinishModal, settings, interruptions]);
 
+
+  const handleConfirmBatch = async () => {
+    if (isSaving) return;
+    const qty = parseInt(batchQty, 10);
+    if (!batchNs.trim()) {
+      addToast('Informe o NS ou uma descrição para o lote.', 'warning');
+      return;
+    }
+    if (!qty || qty < 1) {
+      addToast('Informe uma quantidade válida (1 ou mais).', 'warning');
+      return;
+    }
+    if (qty > 200) {
+      addToast('Máximo de 200 liberações por lote.', 'warning');
+      return;
+    }
+    // Trava de expediente igual ao start manual (ou marque hora extra).
+    if (!isWorkingHour(new Date(), settings, batchIsOvertime)) {
+      addToast(t('outsideWorkingHours'), 'warning');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const minutes = Math.max(1, parseInt(batchMinutes, 10) || 1);
+      const durSec = minutes * 60;
+      const nowMs = Date.now();
+      const nsBase = batchNs.trim();
+      const clientVal = batchClient.trim();
+      // X liberações rápidas, já concluídas, encadeadas terminando agora.
+      const projects: ProjectSession[] = Array.from({ length: qty }, (_, i) => {
+        const endMs = nowMs - i * durSec * 1000;
+        const startMs = endMs - durSec * 1000;
+        return {
+          id: crypto.randomUUID(),
+          name: clientVal || nsBase,
+          ns: nsBase,
+          clientName: clientVal || undefined,
+          type: ProjectType.RELEASE,
+          implementType: batchImplement,
+          startTime: new Date(startMs).toISOString(),
+          endTime: new Date(endMs).toISOString(),
+          estimatedSeconds: durSec,
+          totalActiveSeconds: durSec,
+          pauses: [],
+          variations: [],
+          status: 'COMPLETED',
+          notes: `${batchNotes.trim() ? batchNotes.trim() + ' · ' : ''}Liberação em lote (${i + 1}/${qty})`,
+          userId: currentUser?.id,
+          isOvertime: batchIsOvertime,
+        };
+      });
+
+      const res = await onCreateBatch(projects);
+      if (res) {
+        setShowBatchModal(false);
+        setBatchNs('');
+        setBatchClient('');
+        setBatchQty('');
+        setBatchMinutes('1');
+        setBatchNotes('');
+        setBatchIsOvertime(false);
+      }
+    } catch (error) {
+      console.error('Batch release failed', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleStartNew = async () => {
     if (!ns.trim()) {
@@ -1611,6 +1692,22 @@ JIMPNEXUS
                         </>
                       )}
                     </button>
+
+                    <button
+                      onClick={() => {
+                        setBatchNs(ns.trim());
+                        setBatchClient(clientName.trim());
+                        setBatchImplement(implementType);
+                        setBatchIsOvertime(isOvertime);
+                        setShowBatchModal(true);
+                      }}
+                      disabled={isSaving}
+                      className="w-full mt-2 bg-violet-100 dark:bg-violet-900/40 hover:bg-violet-200 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 font-black py-3 rounded-xl flex items-center justify-center transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-widest text-sm"
+                      title="Vários projetos iguais em uma liberação só"
+                    >
+                      <Layers className="w-5 h-5 mr-2" />
+                      Liberação em lote
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2402,6 +2499,109 @@ JIMPNEXUS
           </div>
         );
       })()}
+
+      {/* Liberação em lote */}
+      {showBatchModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-slate-700">
+            <h3 className="text-lg font-bold mb-1 flex items-center text-violet-600 dark:text-violet-400">
+              <Layers className="w-5 h-5 mr-2" />
+              Liberação em lote
+            </h3>
+            <p className="text-gray-600 dark:text-slate-400 text-sm mb-4">
+              Vários projetos iguais em uma liberação só. Cada um conta como uma liberação rápida.
+            </p>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">NS ou descrição</label>
+                <input
+                  value={batchNs}
+                  onChange={e => setBatchNs(e.target.value)}
+                  placeholder="Ex.: NS 9456 ou 'Bau 6200 lote feira'"
+                  className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-violet-500 outline-none dark:bg-slate-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Cliente (opcional)</label>
+                <input
+                  value={batchClient}
+                  onChange={e => setBatchClient(e.target.value)}
+                  className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-violet-500 outline-none dark:bg-slate-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Tipo de implemento</label>
+                <select
+                  value={batchImplement}
+                  onChange={e => setBatchImplement(e.target.value as ImplementType)}
+                  className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-violet-500 outline-none dark:bg-slate-900 dark:text-white"
+                >
+                  {IMPLEMENT_TYPES.map(tp => <option key={tp} value={tp}>{t(tp.toLowerCase())}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Quantidade</label>
+                  <input
+                    type="number" min={1} max={200}
+                    value={batchQty}
+                    onChange={e => setBatchQty(e.target.value)}
+                    placeholder="Ex.: 10"
+                    className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-violet-500 outline-none dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Min. por projeto</label>
+                  <input
+                    type="number" min={1} max={120}
+                    value={batchMinutes}
+                    onChange={e => setBatchMinutes(e.target.value)}
+                    className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-violet-500 outline-none dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={batchIsOvertime}
+                  onChange={e => setBatchIsOvertime(e.target.checked)}
+                  className="w-5 h-5 text-amber-600 rounded-lg focus:ring-amber-500 border-amber-300"
+                />
+                <span className="text-sm font-black text-amber-700 dark:text-amber-400 uppercase tracking-wider">{t('overtime')}</span>
+              </label>
+
+              {(() => {
+                const q = parseInt(batchQty, 10) || 0;
+                const m = Math.max(1, parseInt(batchMinutes, 10) || 1);
+                if (q < 1) return null;
+                return (
+                  <div className="text-sm bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 rounded-lg p-3 border border-violet-200 dark:border-violet-800">
+                    Vai registrar <b>{q} liberações</b> de {m} min → <b>{q * m} min</b> no total.
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowBatchModal(false)}
+                disabled={isSaving}
+                className="flex-1 py-3 rounded-lg border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 font-bold hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-70"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmBatch}
+                disabled={isSaving}
+                className="flex-1 py-3 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-black flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-wider"
+              >
+                {isSaving ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" />Salvando...</> : <><CheckSquare className="w-5 h-5 mr-2" />Registrar lote</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pause Modal */}
       {showPauseModal && (
