@@ -2489,6 +2489,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           theme={theme}
           t={t}
           currentUser={currentUser}
+          startDate={startDate}
+          endDate={endDate}
         />
       )}
 
