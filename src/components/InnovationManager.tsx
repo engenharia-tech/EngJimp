@@ -528,12 +528,16 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     <div className="space-y-6">
       {/* Header & Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h2 className="text-2xl font-bold text-black dark:text-white flex items-center">
-            <Lightbulb className="w-6 h-6 mr-2 text-yellow-500" />
-            {t('innovationsTitle')}
-          </h2>
-          <p className="text-gray-600 dark:text-slate-400 mt-1">{t('innovationsSubtitle')}</p>
+        <div className="flex items-stretch gap-3">
+          <div className="w-1 rounded-full bg-gradient-to-b from-blue-500 to-orange-500 shrink-0"></div>
+          <div>
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gray-400 dark:text-slate-500">Inovação · <span className="text-orange-500 dark:text-orange-400">P&amp;D</span></p>
+            <h2 className="text-2xl font-bold text-black dark:text-white flex items-center">
+              <Lightbulb className="w-5 h-5 mr-2 text-yellow-500" />
+              {t('innovationsTitle')}
+            </h2>
+            <p className="text-gray-600 dark:text-slate-400 mt-0.5 text-sm">{t('innovationsSubtitle')}</p>
+          </div>
         </div>
         
         <div className="bg-gradient-to-r from-emerald-500 to-teal-600 dark:from-black dark:to-black rounded-xl p-6 text-white shadow-lg relative overflow-hidden border dark:border-slate-700">
