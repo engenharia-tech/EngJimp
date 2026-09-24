@@ -1823,7 +1823,16 @@ const AppContent: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <main className={`flex-1 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} p-4 md:p-8 pt-24 md:pt-8 transition-all duration-300 min-h-screen ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
+      <main
+        className={`flex-1 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} p-4 md:p-8 pt-24 md:pt-8 transition-all duration-300 min-h-screen ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}
+        style={{
+          backgroundImage:
+            theme === 'dark'
+              ? 'linear-gradient(rgba(45,63,95,.26) .5px,transparent .5px),linear-gradient(90deg,rgba(45,63,95,.26) .5px,transparent .5px)'
+              : 'linear-gradient(rgba(100,116,139,.09) .5px,transparent .5px),linear-gradient(90deg,rgba(100,116,139,.09) .5px,transparent .5px)',
+          backgroundSize: '34px 34px',
+        }}
+      >
         {isLoading && (
           <div className="fixed top-0 left-0 w-full h-1 bg-blue-100 z-50">
             <div className="h-full bg-blue-600 animate-pulse w-full"></div>

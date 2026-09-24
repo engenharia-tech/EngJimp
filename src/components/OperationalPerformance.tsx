@@ -1304,13 +1304,17 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     <div className="space-y-6">
       {/* Header & Navigation */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className={`text-2xl font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-            {t('operationalPerformance')}
-          </h2>
-          <p className={`uppercase ${theme === 'dark' ? 'text-slate-200 font-medium' : 'text-gray-500'}`}>
-            {t('operationalPerformanceDesc')}
-          </p>
+        <div className="flex items-stretch gap-3">
+          <div className="w-1 rounded-full bg-gradient-to-b from-blue-500 to-orange-500 shrink-0"></div>
+          <div>
+            <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gray-400 dark:text-slate-500">Operação · <span className="text-orange-500 dark:text-orange-400">Engenharia</span></p>
+            <h2 className={`text-2xl font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+              {t('operationalPerformance')}
+            </h2>
+            <p className={`text-sm ${theme === 'dark' ? 'text-slate-300' : 'text-gray-500'}`}>
+              {t('operationalPerformanceDesc')}
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
