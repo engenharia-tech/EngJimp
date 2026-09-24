@@ -886,6 +886,46 @@ export const addProject = async (project: ProjectSession): Promise<AppState> => 
   }
 };
 
+// Insere VÁRIAS liberações de uma vez (liberação em lote). Mesmo mapeamento do
+// addProject, em blocos de 50 (padrão do seed), com um único fetch no fim.
+export const addProjectsBatch = async (projects: ProjectSession[]): Promise<AppState> => {
+  try {
+    const rows = projects.map(project => ({
+      id: project.id,
+      ns: project.ns,
+      client_name: project.clientName,
+      flooring_type: project.flooringType,
+      project_code: project.projectCode,
+      chassis_number: project.chassisNumber,
+      type: project.type,
+      implement_type: project.implementType,
+      start_time: project.startTime,
+      end_time: project.endTime,
+      total_active_seconds: project.totalActiveSeconds,
+      interruption_seconds: project.interruptionSeconds || 0,
+      total_seconds: project.totalSeconds || 0,
+      productive_cost: project.productiveCost || 0,
+      interruption_cost: project.interruptionCost || 0,
+      total_cost: project.totalCost || 0,
+      pauses: project.pauses,
+      variations: project.variations,
+      status: project.status,
+      notes: project.notes,
+      user_id: project.userId,
+      estimated_seconds: project.estimatedSeconds,
+      is_overtime: project.isOvertime
+    }));
+    for (let i = 0; i < rows.length; i += 50) {
+      const { error } = await supabase.from('projects').insert(rows.slice(i, i + 50));
+      if (error) throw error;
+    }
+    return fetchAppState();
+  } catch (error) {
+    console.error("FAILED TO ADD PROJECTS BATCH", error);
+    throw error;
+  }
+};
+
 export const updateProject = async (project: ProjectSession, skipFetch = false): Promise<AppState> => {
   try {
     const { error } = await supabase
