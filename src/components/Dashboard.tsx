@@ -301,79 +301,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     }
   };
 
-  const [visibleSections, setVisibleSections] = useState<string[]>(() => {
-    const sections = ['pd_managerial', 'kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table', 'activities', 'stops'];
-    const role = currentUser.role;
-    return sections.filter(section => {
-      switch (section) {
-        case 'pd_managerial':
-          return canSeePdSection;
-        case 'kpi':
-          return role !== 'PROCESSOS';
-        case 'ranking':
-          return (role === 'CEO' || role === 'GESTOR' || role === 'COORDENADOR') && role !== 'PROCESSOS';
-        case 'innovation':
-          return true;
-        case 'releases':
-          return role !== 'PROCESSOS';
-        case 'ns_analysis':
-          return true;
-        case 'detailed_report':
-          return true;
-        case 'project_hours_table':
-          return true;
-        case 'advanced_charts':
-          return true;
-        case 'interruption_report':
-          return ['GESTOR', 'CEO', 'COORDENADOR'].includes(role);
-        case 'engineering_compliance':
-          return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(role);
-        case 'activities':
-          return role === 'GESTOR';
-        case 'stops':
-          return role === 'GESTOR';
-        default:
-          return true;
-      }
-    });
-  });
+  // Chave por usuário para gravar as flags de "Selecionar Dashboards".
+  const SECTIONS_KEY = `jn_dash_sections_${currentUser.id}`;
+  // Todas as seções na ordem canônica.
+  const ALL_SECTIONS = ['pd_managerial', 'kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table', 'activities', 'stops'];
+  // Default por papel (o que o usuário vê antes de mexer em nada).
+  const computeDefaultSections = (): string[] => ALL_SECTIONS.filter(s => hasPermissionForSection(s));
+  // Escolhas gravadas do usuário, sempre filtradas pela permissão atual —
+  // se perdeu acesso a uma seção, ela não volta. Null se nunca gravou.
+  const loadSavedSections = (): string[] | null => {
+    try {
+      const raw = localStorage.getItem(SECTIONS_KEY);
+      if (!raw) return null;
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return null;
+      return arr.filter((s: unknown): s is string => typeof s === 'string' && hasPermissionForSection(s));
+    } catch {
+      return null;
+    }
+  };
 
+  const [visibleSections, setVisibleSections] = useState<string[]>(() => loadSavedSections() ?? computeDefaultSections());
+
+  // Ao trocar de papel, reconcilia: mantém as escolhas gravadas (refiltradas
+  // pela permissão), ou cai no default. NÃO apaga mais o que o usuário marcou.
   useEffect(() => {
-    const sections = ['pd_managerial', 'kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table', 'activities', 'stops'];
-    const role = currentUser.role;
-    setVisibleSections(sections.filter(section => {
-      switch (section) {
-        case 'pd_managerial':
-          return canSeePdSection;
-        case 'kpi':
-          return role !== 'PROCESSOS';
-        case 'ranking':
-          return (role === 'CEO' || role === 'GESTOR' || role === 'COORDENADOR') && role !== 'PROCESSOS';
-        case 'innovation':
-          return true;
-        case 'releases':
-          return role !== 'PROCESSOS';
-        case 'ns_analysis':
-          return true;
-        case 'detailed_report':
-          return true;
-        case 'project_hours_table':
-          return true;
-        case 'advanced_charts':
-          return true;
-        case 'interruption_report':
-          return ['GESTOR', 'CEO', 'COORDENADOR'].includes(role);
-        case 'engineering_compliance':
-          return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(role);
-        case 'activities':
-          return role === 'GESTOR';
-        case 'stops':
-          return role === 'GESTOR';
-        default:
-          return true;
-      }
-    }));
+    setVisibleSections(loadSavedSections() ?? computeDefaultSections());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser.role]);
+
+  // Grava as flags do usuário para sobreviverem a novas entradas.
+  useEffect(() => {
+    try {
+      localStorage.setItem(SECTIONS_KEY, JSON.stringify(visibleSections));
+    } catch {
+      /* localStorage indisponível (aba privada etc.) — segue sem gravar */
+    }
+  }, [SECTIONS_KEY, visibleSections]);
 
   // Helper to normalize strings for comparison (remove accents and uppercase)
   const normalize = (str: string) => 
