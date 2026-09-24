@@ -514,6 +514,7 @@ export const SEOManager: React.FC<SEOManagerProps> = ({ currentUser, theme }) =>
               Atualizado em: 28/Mai/2026
             </span>
           </div>
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gray-400 dark:text-slate-500 mb-0.5">Marketing · <span className="text-orange-500 dark:text-orange-400">SEO</span></p>
           <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Otimização de Busca (SEO)</h2>
           <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>
             Gerenciamento e monitoramento da autoridade do domínio, tráfego orgânico industrial e posicionamento de palavras-chave.

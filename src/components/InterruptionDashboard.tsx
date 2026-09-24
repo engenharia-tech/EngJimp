@@ -115,7 +115,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
       {/* Area Stats Section */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
         <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
+          <h3 className="text-base font-mono font-bold uppercase tracking-[0.12em] text-black dark:text-white flex items-center">
             <BarChart3 className="w-5 h-5 mr-2 text-amber-500" />
             {t('stopsByArea')}
           </h3>
