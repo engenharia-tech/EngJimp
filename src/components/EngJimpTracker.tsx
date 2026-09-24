@@ -13,6 +13,16 @@ import { useLanguage } from '../i18n/LanguageContext';
 // SUBSTITUA ISSO PELA SUA URL DO WEBHOOK DO TEAMS
 const TEAMS_WEBHOOK_URL = "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL_HERE";
 
+// NS sequencial da liberação em lote: incrementa os dígitos do NS base, preservando
+// qualquer prefixo/sufixo e os zeros à esquerda. Ex.: '8921' + 3 → '8924'.
+const seqNs = (base: string, i: number): string => {
+  const m = /^(.*?)(\d+)(\D*)$/.exec(base);
+  if (!m) return i === 0 ? base : `${base} ${i + 1}`;
+  const [, prefix, digits, suffix] = m;
+  const n = (parseInt(digits, 10) + i).toString().padStart(digits.length, '0');
+  return `${prefix}${n}${suffix}`;
+};
+
 interface EngJimpTrackerProps {
   existingProjects: ProjectSession[];
   allProjects: ProjectSession[];
@@ -384,7 +394,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     if (isSaving) return;
     const qty = parseInt(batchQty, 10);
     if (!batchNs.trim()) {
-      addToast('Informe o NS ou uma descrição para o lote.', 'warning');
+      addToast('Informe o NS inicial do lote.', 'warning');
       return;
     }
     if (!qty || qty < 1) {
@@ -408,14 +418,15 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       const nowMs = Date.now();
       const nsBase = batchNs.trim();
       const clientVal = batchClient.trim();
-      // X liberações rápidas, já concluídas, encadeadas terminando agora.
+      // X liberações rápidas com NS SEQUENCIAL (8921, 8922, ...), mesmo cliente.
       const projects: ProjectSession[] = Array.from({ length: qty }, (_, i) => {
+        const nsVal = seqNs(nsBase, i);
         const endMs = nowMs - i * durSec * 1000;
         const startMs = endMs - durSec * 1000;
         return {
           id: crypto.randomUUID(),
-          name: clientVal || nsBase,
-          ns: nsBase,
+          name: clientVal || nsVal,
+          ns: nsVal,
           clientName: clientVal || undefined,
           type: ProjectType.RELEASE,
           implementType: batchImplement,
@@ -426,7 +437,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
           pauses: [],
           variations: [],
           status: 'COMPLETED',
-          notes: `${batchNotes.trim() ? batchNotes.trim() + ' · ' : ''}Liberação em lote (${i + 1}/${qty})`,
+          notes: batchNotes.trim() || undefined,
           userId: currentUser?.id,
           isOvertime: batchIsOvertime,
         };
@@ -2514,21 +2525,23 @@ JIMPNEXUS
 
             <div className="space-y-3 mb-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">NS ou descrição</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Cliente</label>
                 <input
-                  value={batchNs}
-                  onChange={e => setBatchNs(e.target.value)}
-                  placeholder="Ex.: NS 9456 ou 'Bau 6200 lote feira'"
+                  value={batchClient}
+                  onChange={e => setBatchClient(e.target.value)}
+                  placeholder="Ex.: Azure"
                   className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-violet-500 outline-none dark:bg-slate-900 dark:text-white"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Cliente (opcional)</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">NS inicial (sequencial)</label>
                 <input
-                  value={batchClient}
-                  onChange={e => setBatchClient(e.target.value)}
+                  value={batchNs}
+                  onChange={e => setBatchNs(e.target.value)}
+                  placeholder="Ex.: 8921"
                   className="w-full p-3 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-violet-500 outline-none dark:bg-slate-900 dark:text-white"
                 />
+                <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Gera NS consecutivos a partir deste: 8921, 8922, 8923…</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Tipo de implemento</label>
@@ -2574,10 +2587,13 @@ JIMPNEXUS
               {(() => {
                 const q = parseInt(batchQty, 10) || 0;
                 const m = Math.max(1, parseInt(batchMinutes, 10) || 1);
-                if (q < 1) return null;
+                if (q < 1 || !batchNs.trim()) return null;
+                const first = seqNs(batchNs.trim(), 0);
+                const last = seqNs(batchNs.trim(), q - 1);
+                const cli = batchClient.trim();
                 return (
                   <div className="text-sm bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 rounded-lg p-3 border border-violet-200 dark:border-violet-800">
-                    Vai registrar <b>{q} liberações</b> de {m} min → <b>{q * m} min</b> no total.
+                    Vai registrar <b>{q} liberações</b> — NS <b>{first}</b> a <b>{last}</b>{cli ? <> · cliente <b>{cli}</b></> : null}. {m} min cada ({q * m} min no total).
                   </div>
                 );
               })()}
