@@ -951,10 +951,10 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   return (
     <div className="space-y-6">
       {/* Header & Filters */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm space-y-4">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-700 border-l-4 border-l-blue-500 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center text-black dark:text-white font-bold uppercase">
-            <FileText className="w-5 h-5 mr-2 text-blue-600" />
+          <div className="flex items-center text-black dark:text-white font-mono font-bold uppercase tracking-[0.14em] text-sm">
+            <FileText className="w-4 h-4 mr-2.5 text-orange-500" />
             Relatórios Gerenciais
           </div>
           <div className="flex flex-wrap items-center gap-4">

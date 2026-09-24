@@ -194,11 +194,12 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
   return (
     <div className="space-y-5">
       {/* Cabeçalho */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-slate-700 border-l-4 border-l-blue-500">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-md"><Target size={22} /></div>
             <div className="min-w-0">
+              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-slate-400 dark:text-slate-500">OKR · <span className="text-orange-500 dark:text-orange-400">Gestão</span></p>
               <h2 className="text-xl font-black text-slate-800 dark:text-white leading-tight">{heading}</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">{store.owner}</p>
             </div>
