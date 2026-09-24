@@ -2211,10 +2211,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       </div>
 
       {/* Date Filter Section */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
+      <div className="relative bg-white dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
+        <span aria-hidden="true" className="absolute left-2 top-2 w-3 h-3 border-l-2 border-t-2 border-orange-500/50"></span>
+        <span aria-hidden="true" className="absolute right-2 top-2 w-3 h-3 border-r-2 border-t-2 border-orange-500/50"></span>
+        <span aria-hidden="true" className="absolute left-2 bottom-2 w-3 h-3 border-l-2 border-b-2 border-orange-500/50"></span>
+        <span aria-hidden="true" className="absolute right-2 bottom-2 w-3 h-3 border-r-2 border-b-2 border-orange-500/50"></span>
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-center text-black dark:text-white font-black uppercase tracking-widest text-sm">
-            <Filter className="w-5 h-5 mr-3 text-blue-600" />
+          <div className="flex items-center text-black dark:text-white font-mono font-bold uppercase tracking-[0.18em] text-xs">
+            <Filter className="w-4 h-4 mr-2.5 text-orange-500" />
             {t('analysisFilters')}
           </div>
           
@@ -2350,7 +2354,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       {/* Dashboard Visibility Controls */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
-        <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-3">{t('selectDashboards')}</p>
+        <p className="flex items-center gap-3 font-mono text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-[0.18em] mb-3">
+          {t('selectDashboards')}
+          <span aria-hidden="true" className="flex-1 h-px bg-gray-200 dark:bg-slate-700"></span>
+        </p>
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-4 gap-y-3">
           {canSeePdSection && (
             <label className="flex items-center gap-2 group cursor-pointer">
