@@ -42,9 +42,9 @@ export const IssueReporter: React.FC<IssueReporterProps> = ({ onReport, currentU
   }
 
   return (
-    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
-      <h2 className="text-xl font-bold mb-4 flex items-center text-red-600 dark:text-red-400">
-        <AlertTriangle className="w-6 h-6 mr-2" />
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700 border-l-4 border-l-red-500">
+      <h2 className="text-base font-mono font-bold uppercase tracking-[0.12em] mb-4 flex items-center text-red-600 dark:text-red-400">
+        <AlertTriangle className="w-5 h-5 mr-2.5" />
         Reportar Problema
       </h2>
       <form onSubmit={handleSubmit} className="space-y-4">

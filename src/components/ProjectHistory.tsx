@@ -926,10 +926,10 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       )}
 
       {/* Filters Section */}
-      <div className={`bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 ${activeSubTab === 'list' ? 'hidden md:block' : 'block'}`}>
+      <div className={`bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 border-l-4 border-l-blue-500 ${activeSubTab === 'list' ? 'hidden md:block' : 'block'}`}>
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center text-black dark:text-white font-bold text-lg">
-            <Filter className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
+          <div className="flex items-center text-black dark:text-white font-mono font-bold uppercase tracking-[0.12em] text-sm">
+            <Filter className="w-4 h-4 mr-2.5 text-orange-500" />
             {activeSubTab === 'search' ? t('advancedSearchTool') : t('searchFilters')}
           </div>
           {(filterNs || filterType || filterStatus || startDate || endDate || filterSuspicious) && (
