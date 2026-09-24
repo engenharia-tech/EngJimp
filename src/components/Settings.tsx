@@ -205,6 +205,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-between mb-2">
         <div>
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gray-400 dark:text-slate-500 mb-0.5">Sistema · <span className="text-orange-500 dark:text-orange-400">Ajustes</span></p>
           <h2 className="text-2xl font-bold text-black dark:text-white flex items-center">
             <SettingsIcon className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
             {t('systemSettings')}

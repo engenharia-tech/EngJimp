@@ -266,8 +266,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       {(canCreateUser || editingUserId) && (
       <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold flex items-center text-black dark:text-white">
-            <UserPlus className="w-6 h-6 mr-2 text-indigo-600 dark:text-indigo-400" />
+          <h2 className="text-base font-mono font-bold uppercase tracking-[0.12em] flex items-center text-black dark:text-white">
+            <UserPlus className="w-5 h-5 mr-2.5 text-orange-500" />
             {editingUserId ? (currentUser.id === editingUserId ? 'Editar Meu Perfil' : 'Editar Usuário') : 'Cadastrar Novo Usuário'}
           </h2>
           {editingUserId && (

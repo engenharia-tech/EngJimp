@@ -165,12 +165,13 @@ export const PndManagerial: React.FC<Props> = ({ activities, projects, users, se
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
-      <div className={`${card} p-6 flex flex-col md:flex-row md:items-center justify-between gap-4`}>
+      <div className={`${card} p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-l-violet-500`}>
         <div className="flex items-center gap-3">
           <div className="p-3 rounded-xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300">
             <Beaker size={24} />
           </div>
           <div>
+            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gray-400 dark:text-slate-500">P&amp;D · <span className="text-orange-500 dark:text-orange-400">Gerencial</span></p>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">P&amp;D — Painel Gerencial</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {subject.name}{subject.surname ? ` ${subject.surname}` : ''} · P&amp;D aplicado e esforço além da jornada

@@ -548,8 +548,9 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
       {/* Header & Stats */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gray-400 dark:text-slate-500 mb-0.5">Operação · <span className="text-orange-500 dark:text-orange-400">Interrupções</span></p>
           <h1 className="text-2xl font-bold text-black dark:text-white flex items-center">
-            <PauseCircle className="w-8 h-8 mr-3 text-amber-500" />
+            <PauseCircle className="w-7 h-7 mr-2.5 text-amber-500" />
             {t('projectInterruptions')}
           </h1>
           <p className="text-gray-600 dark:text-slate-400">{t('manageBottlenecks')}</p>

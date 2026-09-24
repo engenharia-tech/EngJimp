@@ -548,8 +548,8 @@ export const GanttNexus: React.FC<GanttNexusProps> = ({ state, onUpdateState }) 
           className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50/50"
         >
           <div className="flex items-center gap-4">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Lock className="text-indigo-600" size={24} />
+            <h2 className="text-lg font-mono font-bold uppercase tracking-[0.12em] flex items-center gap-2">
+              <Lock className="text-orange-500" size={20} />
               {t('ganttNexus')}
             </h2>
             
