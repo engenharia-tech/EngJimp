@@ -1536,9 +1536,9 @@ JIMPNEXUS
               </div>
             </div>
           ) : ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') ? (
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700">
-                <h2 className="text-xl font-bold mb-4 flex items-center text-black dark:text-white">
-                  <Clock className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700 border-l-4 border-l-blue-500">
+                <h2 className="text-lg font-mono font-bold uppercase tracking-[0.12em] mb-4 flex items-center text-black dark:text-white">
+                  <Clock className="w-5 h-5 mr-2.5 text-blue-600 dark:text-blue-400" />
                   {t('startProject')}
                 </h2>
                 <div className="space-y-4">
@@ -1796,10 +1796,10 @@ JIMPNEXUS
           )}
 
           {/* NS Queue Section */}
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-orange-100 dark:border-orange-900/30 border-l-4 border-l-orange-500">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-              <h3 className="text-lg font-bold text-black dark:text-white flex items-center">
-                <Layers className="w-5 h-5 mr-2 text-orange-600 dark:text-orange-400" />
+              <h3 className="text-base font-mono font-bold uppercase tracking-[0.12em] text-black dark:text-white flex items-center">
+                <Layers className="w-5 h-5 mr-2.5 text-orange-600 dark:text-orange-400" />
                 {t('nsQueueTitle')}
               </h3>
               
@@ -2057,10 +2057,10 @@ JIMPNEXUS
       {activeProject && (
         <div className="space-y-6">
             {/* Main Tracker Card */}
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700 relative">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700 border-l-4 border-l-blue-500 relative">
                 <div className="flex justify-between items-start mb-6">
-                    <h2 className="text-xl font-bold flex items-center text-black dark:text-white">
-                        <Clock className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" />
+                    <h2 className="text-lg font-mono font-bold uppercase tracking-[0.12em] flex items-center text-black dark:text-white">
+                        <Clock className="w-5 h-5 mr-2.5 text-blue-600 dark:text-blue-400" />
                         {t('activeTracker')}
                     </h2>
                     <div className="text-right">
