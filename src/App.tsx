@@ -1613,10 +1613,6 @@ const AppContent: React.FC = () => {
 
           {!isSidebarCollapsed && (
             <>
-              <div className="mb-6">
-                <LanguageSwitcher language={language} setLanguage={setLanguage} />
-              </div>
-              
               <div className={`flex items-center ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'} text-xs mb-1 uppercase tracking-wider font-semibold`}>
                 {t('controlPanel')}
               </div>
@@ -1736,8 +1732,7 @@ const AppContent: React.FC = () => {
             />
         </div>
         <div className="flex items-center gap-2">
-            <LanguageSwitcher language={language} setLanguage={setLanguage} />
-            <button 
+            <button
                 onClick={toggleTheme}
                 className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700' : 'bg-gray-100 border border-gray-200'} transition-colors text-gray-600 dark:text-slate-300`}
             >

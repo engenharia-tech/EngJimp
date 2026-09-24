@@ -11,15 +11,10 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem('app_language');
-    return (saved as Language) || 'pt-BR';
-  });
-
-  const setLanguage = (lang: Language) => {
-    setLanguageState(lang);
-    localStorage.setItem('app_language', lang);
-  };
+  // Idioma FIXO em português — seletor de idioma removido (decisão do Edson, 24/09).
+  // Ignora qualquer 'app_language' salvo, para valer para todo mundo.
+  const [language] = useState<Language>('pt-BR');
+  const setLanguage = (_lang: Language) => { /* no-op: o app é só pt-BR */ };
 
   const t = (key: keyof typeof translations['pt-BR'], params?: Record<string, string | number>): string => {
     let text = translations[language][key] || translations['pt-BR'][key] || key;
