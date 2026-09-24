@@ -2197,10 +2197,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   return (
     <div className="space-y-6">
 
-      {/* Cabeçalho de página — dá contexto de "onde estou" (antes abria direto nos filtros) */}
-      <div>
-        <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">{t('dashboard')}</h1>
-        <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">Visão geral dos indicadores de engenharia</p>
+      {/* Cabeçalho de página — identidade "console de engenharia" (rótulo mono + barra de sotaque).
+          NÃO contém a logo da empresa (essa vive no header global e fica intocada). */}
+      <div className="flex items-stretch gap-3">
+        <div className="w-1 rounded-full bg-gradient-to-b from-blue-500 to-orange-500 shrink-0"></div>
+        <div>
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gray-400 dark:text-slate-500">
+            Painel · <span className="text-orange-500 dark:text-orange-400">Desempenho</span>
+          </p>
+          <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight leading-tight">{t('dashboard')}</h1>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">Visão geral dos indicadores de engenharia</p>
+        </div>
       </div>
 
       {/* Date Filter Section */}
