@@ -116,6 +116,7 @@ NOTIFY pgrst, 'reload config';`;
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between gap-4 items-start md:items-center">
         <div>
+          <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-gray-400 dark:text-slate-500 mb-0.5">Sistema · <span className="text-orange-500 dark:text-orange-400">Auditoria</span></p>
           <h2 className={`text-2xl font-bold flex items-center gap-2 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
             <Shield className="text-blue-500" />
             {t('auditLog').toUpperCase()}
