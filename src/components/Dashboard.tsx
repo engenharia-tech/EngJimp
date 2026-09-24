@@ -2522,9 +2522,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Unified Development Card */}
           {currentUser.role !== 'PROCESSOS' && (
-             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-blue-500/5">
+             <div className="relative overflow-hidden bg-white dark:bg-slate-900 p-3 sm:p-4 pl-4 sm:pl-5 rounded-xl border border-blue-200 dark:border-blue-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-blue-500/5">
+               <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></span>
                <div className="w-full">
-                 <p className="text-[10px] sm:text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-0.5 sm:mb-1">
+                 <p className="text-[10px] sm:text-xs font-mono font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-0.5 sm:mb-1">
                    Desenvolvimento Total
                  </p>
                  <div className="flex items-baseline gap-1">
@@ -2552,9 +2553,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           {/* Releases Total Card */}
           {currentUser.role !== 'PROCESSOS' && (
-             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-emerald-500/5">
+             <div className="relative overflow-hidden bg-white dark:bg-slate-900 p-3 sm:p-4 pl-4 sm:pl-5 rounded-xl border border-emerald-200 dark:border-emerald-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-emerald-500/5">
+               <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500"></span>
                <div className="w-full">
-                 <p className="text-[10px] sm:text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-0.5 sm:mb-1">
+                 <p className="text-[10px] sm:text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-0.5 sm:mb-1">
                    Total de Liberações
                  </p>
                  <div className="flex items-baseline gap-1">
@@ -2582,9 +2584,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           {/* Total de Variações Card */}
           {currentUser.role !== 'PROCESSOS' && (
-             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-amber-500/5">
+             <div className="relative overflow-hidden bg-white dark:bg-slate-900 p-3 sm:p-4 pl-4 sm:pl-5 rounded-xl border border-amber-200 dark:border-amber-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-amber-500/5">
+                <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></span>
                 <div className="w-full">
-                  <p className="text-[10px] sm:text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-0.5 sm:mb-1">
+                  <p className="text-[10px] sm:text-xs font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-0.5 sm:mb-1">
                     Total de Variações
                   </p>
                   <div className="flex items-baseline gap-1">
@@ -2612,10 +2615,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
           {/* Real Average Per Capita / Month */}
           {currentUser.role !== 'PROCESSOS' && (
-             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+             <div className="relative overflow-hidden bg-white dark:bg-slate-900 p-3 sm:p-4 pl-4 sm:pl-5 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+               <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500"></span>
                <div className="w-full">
                  <div className="flex items-center justify-between">
-                   <p className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
+                   <p className="text-[10px] sm:text-xs font-mono font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-0.5 sm:mb-1">
                      Produtividade Per Capita
                    </p>
                    {perCapitaStats.isCustomized && (

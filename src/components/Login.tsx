@@ -127,9 +127,28 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const inputClass =
     'w-full pl-10 p-3 bg-black border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all';
 
+  // Rótulos em monoespaçada maiúscula — identidade "console de engenharia".
+  const labelClass = 'block font-mono text-[11px] tracking-[0.18em] uppercase text-slate-500 ml-1';
+
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <div className="bg-slate-950 p-8 rounded-2xl shadow-2xl max-w-md w-full border border-slate-800">
+    <div
+      className="min-h-screen bg-slate-950 flex items-center justify-center p-4"
+      style={{
+        backgroundImage:
+          'linear-gradient(rgba(30,44,71,.45) .5px,transparent .5px),linear-gradient(90deg,rgba(30,44,71,.45) .5px,transparent .5px)',
+        backgroundSize: '32px 32px',
+      }}
+    >
+      <div className="w-full max-w-md">
+        <div className="flex items-center justify-between mb-3 px-1 font-mono text-[10px] tracking-[0.2em] uppercase text-slate-500">
+          <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>KPI Eng · Console</span>
+          <span className="text-orange-500">JimpNexus</span>
+        </div>
+        <div className="relative bg-slate-900 p-8 rounded-2xl shadow-2xl border border-slate-800">
+          <span aria-hidden="true" className="absolute left-3 top-3 w-3.5 h-3.5 border-l-2 border-t-2 border-orange-500/70"></span>
+          <span aria-hidden="true" className="absolute right-3 top-3 w-3.5 h-3.5 border-r-2 border-t-2 border-orange-500/70"></span>
+          <span aria-hidden="true" className="absolute left-3 bottom-3 w-3.5 h-3.5 border-l-2 border-b-2 border-orange-500/70"></span>
+          <span aria-hidden="true" className="absolute right-3 bottom-3 w-3.5 h-3.5 border-r-2 border-b-2 border-orange-500/70"></span>
         <div className="text-center mb-8">
           <div className="flex justify-center mb-6">
             <Logo
@@ -161,7 +180,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         {mode === 'login' && (
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <label htmlFor="login-username" className="text-sm font-medium text-slate-300 ml-1">Usuário</label>
+              <label htmlFor="login-username" className={labelClass}>Usuário</label>
               <div className="relative">
                 <UserIcon className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
                 <input
@@ -177,7 +196,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="login-password" className="text-sm font-medium text-slate-300 ml-1">Senha</label>
+              <label htmlFor="login-password" className={labelClass}>Senha</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
                 <input
@@ -214,7 +233,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         {mode === 'setPassword' && (
           <form onSubmit={handleSetPassword} className="space-y-5">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Usuário</label>
+              <label className={labelClass}>Usuário</label>
               <div className="relative">
                 <UserIcon className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
                 <input
@@ -239,7 +258,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </button>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Código de ativação</label>
+              <label className={labelClass}>Código de ativação</label>
               <div className="relative">
                 <KeyRound className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
                 <input
@@ -255,7 +274,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Nova senha</label>
+              <label className={labelClass}>Nova senha</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
                 <input
@@ -270,7 +289,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Confirmar senha</label>
+              <label className={labelClass}>Confirmar senha</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
                 <input
@@ -311,6 +330,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <span className="text-blue-600">NEXUS</span>
             </span>
           </p>
+        </div>
         </div>
       </div>
     </div>
