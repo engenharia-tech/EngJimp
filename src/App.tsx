@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp, Fingerprint, Key, ExternalLink, Globe, Beaker } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp, Fingerprint, Key, ExternalLink, Globe } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { AIChat } from './components/AIChat';
 import { NexusChat } from './nexus/NexusChat';
@@ -21,7 +21,6 @@ import { Settings } from './components/Settings';
 import { OperationalPerformance } from './components/OperationalPerformance';
 import { AuditHistory } from './components/AuditHistory';
 import { EngineeringPerformance } from './components/EngineeringPerformance';
-import { PndManagerial } from './components/PndManagerial';
 import { Login } from './components/Login';
 import { 
   supabase,
@@ -733,12 +732,6 @@ const AppContent: React.FC = () => {
     if (!currentUser || isOkrOnly) return false;
     return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(currentUser.role);
   }, [currentUser, isOkrOnly]);
-
-  // Painel P&D (Gerencial): o tempo/esforço do Edson. Só ele e o CEO enxergam.
-  const canSeePdManagerial = useMemo(() => {
-    if (!currentUser || isOkrOnly) return false;
-    return isEdsonOwner || currentUser.role === 'CEO';
-  }, [currentUser, isOkrOnly, isEdsonOwner]);
 
   const canSeeAudit = useMemo(() => {
     if (!currentUser || isOkrOnly) return false;
@@ -1647,10 +1640,6 @@ const AppContent: React.FC = () => {
             <NavItem id="engineering_performance" labelKey="engineeringPerformance" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
-          {canSeePdManagerial && (
-            <NavItem id="pd_managerial" labelKey="pdManagerial" icon={Beaker} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
-          )}
-
           {canSeeAudit && (
             <NavItem id="audit" labelKey="auditLog" icon={History} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
@@ -1769,9 +1758,6 @@ const AppContent: React.FC = () => {
             )}
             {canSeeEngineeringPerformance && (
                 <NavItem id="engineering_performance" labelKey="engineeringPerformance" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-            )}
-            {canSeePdManagerial && (
-                <NavItem id="pd_managerial" labelKey="pdManagerial" icon={Beaker} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             {canSeeAudit && (
                 <NavItem id="audit" labelKey="auditLog" icon={History} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
@@ -2044,18 +2030,6 @@ const AppContent: React.FC = () => {
                 projects={data.projects}
                 activities={data.operationalActivities}
                 interruptions={data.interruptions}
-                users={data.users}
-                settings={data.settings}
-                theme={theme}
-                t={t}
-                currentUser={currentUser}
-            />
-          )}
-
-          {activeTab === 'pd_managerial' && canSeePdManagerial && currentUser && (
-            <PndManagerial
-                projects={data.projects}
-                activities={data.operationalActivities}
                 users={data.users}
                 settings={data.settings}
                 theme={theme}
