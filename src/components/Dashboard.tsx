@@ -6,6 +6,7 @@ import {
 import { Sparkles, BarChart3, Download, Clock, Filter, Truck, User as UserIcon, Lightbulb, TrendingDown, TrendingUp, Target, Calendar, PauseCircle, Activity, DollarSign, Layers, FileText, CheckCircle2, RefreshCw, Users, Trash2, SlidersHorizontal, GitBranch, ExternalLink, Globe } from 'lucide-react';
 import { AppState, User, InnovationType, ProjectType, ProjectRequestStatus, ProjectSession, InterruptionRecord, AppSettings, OperationalActivity } from '../types';
 import { EngineeringPerformance } from './EngineeringPerformance';
+import { PndManagerial } from './PndManagerial';
 import { Sparkline } from './Sparkline';
 import { InterruptionDashboard } from './InterruptionDashboard';
 import { PerCapitaConfigModal } from './PerCapitaConfigModal';
@@ -263,9 +264,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [projectTimeSearchQuery, setProjectTimeSearchQuery] = useState<string>('');
   const [projectTimePage, setProjectTimePage] = useState<number>(0);
 
+  // Painel P&D (Gerencial): o tempo/esforço do Edson. Só ele (setor P&D) e o CEO.
+  const canSeePdSection = isPndCarveoutUser(currentUser) || currentUser.role === 'CEO';
+
   const hasPermissionForSection = (section: string): boolean => {
     const role = currentUser.role;
     switch (section) {
+      case 'pd_managerial':
+        return canSeePdSection;
       case 'kpi':
         return role !== 'PROCESSOS';
       case 'ranking':
@@ -296,10 +302,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   };
 
   const [visibleSections, setVisibleSections] = useState<string[]>(() => {
-    const sections = ['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table', 'activities', 'stops'];
+    const sections = ['pd_managerial', 'kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table', 'activities', 'stops'];
     const role = currentUser.role;
     return sections.filter(section => {
       switch (section) {
+        case 'pd_managerial':
+          return canSeePdSection;
         case 'kpi':
           return role !== 'PROCESSOS';
         case 'ranking':
@@ -331,10 +339,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   });
 
   useEffect(() => {
-    const sections = ['kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table', 'activities', 'stops'];
+    const sections = ['pd_managerial', 'kpi', 'ranking', 'innovation', 'releases', 'ns_analysis', 'detailed_report', 'interruption_report', 'engineering_compliance', 'advanced_charts', 'project_hours_table', 'activities', 'stops'];
     const role = currentUser.role;
     setVisibleSections(sections.filter(section => {
       switch (section) {
+        case 'pd_managerial':
+          return canSeePdSection;
         case 'kpi':
           return role !== 'PROCESSOS';
         case 'ranking':
@@ -2371,6 +2381,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
         <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-3">{t('selectDashboards')}</p>
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-4 gap-y-3">
+          {canSeePdSection && (
+            <label className="flex items-center gap-2 group cursor-pointer">
+              <input
+                type="checkbox"
+                checked={visibleSections.includes('pd_managerial')}
+                onChange={() => setVisibleSections(prev => prev.includes('pd_managerial') ? prev.filter(s => s !== 'pd_managerial') : [...prev, 'pd_managerial'])}
+                className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+              />
+              <span className="text-[11px] sm:text-sm font-medium text-violet-700 dark:text-violet-300 group-hover:text-violet-600 transition-colors uppercase">P&amp;D (Gerencial)</span>
+            </label>
+          )}
           <label className={`flex items-center gap-2 group ${!hasPermissionForSection('kpi') ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input 
               type="checkbox" 
@@ -2494,9 +2515,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         </div>
       </div>
 
+      {/* Painel P&D (Gerencial) — só Edson (setor P&D) e CEO */}
+      {canSeePdSection && visibleSections.includes('pd_managerial') && (
+        <PndManagerial
+          activities={data.operationalActivities}
+          projects={data.projects}
+          users={data.users}
+          settings={settings}
+          theme={theme}
+          t={t}
+          currentUser={currentUser}
+        />
+      )}
+
       {/* Engineering Performance Compliance Section */}
       {['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(currentUser.role) && visibleSections.includes('engineering_compliance') && (
-        <EngineeringPerformance 
+        <EngineeringPerformance
           projects={data.projects}
           activities={data.operationalActivities}
           interruptions={data.interruptions}
