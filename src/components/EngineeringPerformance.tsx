@@ -80,7 +80,8 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
 }) => {
   const [selectedDesignerId, setSelectedDesignerId] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'macro' | 'individual'>('macro');
-  const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | 'currentMonth' | 'lastMonth' | 'year'>('7d');
+  // Embutido no Dashboard (com DE/ATÉ) → começa seguindo o filtro global ('custom').
+  const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | 'currentMonth' | 'lastMonth' | 'year' | 'custom'>(startDate && endDate ? 'custom' : '7d');
 
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -371,6 +372,9 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
               onChange={(e) => setSelectedPeriod(e.target.value as any)}
               className="px-3 py-1.5 bg-gray-100 dark:bg-slate-900 border-none text-xs font-bold focus:ring-0 outline-none cursor-pointer text-gray-600 dark:text-slate-300"
             >
+              {startDate && endDate && (
+                <option value="custom" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">Filtro do painel</option>
+              )}
               <option value="7d" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('last7Days')}</option>
               <option value="30d" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('last30Days')}</option>
               <option value="currentMonth" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('currentMonth')}</option>

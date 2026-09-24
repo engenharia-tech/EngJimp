@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend
 } from 'recharts';
@@ -16,11 +16,20 @@ interface Props {
   theme: 'light' | 'dark';
   t: (k: string) => string;
   currentUser: User;
+  startDate?: string; // segue o filtro DE/ATÉ global do Dashboard
+  endDate?: string;
 }
 
-type Period = 'currentMonth' | 'last3m' | 'sinceSep' | 'year';
-
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+// Parse 'YYYY-MM-DD' como data LOCAL (evita o off-by-one do fuso ao usar new Date).
+const parseLocal = (s?: string): Date | null => {
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+};
 
 // Ausência não é esforço; marcadores quebrados/pausas não são trabalho medido.
 const isAbsence = (n?: string) => !!n && /folga|falta|atestado|f[ée]rias|feriado/i.test(n);
@@ -48,29 +57,22 @@ const CAT_COLORS: Record<string, string> = {
 
 const MAX_SESSION_H = 16; // acima disso é lançamento aberto/esquecido — fora da conta
 
-export const PndManagerial: React.FC<Props> = ({ activities, projects, users, settings, theme, t, currentUser }) => {
-  const [period, setPeriod] = useState<Period>('year');
-
+export const PndManagerial: React.FC<Props> = ({ activities, projects, users, settings, theme, t, currentUser, startDate, endDate }) => {
   // Sujeito fixo do painel: o Edson (mesmo quando o CEO abre).
   const subject = useMemo(() => {
     return users.find(u => isEdsonUser(u)) || users.find(u => isPndCarveoutUser(u)) || null;
   }, [users]);
 
+  // Segue o filtro DE/ATÉ do Dashboard. Sem filtro → ano corrente.
   const range = useMemo(() => {
     const now = new Date();
-    const y = now.getFullYear();
-    switch (period) {
-      case 'currentMonth':
-        return { start: new Date(y, now.getMonth(), 1), end: now, byDay: true };
-      case 'last3m':
-        return { start: new Date(y, now.getMonth() - 2, 1), end: now, byDay: false };
-      case 'sinceSep':
-        return { start: new Date(2026, 8, 1), end: now, byDay: false };
-      case 'year':
-      default:
-        return { start: new Date(y, 0, 1), end: now, byDay: false };
-    }
-  }, [period]);
+    const start = parseLocal(startDate) ?? new Date(now.getFullYear(), 0, 1);
+    start.setHours(0, 0, 0, 0);
+    const end = parseLocal(endDate) ?? now;
+    end.setHours(23, 59, 59, 999);
+    const spanDays = (end.getTime() - start.getTime()) / 86400000;
+    return { start, end, byDay: spanDays <= 62 }; // até ~2 meses → por dia; senão por mês
+  }, [startDate, endDate]);
 
   const data = useMemo(() => {
     const noLunch: AppSettings = { ...settings, lunchStart: '00:00', lunchEnd: '00:00' };
@@ -176,16 +178,11 @@ export const PndManagerial: React.FC<Props> = ({ activities, projects, users, se
             </p>
           </div>
         </div>
-        <div className="flex bg-gray-100 dark:bg-slate-900 p-1 rounded-xl text-sm">
-          {([['currentMonth', 'Este mês'], ['last3m', '3 meses'], ['sinceSep', 'Desde set/26'], ['year', 'Ano']] as [Period, string][]).map(([p, label]) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${period === p ? 'bg-violet-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-800'}`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="text-right">
+          <div className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Período (filtro do painel)</div>
+          <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            {range.start.toLocaleDateString('pt-BR')} – {range.end.toLocaleDateString('pt-BR')}
+          </div>
         </div>
       </div>
 
