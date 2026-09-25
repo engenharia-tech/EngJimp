@@ -463,7 +463,15 @@ const AppContent: React.FC = () => {
           // no banco de PRODUCAO, no primeiro acesso de cada navegador. Isso
           // contaminava os indicadores. A funcao continua em storageService
           // apenas para uso manual/controlado, nunca automatico.
-          const appData = await fetchAppState();
+          let appData = await fetchAppState();
+          // Carga que volta sem os dados-base (usuários e tipos de atividade nunca
+          // são vazios de verdade) costuma ser falha passageira — rede, troca de
+          // deploy. Tenta de novo UMA vez antes de mostrar tela vazia.
+          if (getAuthToken() && ((appData.users?.length || 0) === 0 || (appData.activityTypes?.length || 0) === 0)) {
+            await new Promise(r => setTimeout(r, 1500));
+            const retry = await fetchAppState();
+            if ((retry.users?.length || 0) > 0 || (retry.activityTypes?.length || 0) > 0) appData = retry;
+          }
           setData(appData);
           // Guardião REATIVO de sessão: se HÁ token mas o banco devolveu ZERO
           // usuários, a sessão está anônima/vencida (o servidor não reconhece o
