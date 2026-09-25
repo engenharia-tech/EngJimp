@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { withOkrSafe } from './OkrSafe';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
-import { Target, RefreshCw, Layers, Users as UsersIcon, CheckCircle2, TrendingUp, Lock } from 'lucide-react';
+import { Target, RefreshCw, Layers, Users as UsersIcon, CheckCircle2, TrendingUp, Lock, Printer, Share2, Copy, Link2 } from 'lucide-react';
 import { User } from '../types';
-import { fetchAllOkr } from '../services/storageService';
+import { fetchAllOkr, enableOkrPanelShare, fetchPublicOkrPanel } from '../services/storageService';
 import { OkrStore, OkrPeriod, krProgress } from './okr';
+import { useToast } from '../components/Toast';
 
 // Progresso do período ativo de um OKR (média dos KRs).
 const periodProgress = (p?: OkrPeriod) => {
@@ -22,15 +23,39 @@ const Tile: React.FC<{ label: string; value: string; color?: string; icon: React
   </div>
 );
 
-interface Props { currentUser: User; users: User[]; }
+type OkrRow = { ownerKey: string; store: OkrStore };
+interface Props {
+  currentUser?: User;
+  users: User[];
+  canShare?: boolean;   // Edson ou admin de OKR: gera/troca o link público do painel
+  external?: OkrRow[];  // link público: os OKRs já vêm do servidor (só os números)
+}
 
-// Visão macro do OKR por setor — só Edson e CEO. Não edita nada, só lê.
-const OkrIndicatorsInner: React.FC<Props> = ({ users }) => {
-  const [rows, setRows] = useState<{ ownerKey: string; store: OkrStore }[] | null>(null);
-  const [loading, setLoading] = useState(true);
+// Visão macro do OKR por setor. Não edita nada, só lê.
+const OkrIndicatorsInner: React.FC<Props> = ({ users, canShare, external }) => {
+  const { addToast } = useToast();
+  const [rows, setRows] = useState<OkrRow[] | null>(external || null);
+  const [loading, setLoading] = useState(!external);
+  const [shareLink, setShareLink] = useState('');
+  const [sharing, setSharing] = useState(false);
 
-  const load = async () => { setLoading(true); try { setRows(await fetchAllOkr()); } finally { setLoading(false); } };
+  const load = async () => { if (external) return; setLoading(true); try { setRows(await fetchAllOkr()); } finally { setLoading(false); } };
   useEffect(() => { load(); }, []);
+
+  // Link público do painel (só leitura). Sem `rotate` reusa o link que existe; com
+  // `rotate`, o servidor gera outro e o anterior para de abrir.
+  const share = async (rotate = false) => {
+    if (sharing) return;
+    if (rotate && !window.confirm('Gerar um link novo? Quem tem o link atual deixa de conseguir abrir.')) return;
+    setSharing(true);
+    try {
+      const token = await enableOkrPanelShare(rotate);
+      const link = `${window.location.origin}/?okr_painel=${token}`;
+      setShareLink(link);
+      const msg = rotate ? 'Link novo copiado! O anterior parou de funcionar.' : 'Link copiado! Quem abrir só visualiza.';
+      try { await navigator.clipboard.writeText(link); addToast(msg, 'success'); } catch { addToast('Link gerado.', 'success'); }
+    } catch { addToast('Não consegui gerar o link.', 'error'); } finally { setSharing(false); }
+  };
 
   // owner_key (username minúsculo) -> usuário
   const byKey = useMemo(() => {
@@ -86,13 +111,27 @@ const OkrIndicatorsInner: React.FC<Props> = ({ users }) => {
               <h2 className="text-xl font-black text-slate-800 dark:text-white leading-tight">Indicadores de OKR</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">Visão macro por setor · {people.length} pessoas com OKR</p>
             </div>
-            <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-full px-2 py-1"><Lock size={11} /> Só você e a diretoria</span>
+            <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-full px-2 py-1"><Lock size={11} /> {external ? 'Somente leitura' : 'Acesso restrito'}</span>
           </div>
-          <div className="text-right">
-            <div className={`text-3xl font-black tabular-nums ${textColor(overall)}`}>{Math.round(overall * 100)}%</div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 font-bold">Progresso médio geral</div>
+          <div className="flex items-center gap-4 flex-wrap justify-end">
+            <div className="flex items-center gap-2 no-print">
+              <button onClick={() => window.print()} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"><Printer size={14} /> Exportar</button>
+              {canShare && !external && <button onClick={() => share(false)} disabled={sharing} className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"><Share2 size={14} /> {sharing ? 'Gerando…' : 'Compartilhar'}</button>}
+            </div>
+            <div className="text-right">
+              <div className={`text-3xl font-black tabular-nums ${textColor(overall)}`}>{Math.round(overall * 100)}%</div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400 font-bold">Progresso médio geral</div>
+            </div>
           </div>
         </div>
+        {shareLink && !external && (
+          <div className="mt-3 flex items-center gap-2 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40 no-print flex-wrap">
+            <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 shrink-0">Link do painel (só leitura):</span>
+            <input readOnly value={shareLink} onFocus={e => e.target.select()} className="flex-1 min-w-[180px] bg-transparent text-xs text-slate-600 dark:text-slate-300 outline-none" />
+            <button onClick={() => { navigator.clipboard?.writeText(shareLink); addToast('Copiado!', 'success'); }} title="Copiar" className="shrink-0 text-blue-600 dark:text-blue-400"><Copy size={14} /></button>
+            <button onClick={() => share(true)} disabled={sharing} className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 disabled:opacity-50"><Link2 size={12} /> Gerar link novo</button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -124,7 +163,7 @@ const OkrIndicatorsInner: React.FC<Props> = ({ users }) => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
           <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Detalhe por pessoa</h4>
-          <button onClick={load} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"><RefreshCw size={12} /> Atualizar</button>
+          {!external && <button onClick={load} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 no-print"><RefreshCw size={12} /> Atualizar</button>}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[560px]">
@@ -161,9 +200,27 @@ const OkrIndicatorsInner: React.FC<Props> = ({ users }) => {
           </table>
         </div>
       </div>
-      <p className="text-[11px] text-slate-400 px-1">Somente leitura. Cada pessoa edita o próprio OKR; aqui você acompanha o andamento por setor.</p>
+      {!external && <p className="text-[11px] text-slate-400 px-1">Somente leitura. Cada pessoa edita o próprio OKR; aqui você acompanha o andamento por setor.</p>}
     </div>
   );
 };
 
 export const OkrIndicators = withOkrSafe<Props>(OkrIndicatorsInner, 'os indicadores de OKR');
+
+// Página pública (sem login) do painel de Indicadores: kpieng.jimpnexus.com/?okr_painel=<token>.
+// O servidor manda só os números dos KRs (sem títulos nem notas) e o nome/setor de cada um.
+export const OkrPanelPublicPage: React.FC<{ token: string }> = ({ token }) => {
+  const [res, setRes] = useState<{ rows: OkrRow[]; users: User[] } | null>(null);
+  const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
+  useEffect(() => { (async () => { const r = await fetchPublicOkrPanel(token); if (r) { setRes(r); setState('ok'); } else setState('error'); })(); }, [token]);
+  if (state === 'loading') return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-400"><RefreshCw className="animate-spin" size={20} /></div>;
+  if (state === 'error' || !res) return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-500 p-6 text-center">Link inválido ou indisponível.</div>;
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-8">
+      <div className="max-w-6xl mx-auto">
+        <OkrIndicators users={res.users} external={res.rows} />
+        <p className="text-center text-[11px] text-slate-400 mt-6">Visualização somente leitura · JimpNexus</p>
+      </div>
+    </div>
+  );
+};

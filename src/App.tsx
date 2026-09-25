@@ -55,7 +55,7 @@ import { isTokenExpired, getAuthToken, setAuthToken } from './services/authToken
 import { confirmOwnPassword } from './services/authService';
 import { Target, CalendarRange, Compass } from 'lucide-react';
 import { OkrView, OkrPublicPage } from './okr/OkrView';
-import { OkrIndicators } from './okr/OkrIndicators';
+import { OkrIndicators, OkrPanelPublicPage } from './okr/OkrIndicators';
 import { OkrTimeline } from './okr/OkrTimeline';
 import { OkrGovernance } from './okr/OkrGovernance';
 import { OkrExecutors } from './okr/OkrExecutors';
@@ -548,6 +548,10 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     if (!currentUser || data.operationalActivities.length === 0 || isNormalizingRef.current) return;
+    // O admin de visualização do OKR não grava nada (o banco recusa): o ajuste das
+    // atividades esquecidas fica com o navegador de quem pode gravar.
+    const meV = (data.users || []).find(u => u.id === currentUser.id);
+    if (meV?.okrViewer ?? currentUser.okrViewer) return;
 
     const runCleanup = async () => {
       // Find any running activity for any user that needs correction
@@ -608,7 +612,7 @@ const AppContent: React.FC = () => {
     // Check periodically for real-time updates / duration tracking
     const intervalId = setInterval(runCleanup, 60000);
     return () => clearInterval(intervalId);
-  }, [data.operationalActivities, data.settings, currentUser, addToast]);
+  }, [data.operationalActivities, data.settings, data.users, currentUser, addToast]);
 
   // Vai para o Dashboard só no LOGIN de fato (null -> usuário), NÃO a cada
   // mudança do objeto do usuário. Assim, editar o perfil (que atualiza
@@ -631,14 +635,26 @@ const AppContent: React.FC = () => {
       return ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
   }, [currentUser]);
 
+  // "Admin de visualização" do OKR (users.okr_viewer): vê Indicadores e Linha do
+  // tempo de TODOS, sem editar nada e sem OKR próprio. Nunca vale para quem já manda
+  // no OKR (Edson, admin de OKR). A trava de verdade está no banco (não grava nada).
+  const isOkrViewer = useMemo(() => {
+      if (currentUser?.id === '1e570c78-7278-4e8d-a90e-a820c11bb07a') return false;
+      const me = (data.users || []).find(u => u.id === currentUser?.id);
+      if (me?.okrAdmin ?? currentUser?.okrAdmin) return false;
+      return !!(me?.okrViewer ?? currentUser?.okrViewer);
+  }, [data.users, currentUser]);
+
   // "Somente OKR": usuário que só pode ver a aba OKR — nada de engenharia.
   // Vem de users.okr_only (marcado na tela de Usuários). O Edson nunca é restrito.
+  // O admin de visualização também não vê engenharia.
   const isOkrOnly = useMemo(() => {
       const uname = (currentUser?.username || '').trim().toLowerCase();
       if (uname === 'edson') return false;
+      if (isOkrViewer) return true;
       const me = (data.users || []).find(u => u.id === currentUser?.id);
       return !!(me?.okrOnly ?? currentUser?.okrOnly);
-  }, [data.users, currentUser]);
+  }, [data.users, currentUser, isOkrViewer]);
 
   const canUseTracker = useMemo(() => {
       if (!currentUser || isOkrOnly) return false;
@@ -664,15 +680,18 @@ const AppContent: React.FC = () => {
     [data.users, myOkrOwnerKey]
   );
   const canUseOkr = useMemo(() => {
+    if (isOkrViewer) return false; // não tem OKR próprio
     if (isEdsonOwner || isOkrOnly) return true;
     const me = (data.users || []).find(u => u.id === currentUser?.id);
     return !!(me?.okrEnabled ?? currentUser?.okrEnabled);
-  }, [isEdsonOwner, isOkrOnly, data.users, currentUser]);
-  // Indicadores / Linha do tempo / Governança: Edson, CEO ou admin de OKR.
+  }, [isOkrViewer, isEdsonOwner, isOkrOnly, data.users, currentUser]);
+  // Indicadores / Linha do tempo / Governança: Edson, CEO ou admin de OKR. O admin
+  // de visualização vê só Indicadores e Linha do tempo (canSeeOkrManagement barra o resto).
   const canSeeOkrIndicators = useMemo(
-    () => isEdsonOwner || isOkrAdmin || currentUser?.role === 'CEO',
-    [isEdsonOwner, isOkrAdmin, currentUser]
+    () => isEdsonOwner || isOkrAdmin || isOkrViewer || currentUser?.role === 'CEO',
+    [isEdsonOwner, isOkrAdmin, isOkrViewer, currentUser]
   );
+  const canSeeOkrManagement = canSeeOkrIndicators && !isOkrViewer;
   // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou o username de outro.
   const [okrTarget, setOkrTarget] = useState<string>('self');
 
@@ -680,9 +699,13 @@ const AppContent: React.FC = () => {
   // para o admin, Indicadores/Linha do tempo/Governança). Qualquer outra aba
   // (engenharia) é redirecionada para "okr".
   useEffect(() => {
+    if (isOkrViewer) {
+      if (!['okr_ind', 'okr_timeline'].includes(activeTab)) setActiveTab('okr_ind');
+      return;
+    }
     const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov', 'okr_exec'];
     if (isOkrOnly && !okrTabs.includes(activeTab)) setActiveTab('okr');
-  }, [isOkrOnly, activeTab, setActiveTab]);
+  }, [isOkrViewer, isOkrOnly, activeTab, setActiveTab]);
 
   // Who can manage Innovations? (CEO, Manager, Designer, Coordinator, Processos)
   const canSeeInnovations = useMemo(() => {
@@ -1476,6 +1499,11 @@ const AppContent: React.FC = () => {
   if (okrShareToken) {
     return <OkrPublicPage token={okrShareToken} />;
   }
+  // Link público do painel de Indicadores: kpieng.jimpnexus.com/?okr_painel=<token>
+  const okrPanelToken = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('okr_painel') : null;
+  if (okrPanelToken) {
+    return <OkrPanelPublicPage token={okrPanelToken} />;
+  }
 
   if (!currentUser) {
     return <Login onLogin={handleLogin} />;
@@ -1606,15 +1634,15 @@ const AppContent: React.FC = () => {
             <>
               <NavItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
               <NavItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
-              <NavItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
-              <NavItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
+              {canSeeOkrManagement && <NavItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />}
+              {canSeeOkrManagement && <NavItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />}
             </>
           ) : (
             <div className="ml-8 my-0.5 border-l-2 border-slate-200 dark:border-slate-700/60">
               <NavItem subItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
               <NavItem subItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-              <NavItem subItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-              <NavItem subItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              {canSeeOkrManagement && <NavItem subItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
+              {canSeeOkrManagement && <NavItem subItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             </div>
           ))}
 
@@ -1735,8 +1763,8 @@ const AppContent: React.FC = () => {
               <div className="ml-8 my-0.5 border-l-2 border-slate-200 dark:border-slate-700/60">
                 <NavItem subItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
                 <NavItem subItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-                <NavItem subItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
-              <NavItem subItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+                {canSeeOkrManagement && <NavItem subItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
+                {canSeeOkrManagement && <NavItem subItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
               </div>
             )}
             {canUseTracker && (
@@ -1976,7 +2004,7 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'okr_ind' && canSeeOkrIndicators && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              <OkrIndicators currentUser={currentUser} users={data.users} />
+              <OkrIndicators currentUser={currentUser} users={data.users} canShare={isOkrMaster} />
             </div>
           )}
 
@@ -1986,13 +2014,13 @@ const AppContent: React.FC = () => {
             </div>
           )}
 
-          {activeTab === 'okr_gov' && canSeeOkrIndicators && (
+          {activeTab === 'okr_gov' && canSeeOkrManagement && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
               <OkrGovernance editable={isOkrMaster} currentUser={currentUser} />
             </div>
           )}
 
-          {activeTab === 'okr_exec' && canSeeOkrIndicators && currentUser && (
+          {activeTab === 'okr_exec' && canSeeOkrManagement && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
               <OkrExecutors currentUser={currentUser} editable={isOkrMaster} />
             </div>
@@ -2233,7 +2261,8 @@ const AppContent: React.FC = () => {
           )}
 
           {/* Floating AI Assistant Trigger Button */}
-          {currentUser && !isFloatingAiOpen && (
+          {/* O admin de visualização do OKR não usa o assistente: ele lê dados de engenharia. */}
+          {currentUser && !isOkrViewer && !isFloatingAiOpen && (
             <button
               onClick={() => setIsFloatingAiOpen(true)}
               className="fixed bottom-6 right-6 z-40 bg-gradient-to-tr from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-full p-4 shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 cursor-pointer active:scale-95 group focus:outline-none border border-blue-400/20 ring-4 ring-blue-500/10 hover:ring-blue-500/30 animate-bounce"
@@ -2250,7 +2279,7 @@ const AppContent: React.FC = () => {
           )}
 
           {/* Floating AI Assistant Chat panel */}
-          {currentUser && isFloatingAiOpen && (
+          {currentUser && !isOkrViewer && isFloatingAiOpen && (
             <div className="fixed bottom-24 right-4 sm:right-6 md:right-8 w-[350px] sm:w-[450px] h-[550px] max-h-[75vh] z-50 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-300 border border-slate-200 dark:border-slate-800">
               <AIChat 
                 appState={data} 

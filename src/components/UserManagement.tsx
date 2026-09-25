@@ -58,6 +58,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   const [salary, setSalary] = useState<number>(0);
   const [okrEnabled, setOkrEnabled] = useState<boolean>(false);
   const [okrOnly, setOkrOnly] = useState<boolean>(false);
+  const [okrViewer, setOkrViewer] = useState<boolean>(false);
   const [sector, setSector] = useState<string>('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -89,8 +90,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       password,
       role,
       salary,
-      okrEnabled: okrEnabled || okrOnly,
-      okrOnly,
+      // Admin de visualização não tem OKR próprio nem é "somente OKR" (o servidor também força).
+      okrEnabled: okrViewer ? false : (okrEnabled || okrOnly),
+      okrOnly: okrViewer ? false : okrOnly,
+      // Só quem pode mexer na marca a manda; o resto não manda (o servidor mantém a
+      // do cadastro) — assim uma lista aberta há horas não desfaz nem esbarra na marca.
+      okrViewer: canMarkOkrViewer ? okrViewer : undefined,
       sector
     };
 
@@ -216,6 +221,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setRole('PROJETISTA');
     setOkrEnabled(false);
     setOkrOnly(false);
+    setOkrViewer(false);
     setSector('');
     setEditingUserId(null);
   };
@@ -231,6 +237,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setSalary(user.salary || 0);
     setOkrEnabled(!!user.okrEnabled);
     setOkrOnly(!!user.okrOnly);
+    setOkrViewer(!!user.okrViewer);
     setSector(user.sector || '');
     setEditingUserId(user.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -251,6 +258,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   // Fonte unica: isEdsonUser (mesma regra do servidor claimsAreEdson). [[identity]]
   const isEdson = isEdsonUser(currentUser);
   const isCoordenador = currentUser.role === 'COORDENADOR';
+  // Só o Edson e o admin de OKR marcam o "admin de visualização" (o servidor confere).
+  // O próprio Edson nunca é marcado (fecharia as gravações dele).
+  const canMarkOkrViewer = isEdson || !!currentUser.okrAdmin;
+  const EDSON_UUID = '1e570c78-7278-4e8d-a90e-a820c11bb07a';
   // Gestor can do everything. Coordenador can view. Everyone can edit themselves.
   
   const canCreateUser = isGestor;
@@ -395,8 +406,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
                 type="checkbox"
-                checked={okrEnabled || okrOnly}
-                disabled={okrOnly}
+                checked={!okrViewer && (okrEnabled || okrOnly)}
+                disabled={okrOnly || okrViewer}
                 onChange={e => setOkrEnabled(e.target.checked)}
                 className="w-5 h-5 rounded accent-blue-600"
               />
@@ -408,7 +419,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
                 type="checkbox"
-                checked={okrOnly}
+                checked={!okrViewer && okrOnly}
+                disabled={okrViewer}
                 onChange={e => { setOkrOnly(e.target.checked); if (e.target.checked) setOkrEnabled(true); }}
                 className="w-5 h-5 rounded accent-amber-600"
               />
@@ -417,6 +429,20 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                 <span className="block text-xs text-gray-500 dark:text-slate-400">Ele vê SÓ a aba OKR — nada de engenharia (dashboard, projetos, etc.).</span>
               </span>
             </label>
+            {canMarkOkrViewer && editingUserId !== EDSON_UUID && (
+            <label className="md:col-span-2 flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={okrViewer}
+                onChange={e => { setOkrViewer(e.target.checked); if (e.target.checked) { setOkrEnabled(false); setOkrOnly(false); } }}
+                className="w-5 h-5 rounded accent-violet-600"
+              />
+              <span className="text-sm">
+                <span className="font-semibold text-black dark:text-white">Admin de visualização do OKR</span>
+                <span className="block text-xs text-gray-500 dark:text-slate-400">Vê os Indicadores e a Linha do tempo de todos, sem alterar nada. Não tem OKR próprio nem vê engenharia.</span>
+              </span>
+            </label>
+            )}
           </div>
           )}
           <div className="md:col-span-2">
