@@ -57,6 +57,7 @@ import { OkrView, OkrPublicPage } from './okr/OkrView';
 import { OkrIndicators } from './okr/OkrIndicators';
 import { OkrTimeline } from './okr/OkrTimeline';
 import { OkrGovernance } from './okr/OkrGovernance';
+import { OkrExecutors } from './okr/OkrExecutors';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -691,11 +692,8 @@ const AppContent: React.FC = () => {
   }, [currentUser, isOkrOnly]);
 
   // OKR pessoal: SÓ o Edson (dono). Ninguém mais vê a aba nem o conteúdo.
-  const isEdsonOwner = useMemo(() => {
-      const email = currentUser?.email?.trim().toLowerCase();
-      const uname = currentUser?.username?.trim().toLowerCase();
-      return email === 'efariaseng0@gmail.com' || uname === 'edson';
-  }, [currentUser]);
+  // O dono é reconhecido pelo ID (e-mail e login são editáveis; o id não).
+  const isEdsonOwner = useMemo(() => currentUser?.id === '1e570c78-7278-4e8d-a90e-a820c11bb07a', [currentUser]);
 
   // Admin de OKR: vê/edita o OKR de todos (como o Edson), mas sem engenharia.
   const isOkrAdmin = useMemo(() => {
@@ -727,7 +725,7 @@ const AppContent: React.FC = () => {
   // para o admin, Indicadores/Linha do tempo/Governança). Qualquer outra aba
   // (engenharia) é redirecionada para "okr".
   useEffect(() => {
-    const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov'];
+    const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov', 'okr_exec'];
     if (isOkrOnly && !okrTabs.includes(activeTab)) setActiveTab('okr');
   }, [isOkrOnly, activeTab, setActiveTab]);
 
@@ -1654,12 +1652,14 @@ const AppContent: React.FC = () => {
               <NavItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
               <NavItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
               <NavItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
+              <NavItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} isCollapsed onClick={handleNavClick} />
             </>
           ) : (
             <div className="ml-8 my-0.5 border-l-2 border-slate-200 dark:border-slate-700/60">
               <NavItem subItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
               <NavItem subItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
               <NavItem subItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              <NavItem subItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             </div>
           ))}
 
@@ -1781,6 +1781,7 @@ const AppContent: React.FC = () => {
                 <NavItem subItem id="okr_ind" labelKey="okrIndicators" icon={TrendingUp} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
                 <NavItem subItem id="okr_timeline" labelKey="okrTimeline" icon={CalendarRange} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
                 <NavItem subItem id="okr_gov" labelKey="okrGovernance" icon={Compass} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
+              <NavItem subItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
               </div>
             )}
             {canUseTracker && (
@@ -2026,13 +2027,19 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'okr_timeline' && canSeeOkrIndicators && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              <OkrTimeline currentUser={currentUser} users={data.users} />
+              <OkrTimeline currentUser={currentUser} users={data.users} canEdit={isOkrMaster} />
             </div>
           )}
 
           {activeTab === 'okr_gov' && canSeeOkrIndicators && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
               <OkrGovernance editable={isOkrMaster} currentUser={currentUser} />
+            </div>
+          )}
+
+          {activeTab === 'okr_exec' && canSeeOkrIndicators && currentUser && (
+            <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
+              <OkrExecutors currentUser={currentUser} editable={isOkrMaster} />
             </div>
           )}
 

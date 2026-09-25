@@ -2,7 +2,7 @@ import express from "express";
 import nodemailer from "nodemailer";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
-import { createHmac, randomBytes } from "crypto";
+import { createHmac, randomBytes, randomUUID } from "crypto";
 
 const app = express();
 app.use(express.json({ limit: "50mb" }));
@@ -384,12 +384,33 @@ function verifyBearerToken(req: express.Request): any | null {
 // Identidade do DONO (Edson). Salario e um dado que SO ele pode ver/editar —
 // nem outros GESTORES. Centralizado aqui para nao espalhar o hardcode.
 const EDSON_EMAIL = "efariaseng0@gmail.com";
+// Pelo ID (claim `sub`), que o usuário não consegue mudar. Antes comparava e-mail/
+// username do token — e qualquer logado podia trocar o próprio e-mail para este
+// pelo /api/users/save e, no login seguinte, "virar" o Edson (salários, OKR de todos).
+const EDSON_ID = "1e570c78-7278-4e8d-a90e-a820c11bb07a";
 function claimsAreEdson(claims: any): boolean {
-  if (!claims) return false;
-  const email = String(claims.email || "").trim().toLowerCase();
-  const uname = String(claims.username || "").trim().toLowerCase();
-  return email === EDSON_EMAIL || uname === "edson";
+  return !!claims && String(claims.sub || "") === EDSON_ID;
 }
+// Escapa curingas do ILIKE (% e _) para comparar um texto EXATO sem distinguir maiúsculas.
+const ilikeExact = (s: string) => String(s).replace(/[\\%_]/g, (c) => "\\" + c);
+// uuid só na forma canônica (minúsculo, com hífens). O banco converte QUALQUER grafia
+// (MAIÚSCULA, sem hífen, entre chaves) para o mesmo uuid — comparar o texto do cliente
+// com EDSON_ID deixava passar o id do Edson escrito de outro jeito.
+const canonUuid = (v: any): string | null => {
+  const s = String(v ?? "").trim().toLowerCase();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s) ? s : null;
+};
+// O cargo que vale é o do CADASTRO agora, não o gravado no crachá (que dura 24 h):
+// um admin rebaixado deixava de ser admin só quando o crachá vencia.
+// Falha na leitura LANÇA (a rota responde 503): "não consegui conferir" não pode
+// virar "não é admin" — o admin recebia "salvo" e a senha/cargo eram ignorados.
+const currentRole = async (admin: any, sub: any): Promise<string | null> => {
+  const id = canonUuid(sub); if (!id) return null;
+  const { data, error } = await admin.from("users").select("role").eq("id", id).limit(1);
+  if (error) throw new Error("Nao consegui conferir o seu cargo. Tente de novo.");
+  if (!data || !data.length) return null;
+  return String((data[0] as any).role || "");
+};
 
 // ---- Rate limiting (anti brute-force). Serverless nao guarda estado em
 // memoria entre invocacoes, entao a contagem fica no banco (funcoes
@@ -610,17 +631,70 @@ app.post("/api/users/save", async (req, res) => {
 
   const { mode, user } = req.body || {};
   if (!user || !user.username) return res.status(400).json({ success: false, error: "Dados incompletos." });
-  const isAdmin = ADMIN_ROLES.includes(claims.app_role);
-  const isSelf = !!user.id && user.id === claims.sub;
+  let isAdmin = false;
+  try { isAdmin = ADMIN_ROLES.includes(String(await currentRole(admin, claims.sub))); }
+  catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+
+  // O id vem do cliente: só vale na forma canônica (o banco aceitaria o id do Edson em
+  // MAIÚSCULAS, sem hífen ou entre chaves, e a trava abaixo compararia texto com texto).
+  if (user.id !== undefined && user.id !== null && user.id !== "") {
+    const idN = canonUuid(user.id);
+    if (!idN) return res.status(400).json({ success: false, error: "id invalido." });
+    user.id = idN;
+  }
+  const isSelf = !!user.id && user.id === canonUuid(claims.sub);
+
+  // E-mail e username são identidade: ninguém pode assumir os de outra pessoa
+  // (sem distinguir maiúsculas). O banco também barra (índices únicos lower() e
+  // CHECK sem espaço). Espaço/TAB/quebra de linha escondido não passa: um e-mail com
+  // TAB no fim casava com o do Edson depois do trim() e escapava do índice.
+  const emailNorm = String(user.email || "").replace(/\s+/g, "");
+  const usernameNorm = String(user.username || "").trim();
+  if (!usernameNorm) return res.json({ success: false, message: "Informe o nome de usuário." });
+  if (/\s/.test(usernameNorm)) return res.json({ success: false, message: "Nome de usuário não pode ter espaço." });
+  // Só caractere visível (o banco também exige): invisíveis como U+200B/U+FEFF
+  // faziam "o e-mail do Edson" com um sobrando no fim passar pelo índice único.
+  if (!/^[!-~]+$/.test(usernameNorm)) return res.json({ success: false, message: "O nome de usuário só pode ter letras sem acento, números e símbolos (sem espaço)." });
+  if (emailNorm && !/^[!-~]+$/.test(emailNorm)) return res.json({ success: false, message: "O e-mail tem um caractere inválido (acento ou caractere invisível)." });
+  user.email = emailNorm || null;
+  user.username = usernameNorm;
+  // A conta do Edson (dono do sistema) só ele mesmo altera; e ninguém cria outra
+  // conta com o id dele (o id é a identidade de dono em todo o sistema).
+  if (user.id === EDSON_ID && (mode === "create" || !claimsAreEdson(claims))) {
+    return res.status(403).json({ success: false, error: "Só o próprio Edson altera a conta dele." });
+  }
+  // Consulta que FALHA não pode passar como "não está em uso" (antes passava).
+  const inUse = async (col: "email" | "username", val: string, exceptId?: string) => {
+    let q = admin.from("users").select("id").ilike(col, ilikeExact(val.trim()));
+    if (exceptId) q = q.neq("id", exceptId);
+    const { data, error } = await q.limit(1);
+    if (error) throw new Error("Não consegui conferir se o " + (col === "email" ? "e-mail" : "nome de usuário") + " já existe. Tente de novo.");
+    return !!(data && data.length);
+  };
+  // O OKR de cada um é achado pelo login (owner_key). Um login que já é a chave do
+  // OKR de OUTRA pessoa não pode ser tomado: quem o pegasse ganharia o OKR dela.
+  const okrKeyTaken = async (key: string, exceptKey?: string) => {
+    if (!key || key === exceptKey) return false;
+    const { data, error } = await admin.from("okr_state").select("owner_key").eq("owner_key", key).limit(1);
+    if (error) throw new Error("Não consegui conferir o nome de usuário. Tente de novo.");
+    return !!(data && data.length);
+  };
+  try {
+    if (emailNorm && (await inUse("email", emailNorm, mode === "create" ? undefined : user.id))) {
+      return res.json({ success: false, message: "Este e-mail já pertence a outro usuário." });
+    }
+  } catch (e: any) { return res.json({ success: false, message: e.message }); }
 
   if (mode === "create") {
     if (!isAdmin) return res.status(403).json({ success: false, error: "Sem permissao para criar usuarios." });
-    const { data: existing } = await admin.from("users").select("id").ilike("username", user.username).limit(1);
-    if (existing && existing.length) return res.json({ success: false, message: "Nome de usuário já existe." });
+    try {
+      if (await inUse("username", user.username)) return res.json({ success: false, message: "Nome de usuário já existe." });
+      if (await okrKeyTaken(user.username.toLowerCase())) return res.json({ success: false, message: "Esse nome de usuário está ligado ao OKR de outra pessoa." });
+    } catch (e: any) { return res.json({ success: false, message: e.message }); }
     // Salario so e gravado se quem cria for o Edson. Um admin comum nem
     // enxerga salario (cliente recebe 0), entao nunca escreve esse campo.
     const { error } = await admin.from("users").insert([{
-      id: user.id, name: user.name, surname: user.surname, email: user.email, phone: user.phone,
+      id: user.id || randomUUID(), name: user.name, surname: user.surname, email: user.email, phone: user.phone,
       username: user.username, password: user.password, role: user.role,
       salary: claimsAreEdson(claims) ? (Number(user.salary) || 0) : 0,
       okr_enabled: !!(user.okrEnabled || user.okrOnly), // "somente OKR" implica ter OKR
@@ -636,8 +710,24 @@ app.post("/api/users/save", async (req, res) => {
   if (!isAdmin && !isSelf) return res.status(403).json({ success: false, error: "Sem permissao." });
   // Todos podem editar dados de contato; SO admin muda username/role/salary/senha.
   const patch: any = { name: user.name, surname: user.surname, email: user.email, phone: user.phone };
+  let renameTo = "";
   if (isAdmin) {
-    patch.username = user.username;
+    // Renomear para um username que já existe (mesmo mudando maiúsculas, ex.: "EDSON") é recusado.
+    try {
+      if (await inUse("username", user.username, user.id)) return res.json({ success: false, message: "Nome de usuário já existe." });
+      const { data: cur, error: curErr } = await admin.from("users").select("username").eq("id", user.id).limit(1);
+      if (curErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
+      if (!cur || !cur.length) return res.json({ success: false, message: "Usuário não encontrado." });
+      const oldName = String((cur[0] as any).username || "").trim();
+      if (oldName !== user.username) {
+        // O login do Edson é fixo: o OKR e a governança dele são lidos pela chave 'edson'.
+        if (user.id === EDSON_ID && oldName.toLowerCase() !== user.username.toLowerCase()) {
+          return res.json({ success: false, message: "O login do Edson é fixo (o OKR e a governança dependem dele)." });
+        }
+        if (await okrKeyTaken(user.username.toLowerCase(), oldName.toLowerCase())) return res.json({ success: false, message: "Esse nome de usuário está ligado ao OKR de outra pessoa." });
+        renameTo = user.username;
+      }
+    } catch (e: any) { return res.json({ success: false, message: e.message }); }
     patch.role = user.role;
     if (user.password) patch.password = user.password;
     patch.okr_enabled = !!(user.okrEnabled || user.okrOnly); // "somente OKR" implica ter OKR
@@ -649,8 +739,22 @@ app.post("/api/users/save", async (req, res) => {
   if (claimsAreEdson(claims) && user.salary !== undefined && user.salary !== null) {
     patch.salary = Number(user.salary) || 0;
   }
+  // Troca de login + a chave do OKR dele numa transação só (kpi_rename_login): antes
+  // eram duas chamadas, e se a segunda falhasse a pessoa perdia o próprio OKR.
+  if (renameTo) {
+    const { error: rnErr } = await admin.rpc("kpi_rename_login", { p_user: user.id, p_new: renameTo });
+    if (rnErr) {
+      const m = String(rnErr.message || "");
+      if (/OKR_CHAVE_OCUPADA/.test(m)) return res.json({ success: false, message: "Esse nome de usuário está ligado ao OKR de outra pessoa." });
+      if ((rnErr as any).code === "23505") return res.json({ success: false, message: "Nome de usuário já existe." });
+      return res.json({ success: false, message: `Não consegui trocar o login: ${m}` });
+    }
+  }
   const { error } = await admin.from("users").update(patch).eq("id", user.id);
-  if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
+  if (error) {
+    if ((error as any).code === "23505") return res.json({ success: false, message: "E-mail ou nome de usuário já pertence a outra pessoa." });
+    return res.json({ success: false, message: `Erro DB: ${error.message}${renameTo ? " (o login novo já foi gravado)" : ""}` });
+  }
   return res.json({ success: true });
 });
 
@@ -669,11 +773,14 @@ const SETTINGS_WRITABLE = new Set([
 app.post("/api/settings/save", async (req, res) => {
   const claims = verifyBearerToken(req);
   if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
-  if (!(ADMIN_ROLES.includes(claims.app_role) || claimsAreEdson(claims))) {
-    return res.status(403).json({ success: false, error: "Sem permissao para alterar configuracoes." });
-  }
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  let roleOk = false;
+  try { roleOk = ADMIN_ROLES.includes(String(await currentRole(admin, claims.sub))); }
+  catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+  if (!(roleOk || claimsAreEdson(claims))) {
+    return res.status(403).json({ success: false, error: "Sem permissao para alterar configuracoes." });
+  }
 
   const incoming = (req.body && req.body.row) || {};
   const row: any = {};
@@ -702,7 +809,11 @@ app.post("/api/okr/share", async (req, res) => {
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
 
-  const self = String(claims.username || "").trim().toLowerCase();
+  // "O seu OKR" = o nome de usuário ATUAL do cadastro (pelo id do crachá), não o
+  // nome gravado no crachá, que dura 24 h e pode ter ficado para trás de uma troca.
+  const { data: me, error: meErr } = await admin.from("users").select("username").eq("id", String(claims.sub || "")).limit(1);
+  if (meErr) return res.status(500).json({ success: false, error: "Nao consegui conferir o usuario." });
+  const self = String((me && me[0] && (me[0] as any).username) || "").trim().toLowerCase();
   const requested = String((req.body && (req.body as any).ownerKey) || "").trim().toLowerCase();
   const ownerKey = requested || self;
   if (!ownerKey) return res.status(400).json({ success: false, error: "Usuario invalido." });
@@ -740,17 +851,31 @@ app.post("/api/users/delete", async (req, res) => {
   if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
-  if (!ADMIN_ROLES.includes(claims.app_role)) return res.status(403).json({ success: false, error: "Sem permissao." });
+  try { if (!ADMIN_ROLES.includes(String(await currentRole(admin, claims.sub)))) return res.status(403).json({ success: false, error: "Sem permissao." }); }
+  catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
 
-  const { id } = req.body || {};
-  if (!id) return res.status(400).json({ success: false, error: "id ausente." });
-  if (id === claims.sub) return res.status(400).json({ success: false, error: "Nao e possivel excluir o proprio usuario." });
+  const id = canonUuid((req.body || {}).id);
+  if (!id) return res.status(400).json({ success: false, error: "id ausente ou invalido." });
+  if (id === canonUuid(claims.sub)) return res.status(400).json({ success: false, error: "Nao e possivel excluir o proprio usuario." });
+  // O Edson (dono do sistema) não pode ser excluído por ninguém.
+  if (id === EDSON_ID) return res.status(403).json({ success: false, error: "A conta do Edson nao pode ser excluida." });
 
+  // Sem saber o login não dá para arquivar o OKR dele: não exclui (antes excluía e
+  // o OKR ficava sem dono, calado).
+  const { data: cur, error: curErr } = await admin.from("users").select("username").eq("id", id).limit(1);
+  if (curErr) return res.json({ success: false, message: "Nao consegui ler o usuario. Nada foi excluido; tente de novo." });
+  const oldKey = String((cur && cur[0] && (cur[0] as any).username) || "").trim().toLowerCase();
   await admin.from("projects").update({ user_id: null }).eq("user_id", id);
   await admin.from("innovations").update({ author_id: null }).eq("author_id", id);
   const { data, error } = await admin.from("users").delete().eq("id", id).select();
   if (error) return res.json({ success: false, message: `Erro ao excluir: ${error.message}` });
   if (!data || data.length === 0) return res.json({ success: false, message: "Usuario nao encontrado." });
+  // O OKR de quem saiu é ARQUIVADO (chave 'excluido:...'), não apagado: fica guardado
+  // e o login fica livre — antes, recriar a pessoa com o mesmo login era recusado.
+  if (oldKey) {
+    const { error: arqErr } = await admin.from("okr_state").update({ owner_key: `excluido:${id}:${oldKey}` }).eq("owner_key", oldKey);
+    if (arqErr) return res.json({ success: true, message: `Usuario excluido, mas o OKR dele nao foi arquivado: ${arqErr.message}` });
+  }
   return res.json({ success: true });
 });
 

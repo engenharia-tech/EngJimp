@@ -5,7 +5,7 @@ import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser } from '../utils/userUtils';
 import { getAuthToken, authHeaders } from './authToken';
-import { OkrData, OkrStore, migrateToStore } from '../okr/okr';
+import { OkrData, OkrStore, OkrExecutor, OkrExecutorKind, migrateToStore } from '../okr/okr';
 
 // Supabase Configuration
 const getSupabaseConfig = () => {
@@ -812,22 +812,184 @@ export const fetchOkr = async (ownerKey: string = 'edson'): Promise<OkrStore | n
 };
 
 // Lê TODOS os OKRs (para os indicadores por setor). A RLS só libera para o
-// Edson e para o CEO; para os demais volta só o próprio (ou vazio).
+// Edson, o admin de OKR e o CEO; para os demais volta só o próprio (ou vazio).
+// Esta versão NUNCA lança (volta [] no erro) — serve a telas que só mostram.
 export const fetchAllOkr = async (): Promise<{ ownerKey: string; store: OkrStore }[]> => {
-  try {
-    const { data, error } = await supabase.from('okr_state').select('owner_key, data');
-    if (error) { console.warn('fetchAllOkr:', error.message); return []; }
-    return (data || []).map((r: any) => ({ ownerKey: r.owner_key, store: migrateToStore(r.data) }));
-  } catch (e) { console.warn('fetchAllOkr erro:', e); return []; }
+  try { return await fetchAllOkrOrThrow(); }
+  catch (e) { console.warn('fetchAllOkr erro:', e); return []; }
 };
 
-export const saveOkr = async (store: OkrStore, ownerKey: string = 'edson'): Promise<void> => {
-  const payload: OkrStore = { ...store, updatedAt: new Date().toISOString() };
-  const { error } = await supabase.from('okr_state').upsert(
-    { owner_key: ownerKey, data: payload, updated_at: new Date().toISOString() },
-    { onConflict: 'owner_key' }
-  );
+// Mesma leitura, mas LANÇA no erro: quem decide algo com o resultado (contar uso
+// antes de excluir, trocar o gráfico) não pode confundir "não li" com "não tem".
+export const fetchAllOkrOrThrow = async (): Promise<{ ownerKey: string; store: OkrStore }[]> => {
+  const { data, error } = await supabase.from('okr_state').select('owner_key, data');
   if (error) throw new Error(error.message);
+  // Linha sem dono (owner_key vazio) não é OKR de ninguém, e 'excluido:...' é o OKR
+  // arquivado de quem saiu da empresa: os dois ficam de fora das telas.
+  return (data || []).filter((r: any) => typeof r.owner_key === 'string' && r.owner_key.trim() && !r.owner_key.startsWith('excluido:'))
+    .map((r: any) => ({ ownerKey: r.owner_key, store: migrateToStore(r.data) }));
+};
+
+// ---- Gravação SEM atropelar: versão (updated_at) + reaplicar a mudança -----
+// Antes, cada tela gravava o OKR INTEIRO que tinha na memória (o antigo saveOkr, um
+// upsert cego — removido): o "Meu OKR" aberto desfazia calado um prazo arrastado na
+// linha do tempo (e vice-versa). Agora quem grava descreve a MUDANÇA (mutator); ela
+// é aplicada sobre o OKR relido do banco e gravada só se ninguém gravou no meio
+// (updated_at igual). Se gravou, repete.
+export const fetchOkrVersioned = async (ownerKey: string): Promise<{ store: OkrStore | null; version: string | null; exists: boolean }> => {
+  const { data, error } = await supabase.from('okr_state').select('data, updated_at').eq('owner_key', ownerKey).limit(1);
+  if (error) throw new Error(error.message);
+  if (!data || !data.length) return { store: null, version: null, exists: false };
+  return { store: migrateToStore((data[0] as any).data), version: (data[0] as any).updated_at ?? null, exists: true };
+};
+
+// Grava se a versão ainda for `version`. Devolve a versão nova, ou null se alguém
+// gravou antes (ou a RLS não deixou — quem chama distingue relendo).
+// Marca de formato: o banco recusa gravação sem ela (trigger okr_state_exige_versao).
+// Uma aba aberta com o código anterior gravava o OKR INTEIRO por cima; sem a marca, a
+// gravação dela é barrada e a pessoa recarrega a página.
+export const OKR_FORMAT_VERSION = 2;
+const saveOkrIfUnchanged = async (store: OkrStore, ownerKey: string, version: string | null, exists: boolean): Promise<string | null> => {
+  const now = new Date().toISOString();
+  const payload: OkrStore = { ...store, updatedAt: now, v: OKR_FORMAT_VERSION };
+  if (!exists) {
+    const { data, error } = await supabase.from('okr_state').insert({ owner_key: ownerKey, data: payload, updated_at: now }).select('updated_at');
+    if (error) { if ((error as any).code === '23505') return null; throw new Error(error.message); }
+    return data && data.length ? (data[0] as any).updated_at : null;
+  }
+  let q = supabase.from('okr_state').update({ data: payload, updated_at: now }).eq('owner_key', ownerKey);
+  q = version === null ? q.is('updated_at', null) : q.eq('updated_at', version);
+  const { data, error } = await q.select('updated_at');
+  if (error) throw new Error(error.message);
+  return data && data.length ? (data[0] as any).updated_at : null;
+};
+
+// Disputa que não se resolveu em 4 tentativas (vale tentar de novo mais tarde).
+export class OkrConflictError extends Error {}
+// A mudança não se aplica mais (o item sumiu/mudou/o id já existe). A mensagem é
+// para a pessoa ler. Um mutator pode LANÇAR esta para desistir com o motivo certo.
+export class OkrStaleError extends Error {}
+
+// Aplica `mutator` ao OKR atual do banco e grava sem atropelar. `mutator` devolve o
+// store novo, ou null para desistir. Devolver o MESMO objeto recebido = nada a mudar
+// (não grava). Devolve o que ficou gravado.
+export const mutateOkr = async (
+  ownerKey: string,
+  mutator: (s: OkrStore) => OkrStore | null,
+  opts: { createIfMissing?: () => OkrStore } = {},
+): Promise<{ store: OkrStore; version: string | null } | null> => {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const cur = await fetchOkrVersioned(ownerKey);
+    const base = cur.store ?? (opts.createIfMissing ? opts.createIfMissing() : null);
+    if (!base) throw new OkrStaleError('Este OKR não existe mais (ou você não tem acesso a ele).');
+    const next = mutator(base);
+    if (!next) return null;
+    if (next === base && cur.exists) return { store: base, version: cur.version };
+    const v = await saveOkrIfUnchanged(next, ownerKey, cur.version, cur.exists);
+    if (v) return { store: { ...next }, version: v };
+    // Ninguém mudou a versão e mesmo assim não gravou → não é disputa, é permissão.
+    const again = await fetchOkrVersioned(ownerKey);
+    if (again.exists === cur.exists && again.version === cur.version) throw new Error('Sem permissão para gravar neste OKR.');
+    await new Promise(r => setTimeout(r, 150 * (attempt + 1)));
+  }
+  throw new OkrConflictError('O OKR está sendo alterado por outra pessoa agora. Tente de novo em instantes.');
+};
+
+const NET_RE = /failed to fetch|fetch failed|networkerror|load failed|network request failed|timed? ?out|aborted/i;
+// Falha que passa sozinha (rede caiu, disputa longa): vale tentar de novo depois.
+export const isTransientOkrError = (e: any): boolean => e instanceof OkrConflictError || NET_RE.test(String(e?.message || ''));
+
+// Mensagem de erro que diz O QUE aconteceu (rede, sessão, permissão, disputa) —
+// nunca a mensagem crua do banco sozinha.
+export const okrErrorMessage = (e: any, fallback: string): string => {
+  const m = String(e?.message || '');
+  if (NET_RE.test(m)) return 'Sem conexão com o servidor — nada foi salvo. Confira a rede e tente de novo.';
+  if (/jwt expired|invalid jwt|jwserror|pgrst30[0-3]/i.test(m)) return 'Sua sessão venceu — saia e entre de novo. Nada foi salvo.';
+  if (/OKR_VERSAO_VELHA/.test(m)) return 'Esta aba está com uma versão antiga do sistema — recarregue a página (F5). Nada foi salvo.';
+  if (/OKR_SEM_DONO/.test(m)) return 'Este login não existe mais (mudou ou foi excluído). Atualize a página (F5); se o login trocado foi o SEU, saia e entre de novo. Nada foi salvo.';
+  if (e instanceof OkrConflictError || e instanceof OkrStaleError) return m;
+  if (/^sem permiss/i.test(m) || /row-level security|permission denied|42501/i.test(m))
+    return 'Sem permissão para esta alteração. Se a permissão foi dada agora, saia e entre de novo.';
+  return m ? `${fallback} (${m})` : fallback;
+};
+
+// ---- Cadastro de EXECUTORES dos KRs (tabela okr_executor) ----
+// Leitura: qualquer logado. Escrita: Edson e admin de OKR (a RLS barra os demais).
+const EXEC_COLS = 'id, name, kind, team, active, updated_at';
+const mapExecutor = (r: any): OkrExecutor => ({
+  id: r.id, name: r.name, kind: (r.kind === 'equipe' ? 'equipe' : 'pessoa') as OkrExecutorKind,
+  team: r.team || undefined, active: r.active !== false, updatedAt: r.updated_at || undefined,
+});
+
+// Lança em erro: "não consegui ler" não pode virar "cadastro vazio" — quem edita
+// executores sem o cadastro gravaria nomes soltos, desligados dele para sempre.
+export const fetchOkrExecutors = async (): Promise<OkrExecutor[]> => {
+  const { data, error } = await supabase.from('okr_executor').select(EXEC_COLS).order('name', { ascending: true });
+  if (error) { console.warn('fetchOkrExecutors:', error.message); throw new Error(error.message); }
+  return (data || []).map(mapExecutor);
+};
+
+const dupMsg = (name: string) => `Já existe um executor chamado "${name}" (o cadastro não diferencia acento, maiúscula nem espaço).`;
+
+export const createOkrExecutor = async (e: { name: string; kind: OkrExecutorKind; team?: string }, by?: string): Promise<OkrExecutor> => {
+  const row: any = { name: e.name.trim(), kind: e.kind, team: (e.team || '').trim() || null, active: true, updated_at: new Date().toISOString(), updated_by: by || null };
+  const { data, error } = await supabase.from('okr_executor').insert(row).select(EXEC_COLS);
+  if (error) {
+    if ((error as any).code === '23505') throw new OkrStaleError(dupMsg(row.name));
+    throw new Error(error.message);
+  }
+  if (!data || !data.length) throw new Error('Sem permissão para editar o cadastro de executores.');
+  return mapExecutor(data[0]);
+};
+
+// Relê a linha para dizer POR QUE um update/delete não pegou nada.
+const whyExecutorUntouched = async (id: string, version?: string): Promise<Error> => {
+  const { data, error } = await supabase.from('okr_executor').select(EXEC_COLS).eq('id', id).limit(1);
+  if (error) return new Error(error.message);
+  if (!data || !data.length) return new OkrStaleError('Este executor foi excluído por outra pessoa — atualizei a lista.');
+  if (version && (data[0] as any).updated_at !== version) return new OkrStaleError(`"${(data[0] as any).name}" foi alterado por outra pessoa enquanto a tela estava aberta — atualizei a lista; confira e faça de novo.`);
+  return new Error('Sem permissão para editar o cadastro de executores.');
+};
+
+// Atualiza SÓ as colunas pedidas, e só se a linha ainda estiver na versão lida
+// (antes gravava a linha inteira de uma cópia velha e desfazia o que outro admin
+// tinha acabado de gravar).
+export const updateOkrExecutor = async (id: string, patch: { team?: string | null; active?: boolean }, version: string | undefined, by?: string): Promise<OkrExecutor> => {
+  const row: any = { updated_at: new Date().toISOString(), updated_by: by || null };
+  if ('team' in patch) row.team = (patch.team || '').trim() || null;
+  if ('active' in patch) row.active = !!patch.active;
+  let q = supabase.from('okr_executor').update(row).eq('id', id);
+  if (version) q = q.eq('updated_at', version);
+  const { data, error } = await q.select(EXEC_COLS);
+  if (error) throw new Error(error.message);
+  if (!data || !data.length) throw await whyExecutorUntouched(id, version);
+  return mapExecutor(data[0]);
+};
+
+// Renomeia numa transação no banco (okr_rename_executor): renomear uma EQUIPE leva
+// junto as pessoas dela. Devolve as linhas que mudaram.
+export const renameOkrExecutor = async (id: string, name: string, version: string | undefined, by?: string): Promise<OkrExecutor[]> => {
+  const { data, error } = await supabase.rpc('okr_rename_executor', { p_id: id, p_name: name.trim(), p_version: version || null, p_by: by || null });
+  if (error) {
+    const c = (error as any).code, m = String(error.message || '');
+    if (c === '23505') throw new OkrStaleError(dupMsg(name.trim()));
+    if (c === 'P0002' || /OKR_EXEC_SUMIU/.test(m)) throw new OkrStaleError('Este executor foi excluído por outra pessoa — atualizei a lista.');
+    if (/OKR_EXEC_MUDOU/.test(m)) throw new OkrStaleError('Este executor foi alterado por outra pessoa enquanto a tela estava aberta — atualizei a lista; confira e faça de novo.');
+    if (c === '42501' || /OKR_EXEC_SEM_PERMISSAO/.test(m)) throw new Error('Sem permissão para editar o cadastro de executores.');
+    if (c === '22023' || /OKR_EXEC_NOME_VAZIO/.test(m)) throw new OkrStaleError('O nome não pode ficar vazio.');
+    throw new Error(m);
+  }
+  return ((data as any[]) || []).map(mapExecutor);
+};
+
+export const deleteOkrExecutor = async (id: string): Promise<void> => {
+  const { data, error } = await supabase.from('okr_executor').delete().eq('id', id).select('id');
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) {
+    const why = await whyExecutorUntouched(id);
+    if (why instanceof OkrStaleError) return; // já tinha sido excluído: o resultado é o mesmo
+    throw why;
+  }
 };
 
 // Gera/retorna o token do link público (só-leitura). Cada um compartilha o seu;
@@ -1760,7 +1922,7 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
       body: JSON.stringify({ mode: 'create', user }),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data.success) return { success: true };
+    if (res.ok && data.success) return { success: true, message: data.message };
     return { success: false, message: data.message || data.error || 'Erro ao criar usuário.' };
   } catch (error: any) {
     console.error("FAILED TO REGISTER USER", error);
@@ -1776,7 +1938,7 @@ export const updateUser = async (user: User): Promise<{ success: boolean; messag
       body: JSON.stringify({ mode: 'update', user }),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data.success) return { success: true };
+    if (res.ok && data.success) return { success: true, message: data.message };
     return { success: false, message: data.message || data.error || 'Erro ao atualizar usuário.' };
   } catch (error: any) {
     console.error("FAILED TO UPDATE USER", error);
@@ -1792,7 +1954,7 @@ export const deleteUser = async (id: string): Promise<{ success: boolean; messag
       body: JSON.stringify({ id }),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data.success) return { success: true };
+    if (res.ok && data.success) return { success: true, message: data.message };
     return { success: false, message: data.message || data.error || 'Erro ao excluir usuário.' };
   } catch (error: any) {
     console.error("FAILED TO DELETE USER", error);

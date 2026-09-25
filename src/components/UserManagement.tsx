@@ -103,6 +103,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     
     if (result.success) {
       addToast(editingUserId ? t('userUpdatedSuccess', { name }) : t('userCreatedSuccess', { name }), 'success');
+      if (result.message) addToast(result.message, 'warning'); // gravou, mas o servidor tem algo a dizer
       
       // Expanded Audit Log comparing old vs new values
       let details = '';
@@ -173,6 +174,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
         
         if (result.success) {
           addToast(`Usuário ${user.name} excluído com sucesso!`, 'success');
+          if (result.message) addToast(result.message, 'warning'); // ex.: o OKR dele não foi arquivado
 
           // Audit Log
           addAuditLog({

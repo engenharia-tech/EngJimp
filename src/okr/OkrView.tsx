@@ -1,13 +1,17 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { withOkrSafe } from './OkrSafe';
 import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown, Link2, ExternalLink, UserRound, Archive, ArchiveRestore, History } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, CartesianGrid, Legend } from 'recharts';
 import { User, ProjectSession, OperationalActivity, ActivityType } from '../types';
-import { fetchOkr, saveOkr, addAuditLog, enableOkrShare, fetchPublicOkr } from '../services/storageService';
+import { addAuditLog, enableOkrShare, fetchPublicOkr, fetchOkrExecutors, fetchOkrVersioned, mutateOkr, okrErrorMessage, OkrStaleError } from '../services/storageService';
 import {
   OkrStore, OkrPeriod, OkrKeyResult, OkrObjective, OkrCheckin, PortfolioItem, OkrTask,
-  DEFAULT_STORE, EMPTY_STORE, DEFAULT_PORTFOLIO, clonePeriodStructure, emptyKr,
-  krProgress, objProgress, progressColor, fmtValue, OkrFormat,
+  DEFAULT_STORE, EMPTY_STORE, clonePeriodStructure, emptyKr, nextObjectiveNum, nextKrId, nextKrNum,
+  krProgress, objProgress, progressColor, fmtValue, OkrFormat, OkrExecutor, OkrPersonRef, krExecutores,
+  normName, parseIsoDay, isBadDate, rawText, newUid,
 } from './okr';
+import { ExecutorMultiPicker, ExecutorSinglePicker } from './ExecutorPicker';
+import { useOkrWriter, OkrWriteStatus } from './useOkrWriter';
 import { useToast } from '../components/Toast';
 
 const STATUS_OPTIONS = ['Não iniciado', 'Em andamento', 'Em risco', 'Concluído'];
@@ -20,13 +24,15 @@ const fmtDue = (iso: string) => { try { const [y, m, d] = iso.split('-'); return
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const periodProgress = (p?: OkrPeriod) => { const krs = (p?.objectives || []).flatMap(o => o.keyResults).filter(k => !k.archived); return krs.length ? krs.reduce((a, k) => a + krProgress(k), 0) / krs.length : 0; };
 
-// Campo editável inline (vira texto no modo leitura).
+// Campo editável inline (vira texto no modo leitura). A `key` pelo valor remonta o
+// campo quando o valor muda por fora (outra pessoa, releitura) — sem ela o campo
+// não controlado continuava mostrando o texto velho.
 const EditField: React.FC<{ value: string; onCommit: (v: string) => void; readOnly?: boolean; multiline?: boolean; placeholder?: string; className?: string }> = ({ value, onCommit, readOnly, multiline, placeholder, className }) => {
   if (readOnly) return <span className={className}>{value || placeholder || ''}</span>;
   const common = `bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800/60 focus:bg-white dark:focus:bg-slate-900 rounded px-1 -mx-1 outline-none focus:ring-1 focus:ring-blue-400 w-full ${className || ''}`;
   return multiline
-    ? <textarea defaultValue={value} placeholder={placeholder} rows={2} onBlur={e => { if (e.target.value !== value) onCommit(e.target.value); }} className={`${common} resize-none`} />
-    : <input defaultValue={value} placeholder={placeholder} onBlur={e => { if (e.target.value !== value) onCommit(e.target.value); }} className={common} />;
+    ? <textarea key={value} defaultValue={value} placeholder={placeholder} rows={2} onBlur={e => { if (e.target.value !== value) onCommit(e.target.value); }} className={`${common} resize-none`} />
+    : <input key={value} defaultValue={value} placeholder={placeholder} onBlur={e => { if (e.target.value !== value) onCommit(e.target.value); }} className={common} />;
 };
 
 const StatTile: React.FC<{ label: string; value: string; color: string; icon: React.ReactNode }> = ({ label, value, color, icon }) => (
@@ -58,51 +64,111 @@ interface OkrViewProps {
   showActivity?: boolean;     // mostra métricas de atividade (liberações/horas). Só o Edson.
 }
 
-export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external, ownerKey = 'edson', heading = 'Meu OKR', canShare, privacyNote = 'Só você vê', seedEmpty = false, ownerName, showActivity = false }) => {
+const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external, ownerKey = 'edson', heading = 'Meu OKR', canShare, privacyNote = 'Só você vê', seedEmpty = false, ownerName, showActivity = false }) => {
   const { addToast } = useToast();
   const [store, setStore] = useState<OkrStore | null>(external || null);
   const [loading, setLoading] = useState(!external);
-  const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saving, setSaving] = useState<'idle' | OkrWriteStatus>('idle');
   const [shareLink, setShareLink] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [openObjs, setOpenObjs] = useState<Record<string, boolean>>({}); // KRs recolhidos por padrão
   const toggleObj = (id: string) => setOpenObjs(m => ({ ...m, [id]: !m[id] }));
   const [sharing, setSharing] = useState(false);
+  // Cadastro de executores (responsável do objetivo / executores do KR). No link
+  // público (external) não há sessão: fica vazio e os nomes gravados aparecem assim mesmo.
+  // `registryOk` = o cadastro foi LIDO. Enquanto não, os seletores ficam só leitura:
+  // editar sem o cadastro gravaria nomes soltos, sem id, desligados dele para sempre.
+  const [registry, setRegistry] = useState<OkrExecutor[]>([]);
+  const [registryOk, setRegistryOk] = useState(false);
+  const registryWarned = useRef(false);
+  const loadRegistry = useCallback(() => {
+    if (external) return;
+    fetchOkrExecutors().then(r => { setRegistry(r); setRegistryOk(true); registryWarned.current = false; }).catch(() => {
+      setRegistryOk(false);
+      // Avisa UMA vez (e tenta de novo ao voltar para a aba): sem isto os seletores
+      // ficavam só leitura, calados, parecendo "você não pode editar".
+      if (!registryWarned.current) { registryWarned.current = true; addToast('Não consegui ler o cadastro de executores — a escolha de responsável/executores fica bloqueada até conseguir (tento de novo quando você voltar para esta aba).', 'warning'); }
+    });
+  }, [external, addToast]);
+  useEffect(() => { loadRegistry(); }, [loadRegistry]);
+  useEffect(() => {
+    if (external || registryOk) return;
+    const retry = () => { if (document.visibilityState === 'visible') loadRegistry(); };
+    window.addEventListener('focus', retry); window.addEventListener('online', retry);
+    return () => { window.removeEventListener('focus', retry); window.removeEventListener('online', retry); };
+  }, [external, registryOk, loadRegistry]);
+
+  const { persist: write, adopt, readMark } = useOkrWriter({
+    ownerKey, enabled: !readOnly && !external, live: !external,
+    setStore, onError: msg => addToast(msg, 'error'),
+    onStatus: st => { setSaving(st); if (st === 'saved') setTimeout(() => setSaving(s => s === 'saved' ? 'idle' : s), 1500); },
+  });
 
   useEffect(() => {
     if (external) { setStore(external); setLoading(false); return; }
+    let alive = true;
     (async () => {
       setLoading(true);
       try {
-        const s = await fetchOkr(ownerKey);
-        if (s && s.periods?.length) setStore(s);
+        const mark = readMark();
+        const { store: s } = await fetchOkrVersioned(ownerKey);
+        if (!alive) return;
+        if (s && s.periods?.length) setStore(adopt(s, mark));
         else if (readOnly) setStore(null); // quem só olha não cria; mostra "ainda não criou"
-        else { const d = seedEmpty ? EMPTY_STORE(ownerName || currentUser.name || currentUser.username) : DEFAULT_STORE(); setStore(d); try { await saveOkr(d, ownerKey); } catch {} }
-      } finally { setLoading(false); }
+        else {
+          // Cria SÓ se não existir (se alguém criou no meio, fica o dele). Erro de leitura
+          // cai no catch e não cria nada — antes, uma falha de rede semeava o padrão por
+          // cima de um OKR existente.
+          const d = seedEmpty ? EMPTY_STORE(ownerName || currentUser.name || currentUser.username) : DEFAULT_STORE();
+          const r = await mutateOkr(ownerKey, x => (x === d ? { ...d } : x), { createIfMissing: () => d });
+          if (alive) setStore(adopt(r?.store ?? null) ?? d);
+        }
+      } catch (e) {
+        if (alive) { setStore(null); addToast(okrErrorMessage(e, 'Não consegui carregar o OKR.'), 'error'); }
+      } finally { if (alive) setLoading(false); }
     })();
-  }, [ownerKey, readOnly, seedEmpty]);
+    return () => { alive = false; };
+  }, [ownerKey, readOnly, seedEmpty, external]);
 
-  const persist = useCallback(async (next: OkrStore) => {
-    if (readOnly) return;
-    setStore(next); setSaving('saving');
-    try { await saveOkr(next, ownerKey); setSaving('saved'); setTimeout(() => setSaving('idle'), 1500); }
-    catch (e) { console.error('saveOkr', e); setSaving('error'); addToast('Não consegui salvar o OKR.', 'error'); }
-  }, [readOnly, ownerKey, addToast]);
+  // Devolve se ficou GRAVADO (true) — formulário só esquece o texto quando gravou.
+  const persist = useCallback((mut: (s: OkrStore) => OkrStore | null): Promise<boolean> => readOnly ? Promise.resolve(false) : write(mut), [readOnly, write]);
 
   const active = useMemo(() => store?.periods.find(p => p.id === store.activePeriodId) || store?.periods[0], [store]);
 
-  // Atualiza o período ativo dentro do store.
-  const patchActive = (fn: (p: OkrPeriod) => OkrPeriod) => {
-    if (!store || !active) return;
-    persist({ ...store, periods: store.periods.map(p => p.id === active.id ? fn(p) : p) });
-  };
-  const updateKr = (objId: string, krId: string, patch: Partial<OkrKeyResult>) =>
-    patchActive(p => ({ ...p, objectives: p.objectives.map(o => o.id !== objId ? o : { ...o, keyResults: o.keyResults.map(k => k.id !== krId ? k : { ...k, ...patch }) }) }));
-  // Muda o progresso E registra um ponto no histórico do KR.
+  // Muda um período. As mudanças são reaplicadas sobre o OKR RELIDO do banco, então
+  // acham o período pelo id (não "o ativo de lá") e desistem (null) se ele sumiu.
+  const patchPeriod = (pid: string, fn: (p: OkrPeriod) => OkrPeriod | null) => persist(s => {
+    const i = s.periods.findIndex(p => p.id === pid); if (i < 0) return null;
+    const np = fn(s.periods[i]); if (!np) return null; if (np === s.periods[i]) return s;
+    const periods = s.periods.slice(); periods[i] = np; return { ...s, periods };
+  });
+  const patchActive = (fn: (p: OkrPeriod) => OkrPeriod | null): Promise<boolean> => active ? patchPeriod(active.id, fn) : Promise.resolve(false);
+  const updateObjWith = (objId: string, fn: (o: OkrObjective) => OkrObjective) =>
+    patchActive(p => p.objectives.some(o => o.id === objId) ? { ...p, objectives: p.objectives.map(o => o.id === objId ? fn(o) : o) } : null);
+  // O KR é achado pelo rótulo E pela identidade (uid) que a tela mostrava: se o KR1.3
+  // foi apagado e outro KR1.3 nasceu no lugar, a edição feita na tela velha não cai
+  // calada no KR novo — desiste e avisa.
+  type KrRef = { id: string; uid?: string };
+  const sameKr = (k: OkrKeyResult, r: KrRef) => k.id === r.id && rawText(k.uid) === rawText(r.uid);
+  const updateKrWith = (objId: string, kr: KrRef, fn: (k: OkrKeyResult) => OkrKeyResult) =>
+    patchActive(p => {
+      let hit = false, changed = false;
+      const objectives = p.objectives.map(o => o.id !== objId ? o : { ...o, keyResults: o.keyResults.map(k => { if (!sameKr(k, kr)) return k; hit = true; const nk = fn(k); if (nk !== k) changed = true; return nk; }) });
+      if (!hit) return null;
+      return changed ? { ...p, objectives } : p;
+    });
+  const updateKr = (objId: string, kr: KrRef, patch: Partial<OkrKeyResult>) => updateKrWith(objId, kr, k => ({ ...k, ...patch }));
+  // Muda o progresso E registra um ponto no histórico do KR (o histórico do KR
+  // ATUAL do banco — não o da foto desta tela, que perderia pontos de outra pessoa).
   const setProgress = (objId: string, kr: OkrKeyResult, current: number, patch: Partial<OkrKeyResult> = {}) => {
     if (current === kr.current && Object.keys(patch).length === 0) return;
     const point = { date: new Date().toISOString(), value: current, by: currentUser.name };
-    updateKr(objId, kr.id, { current, history: [...(kr.history || []), point], ...patch });
+    updateKrWith(objId, kr, k => {
+      const hist = Array.isArray(k.history) ? k.history : [];
+      if (hist.some(pt => pt.date === point.date && pt.value === point.value)) return k;   // já gravado (nova tentativa)
+      if (current === k.current && Object.keys(patch).length === 0) return k;
+      return { ...k, current, history: [...hist, point], ...patch };
+    });
   };
   // Log de auditoria de EXCLUSÕES dentro do OKR (quem apagou o quê e de quem).
   const logDelete = (entity: string, name: string) => {
@@ -115,32 +181,98 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
       });
     } catch { /* auditoria nunca trava a ação */ }
   };
-  const updateObj = (objId: string, patch: Partial<OkrObjective>) =>
-    patchActive(p => ({ ...p, objectives: p.objectives.map(o => o.id === objId ? { ...o, ...patch } : o) }));
-  const addKr = (objId: string) => patchActive(p => ({ ...p, objectives: p.objectives.map(o => o.id !== objId ? o : { ...o, keyResults: [...o.keyResults, emptyKr(`KR${o.id.replace(/\D/g, '')}.${o.keyResults.length + 1}`)] }) }));
-  const removeKr = (objId: string, krId: string) => patchActive(p => ({ ...p, objectives: p.objectives.map(o => o.id !== objId ? o : { ...o, keyResults: o.keyResults.filter(k => k.id !== krId) }) }));
-  const addObjective = () => patchActive(p => ({ ...p, objectives: [...p.objectives, { id: `O${p.objectives.length + 1}`, title: 'Novo objetivo', keyResults: [] }] }));
-  const removeObjective = (objId: string) => patchActive(p => ({ ...p, objectives: p.objectives.filter(o => o.id !== objId) }));
+  const updateObj = (objId: string, patch: Partial<OkrObjective>) => updateObjWith(objId, o => ({ ...o, ...patch }));
+  // O id do KR/objetivo novo é escolhido UMA vez, aqui (o que a tela mostra é o que
+  // vai para o banco). Se outra pessoa criou o mesmo id no meio, NÃO renumera por
+  // conta: desiste e avisa — renumerar mandaria a próxima edição (feita no id que a
+  // tela mostrava) para o KR da outra pessoa.
+  const addKr = (objId: string) => {
+    const o0 = active?.objectives.find(o => o.id === objId); if (!o0) return;
+    const num = nextKrNum(o0); const kr = emptyKr(nextKrId(o0));
+    updateObjWith(objId, o => {
+      if (o.keyResults.some(k => k.uid === kr.uid)) return o;  // já gravado (a resposta se perdeu e esta é a nova tentativa)
+      if (o.keyResults.some(k => k.id === kr.id) || nextKrNum(o) > num) throw new OkrStaleError(`Outra pessoa acabou de criar um KR neste objetivo — a tela foi atualizada. Clique em "Adicionar resultado-chave" de novo.`);
+      return { ...o, krSeq: num, keyResults: [...o.keyResults, kr] };
+    });
+  };
+  const removeKr = (objId: string, kr: KrRef) => updateObjWith(objId, o => {
+    if (!o.keyResults.some(k => sameKr(k, kr))) return o;
+    // guarda o maior número já usado: o próximo KR não reaproveita o rótulo apagado
+    return { ...o, krSeq: Math.max(Number(o.krSeq) || 0, nextKrNum(o) - 1), keyResults: o.keyResults.filter(k => !sameKr(k, kr)) };
+  });
+  const addObjective = () => {
+    if (!active) return;
+    const num = nextObjectiveNum(active); const id = `O${num}`; const uid = newUid();
+    patchActive(p => {
+      if (p.objectives.some(o => o.uid === uid)) return p;   // já gravado (nova tentativa)
+      if (p.objectives.some(o => o.id === id) || nextObjectiveNum(p) > num) throw new OkrStaleError('Outra pessoa acabou de criar um objetivo neste período — a tela foi atualizada. Clique em "Adicionar objetivo" de novo.');
+      return { ...p, objSeq: num, objectives: [...p.objectives, { id, uid, title: 'Novo objetivo', keyResults: [] }] };
+    });
+  };
+  const removeObjective = (objId: string) => patchActive(p => {
+    if (!p.objectives.some(o => o.id === objId)) return p;
+    return { ...p, objSeq: Math.max(Number(p.objSeq) || 0, nextObjectiveNum(p) - 1), objectives: p.objectives.filter(o => o.id !== objId) };
+  });
+  // Executores: acrescentar/tirar UM, sobre a lista atual do banco (gravar a lista
+  // inteira da tela apagava o executor que outra pessoa acabou de pôr).
+  const sameRef = (a: OkrPersonRef, b: OkrPersonRef) => (a.id && b.id) ? a.id === b.id : normName(a.name) === normName(b.name);
+  const addExecutor = (objId: string, kr: KrRef, ref: OkrPersonRef) => updateKrWith(objId, kr, k => {
+    const cur = krExecutores(k, registry);
+    if (cur.some(r => sameRef(r, ref))) return k;
+    // um legado/órfão com o mesmo nome é trocado pelo do cadastro
+    return { ...k, executores: [...cur.filter(r => !(normName(r.name) === normName(ref.name) && r.id !== ref.id && (!r.id || !registry.some(e => e.id === r.id)))), ref] };
+  });
+  const removeExecutor = (objId: string, kr: KrRef, ref: OkrPersonRef) => updateKrWith(objId, kr, k => {
+    const cur = krExecutores(k, registry); const next = cur.filter(r => !sameRef(r, ref));
+    return next.length === cur.length && Array.isArray(k.executores) ? k : { ...k, executores: next };
+  });
+  // Datas do KR pelo campo: só grava se a data do banco ainda for a que a tela
+  // mostrava (senão desfaria calado um prazo arrastado na linha do tempo), e só
+  // data de verdade (2000–2100) — já há KR com ano "0026" digitado.
+  const setKrDate = (objId: string, k: OkrKeyResult, field: 'start' | 'due', value: string, input: HTMLInputElement) => {
+    const shown = rawText(k[field]);                                           // o que está gravado (texto cru)
+    const displayed = parseIsoDay(k[field]) ? shown : '';                      // o que o campo mostra
+    if (value === displayed) return;                                           // só passou pelo campo
+    if (value && !parseIsoDay(value)) { addToast('Data inválida — use um dia entre 2000 e 2100.', 'warning'); input.value = displayed; return; }
+    updateKrWith(objId, k, kk => {
+      if (rawText(kk[field]) === value) return kk;               // já gravado (nova tentativa)
+      if (rawText(kk[field]) !== shown) throw new OkrStaleError(`A data do ${k.id} foi mudada por outra pessoa (ou na linha do tempo) enquanto a tela estava aberta — nada foi gravado. A tela foi atualizada; confira e ajuste de novo.`);
+      return { ...kk, [field]: value };
+    });
+  };
 
   // Períodos
-  const switchPeriod = (id: string) => { if (store) persist({ ...store, activePeriodId: id }); };
+  const switchPeriod = (id: string) => persist(s => s.periods.some(p => p.id === id) ? (s.activePeriodId === id ? s : { ...s, activePeriodId: id }) : null);
   const addPeriod = () => {
     if (!store || !active) return;
     const label = window.prompt('Nome do novo período (ex.: Q1 2027):', 'Q1 2027');
     if (!label) return;
     const range = window.prompt('Intervalo (ex.: 01/01/2027 a 31/03/2027):', '') || '';
+    const srcId = active.id;
+    // O período novo é montado UMA vez, aqui: a tela e o banco recebem o mesmo (ids e
+    // identidades dos KRs iguais). Montar dentro da mudança sorteava identidades novas
+    // no banco, e editar um KR do período recém-criado era recusado.
     const np = clonePeriodStructure(active, label.trim(), range.trim());
-    persist({ ...store, periods: [...store.periods, np], activePeriodId: np.id });
+    persist(s => {
+      if (s.periods.some(p => p.id === np.id)) return s;        // já gravado (nova tentativa)
+      if (!s.periods.some(p => p.id === srcId)) return null;
+      return { ...s, periods: [...s.periods, np], activePeriodId: np.id };
+    });
     addToast(`Período "${label}" criado (estrutura copiada, progresso zerado).`, 'success');
   };
   const removePeriod = () => {
     if (!store || !active || store.periods.length <= 1) return;
     if (!window.confirm(`Excluir o período "${active.label}"?`)) return;
     logDelete('período', active.label);
-    const rest = store.periods.filter(p => p.id !== active.id);
-    persist({ ...store, periods: rest, activePeriodId: rest[0].id });
+    const pid = active.id;
+    persist(s => {
+      const rest = s.periods.filter(p => p.id !== pid);
+      if (rest.length === s.periods.length || rest.length === 0) return null;
+      return { ...s, periods: rest, activePeriodId: s.activePeriodId === pid ? rest[0].id : s.activePeriodId };
+    });
   };
   const updatePeriodMeta = (patch: Partial<OkrPeriod>) => patchActive(p => ({ ...p, ...patch }));
+  const mutatePortfolio = (fn: (pf: PortfolioItem[]) => PortfolioItem[]) => persist(s => { const pf = Array.isArray(s.portfolio) ? s.portfolio : []; const n = fn(pf); return n === pf ? s : { ...s, portfolio: n }; });
 
   const handleShare = async () => {
     if (sharing) return; setSharing(true);
@@ -234,7 +366,7 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
           <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ml-auto">{active.objectives.length} obj · {totals.krs} KRs</span>
           <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">{totals.done} feitos</span>
           <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400">{totals.risk} em risco</span>
-          <span className="text-[11px] font-medium text-slate-400">{saving === 'saving' ? 'salvando…' : saving === 'saved' ? 'salvo ✓' : saving === 'error' ? 'erro' : ''}</span>
+          <span className={`text-[11px] font-medium ${saving === 'offline' || saving === 'error' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`} role="status">{saving === 'saving' ? 'salvando…' : saving === 'saved' ? 'salvo ✓' : saving === 'offline' ? 'sem conexão — tentando salvar de novo…' : saving === 'error' ? 'não salvo' : ''}</span>
           {!readOnly && (
             <div className="flex items-center gap-2 no-print">
               <button onClick={handleExport} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"><Printer size={14} /> Exportar</button>
@@ -324,6 +456,10 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
               <div className="shrink-0 w-10 h-10 rounded-xl bg-blue-600/10 text-blue-600 dark:text-blue-400 grid place-items-center font-black">{o.id}</div>
               <div className="flex-1 min-w-0">
                 <EditField value={o.title} onCommit={v => updateObj(o.id, { title: v })} readOnly={readOnly} className="text-base font-bold text-slate-800 dark:text-white leading-snug" placeholder="Objetivo…" />
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0 text-[11px] text-slate-400" title="Responsável pelo objetivo">
+                  <UserRound size={11} /> <span className="font-bold uppercase tracking-wide text-[10px]">Responsável</span>
+                  <ExecutorSinglePicker value={o.responsavel} registry={registry} readOnly={readOnly || !registryOk} onChange={v => updateObj(o.id, { responsavel: v })} />
+                </div>
                 <div className="mt-2 flex items-center gap-3">
                   <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden"><div className={`h-full rounded-full ${barColor(op)} transition-all duration-500`} style={{ width: `${op * 100}%` }} /></div>
                   <span className={`text-sm font-black tabular-nums ${textColor(op)}`}>{Math.round(op * 100)}%</span>
@@ -349,18 +485,19 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                           <span className="text-[11px] text-slate-400 flex items-center gap-1" title="Período (início → fim)"><Clock size={11} />
                             {readOnly
                               ? <>{k.start ? fmtDue(k.start) : '—'} → {k.due ? fmtDue(k.due) : '—'}</>
-                              : <><input type="date" defaultValue={k.start || ''} onBlur={e => e.target.value !== (k.start || '') && updateKr(o.id, k.id, { start: e.target.value })} className="bg-transparent text-[11px] text-slate-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" title="Início" /><span className="text-slate-300">→</span><input type="date" defaultValue={k.due} onBlur={e => e.target.value !== k.due && updateKr(o.id, k.id, { due: e.target.value })} className="bg-transparent text-[11px] text-slate-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" title="Fim" /></>}
+                              : <><input key={`s:${k.start || ''}`} type="date" min="2000-01-01" max="2100-12-31" defaultValue={parseIsoDay(k.start) ? k.start : ''} onBlur={e => setKrDate(o.id, k, 'start', e.target.value, e.target)} className={`bg-transparent text-[11px] outline-none [color-scheme:light] dark:[color-scheme:dark] ${isBadDate(k.start) ? 'text-rose-500' : 'text-slate-400'}`} title={isBadDate(k.start) ? `Início gravado inválido ("${k.start}") — escolha a data certa` : 'Início'} /><span className="text-slate-300">→</span><input key={`d:${k.due || ''}`} type="date" min="2000-01-01" max="2100-12-31" defaultValue={parseIsoDay(k.due) ? k.due : ''} onBlur={e => setKrDate(o.id, k, 'due', e.target.value, e.target)} className={`bg-transparent text-[11px] outline-none [color-scheme:light] dark:[color-scheme:dark] ${isBadDate(k.due) ? 'text-rose-500' : 'text-slate-400'}`} title={isBadDate(k.due) ? `Prazo gravado inválido ("${k.due}") — escolha a data certa` : 'Fim'} /></>}
+                            {(isBadDate(k.start) || isBadDate(k.due)) && <span className="text-[10px] font-bold text-rose-500" title={`Data gravada inválida: ${[isBadDate(k.start) && `início "${k.start}"`, isBadDate(k.due) && `prazo "${k.due}"`].filter(Boolean).join(', ')}`}>data inválida</span>}
                           </span>
-                          <span className="text-[11px] text-slate-400 flex items-center gap-1" title="Responsável"><UserRound size={11} />
-                            {readOnly ? (k.owner || '—') : <input defaultValue={k.owner || ''} onBlur={e => e.target.value !== (k.owner || '') && updateKr(o.id, k.id, { owner: e.target.value })} placeholder="responsável" className="bg-transparent text-[11px] text-slate-500 dark:text-slate-300 outline-none w-24 focus:w-40 transition-all placeholder:text-slate-300" />}
+                          <span className="text-[11px] text-slate-400 flex items-center gap-1 flex-wrap min-w-0" title="Executores do KR (pessoas e equipes)"><span className="font-bold uppercase tracking-wide text-[10px]">Executores</span>
+                            <ExecutorMultiPicker value={krExecutores(k, registry)} registry={registry} readOnly={readOnly || !registryOk} onAdd={ref => addExecutor(o.id, k, ref)} onRemove={ref => removeExecutor(o.id, k, ref)} />
                           </span>
                         </div>
-                        <EditField value={k.title} onCommit={v => updateKr(o.id, k.id, { title: v })} readOnly={readOnly} multiline className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-0.5 block" placeholder="Resultado-chave…" />
-                        <EditField value={k.metric} onCommit={v => updateKr(o.id, k.id, { metric: v })} readOnly={readOnly} className="text-[11px] text-slate-400 mt-0.5 block" placeholder="métrica (ex.: % concluído)" />
+                        <EditField value={k.title} onCommit={v => updateKr(o.id, k, { title: v })} readOnly={readOnly} multiline className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-0.5 block" placeholder="Resultado-chave…" />
+                        <EditField value={k.metric} onCommit={v => updateKr(o.id, k, { metric: v })} readOnly={readOnly} className="text-[11px] text-slate-400 mt-0.5 block" placeholder="métrica (ex.: % concluído)" />
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={`text-sm font-black tabular-nums ${textColor(p)}`}>{Math.round(p * 100)}%</span>
-                        {!readOnly && <button onClick={() => { if (window.confirm(`Excluir o ${k.id}?`)) { logDelete(`resultado-chave ${k.id}`, k.title); removeKr(o.id, k.id); } }} className="text-slate-300 hover:text-rose-500" title="Excluir KR"><Trash2 size={13} /></button>}
+                        {!readOnly && <button onClick={() => { if (window.confirm(`Excluir o ${k.id}?`)) { logDelete(`resultado-chave ${k.id}`, k.title); removeKr(o.id, k); } }} className="text-slate-300 hover:text-rose-500" title="Excluir KR"><Trash2 size={13} /></button>}
                       </div>
                     </div>
 
@@ -374,42 +511,42 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
                           <button disabled={readOnly} onClick={() => setProgress(o.id, k, k.current >= 1 ? 0 : 1, { status: k.current >= 1 ? 'Em andamento' : 'Concluído' })} className={`px-3 py-1 rounded-lg text-xs font-bold ${k.current >= 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'} ${readOnly ? 'cursor-default' : ''}`}>{k.current >= 1 ? 'Feito' : 'Marcar feito'}</button>
                         ) : k.format === 'pct' ? (
                           <div className="flex items-center gap-1">
-                            <input type="number" min={0} max={100} disabled={readOnly} defaultValue={Math.round(k.current * 100)} onBlur={e => setProgress(o.id, k, Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100)} className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" /><span className="text-slate-400 text-sm">%</span>
+                            <input key={`c:${k.current}`} type="number" min={0} max={100} disabled={readOnly} defaultValue={Math.round(k.current * 100)} onBlur={e => setProgress(o.id, k, Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100)} className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" /><span className="text-slate-400 text-sm">%</span>
                           </div>
                         ) : (
-                          <input type="number" min={0} disabled={readOnly} defaultValue={k.current} onBlur={e => setProgress(o.id, k, Math.max(0, parseFloat(e.target.value) || 0))} className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                          <input key={`c:${k.current}`} type="number" min={0} disabled={readOnly} defaultValue={k.current} onBlur={e => setProgress(o.id, k, Math.max(0, parseFloat(e.target.value) || 0))} className="w-20 px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
                         )}
                         {!readOnly ? (
-                          <span className="flex items-center gap-1 text-[11px] text-slate-400">meta <input type="number" disabled={readOnly} defaultValue={k.target} onBlur={e => updateKr(o.id, k.id, { target: parseFloat(e.target.value) || 1 })} className="w-14 px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-[11px] outline-none" /></span>
+                          <span className="flex items-center gap-1 text-[11px] text-slate-400">meta <input key={`t:${k.target}`} type="number" disabled={readOnly} defaultValue={k.target} onBlur={e => updateKr(o.id, k, { target: parseFloat(e.target.value) || 1 })} className="w-14 px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-[11px] outline-none" /></span>
                         ) : <span className="text-[11px] text-slate-400">meta {fmtValue(k.target, k.format)}</span>}
                       </div>
                       {!readOnly && (
-                        <select value={k.format} onChange={e => updateKr(o.id, k.id, { format: e.target.value as OkrFormat })} className="px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-[11px] text-slate-500 outline-none [color-scheme:light] dark:[color-scheme:dark]" title="Tipo da métrica">
+                        <select value={k.format} onChange={e => updateKr(o.id, k, { format: e.target.value as OkrFormat })} className="px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-[11px] text-slate-500 outline-none [color-scheme:light] dark:[color-scheme:dark]" title="Tipo da métrica">
                           {FORMAT_OPTIONS.map(f => <option key={f.v} value={f.v}>{f.l}</option>)}
                         </select>
                       )}
-                      <select value={k.status} disabled={readOnly} onChange={e => updateKr(o.id, k.id, { status: e.target.value })} className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]">
+                      <select value={k.status} disabled={readOnly} onChange={e => updateKr(o.id, k, { status: e.target.value })} className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]">
                         {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                         {!STATUS_OPTIONS.includes(k.status) && <option value={k.status}>{k.status}</option>}
                       </select>
                       {!readOnly && (k.archived
-                        ? <button onClick={() => updateKr(o.id, k.id, { archived: false })} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"><ArchiveRestore size={13} /> Desarquivar</button>
-                        : <button onClick={() => { if (window.confirm(`Arquivar o ${k.id}? Ele some da lista e para de contar no progresso — dá para desarquivar depois.`)) updateKr(o.id, k.id, { archived: true }); }} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40"><Archive size={13} /> Arquivar</button>)}
+                        ? <button onClick={() => updateKr(o.id, k, { archived: false })} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"><ArchiveRestore size={13} /> Desarquivar</button>
+                        : <button onClick={() => { if (window.confirm(`Arquivar o ${k.id}? Ele some da lista e para de contar no progresso — dá para desarquivar depois.`)) updateKr(o.id, k, { archived: true }); }} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40"><Archive size={13} /> Arquivar</button>)}
                     </div>
 
                     {/* Iniciativas e Observações (editáveis) */}
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Iniciativas</span>
-                        <EditField value={k.initiatives} onCommit={v => updateKr(o.id, k.id, { initiatives: v })} readOnly={readOnly} multiline placeholder="—" className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 block" />
+                        <EditField value={k.initiatives} onCommit={v => updateKr(o.id, k, { initiatives: v })} readOnly={readOnly} multiline placeholder="—" className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 block" />
                       </div>
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Observações</span>
-                        <EditField value={k.notes || ''} onCommit={v => updateKr(o.id, k.id, { notes: v })} readOnly={readOnly} multiline placeholder="—" className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 block" />
+                        <EditField value={k.notes || ''} onCommit={v => updateKr(o.id, k, { notes: v })} readOnly={readOnly} multiline placeholder="—" className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 block" />
                       </div>
                     </div>
 
-                    <KrTasks kr={k} readOnly={readOnly} onChange={tasks => updateKr(o.id, k.id, { tasks })} onDeleteLog={t => logDelete(`atividade do ${k.id}`, t)} />
+                    <KrTasks kr={k} readOnly={readOnly} onMutate={fn => updateKrWith(o.id, k, kk => { const ts = Array.isArray(kk.tasks) ? kk.tasks : []; const n = fn(ts); return n === ts ? kk : { ...kk, tasks: n }; })} onDeleteLog={t => logDelete(`atividade do ${k.id}`, t)} />
                     <KrHistory kr={k} />
                   </div>
                 );
@@ -425,27 +562,32 @@ export const OkrView: React.FC<OkrViewProps> = ({ currentUser, projects = [], ac
 
       {!readOnly && <button onClick={addObjective} className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"><Plus size={16} /> Adicionar objetivo</button>}
 
-      <PortfolioPanel portfolio={store.portfolio} onChange={pf => persist({ ...store, portfolio: pf })} readOnly={readOnly} onDeleteLog={name => logDelete('projeto do portfólio', name)} />
+      <PortfolioPanel portfolio={store.portfolio} onMutate={mutatePortfolio} readOnly={readOnly} onDeleteLog={name => logDelete('projeto do portfólio', name)} />
 
-      {!readOnly && <CheckinsPanel period={active} allKrs={active.objectives.flatMap(o => o.keyResults)} onAdd={c => patchActive(p => ({ ...p, checkins: [c, ...(p.checkins || [])] }))} currentUser={currentUser} />}
+      {!readOnly && <CheckinsPanel period={active} allKrs={active.objectives.flatMap(o => o.keyResults)} onAdd={c => patchActive(p => (p.checkins || []).some(x => x.id === c.id) ? p : ({ ...p, checkins: [c, ...(p.checkins || [])] }))} currentUser={currentUser} />}
     </div>
   );
 };
 
 // Checklist de atividades por KR
-const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onChange: (tasks: OkrTask[]) => void; onDeleteLog?: (text: string) => void }> = ({ kr, readOnly, onChange, onDeleteLog }) => {
+// As mudanças são funções (onMutate) aplicadas à lista ATUAL do banco — marcar uma
+// atividade não desfaz a que outra pessoa acabou de acrescentar.
+const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onMutate: (fn: (tasks: OkrTask[]) => OkrTask[]) => Promise<boolean>; onDeleteLog?: (text: string) => void }> = ({ kr, readOnly, onMutate, onDeleteLog }) => {
   const [text, setText] = useState('');
-  const tasks = kr.tasks || [];
-  const add = () => { if (!text.trim()) return; onChange([...tasks, { id: newId(), text: text.trim(), done: false }]); setText(''); };
+  const tasks = Array.isArray(kr.tasks) ? kr.tasks : [];
+  // O campo limpa na hora (a atividade já aparece na lista); se a gravação falhar de
+  // vez, o texto volta para o campo — ninguém perde o que digitou.
+  const add = () => { const t = text.trim(); if (!t) return; const task = { id: newId(), text: t, done: false }; setText(''); onMutate(ts => ts.some(x => x.id === task.id) ? ts : [...ts, task]).then(ok => { if (!ok) setText(cur => cur || t); }); };
+  const setDone = (id: string, done: boolean) => onMutate(ts => ts.map(x => x.id === id ? { ...x, done } : x));
   return (
     <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-800">
       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Atividades {tasks.length > 0 && `· ${tasks.filter(t => t.done).length}/${tasks.length}`}</span>
       <div className="space-y-1 mt-1.5">
         {tasks.map(t => (
           <div key={t.id} className="flex items-center gap-2 group/task">
-            <input type="checkbox" checked={t.done} disabled={readOnly} onChange={() => onChange(tasks.map(x => x.id === t.id ? { ...x, done: !x.done } : x))} className="w-3.5 h-3.5 accent-blue-600 shrink-0" />
+            <input type="checkbox" checked={t.done} disabled={readOnly} onChange={() => setDone(t.id, !t.done)} className="w-3.5 h-3.5 accent-blue-600 shrink-0" />
             <span className={`text-xs flex-1 min-w-0 ${t.done ? 'line-through text-slate-400' : 'text-slate-600 dark:text-slate-300'}`}>{t.text}</span>
-            {!readOnly && <button onClick={() => { onDeleteLog?.(t.text); onChange(tasks.filter(x => x.id !== t.id)); }} className="opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={12} /></button>}
+            {!readOnly && <button onClick={() => { onDeleteLog?.(t.text); onMutate(ts => ts.filter(x => x.id !== t.id)); }} className="opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={12} /></button>}
           </div>
         ))}
         {tasks.length === 0 && <p className="text-[11px] text-slate-400 italic">Nenhuma atividade cadastrada.</p>}
@@ -510,11 +652,11 @@ const StatusDropdown: React.FC<{ value: string; onChange: (v: string) => void; r
   );
 };
 
-const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onChange: (pf: PortfolioItem[]) => void; readOnly?: boolean; onDeleteLog?: (name: string) => void }> = ({ portfolio, onChange, readOnly, onDeleteLog }) => {
-  const items = portfolio || [];
-  const update = (id: string, patch: Partial<PortfolioItem>) => onChange(items.map(i => i.id === id ? { ...i, ...patch } : i));
-  const remove = (id: string, name?: string) => { onDeleteLog?.(name || ''); onChange(items.filter(i => i.id !== id)); };
-  const add = () => onChange([...items, { id: `p${Date.now().toString(36)}`, name: 'Novo projeto', what: '', category: 'Sistemas', status: 'Desenvolvimento', nextMilestone: '' }]);
+const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onMutate: (fn: (pf: PortfolioItem[]) => PortfolioItem[]) => void; readOnly?: boolean; onDeleteLog?: (name: string) => void }> = ({ portfolio, onMutate, readOnly, onDeleteLog }) => {
+  const items = Array.isArray(portfolio) ? portfolio : [];
+  const update = (id: string, patch: Partial<PortfolioItem>) => onMutate(pf => pf.map(i => i.id === id ? { ...i, ...patch } : i));
+  const remove = (id: string, name?: string) => { onDeleteLog?.(name || ''); onMutate(pf => pf.filter(i => i.id !== id)); };
+  const add = () => { const item = { id: `p${Date.now().toString(36)}`, name: 'Novo projeto', what: '', category: 'Sistemas', status: 'Desenvolvimento', nextMilestone: '' }; onMutate(pf => pf.some(x => x.id === item.id) ? pf : [...pf, item]); };
   const prod = items.filter(i => i.status === 'Produção').length;
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-gray-200 dark:border-slate-700">
@@ -561,7 +703,7 @@ const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onChange: (pf: Port
   );
 };
 
-const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd: (c: OkrCheckin) => void; currentUser: User }> = ({ period, allKrs, onAdd, currentUser }) => {
+const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd: (c: OkrCheckin) => Promise<boolean>; currentUser: User }> = ({ period, allKrs, onAdd, currentUser }) => {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [kr, setKr] = useState(allKrs[0]?.id || '');
   const [comment, setComment] = useState('');
@@ -570,9 +712,12 @@ const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd
     if (!comment.trim()) return;
     const krObj = allKrs.find(k => k.id === kr);
     const entry: OkrCheckin = { id: newId(), date, kr, current: krObj?.current ?? 0, comment: comment.trim(), next: next.trim() };
-    onAdd(entry);
-    try { addAuditLog({ userId: currentUser.id, userName: currentUser.name, action: 'CREATE', entityType: 'OKR_CHECKIN', entityId: entry.id, entityName: kr, details: `Check-in OKR ${kr} (${date}) por ${currentUser.name}` }); } catch {}
     setComment(''); setNext('');
+    onAdd(entry).then(ok => {
+      // Gravou: registra na auditoria. Não gravou: o texto volta para o formulário.
+      if (ok) { try { addAuditLog({ userId: currentUser.id, userName: currentUser.name, action: 'CREATE', entityType: 'OKR_CHECKIN', entityId: entry.id, entityName: kr, details: `Check-in OKR ${kr} (${date}) por ${currentUser.name}` }); } catch {} }
+      else { setComment(c => c || entry.comment); setNext(n => n || entry.next); }
+    });
   };
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-gray-200 dark:border-slate-700 no-print">
@@ -614,3 +759,5 @@ export const OkrPublicPage: React.FC<{ token: string }> = ({ token }) => {
     </div>
   );
 };
+
+export const OkrView = withOkrSafe<OkrViewProps>(OkrViewInner, 'este OKR');

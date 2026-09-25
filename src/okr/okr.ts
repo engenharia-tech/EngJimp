@@ -12,7 +12,8 @@ export interface OkrTask {
 }
 
 export interface OkrKeyResult {
-  id: string;            // ex.: "KR1.1"
+  id: string;            // ex.: "KR1.1" (rótulo)
+  uid?: string;          // identidade única (KRs criados a partir de 25/09); o arraste confere
   title: string;
   metric: string;        // rótulo da métrica
   baseline: number;
@@ -25,10 +26,36 @@ export interface OkrKeyResult {
   status: OkrStatus | string;
   notes?: string;
   // ---- Fase 2 (todos opcionais, retrocompatíveis) ----
-  owner?: string;        // responsável pelo KR
+  owner?: string;        // LEGADO: "responsável" em texto livre (ex.: "PCP + TI"). Não é mais
+                         // editado — virou `executores`. Fica guardado; só é lido quando
+                         // `executores` não existe (ver krExecutores).
   start?: string;        // ISO yyyy-mm-dd — INÍCIO do período do KR
   archived?: boolean;    // KR arquivado (some da lista, sem apagar)
   history?: OkrProgressPoint[]; // histórico de progresso (cada mudança do "atual")
+  // ---- Executores (25/09) ----
+  // Quem executa o KR (pessoas e/ou equipes do cadastro okr_executor). Guarda o
+  // id E o nome da época (o nome mostra mesmo sem acesso ao cadastro, ex.: link
+  // público). `[]` = "sem executor" de propósito; ausente = nunca definido.
+  executores?: OkrPersonRef[];
+}
+
+// Referência a alguém do cadastro de executores: id (para acompanhar renomeação)
+// + o nome de quando foi escolhido. `id` falta só em nome legado que não casou.
+export interface OkrPersonRef {
+  id?: string;
+  name: string;
+  kind?: OkrExecutorKind; // guardado ao escolher: sem o cadastro (link público) ainda diz se é equipe
+}
+
+// Cadastro compartilhado de executores (tabela okr_executor).
+export type OkrExecutorKind = 'pessoa' | 'equipe';
+export interface OkrExecutor {
+  id: string;
+  name: string;
+  kind: OkrExecutorKind;
+  team?: string;         // equipe a que a pessoa pertence (numa equipe, o próprio nome)
+  active: boolean;
+  updatedAt?: string;    // versão da linha (trava contra gravar por cima de outro admin)
 }
 
 export interface OkrProgressPoint {
@@ -41,6 +68,9 @@ export interface OkrObjective {
   id: string;            // ex.: "O1"
   title: string;
   keyResults: OkrKeyResult[];
+  responsavel?: OkrPersonRef | null; // responsável pelo objetivo (1, do cadastro de executores)
+  krSeq?: number;        // maior número de KR já emitido neste objetivo (nunca reusa)
+  uid?: string;          // identidade única (objetivos criados a partir de 25/09)
 }
 
 export interface OkrCheckin {
@@ -81,6 +111,7 @@ export interface OkrPeriod {
   range: string;          // "01/10/2026 a 31/12/2026"
   objectives: OkrObjective[];
   checkins: OkrCheckin[];
+  objSeq?: number;        // maior número de objetivo já emitido neste período (nunca reusa)
 }
 
 // O que fica guardado: o portfólio (compartilhado entre períodos) + os períodos.
@@ -110,29 +141,76 @@ export interface OkrStore {
   activePeriodId: string;
   governance?: OkrGovState;   // governança do ciclo (revisões + ações) — do dono
   updatedAt?: string;
+  v?: number;                 // marca de formato gravada pelo código novo (ver OKR_FORMAT_VERSION)
 }
 
 // Aceita tanto o formato ANTIGO (OkrData: objectives no topo) quanto o novo
 // (OkrStore com periods) e sempre devolve um OkrStore.
+// Saneia a árvore vinda do banco: quem lê percorre periods → objectives → keyResults
+// sem conferir tipo, e um nó nulo derrubava a tela inteira (Linha do tempo, Executores).
+// Cada folha no tipo que a tela espera: texto onde se escreve texto (um título
+// objeto derrubava o render), número onde se faz conta, lista onde se percorre. O
+// que não se reconhece (campos novos) passa intacto. Data gravada errada continua
+// visível como texto — a tela a marca como "data inválida" em vez de sumir com ela.
+const isObj = (x: any) => !!x && typeof x === 'object' && !Array.isArray(x);
+const str = (v: any, def = ''): string => typeof v === 'string' ? v : v == null ? def : typeof v === 'object' ? JSON.stringify(v) : String(v);
+const optStr = (v: any): string | undefined => v == null ? undefined : str(v);
+const num = (v: any, def = 0): number => { const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN; return Number.isFinite(n) ? n : def; };
+const objs = (v: any): any[] => (Array.isArray(v) ? v : []).filter(isObj);
+const FORMATS = new Set(['bin', 'pct', 'num']);
+const saneRef = (r: any) => isObj(r) ? { ...r, name: str(r.name), ...(r.id != null ? { id: str(r.id) } : {}) } : r;
+const saneKr = (k: any): OkrKeyResult => ({
+  ...k,
+  id: str(k.id), title: str(k.title), metric: str(k.metric), initiatives: str(k.initiatives), status: str(k.status, 'Não iniciado'),
+  notes: optStr(k.notes), uid: optStr(k.uid),
+  format: FORMATS.has(k.format) ? k.format : 'num',
+  baseline: num(k.baseline), target: num(k.target, 1), current: num(k.current),
+  due: str(k.due), ...(k.start != null ? { start: str(k.start) } : {}),
+  tasks: objs(k.tasks).map(t => ({ ...t, id: str(t.id), text: str(t.text), done: !!t.done })),
+  history: objs(k.history),
+  ...(k.executores !== undefined ? { executores: objs(k.executores).map(saneRef) } : {}),
+  ...(k.owner != null ? { owner: str(k.owner) } : {}),
+});
+const sanePeriods = (ps: any[]): OkrPeriod[] => ps.filter(isObj).map((p: any) => ({
+  ...p,
+  id: str(p.id), label: str(p.label), range: str(p.range),
+  objectives: objs(p.objectives).map((o: any) => ({
+    ...o,
+    id: str(o.id), title: str(o.title),
+    responsavel: isObj(o.responsavel) ? saneRef(o.responsavel) : null,
+    keyResults: objs(o.keyResults).map(saneKr),
+  })),
+  checkins: objs(p.checkins).map((c: any) => ({ ...c, id: str(c.id), date: str(c.date), kr: str(c.kr), comment: str(c.comment), next: str(c.next), current: num(c.current) })),
+}));
+const sanePortfolio = (v: any): PortfolioItem[] => objs(v).map(i => ({ ...i, id: str(i.id), name: str(i.name), what: str(i.what), category: str(i.category), status: str(i.status), nextMilestone: str(i.nextMilestone), url: optStr(i.url) }));
+const CADENCES = new Set(['Semanal', 'Mensal', 'Trimestral']);
+const saneGov = (g: any): OkrGovState | undefined => isObj(g) ? {
+  ...g,
+  reviews: objs(g.reviews).map((r: any) => ({ ...r, id: str(r.id), date: str(r.date), cadence: CADENCES.has(r.cadence) ? r.cadence : 'Mensal', notes: str(r.notes), next: str(r.next) })),
+  actions: objs(g.actions).map((a: any) => ({ ...a, id: str(a.id), text: str(a.text), owner: str(a.owner), due: str(a.due), done: !!a.done })),
+} : undefined;
+
 export const migrateToStore = (raw: any): OkrStore => {
-  if (raw && Array.isArray(raw.periods) && raw.periods.length) {
+  const periods = raw && Array.isArray(raw.periods) ? sanePeriods(raw.periods) : [];
+  if (periods.length) {
+    const active = str(raw.activePeriodId);
     return {
-      owner: raw.owner || 'Edson Farias',
+      owner: str(raw.owner) || 'Edson Farias',
       // Só cai no portfólio padrão quando o campo NÃO existe. Um array vazio
       // (dono que ainda não preencheu, ex.: Matheus) fica vazio — nunca herda
       // o portfólio de outra pessoa.
-      portfolio: Array.isArray(raw.portfolio) ? raw.portfolio : DEFAULT_PORTFOLIO,
-      periods: raw.periods,
-      activePeriodId: raw.activePeriodId || raw.periods[0].id,
-      governance: raw.governance,
+      portfolio: Array.isArray(raw.portfolio) ? sanePortfolio(raw.portfolio) : DEFAULT_PORTFOLIO,
+      periods,
+      activePeriodId: periods.some(p => p.id === active) ? active : periods[0].id,
+      governance: saneGov(raw.governance),
       updatedAt: raw.updatedAt,
     };
   }
   if (raw && Array.isArray(raw.objectives)) {
     return {
-      owner: raw.owner || 'Edson Farias',
-      portfolio: Array.isArray(raw.portfolio) ? raw.portfolio : DEFAULT_PORTFOLIO,
-      periods: [{ id: 'q4-2026', label: 'Q4 2026', range: raw.period || '01/10/2026 a 31/12/2026', objectives: raw.objectives, checkins: raw.checkins || [] }],
+      owner: str(raw.owner) || 'Edson Farias',
+      portfolio: Array.isArray(raw.portfolio) ? sanePortfolio(raw.portfolio) : DEFAULT_PORTFOLIO,
+      periods: sanePeriods([{ id: 'q4-2026', label: 'Q4 2026', range: raw.period || '01/10/2026 a 31/12/2026', objectives: raw.objectives, checkins: raw.checkins || [] }]),
       activePeriodId: 'q4-2026',
       updatedAt: raw.updatedAt,
     };
@@ -164,11 +242,105 @@ export const clonePeriodStructure = (src: OkrPeriod, label: string, range: strin
   checkins: [],
   objectives: src.objectives.map(o => ({
     ...o,
-    keyResults: o.keyResults.map(k => ({ ...k, current: k.baseline, status: 'Não iniciado', tasks: (k.tasks || []).map(t => ({ ...t, done: false })) })),
+    keyResults: o.keyResults.map(k => ({ ...k, uid: newUid(), current: k.baseline, status: 'Não iniciado', tasks: (k.tasks || []).map(t => ({ ...t, done: false })) })),
   })),
 });
 
-export const emptyKr = (id: string): OkrKeyResult => ({ id, title: 'Novo resultado-chave', metric: '', baseline: 0, target: 1, current: 0, format: 'bin', due: '', initiatives: '', tasks: [], status: 'Não iniciado' });
+// Identidade interna e única do KR (o "KR1.3" é só o rótulo que a pessoa lê).
+export const newUid = (): string => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+export const emptyKr = (id: string): OkrKeyResult => ({ id, uid: newUid(), title: 'Novo resultado-chave', metric: '', baseline: 0, target: 1, current: 0, format: 'bin', due: '', initiatives: '', tasks: [], status: 'Não iniciado' });
+
+// IDs novos NUNCA repetem um já usado: o maior existente, ou o maior JÁ EMITIDO
+// (krSeq/objSeq, guardado), + 1. Contar a posição repetia id depois de uma exclusão
+// (O1,O3,O4 → "novo" virava O4 de novo), e apagar o último e criar outro devolvia o
+// mesmo rótulo — uma tela aberta editava o KR novo achando que era o antigo.
+const maxNum = (ids: string[], re: RegExp) => ids.reduce((m, id) => { const x = re.exec(id || ''); return x ? Math.max(m, +x[1]) : m; }, 0);
+export const nextObjectiveNum = (p: { objectives: OkrObjective[]; objSeq?: number }): number =>
+  Math.max(maxNum(p.objectives.map(o => o.id), /^O(\d+)$/i), Number(p.objSeq) || 0) + 1;
+export const nextObjectiveId = (objs: OkrObjective[], objSeq?: number): string => `O${nextObjectiveNum({ objectives: objs, objSeq })}`;
+export const nextKrNum = (o: OkrObjective): number => {
+  const n = (o.id || '').replace(/\D/g, '') || '0';
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return Math.max(maxNum(o.keyResults.map(k => k.id), new RegExp(`^KR${esc}\\.(\\d+)$`, 'i')), Number(o.krSeq) || 0) + 1;
+};
+export const nextKrId = (o: OkrObjective): string => `KR${(o.id || '').replace(/\D/g, '') || '0'}.${nextKrNum(o)}`;
+
+// ---- Executores ----------------------------------------------------------
+
+// Chave de comparação: sem acento, minúsculo, espaços simples. É a MESMA regra de
+// public.okr_norm no banco (NFD + tira toda marca), que o índice único do cadastro
+// usa — "Rogério" casa com "Rogerio".
+export const normName = (s?: string | null): string =>
+  (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+// Quebra o "responsável" legado em nomes: "PCP + TI", "Claudia e RH", "A, B / C".
+// O hífen NÃO separa ("Comercial - Geisse" é um nome só). Mesma regra da migração.
+export const splitLegacyOwners = (owner?: string): string[] => {
+  const out: string[] = []; const seen = new Set<string>();
+  (owner || '').split(/\s*[+,;/]\s*|\s+e\s+/i).map(t => t.trim()).filter(Boolean).forEach(t => {
+    const k = normName(t); if (!seen.has(k)) { seen.add(k); out.push(t); }
+  });
+  return out;
+};
+
+// Executores de um KR: os gravados; se o KR nunca teve (legado), deriva do texto
+// antigo casando com o cadastro. `[]` gravado = nenhum, de propósito (não cai no legado).
+export const krExecutores = (kr: OkrKeyResult, registry: OkrExecutor[] = []): OkrPersonRef[] => {
+  if (Array.isArray(kr.executores)) return kr.executores.filter(r => r && typeof r.name === 'string');
+  const byName = new Map(registry.map(e => [normName(e.name), e] as const));
+  const out: OkrPersonRef[] = []; const seen = new Set<string>();
+  // Deduplica DEPOIS do alias, pelo id casado — igual à migração SQL
+  // ("Geisse / Comercial - Geisse" é uma pessoa só).
+  splitLegacyOwners(typeof kr.owner === 'string' ? kr.owner : '').forEach(t => {
+    const alias = normName(t) === 'comercial - geisse' ? 'geisse' : normName(t);
+    const e = byName.get(alias);
+    const key = e ? `id:${e.id}` : `n:${alias}`;
+    if (seen.has(key)) return; seen.add(key);
+    out.push(e ? { id: e.id, name: e.name, kind: e.kind } : { name: t });
+  });
+  return out;
+};
+
+// Nome a mostrar: o ATUAL do cadastro (acompanha renomeação); sem cadastro ou sem
+// id (link público, legado), o nome guardado.
+export const refName = (ref: OkrPersonRef, byId?: Map<string, OkrExecutor>): string =>
+  (ref.id && byId?.get(ref.id)?.name) || ref.name;
+
+// Data local → "yyyy-mm-dd" (NUNCA toISOString: em UTC-3 perto da meia-noite vira o dia errado).
+export const toIsoDate = (d: Date): string =>
+  `${String(d.getFullYear()).padStart(4, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// "aaaa-mm-dd" (ou com hora) → Date LOCAL, só se for um dia de verdade entre 2000
+// e 2100. Há KR gravado com ano "0026" (digitado errado): `new Date` lia 1926/0026 e
+// o arraste gravava lixo. Fora da faixa = sem data (o gráfico usa o período).
+// Aceita QUALQUER coisa (o dado vem do banco e pode ter número/objeto no lugar do
+// texto): o que não for texto de data válido vira null, nunca exceção.
+export const parseIsoDay = (iso?: unknown): Date | null => {
+  if (typeof iso !== 'string') return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(iso.trim());
+  if (!m) return null;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  if (y < 2000 || y > 2100) return null;
+  const dt = new Date(y, mo - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d ? dt : null;
+};
+
+// Carimbo de data-hora (ISO com fuso, ex.: histórico gravado em UTC) → o DIA LOCAL.
+// Cortar o texto em 10 caracteres dava o dia UTC: depois das 21h em Brasília, o dia seguinte.
+export const localDayOf = (ts?: unknown): Date | null => {
+  if (typeof ts !== 'string' && typeof ts !== 'number') return null;
+  const t = new Date(ts);
+  if (isNaN(t.getTime()) || t.getFullYear() < 2000 || t.getFullYear() > 2100) return null;
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+};
+
+// O que está gravado num campo, como texto comparável (o dado do banco pode vir com
+// tipo errado: número, objeto). Serve às travas "o banco ainda tem o que a tela mostrava".
+export const rawText = (v: unknown): string => typeof v === 'string' ? v : v == null ? '' : JSON.stringify(v);
+
+// "Tem data gravada, mas ela não é uma data de verdade" (ex.: ano "0026").
+export const isBadDate = (v?: unknown): boolean => typeof v === 'string' ? (v.trim() !== '' && !parseIsoDay(v)) : (v !== undefined && v !== null && v !== '');
 
 // Portfólio real (inventariado do repositório app/, exceto Michela).
 export const DEFAULT_PORTFOLIO: PortfolioItem[] = [
