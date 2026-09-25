@@ -44,6 +44,7 @@ const ROLE_LABEL: Record<string, string> = {
   CEO: 'CEO',
   COORDENADOR: 'Coordenador',
   PROCESSOS: 'Processos',
+  ADM_EXTERNO: 'ADM Externo',
   QUALIDADE: 'Qualidade',
 };
 

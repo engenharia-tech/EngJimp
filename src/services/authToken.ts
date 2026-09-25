@@ -36,6 +36,19 @@ export const getTokenExp = (): number | null => {
   } catch { return null; }
 };
 
+// O `sub` (id do usuário) do JWT guardado, sem validar assinatura — só para o cliente
+// achar a própria linha (a autorização de verdade é do banco/servidor).
+export const getTokenSub = (): string | null => {
+  const t = current;
+  if (!t) return null;
+  try {
+    let b64 = (t.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/');
+    b64 += '='.repeat((4 - (b64.length % 4)) % 4);
+    const json = JSON.parse(atob(b64));
+    return typeof json.sub === 'string' ? json.sub : null;
+  } catch { return null; }
+};
+
 // true se HA token e ele ja expirou (com folga de `skewSeconds`). Retorna false
 // se nao ha token (esse caso e tratado a parte, no gate de sessao).
 export const isTokenExpired = (skewSeconds = 30): boolean => {

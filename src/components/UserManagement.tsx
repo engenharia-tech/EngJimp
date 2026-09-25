@@ -12,6 +12,13 @@ interface UserManagementProps {
     onUsersChange?: () => void;
 }
 
+// O "Script de Correção TOTAL" DESLIGA a segurança do banco (RLS) em 10 tabelas e cria
+// regras que deixam qualquer um ler e gravar tudo — rodá-lo abriria a engenharia inteira
+// até para o admin de visualização (ADM Externo). Fica fora da tela; erro de banco vai
+// para quem administra o sistema, não para um script colado no editor.
+const MOSTRAR_CORRECAO_TOTAL = false;
+const AVISO_ERRO_DE_BANCO = 'Avise quem administra o sistema. Não rode scripts de "correção": eles desligam a segurança do banco.';
+
 export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onUsersChange }) => {
   const { addToast } = useToast();
   const { t } = useLanguage();
@@ -70,7 +77,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
 
   const loadList = async () => {
     setLoadingList(true);
-    const list = await fetchUsers();
+    const list = await fetchUsers({ incluirExternos: true }); // a Equipe mostra todo mundo, inclusive o ADM Externo
     const sortedList = [...list].sort((a, b) => a.name.localeCompare(b.name));
     setUsers(sortedList);
     setLoadingList(false);
@@ -91,11 +98,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       role,
       salary,
       // Admin de visualização não tem OKR próprio nem é "somente OKR" (o servidor também força).
-      okrEnabled: okrViewer ? false : (okrEnabled || okrOnly),
-      okrOnly: okrViewer ? false : okrOnly,
+      okrEnabled: (okrViewer || role === 'ADM_EXTERNO') ? false : (okrEnabled || okrOnly),
+      okrOnly: (okrViewer || role === 'ADM_EXTERNO') ? false : okrOnly,
       // Só quem pode mexer na marca a manda; o resto não manda (o servidor mantém a
       // do cadastro) — assim uma lista aberta há horas não desfaz nem esbarra na marca.
-      okrViewer: canMarkOkrViewer ? okrViewer : undefined,
+      okrViewer: canMarkOkrViewer ? (okrViewer || role === 'ADM_EXTERNO') : undefined,
       sector
     };
 
@@ -152,9 +159,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     } else {
       console.error("Register error:", result.message);
       if (result.message?.includes('violates check constraint') || result.message?.includes('users_role_check')) {
-          addToast('ERRO CRÍTICO: O banco de dados precisa ser atualizado para aceitar novos cargos. Role para baixo e use o botão "Correção TOTAL".', 'error');
+          addToast('O banco não aceitou este cargo. ' + AVISO_ERRO_DE_BANCO, 'error');
       } else if (result.message?.includes('policy')) {
-          addToast('ERRO DE PERMISSÃO: O banco de dados bloqueou a ação. Use o botão "Correção TOTAL" abaixo.', 'error');
+          addToast('O banco bloqueou a ação (permissão). ' + AVISO_ERRO_DE_BANCO, 'error');
       } else {
           addToast(result.message || `Erro ao ${editingUserId ? 'atualizar' : 'criar'} usuário.`, 'error');
       }
@@ -196,7 +203,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
           onUsersChange?.(); // Refresh global app state
         } else {
           if (result.message?.includes('violates foreign key') || result.message?.includes('constraint')) {
-             addToast('ERRO DE VÍNCULO: Não é possível excluir pois existem projetos vinculados. Use o botão "Correção TOTAL" abaixo para corrigir.', 'error');
+             addToast('Não é possível excluir: existem projetos vinculados a este usuário. ' + AVISO_ERRO_DE_BANCO, 'error');
           } else {
              addToast(result.message || 'Erro ao excluir usuário.', 'error');
           }
@@ -262,6 +269,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   // O próprio Edson nunca é marcado (fecharia as gravações dele).
   const canMarkOkrViewer = isEdson || !!currentUser.okrAdmin;
   const EDSON_UUID = '1e570c78-7278-4e8d-a90e-a820c11bb07a';
+  // O grupo ADM Externo É o visualizador — deduzido na hora, não gravado no estado: escolher
+  // o cargo por engano e voltar não deixa a pessoa marcada nem com o OKR desligado.
+  const viewerEfetivo = okrViewer || role === 'ADM_EXTERNO';
   // Gestor can do everything. Coordenador can view. Everyone can edit themselves.
   
   const canCreateUser = isGestor;
@@ -374,6 +384,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               <option value="CEO">{t('ceo')}</option>
               <option value="COORDENADOR">{t('coordenador')}</option>
               <option value="PROCESSOS">{t('processos')}</option>
+              {/* ADM Externo = admin de visualização do OKR: só o Edson/admin de OKR põe ou tira. */}
+              {(canMarkOkrViewer || role === 'ADM_EXTERNO') && (
+                <option value="ADM_EXTERNO" disabled={!canMarkOkrViewer}>{t('adm_externo')}</option>
+              )}
             </select>
           </div>
           <div>
@@ -406,8 +420,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
                 type="checkbox"
-                checked={!okrViewer && (okrEnabled || okrOnly)}
-                disabled={okrOnly || okrViewer}
+                checked={!viewerEfetivo && (okrEnabled || okrOnly)}
+                disabled={okrOnly || viewerEfetivo}
                 onChange={e => setOkrEnabled(e.target.checked)}
                 className="w-5 h-5 rounded accent-blue-600"
               />
@@ -419,8 +433,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
                 type="checkbox"
-                checked={!okrViewer && okrOnly}
-                disabled={okrViewer}
+                checked={!viewerEfetivo && okrOnly}
+                disabled={viewerEfetivo}
                 onChange={e => { setOkrOnly(e.target.checked); if (e.target.checked) setOkrEnabled(true); }}
                 className="w-5 h-5 rounded accent-amber-600"
               />
@@ -433,7 +447,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             <label className="md:col-span-2 flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
                 type="checkbox"
-                checked={okrViewer}
+                checked={okrViewer || role === 'ADM_EXTERNO'}
+                disabled={role === 'ADM_EXTERNO'}
                 onChange={e => { setOkrViewer(e.target.checked); if (e.target.checked) { setOkrEnabled(false); setOkrOnly(false); } }}
                 className="w-5 h-5 rounded accent-violet-600"
               />
@@ -759,7 +774,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                     </button>
                 </div>
 
-                {/* COMPREHENSIVE SQL FIX - CRITICAL */}
+                {/* COMPREHENSIVE SQL FIX — desligado (ver MOSTRAR_CORRECAO_TOTAL) */}
+                {MOSTRAR_CORRECAO_TOTAL && (
                 <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-900/30 md:col-span-2">
                     <h4 className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center uppercase tracking-tighter">
                         <Shield className="w-5 h-5 mr-2" />
@@ -776,6 +792,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                         OBTER SCRIPT DE CORREÇÃO TOTAL
                     </button>
                 </div>
+                )}
             </div>
         </div>
       )}
@@ -830,7 +847,7 @@ ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_type_check;
 
 -- 2. Atualizar Cargos Permitidos
 ALTER TABLE public.users ADD CONSTRAINT users_role_check 
-CHECK (role IN ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR'));
+CHECK (role IN ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR', 'ADM_EXTERNO'));
 
 -- 3. Garantir que as colunas necessárias existem na tabela de projetos
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS client_name text;
