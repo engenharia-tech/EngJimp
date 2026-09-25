@@ -12,21 +12,11 @@ import { authHeaders } from './authToken';
  */
 
 // ====================================================================
-// DESTINOS DAS NOTIFICACOES — e-mails corporativos FIXOS.
-// Independentes do e-mail de LOGIN de cada usuario (o do Edson, por ex.,
-// e pessoal e serve so para login/redefinicao de senha).
-// Para mudar quem recebe, edite estas constantes.
+// DESTINOS DAS NOTIFICACOES — quem recebe e decidido pelo SERVIDOR
+// (NOTIFY_RECIPIENTS em api/index.ts). O navegador manda so o TIPO
+// ('completion' | 'interruption'); o nome do remetente tambem sai do
+// servidor. Para mudar quem recebe, edite la.
 // ====================================================================
-const EMAIL_ENGENHARIA  = 'edson@jimp.com.br';                      // Edson / Engenharia (23/09: era engenharia@joinvilleimplementos.com.br)
-const EMAIL_COORDENACAO = 'matheus.p@joinvilleimplementos.com.br';  // Matheus (Coordenacao)
-const EMAIL_COMERCIAL   = 'comercial@furgoesjoinville.com.br';      // Vinicius (Comercial)
-
-/** CONCLUSAO de projeto -> Engenharia + Coordenacao. */
-export const getCompletionRecipients = (): string[] => [EMAIL_ENGENHARIA, EMAIL_COORDENACAO];
-
-/** INTERRUPCAO -> Engenharia + Coordenacao + Comercial. As paradas de
- *  projeto sao ocasionadas pelo Comercial, entao precisam saber. */
-export const getInterruptionRecipients = (): string[] => [EMAIL_ENGENHARIA, EMAIL_COORDENACAO, EMAIL_COMERCIAL];
 
 // --- formatacao ---
 const horas = (secs?: number): string => ((secs || 0) / 3600).toFixed(2);
@@ -94,8 +84,6 @@ export const notifyProjectCompletion = async (
   template?: string
 ): Promise<void> => {
   try {
-    const recipients = getCompletionRecipients();
-
     const designer = users.find((u) => u.id === project.userId);
     const designerName = designer
       ? `${designer.name} ${designer.surname || ''}`.trim()
@@ -145,7 +133,7 @@ export const notifyProjectCompletion = async (
     const response = await fetch('/api/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ subject, body, to: recipients.join(','), fromName: 'JIMPNexus KPI' }),
+      body: JSON.stringify({ kind: 'completion', subject, body }),
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
