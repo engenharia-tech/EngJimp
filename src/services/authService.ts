@@ -1,5 +1,5 @@
 import { User } from '../types';
-import { setAuthToken } from './authToken';
+import { setAuthToken, authHeaders } from './authToken';
 
 /**
  * Autenticacao pelo SERVIDOR (Etapa 3). O navegador nunca mais le a tabela
@@ -68,6 +68,35 @@ export const requestResetCode = async (
     return { error: 'Erro ao conectar ao servidor' };
   }
 };
+
+// A senha de quem JÁ está logado: conferida pelo servidor com o crachá. O cliente
+// não tem (e não deve ter) a senha para comparar — `user.password` é sempre ''.
+// `expired` = o crachá venceu (401): quem chama deve encerrar a sessão.
+type SessionPwResult = { ok: boolean; error?: string; expired?: boolean };
+
+const postWithSession = async (url: string, body: unknown, fallback: string): Promise<SessionPwResult> => {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) return { ok: true };
+    if (res.status === 401) return { ok: false, expired: true, error: 'Sua sessão expirou. Entre de novo.' };
+    return { ok: false, error: data.error || fallback };
+  } catch {
+    return { ok: false, error: 'Erro ao conectar ao servidor' };
+  }
+};
+
+// Perfil: troca a PRÓPRIA senha (a atual é conferida no servidor; a nova vai com hash).
+export const changeOwnPassword = (currentPassword: string, newPassword: string) =>
+  postWithSession('/api/auth/change-password', { currentPassword, newPassword }, 'Erro ao trocar a senha.');
+
+// Tela de bloqueio por inatividade: confere a senha de quem está logado.
+export const confirmOwnPassword = (password: string) =>
+  postWithSession('/api/auth/confirm-password', { password }, 'Erro ao conferir a senha.');
 
 export const setPasswordWithCode = async (
   username: string,

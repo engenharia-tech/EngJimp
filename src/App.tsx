@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp, Fingerprint, Key, ExternalLink, Globe } from 'lucide-react';
+import { LayoutDashboard, PenTool, Menu, X, History, Users, LogOut, Lightbulb, Shield, Activity, Eye, UserCog, Moon, Sun, PauseCircle, FileText, Search, Cpu, LayoutList, TrendingUp, Key, ExternalLink, Globe } from 'lucide-react';
 import { EngJimpTracker } from './components/EngJimpTracker';
 import { AIChat } from './components/AIChat';
 import { NexusChat } from './nexus/NexusChat';
@@ -52,6 +52,7 @@ import {
 import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { notifyProjectCompletion } from './services/notificationService';
 import { isTokenExpired, getAuthToken, setAuthToken } from './services/authToken';
+import { confirmOwnPassword } from './services/authService';
 import { Target, CalendarRange, Compass } from 'lucide-react';
 import { OkrView, OkrPublicPage } from './okr/OkrView';
 import { OkrIndicators } from './okr/OkrIndicators';
@@ -213,103 +214,59 @@ const AppContent: React.FC = () => {
 
   // Screen Lock helper states (remain component-local)
   const [lockPassword, setLockPassword] = useState('');
-  const [lockError, setLockError] = useState(false);
+  const [lockError, setLockError] = useState<string | false>(false);   // a mensagem, não só "errou"
+  const [lockChecking, setLockChecking] = useState(false);
   const [warningCountdown, setWarningCountdown] = useState<number | null>(null);
   const lastActiveRef = useRef<number>(Date.now());
-  const isLockedByInactivityRef = useRef<boolean>(false);
 
-  const handleBiometricUnlock = async () => {
-    if (!currentUser) return;
-    const isSimulated = localStorage.getItem(`biometric_simulated_${currentUser.id}`) === 'true';
+  // A "biometria" herdada do AI Studio saiu (25/09/2026): não conferia nada no
+  // servidor, e se a pessoa cancelasse o leitor bastava um OK no aviso de "modo
+  // simulado" para destravar a tela. Nunca foi usada (zero desbloqueios por ela na
+  // auditoria). Limpa as marcas que ficaram guardadas nos navegadores.
+  useEffect(() => {
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('biometric_enabled_') || k.startsWith('biometric_simulated_'))
+        .forEach(k => localStorage.removeItem(k));
+    } catch { /* storage indisponível */ }
+  }, []);
 
-    if (isSimulated) {
-      addToast('Escaneando biometria cadastrada...', 'info');
-      setTimeout(() => {
-        setIsLocked(false);
-        setLockPassword('');
-        setLockError(false);
-        isLockedByInactivityRef.current = false;
-        lastActiveRef.current = Date.now();
-        addToast(`Olá, ${currentUser.name}! Desbloqueado via biometria com sucesso.`, 'success');
-        addAuditLog({
-          userId: currentUser.id,
-          userName: currentUser.name,
-          action: 'LOGIN',
-          entityType: 'SCREEN_LOCK',
-          entityId: 'unlocked_biometrics_simulated',
-          entityName: 'Auto-Bloqueio de Inatividade',
-          details: `Usuário retornou e destravou a tela usando autenticação biométrica simulada.`
-        });
-      }, 1000);
+  // Destravar confere a senha NO SERVIDOR (pelo crachá). Antes comparava com
+  // `currentUser.password`, que o login deixa vazio: ninguém destravava pela senha.
+  const handleUnlockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || lockChecking) return;
+    setLockChecking(true);
+    const r = await confirmOwnPassword(lockPassword);
+    setLockChecking(false);
+    if (r.ok) {
+      setIsLocked(false);
+      setLockPassword('');
+      setLockError(false);
+      lastActiveRef.current = Date.now();
+      addToast('Acesso restabelecido com sucesso', 'success');
+      addAuditLog({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        action: 'LOGIN',
+        entityType: 'SCREEN_LOCK',
+        entityId: 'unlocked',
+        entityName: 'Auto-Bloqueio de Inatividade',
+        details: `Usuário retornou após inatividade e destravou a tela de segurança.`
+      });
       return;
     }
-
-    try {
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
-      const getCredentialOptions: CredentialRequestOptions = {
-        publicKey: {
-          challenge,
-          rpId: window.location.hostname,
-          userVerification: "required"
-        }
-      };
-
-      addToast('Escaneando leitor biométrico...', 'info');
-      const assertion = await navigator.credentials.get(getCredentialOptions);
-      if (assertion) {
-        setIsLocked(false);
-        setLockPassword('');
-        setLockError(false);
-        isLockedByInactivityRef.current = false;
-        lastActiveRef.current = Date.now();
-        addToast(`Olá, ${currentUser.name}! Desbloqueado via biometria do dispositivo.`, 'success');
-        addAuditLog({
-          userId: currentUser.id,
-          userName: currentUser.name,
-          action: 'LOGIN',
-          entityType: 'SCREEN_LOCK',
-          entityId: 'unlocked_biometrics_native',
-          entityName: 'Auto-Bloqueio de Inatividade',
-          details: `Usuário retornou e destravou a tela usando autenticação biométrica nativa.`
-        });
-      }
-    } catch (err: any) {
-      console.warn("Assertion WebAuthn error:", err);
-      const isSandboxError = err.name === 'NotAllowedError' || err.message?.includes('secure context') || err.message?.includes('sandboxed') || err.name === 'SecurityError';
-      if (isSandboxError) {
-        const confirmSim = window.confirm(
-          "Aviso de Sandbox: O iFrame barrou a leitura de biometria física real. Deseja efetuar a verificação local simulada para fins de homologação?"
-        );
-        if (confirmSim) {
-          localStorage.setItem(`biometric_simulated_${currentUser.id}`, 'true');
-          addToast('Simulando biometria segura...', 'info');
-          setTimeout(() => {
-            setIsLocked(false);
-            setLockPassword('');
-            setLockError(false);
-            isLockedByInactivityRef.current = false;
-            lastActiveRef.current = Date.now();
-            addToast(`Desbloqueado com sucesso!`, 'success');
-          }, 800);
-        }
-      } else {
-        addToast('Falha na autenticação biométrica do dispositivo. Digite sua senha.', 'error');
-      }
+    if (r.expired) {
+      setLockPassword('');
+      setCurrentUser(null);
+      addToast(r.error || 'Sua sessão expirou. Entre de novo.', 'info');
+      return;
     }
+    // Embaixo do campo vai o motivo REAL (senha errada, muitas tentativas, sem rede) —
+    // antes dizia "Senha incorreta" até quando o problema era a conexão.
+    setLockError(r.error || 'Senha incorreta.');
+    addToast(r.error || 'Senha incorreta', 'error');
   };
-
-  useEffect(() => {
-    if (isLocked && currentUser && localStorage.getItem(`biometric_enabled_${currentUser.id}`) === 'true') {
-      // Only auto-unlock using biometrics if the lock was triggered during the active session by inactivity
-      if (isLockedByInactivityRef.current) {
-        const timer = setTimeout(() => {
-          handleBiometricUnlock();
-        }, 600);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [isLocked, currentUser]);
 
   // Inactivity Detection for Security Auto-Lock
   useEffect(() => {
@@ -362,7 +319,6 @@ const AppContent: React.FC = () => {
         setCurrentUser(null);
         setIsLocked(false);
         setWarningCountdown(null);
-        isLockedByInactivityRef.current = false;
         addToast('Sessão encerrada por inatividade de 10 minutos.', 'info');
         
         try {
@@ -387,7 +343,6 @@ const AppContent: React.FC = () => {
         const timeoutMs = timeoutMinutes * 60 * 1000;
         
         if (timeSinceLastActive >= timeoutMs) {
-          isLockedByInactivityRef.current = true; // Mark as locked by inactivity to allow biometric auto-scanning afterward
           setIsLocked(true);
           setWarningCountdown(null);
         } else if (timeSinceLastActive >= timeoutMs - 10000) {
@@ -2221,47 +2176,8 @@ const AppContent: React.FC = () => {
                   </div>
                 </div>
 
-                {currentUser && localStorage.getItem(`biometric_enabled_${currentUser.id}`) === 'true' && (
-                  <div className="pt-2 pb-2 border-b border-gray-100 dark:border-slate-800/80">
-                    <button
-                      type="button"
-                      onClick={handleBiometricUnlock}
-                      className="w-full flex items-center justify-center gap-3 px-5 py-4 bg-gradient-to-tr from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl font-bold text-sm shadow-md hover:shadow-lg transition-all duration-300 group hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-                    >
-                      <Fingerprint className="w-5 h-5 text-emerald-100 animate-pulse group-hover:scale-115 transition-transform" />
-                      <span>Desbloquear via Biometria</span>
-                    </button>
-                    <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-2 text-center">
-                      Identificação segura ativa {localStorage.getItem(`biometric_simulated_${currentUser.id}`) === 'true' && '(Modo de Teste)'}.
-                    </p>
-                  </div>
-                )}
-
                 <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (lockPassword === currentUser.password) {
-                      setIsLocked(false);
-                      setLockPassword('');
-                      setLockError(false);
-                      isLockedByInactivityRef.current = false;
-                      lastActiveRef.current = Date.now();
-                      addToast('Acesso restabelecido com sucesso', 'success');
-
-                      addAuditLog({
-                        userId: currentUser.id,
-                        userName: currentUser.name,
-                        action: 'LOGIN',
-                        entityType: 'SCREEN_LOCK',
-                        entityId: 'unlocked',
-                        entityName: 'Auto-Bloqueio de Inatividade',
-                        details: `Usuário retornou após inatividade e destravou a tela de segurança.`
-                      });
-                    } else {
-                      setLockError(true);
-                      addToast('Senha incorreta', 'error');
-                    }
-                  }}
+                  onSubmit={handleUnlockSubmit}
                   className="space-y-4"
                 >
                   <div className="space-y-1 text-left">
@@ -2270,6 +2186,7 @@ const AppContent: React.FC = () => {
                     </label>
                     <input
                       type="password"
+                      autoComplete="current-password"
                       required
                       value={lockPassword}
                       onChange={(e) => {
@@ -2283,7 +2200,7 @@ const AppContent: React.FC = () => {
                     />
                     {lockError && (
                       <p className="text-xs text-red-500 font-medium mt-1">
-                        Senha incorreta. Tente novamente ou efetue logout.
+                        {lockError === 'Senha incorreta.' ? 'Senha incorreta. Tente novamente ou efetue logout.' : lockError}
                       </p>
                     )}
                   </div>
@@ -2295,7 +2212,6 @@ const AppContent: React.FC = () => {
                         setIsLocked(false);
                         setLockPassword('');
                         setLockError(false);
-                        isLockedByInactivityRef.current = false;
                         setCurrentUser(null);
                         addToast('Sessão encerrada por segurança', 'info');
                       }}
@@ -2305,9 +2221,10 @@ const AppContent: React.FC = () => {
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all"
+                      disabled={lockChecking}
+                      className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all disabled:opacity-60 disabled:cursor-wait"
                     >
-                      Desbloquear
+                      {lockChecking ? 'Conferindo…' : 'Desbloquear'}
                     </button>
                   </div>
                 </form>

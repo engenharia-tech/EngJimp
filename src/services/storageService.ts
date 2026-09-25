@@ -1946,6 +1946,23 @@ export const updateUser = async (user: User): Promise<{ success: boolean; messag
   }
 };
 
+// Meu Perfil: grava SÓ nome/sobrenome/e-mail/telefone da própria pessoa (o servidor
+// ignora qualquer outro campo neste modo).
+export const updateOwnContact = async (u: { id: string; username: string; name: string; surname?: string; email?: string; phone?: string }): Promise<{ success: boolean; message?: string }> => {
+  try {
+    const res = await fetch('/api/users/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ mode: 'profile', user: { id: u.id, username: u.username, name: u.name, surname: u.surname || '', email: u.email || '', phone: u.phone || '' } }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) return { success: true, message: data.message };
+    return { success: false, message: data.message || data.error || 'Erro ao atualizar o perfil.' };
+  } catch {
+    return { success: false, message: 'Erro ao conectar ao servidor.' };
+  }
+};
+
 export const deleteUser = async (id: string): Promise<{ success: boolean; message?: string }> => {
   try {
     const res = await fetch('/api/users/delete', {

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { updateUser } from '../services/storageService';
+import { updateOwnContact } from '../services/storageService';
+import { changeOwnPassword } from '../services/authService';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useDialog } from '../hooks/useDialog';
-import { User as UserIcon, Mail, Phone, Lock, Save, X, Loader2, Shield, Fingerprint } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Lock, Save, X, Loader2, Shield } from 'lucide-react';
 
 interface UserProfileModalProps {
   user: User;
@@ -26,83 +27,25 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
   const [email, setEmail] = useState(user.email || '');
   const [phone, setPhone] = useState(user.phone || '');
 
-  const [biometricEnabled, setBiometricEnabled] = useState(() => {
-    return localStorage.getItem(`biometric_enabled_${user.id}`) === 'true';
-  });
-
-  const handleToggleBiometrics = async (checked: boolean) => {
-    if (!checked) {
-      localStorage.removeItem(`biometric_enabled_${user.id}`);
-      localStorage.removeItem(`biometric_simulated_${user.id}`);
-      setBiometricEnabled(false);
-      addToast('Autenticação biométrica desativada', 'info');
-      return;
-    }
-
-    if (!window.PublicKeyCredential) {
-      addToast('Dispositivo ou navegador não suporta autenticação biométrica (WebAuthn).', 'error');
-      return;
-    }
-
-    try {
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
-      const createCredentialOptions: CredentialCreationOptions = {
-        publicKey: {
-          challenge,
-          rp: { name: "JIMP NEXUS Security" },
-          user: {
-            id: new TextEncoder().encode(user.id),
-            name: user.username,
-            displayName: user.name,
-          },
-          pubKeyCredParams: [{ alg: -7, type: "public-key" }],
-          timeout: 10000,
-          authenticatorSelection: { userVerification: "required" },
-        }
-      };
-
-      addToast('Confirme seus dados biométricos no prompt do sistema...', 'info');
-      
-      const credential = await navigator.credentials.create(createCredentialOptions);
-      if (credential) {
-        localStorage.setItem(`biometric_enabled_${user.id}`, 'true');
-        localStorage.removeItem(`biometric_simulated_${user.id}`);
-        setBiometricEnabled(true);
-        addToast('Biometria nativa registrada e ativada com sucesso!', 'success');
-      }
-    } catch (err: any) {
-      console.warn("WebAuthn API error:", err);
-      const isSandboxError = err.name === 'NotAllowedError' || err.message?.includes('secure context') || err.message?.includes('sandboxed') || err.name === 'SecurityError';
-      
-      if (isSandboxError) {
-        const confirmSimulation = window.confirm(
-          "Aviso de Sandbox: O iFrame do ambiente de desenvolvimento impediu o acesso à criptografia do dispositivo. Deseja habilitar a Biometria Simulada de Alta Fidelidade para fins de demonstração?"
-        );
-        if (confirmSimulation) {
-          localStorage.setItem(`biometric_enabled_${user.id}`, 'true');
-          localStorage.setItem(`biometric_simulated_${user.id}`, 'true');
-          setBiometricEnabled(true);
-          addToast('Simulador de Biometria ativado com sucesso para demonstração!', 'success');
-        } else {
-          addToast('Ativação biométrica bloqueada pelas restrições do iFrame.', 'error');
-        }
-      } else {
-        addToast(`Erro ao ativar: ${err.message || err.name}`, 'error');
-      }
-    }
-  };
+  const wantsNewPassword = newPassword.length > 0;
 
   const handleSave = async () => {
-    // Validate current password
-    if (currentPasswordInput !== user.password) {
-      addToast('A senha atual está incorreta.', 'error');
-      return;
-    }
-
-    if (newPassword && newPassword !== confirmPassword) {
-      addToast('As senhas não coincidem.', 'error');
-      return;
+    // A senha atual NÃO é conferida aqui: o cliente não tem a senha (o login devolve
+    // o usuário sem ela, `user.password` é ''). Quem confere é o servidor, e só quando
+    // se troca a senha. Antes a comparação era local e barrava todo salvamento.
+    if (wantsNewPassword) {
+      if (!currentPasswordInput) {
+        addToast('Digite a senha atual para trocar a senha.', 'error');
+        return;
+      }
+      if (newPassword.length < 6) {
+        addToast('A senha nova deve ter ao menos 6 caracteres.', 'error');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        addToast('As senhas não coincidem.', 'error');
+        return;
+      }
     }
 
     // Email validation
@@ -111,28 +54,59 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
         return;
     }
 
-    setIsSaving(true);
-    
-    // Create updated user object
-    const updatedUser: User = {
-      ...user,
-      name,
-      surname,
-      email,
-      phone,
-      password: newPassword || user.password
-    };
-
-    const result = await updateUser(updatedUser);
-
-    if (result.success) {
-      addToast('Perfil atualizado com sucesso!', 'success');
-      onUpdateUser(updatedUser);
+    const contactChanged =
+      name !== user.name || surname !== (user.surname || '') ||
+      email !== (user.email || '') || phone !== (user.phone || '');
+    if (!wantsNewPassword && !contactChanged) {
       onClose();
-    } else {
-      addToast(result.message || 'Erro ao atualizar perfil.', 'error');
+      return;
     }
-    setIsSaving(false);
+    if (contactChanged && !name.trim()) {
+      addToast('Informe o seu nome.', 'error');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // 1) Senha: conferida e gravada com hash pelo servidor (nunca em texto).
+      if (wantsNewPassword) {
+        const r = await changeOwnPassword(currentPasswordInput, newPassword);
+        if (!r.ok) {
+          addToast(r.error || 'Erro ao trocar a senha.', 'error');
+          return;
+        }
+        // A senha JÁ mudou: limpa os campos. Senão, se o contato falhar e a pessoa
+        // salvar de novo, a tela tentaria trocar de novo com a senha "atual" antiga
+        // (que não é mais a atual) e somaria erros até o bloqueio de 15 min.
+        setCurrentPasswordInput(''); setNewPassword(''); setConfirmPassword('');
+      }
+
+      // 2) Dados de contato. O perfil nunca manda senha nem salário: o login não traz
+      // o salário (o cliente tem 0), e mandá-lo fazia o Edson zerar o próprio salário
+      // ao trocar só o telefone.
+      if (contactChanged) {
+        const updatedUser: User = { ...user, name: name.trim(), surname, email, phone };
+        // Só o contato (modo 'profile'): o servidor ignora cargo, OKR, setor, login e
+        // senha — o `user` daqui é o do login e pode estar velho.
+        const result = await updateOwnContact(updatedUser);
+        if (!result.success) {
+          const msg = result.message || 'Erro ao atualizar perfil.';
+          addToast(wantsNewPassword ? `A senha foi trocada, mas os dados não foram salvos: ${msg}` : msg, 'error');
+          return;
+        }
+        onUpdateUser(updatedUser);
+      }
+
+      addToast(
+        wantsNewPassword && contactChanged ? 'Perfil e senha atualizados com sucesso!'
+          : wantsNewPassword ? 'Senha trocada com sucesso!'
+          : 'Perfil atualizado com sucesso!',
+        'success'
+      );
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getRoleLabel = (role: UserRole) => {
@@ -233,30 +207,33 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                 <div className="space-y-3">
                     <div>
                         <label className="block text-xs font-medium text-black dark:text-white mb-1">Senha Atual</label>
-                        <input 
-                            type="password" 
+                        <input
+                            type="password"
+                            autoComplete="current-password"
                             value={currentPasswordInput}
                             onChange={e => setCurrentPasswordInput(e.target.value)}
                             className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-slate-900 dark:text-white"
-                            placeholder="Digite sua senha atual para confirmar alterações"
-                            required
+                            placeholder="Só para trocar a senha"
+                            required={wantsNewPassword}
                         />
                     </div>
 
                     <div>
                         <label className="block text-xs font-medium text-black dark:text-white mb-1">Nova Senha</label>
-                        <input 
-                            type="password" 
+                        <input
+                            type="password"
+                            autoComplete="new-password"
                             value={newPassword}
                             onChange={e => setNewPassword(e.target.value)}
                             className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-slate-900 dark:text-white"
-                            placeholder="Digite a nova senha para alterar"
+                            placeholder="Em branco = manter a atual (mínimo 6 caracteres)"
                         />
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-black dark:text-white mb-1">Confirmar Nova Senha</label>
-                        <input 
-                            type="password" 
+                        <input
+                            type="password"
+                            autoComplete="new-password"
                             value={confirmPassword}
                             onChange={e => setConfirmPassword(e.target.value)}
                             className="w-full p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-slate-900 dark:text-white"
@@ -264,38 +241,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
                         />
                     </div>
                 </div>
-            </div>
-
-            {/* Device Biometrics (WebAuthn / Local Simulation) */}
-            <div className="bg-slate-50 dark:bg-slate-900/40 p-4 rounded-xl border border-gray-200 dark:border-slate-800 space-y-3 mt-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <Fingerprint className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                        <div>
-                            <h4 className="text-sm font-bold text-gray-950 dark:text-white leading-tight">
-                                Biometria do Dispositivo
-                            </h4>
-                            <p className="text-xs text-gray-500 dark:text-slate-400">
-                                Desbloquear tela via digital ou reconhecimento facial.
-                            </p>
-                        </div>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input 
-                            type="checkbox" 
-                            checked={biometricEnabled}
-                            onChange={e => handleToggleBiometrics(e.target.checked)}
-                            className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-[20px] after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
-                    </label>
-                </div>
-                {biometricEnabled && (
-                    <div className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/20 px-3 py-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span>Biometria ativa neste navegador {localStorage.getItem(`biometric_simulated_${user.id}`) === 'true' && '(Modo de Teste Simulado)'}</span>
-                    </div>
-                )}
             </div>
         </div>
 
@@ -309,7 +254,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
             </button>
             <button 
                 onClick={handleSave}
-                disabled={isSaving || !currentPasswordInput || (!!newPassword && newPassword !== confirmPassword)}
+                disabled={isSaving || (wantsNewPassword && (!currentPasswordInput || newPassword !== confirmPassword))}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors flex items-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
