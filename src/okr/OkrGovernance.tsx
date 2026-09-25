@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { withOkrSafe } from './OkrSafe';
 import { Compass, Activity, Gauge, Users as UsersIcon, Plus, Trash2, RefreshCw, CalendarClock, CheckSquare, Lock } from 'lucide-react';
-import { fetchOkr, saveOkr, addAuditLog } from '../services/storageService';
+import { fetchOkrVersioned, addAuditLog, okrErrorMessage } from '../services/storageService';
 import { OkrStore, OkrGovState, OkrGovReview } from './okr';
+import { useOkrWriter, OkrWriteStatus } from './useOkrWriter';
 import { User } from '../types';
 import { useToast } from '../components/Toast';
 
@@ -21,11 +23,10 @@ const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypt
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (iso: string) => { try { const [y, m, d] = iso.split('-'); return d ? `${d}/${m}/${y}` : iso; } catch { return iso; } };
 
-export const OkrGovernance: React.FC<{ editable: boolean; currentUser: User }> = ({ editable, currentUser }) => {
+const OkrGovernanceInner: React.FC<{ editable: boolean; currentUser: User }> = ({ editable, currentUser }) => {
   const { addToast } = useToast();
   const [store, setStore] = useState<OkrStore | null>(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { (async () => { setLoading(true); try { setStore(await fetchOkr('edson')); } finally { setLoading(false); } })(); }, []);
 
   const logDelete = (entity: string, name: string) => {
     try {
@@ -38,13 +39,29 @@ export const OkrGovernance: React.FC<{ editable: boolean; currentUser: User }> =
     } catch { /* auditoria nunca trava a ação */ }
   };
 
-  const gov: OkrGovState = store?.governance || { reviews: [], actions: [] };
-  const persist = async (g: OkrGovState) => {
-    if (!store || !editable) return;
-    const next: OkrStore = { ...store, governance: g };
-    setStore(next);
-    try { await saveOkr(next, 'edson'); } catch { addToast('Não consegui salvar.', 'error'); }
+  const gov: OkrGovState = {
+    reviews: Array.isArray(store?.governance?.reviews) ? store!.governance!.reviews : [],
+    actions: Array.isArray(store?.governance?.actions) ? store!.governance!.actions : [],
   };
+  // A governança mora no OKR do Edson: grava SÓ a mudança, sobre o OKR relido
+  // (antes gravava o OKR inteiro desta tela e desfazia prazos e KRs de outra aba).
+  const [saveState, setSaveState] = useState<OkrWriteStatus | 'idle'>('idle');
+  const { persist: write, adopt, readMark } = useOkrWriter({
+    ownerKey: 'edson', enabled: editable && !!store, live: true,
+    setStore, onError: msg => addToast(msg, 'error'),
+    onStatus: st => { setSaveState(st); if (st === 'saved') setTimeout(() => setSaveState(s => s === 'saved' ? 'idle' : s), 1500); },
+  });
+  useEffect(() => { (async () => {
+    setLoading(true);
+    try { const mark = readMark(); const { store: s } = await fetchOkrVersioned('edson'); setStore(adopt(s, mark)); }
+    catch (e) { addToast(okrErrorMessage(e, 'Não consegui carregar a governança.'), 'error'); }
+    finally { setLoading(false); }
+  })(); }, []);
+  const persist = (fn: (g: OkrGovState) => OkrGovState) => write((s: OkrStore) => {
+    const cur: OkrGovState = { reviews: Array.isArray(s.governance?.reviews) ? s.governance!.reviews : [], actions: Array.isArray(s.governance?.actions) ? s.governance!.actions : [] };
+    const next = fn(cur);
+    return next === cur ? s : { ...s, governance: next };   // nada mudou (ex.: nova tentativa de algo já gravado): não grava
+  });
 
   // ---- revisões ----
   const [rDate, setRDate] = useState(today());
@@ -53,10 +70,12 @@ export const OkrGovernance: React.FC<{ editable: boolean; currentUser: User }> =
   const [rNext, setRNext] = useState('');
   const addReview = () => {
     if (!rNotes.trim()) { addToast('Escreva a pauta / decisão da revisão.', 'warning'); return; }
-    persist({ ...gov, reviews: [{ id: newId(), date: rDate, cadence: rCad, notes: rNotes.trim(), next: rNext.trim() }, ...gov.reviews] });
+    const review: OkrGovReview = { id: newId(), date: rDate, cadence: rCad, notes: rNotes.trim(), next: rNext.trim() };
     setRNotes(''); setRNext('');
+    // Não gravou de vez: o texto volta para o formulário (ninguém perde o que digitou).
+    persist(g => g.reviews.some(x => x.id === review.id) ? g : ({ ...g, reviews: [review, ...g.reviews] })).then(ok => { if (!ok) { setRNotes(v => v || review.notes); setRNext(v => v || review.next); } });
   };
-  const delReview = (id: string) => { const r = gov.reviews.find(x => x.id === id); if (window.confirm('Excluir esta revisão?')) { logDelete('revisão do ciclo', r ? `${r.cadence} · ${r.notes.slice(0, 40)}` : ''); persist({ ...gov, reviews: gov.reviews.filter(x => x.id !== id) }); } };
+  const delReview = (id: string) => { const r = gov.reviews.find(x => x.id === id); if (window.confirm('Excluir esta revisão?')) { logDelete('revisão do ciclo', r ? `${r.cadence} · ${r.notes.slice(0, 40)}` : ''); persist(g => ({ ...g, reviews: g.reviews.filter(x => x.id !== id) })); } };
 
   // ---- decisões & ações ----
   const [aText, setAText] = useState('');
@@ -64,11 +83,12 @@ export const OkrGovernance: React.FC<{ editable: boolean; currentUser: User }> =
   const [aDue, setADue] = useState('');
   const addAction = () => {
     if (!aText.trim()) return;
-    persist({ ...gov, actions: [{ id: newId(), text: aText.trim(), owner: aOwner.trim(), due: aDue, done: false }, ...gov.actions] });
+    const action = { id: newId(), text: aText.trim(), owner: aOwner.trim(), due: aDue, done: false };
     setAText(''); setAOwner(''); setADue('');
+    persist(g => g.actions.some(x => x.id === action.id) ? g : ({ ...g, actions: [action, ...g.actions] })).then(ok => { if (!ok) { setAText(v => v || action.text); setAOwner(v => v || action.owner); setADue(v => v || action.due); } });
   };
-  const toggleAction = (id: string) => persist({ ...gov, actions: gov.actions.map(a => a.id === id ? { ...a, done: !a.done } : a) });
-  const delAction = (id: string) => { const a = gov.actions.find(x => x.id === id); if (window.confirm('Excluir esta ação?')) { logDelete('ação da governança', a?.text || ''); persist({ ...gov, actions: gov.actions.filter(x => x.id !== id) }); } };
+  const toggleAction = (id: string, done: boolean) => persist(g => ({ ...g, actions: g.actions.map(a => a.id === id ? { ...a, done } : a) }));
+  const delAction = (id: string) => { const a = gov.actions.find(x => x.id === id); if (window.confirm('Excluir esta ação?')) { logDelete('ação da governança', a?.text || ''); persist(g => ({ ...g, actions: g.actions.filter(x => x.id !== id) })); } };
 
   const openActions = gov.actions.filter(a => !a.done).length;
 
@@ -85,6 +105,7 @@ export const OkrGovernance: React.FC<{ editable: boolean; currentUser: User }> =
           <h2 className="text-xl font-black text-slate-800 dark:text-white leading-tight">Governança do ciclo</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">Registre as revisões e conduza as decisões — a cadência vira ação.</p>
         </div>
+        {saveState !== 'idle' && <span role="status" className={`text-[11px] font-medium ${saveState === 'offline' || saveState === 'error' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>{saveState === 'saving' ? 'salvando…' : saveState === 'saved' ? 'salvo ✓' : saveState === 'offline' ? 'sem conexão — tentando salvar de novo…' : 'não salvo'}</span>}
         {!editable && <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-full px-2 py-1"><Lock size={11} /> Só leitura</span>}
       </div>
 
@@ -161,7 +182,7 @@ export const OkrGovernance: React.FC<{ editable: boolean; currentUser: User }> =
           {gov.actions.length === 0 && <p className="text-sm text-slate-400 italic py-2">Nenhuma ação registrada ainda.</p>}
           {gov.actions.map(a => (
             <div key={a.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50/70 dark:bg-slate-800/40 group">
-              <input type="checkbox" checked={a.done} disabled={!editable} onChange={() => toggleAction(a.id)} className="w-4 h-4 accent-blue-600 shrink-0" />
+              <input type="checkbox" checked={a.done} disabled={!editable} onChange={() => toggleAction(a.id, !a.done)} className="w-4 h-4 accent-blue-600 shrink-0" />
               <div className="flex-1 min-w-0">
                 <span className={`text-sm ${a.done ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{a.text}</span>
                 <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-0.5">
@@ -177,3 +198,5 @@ export const OkrGovernance: React.FC<{ editable: boolean; currentUser: User }> =
     </div>
   );
 };
+
+export const OkrGovernance = withOkrSafe<{ editable: boolean; currentUser: User }>(OkrGovernanceInner, 'a governança do ciclo');

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { withOkrSafe } from './OkrSafe';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { Target, RefreshCw, Layers, Users as UsersIcon, CheckCircle2, TrendingUp, Lock } from 'lucide-react';
 import { User } from '../types';
@@ -24,7 +25,7 @@ const Tile: React.FC<{ label: string; value: string; color?: string; icon: React
 interface Props { currentUser: User; users: User[]; }
 
 // Visão macro do OKR por setor — só Edson e CEO. Não edita nada, só lê.
-export const OkrIndicators: React.FC<Props> = ({ users }) => {
+const OkrIndicatorsInner: React.FC<Props> = ({ users }) => {
   const [rows, setRows] = useState<{ ownerKey: string; store: OkrStore }[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -164,3 +165,5 @@ export const OkrIndicators: React.FC<Props> = ({ users }) => {
     </div>
   );
 };
+
+export const OkrIndicators = withOkrSafe<Props>(OkrIndicatorsInner, 'os indicadores de OKR');
