@@ -4,6 +4,7 @@ import { SEOKeyword, SEOMetric, SEOTask, SEOData } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser } from '../utils/userUtils';
+import { getTokenSub } from './authToken';
 import { getAuthToken, authHeaders } from './authToken';
 import { OkrData, OkrStore, OkrExecutor, OkrExecutorKind, migrateToStore } from '../okr/okr';
 
@@ -199,6 +200,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     nexusHiddenUsers: parseSafeJson(localStorage.getItem('nexus_hidden_user_ids'), [] as string[])
   };
 
+  let gotSettingsRow = false;
   try {
     const { data: settingsData, error: settingsError } = await supabase
       .from('settings')
@@ -207,6 +209,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     if (settingsError) throw settingsError;
 
     if (settingsData && settingsData.length > 0) {
+      gotSettingsRow = true;
       // A tabela settings e de UMA LINHA LARGA: cada config e uma coluna.
       const row: any = settingsData[0];
       const clean = (v: any, def = ''): string => (v === null || v === undefined || v === 'null') ? def : String(v);
@@ -267,7 +270,9 @@ export const fetchSettings = async (): Promise<AppSettings> => {
   // Pre-login (anon): a tabela `settings` nao e mais legivel por anonimo (M2).
   // Buscamos SO o branding (logo + nome) por um endpoint publico dedicado,
   // para a tela de login continuar mostrando a marca da empresa.
-  if (!getAuthToken()) {
+  // O admin de visualização do OKR também não lê `settings` (o banco não entrega): a
+  // marca dele vem do mesmo endpoint público, para a logo não sumir.
+  if (!getAuthToken() || !gotSettingsRow) {
     try {
       const res = await fetch('/api/branding');
       if (res.ok) {
@@ -362,6 +367,12 @@ export const fetchAppState = async (): Promise<AppState> => {
     // baixado. Alimenta o "custo automatico" em todas as telas.
     if (autoHourlyCost > 0) settings = { ...settings, hourlyCostCalculated: autoHourlyCost };
 
+    // Sessão do "admin de visualização" do OKR (marca ou grupo ADM Externo): o banco só
+    // devolve a própria linha de `users` e nada da engenharia. Ele nunca semeia nada.
+    const mySub = getTokenSub();
+    const myRow = (usersRes.data || []).find((u: any) => u.id === mySub);
+    const viewerSession = !!myRow && (!!myRow.okr_viewer || myRow.role === 'ADM_EXTERNO') && (usersRes.data || []).length === 1;
+
     activityTypes = (activityTypesRes.data || []).map((t: any) => ({
       id: t.id,
       name: t.name,
@@ -371,7 +382,7 @@ export const fetchAppState = async (): Promise<AppState> => {
     // Só semeia se a leitura DEU CERTO e veio vazia. Se deu ERRO (sessão velha,
     // rede, troca de deploy), "vazio" é mentira — semear aqui criaria tipos
     // duplicados por cima dos 22 que existem.
-    if (activityTypes.length === 0 && !activityTypesRes.error) {
+    if (activityTypes.length === 0 && !activityTypesRes.error && !viewerSession) {
       console.log("SEEDING DEFAULT ACTIVITY TYPES...");
       const defaultTypes = DEFAULT_ACTIVITY_TYPES.map(name => ({ name, is_active: true }));
       const { data: seededData, error: seedError } = await supabase.from('activity_types').insert(defaultTypes).select();
@@ -389,6 +400,25 @@ export const fetchAppState = async (): Promise<AppState> => {
         salary: Number(edsonSalaries[u.id]) || 0
       })).sort((a, b) => a.name.localeCompare(b.name));
     } catch (e) { console.error("Users mapping error:", e); }
+
+    // O grupo ADM Externo (gente de fora que só VÊ o OKR) não é da engenharia: fica fora
+    // da lista que as telas de engenharia recebem — seletores de projetista/responsável,
+    // rankings, contagens, assistente de IA e o casamento de projeto pelo nome na nota.
+    // Só a própria linha fica, na sessão dele. A tela Equipe busca à parte (fetchUsers).
+    users = users.filter(u => u.role !== 'ADM_EXTERNO' || u.id === mySub);
+
+    // Visualizador: nome e setor de QUEM TEM OKR vêm de okr_pessoas() — sem e-mail,
+    // telefone nem cargo dos colegas (o banco não entrega a ele o cadastro dos outros).
+    if (viewerSession) {
+      try {
+        const { data: pessoas } = await supabase.rpc('okr_pessoas');
+        (pessoas || []).forEach((u: any) => {
+          if (users.some(x => x.id === u.id)) return;
+          users.push({ id: u.id, username: u.username, password: '', name: u.name || '', surname: u.surname || undefined, role: '' as any, sector: u.sector || '', okrEnabled: true, salary: 0 } as any);
+        });
+        users.sort((a, b) => a.name.localeCompare(b.name));
+      } catch (e) { console.warn('okr_pessoas:', e); }
+    }
 
     try {
       const rawDataMapByNs: Record<string, string> = {};
@@ -529,7 +559,8 @@ export const fetchAppState = async (): Promise<AppState> => {
     } catch (e) { console.error("GanttTasks mapping error:", e); }
 
     // Seed default gantt tasks if empty
-    if (ganttTasks.length === 0) {
+    // O visualizador do OKR não recebe tarefas (o banco não entrega) — e não semeia nada.
+    if (ganttTasks.length === 0 && !viewerSession) {
         console.log("SEEDING DEFAULT GANTT TASKS...");
         const parentId = crypto.randomUUID();
         const subId = crypto.randomUUID();
@@ -1908,7 +1939,9 @@ export const deleteProjectRequest = async (id: string): Promise<AppState> => {
 
 // --- USER MANAGEMENT ---
 
-export const fetchUsers = async (): Promise<User[]> => {
+// `incluirExternos`: só a tela Equipe pede o grupo ADM Externo; as telas de engenharia
+// nunca o recebem (não é da engenharia — ver fetchAppState).
+export const fetchUsers = async (opts: { incluirExternos?: boolean } = {}): Promise<User[]> => {
   try {
     // Colunas seguras (sem salary/senha/hash) + salarios do Edson em paralelo.
     const [{ data, error }, edsonSalaries] = await Promise.all([
@@ -1916,7 +1949,7 @@ export const fetchUsers = async (): Promise<User[]> => {
       fetchEdsonSalaries(),
     ]);
     if (error) throw error;
-    return (data || []).map((u: any) => ({
+    return (data || []).filter((u: any) => opts.incluirExternos || u.role !== 'ADM_EXTERNO').map((u: any) => ({
       id: u.id,
       username: u.username,
       password: '',

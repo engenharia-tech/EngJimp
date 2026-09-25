@@ -51,7 +51,7 @@ import {
 } from './services/storageService';
 import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { notifyProjectCompletion } from './services/notificationService';
-import { isTokenExpired, getAuthToken, setAuthToken } from './services/authToken';
+import { isTokenExpired, getAuthToken, setAuthToken, getTokenSub } from './services/authToken';
 import { confirmOwnPassword } from './services/authService';
 import { Target, CalendarRange, Compass } from 'lucide-react';
 import { OkrView, OkrPublicPage } from './okr/OkrView';
@@ -245,7 +245,7 @@ const AppContent: React.FC = () => {
       setLockError(false);
       lastActiveRef.current = Date.now();
       addToast('Acesso restabelecido com sucesso', 'success');
-      addAuditLog({
+      if (!(currentUser.okrViewer || currentUser.role === 'ADM_EXTERNO')) addAuditLog({
         userId: currentUser.id,
         userName: currentUser.name,
         action: 'LOGIN',
@@ -423,7 +423,11 @@ const AppContent: React.FC = () => {
           // Carga que volta sem os dados-base (usuários e tipos de atividade nunca
           // são vazios de verdade) costuma ser falha passageira — rede, troca de
           // deploy. Tenta de novo UMA vez antes de mostrar tela vazia.
-          if (getAuthToken() && ((appData.users?.length || 0) === 0 || (appData.activityTypes?.length || 0) === 0)) {
+          // O admin de visualização do OKR não recebe tipos de atividade (o banco não
+          // entrega): para ele "vazio" é o normal, não falha passageira.
+          const meNaCarga = (appData.users || []).find(u => u.id === getTokenSub());
+          const cargaDeVisualizador = !!meNaCarga && (!!meNaCarga.okrViewer || meNaCarga.role === 'ADM_EXTERNO');
+          if (getAuthToken() && ((appData.users?.length || 0) === 0 || ((appData.activityTypes?.length || 0) === 0 && !cargaDeVisualizador))) {
             await new Promise(r => setTimeout(r, 1500));
             const retry = await fetchAppState();
             if ((retry.users?.length || 0) > 0 || (retry.activityTypes?.length || 0) > 0) appData = retry;
@@ -515,6 +519,8 @@ const AppContent: React.FC = () => {
   // Automatic Alerts for Open Interruptions (Module 10)
   useEffect(() => {
     if (!currentUser || data.interruptions.length === 0) return;
+    // O visualizador do OKR não recebe aviso da engenharia (o banco nem lhe entrega as interrupções).
+    if (currentUser.okrViewer || currentUser.role === 'ADM_EXTERNO') return;
 
     const checkAlerts = () => {
       const now = new Date().getTime();
@@ -551,7 +557,7 @@ const AppContent: React.FC = () => {
     // O admin de visualização do OKR não grava nada (o banco recusa): o ajuste das
     // atividades esquecidas fica com o navegador de quem pode gravar.
     const meV = (data.users || []).find(u => u.id === currentUser.id);
-    if (meV?.okrViewer ?? currentUser.okrViewer) return;
+    if ((meV?.okrViewer ?? currentUser.okrViewer) || (meV?.role ?? currentUser.role) === 'ADM_EXTERNO') return;
 
     const runCleanup = async () => {
       // Find any running activity for any user that needs correction
@@ -642,7 +648,8 @@ const AppContent: React.FC = () => {
       if (currentUser?.id === '1e570c78-7278-4e8d-a90e-a820c11bb07a') return false;
       const me = (data.users || []).find(u => u.id === currentUser?.id);
       if (me?.okrAdmin ?? currentUser?.okrAdmin) return false;
-      return !!(me?.okrViewer ?? currentUser?.okrViewer);
+      // O grupo ADM Externo É o visualizador (mesma regra do banco e do servidor).
+      return !!(me?.okrViewer ?? currentUser?.okrViewer) || (me?.role ?? currentUser?.role) === 'ADM_EXTERNO';
   }, [data.users, currentUser]);
 
   // "Somente OKR": usuário que só pode ver a aba OKR — nada de engenharia.
@@ -1483,6 +1490,8 @@ const AppContent: React.FC = () => {
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
+    // O admin de visualização do OKR não grava nada — nem auditoria (o banco recusa).
+    if (user.okrViewer || user.role === 'ADM_EXTERNO') return;
     addAuditLog({
         userId: user.id,
         userName: user.name,
@@ -1849,6 +1858,9 @@ const AppContent: React.FC = () => {
                 <p className={theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}>{t('welcome').toUpperCase()}, <span className="font-semibold text-blue-600">{currentUser.name.toUpperCase()}</span></p>
               </div>
             </div>
+            {/* O admin de visualização do OKR nem monta o rastreador (ele fica montado,
+                escondido, para quem usa — o cronômetro sobrevive à troca de aba). */}
+            {!isOkrViewer && (
             <EngJimpTracker 
               existingProjects={displayData.projects}
               allProjects={data.projects}
@@ -1868,6 +1880,7 @@ const AppContent: React.FC = () => {
               currentUser={currentUser}
               users={data.users}
             />
+            )}
           </div>
 
           {activeTab === 'history' && canUseTracker && (
@@ -2099,7 +2112,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'reports' && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+          {activeTab === 'reports' && !isOkrViewer && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
             <Reports 
               data={displayData} 
               currentUser={currentUser} 
@@ -2108,7 +2121,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'settings' && (['GESTOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
+          {activeTab === 'settings' && !isOkrViewer && (['GESTOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
             <Settings 
               settings={effectiveSettings}
               users={data.users}
@@ -2117,7 +2130,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'seo' && (['GESTOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
+          {activeTab === 'seo' && !isOkrViewer && (['GESTOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
             <SEOManager 
               data={data.seoData}
               currentUser={currentUser}
@@ -2125,7 +2138,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'team' && (['GESTOR', 'COORDENADOR'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
+          {activeTab === 'team' && !isOkrViewer && (['GESTOR', 'COORDENADOR'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
              <div className="space-y-6">
                 <div className="mb-6">
                   <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('team').toUpperCase()}</h2>
@@ -2199,7 +2212,7 @@ const AppContent: React.FC = () => {
                       {currentUser.name} {currentUser.surname || ''}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {currentUser.role.toUpperCase()}
+                      {t(currentUser.role.toLowerCase() as any)}
                     </p>
                   </div>
                 </div>

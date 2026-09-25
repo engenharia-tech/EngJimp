@@ -408,6 +408,13 @@ function claimsAreEdson(claims: any): boolean {
 }
 // Escapa curingas do ILIKE (% e _) para comparar um texto EXATO sem distinguir maiúsculas.
 const ilikeExact = (s: string) => String(s).replace(/[\\%_]/g, (c) => "\\" + c);
+// O usuário DIGITADO no login vira a chave de comparação: sem acento, sem diferença de
+// maiúsculas, sem espaço nas pontas nem caractere invisível — "Patrícia", "PATRICIA" e
+// " patricia " são o mesmo usuário. O login gravado só tem ASCII visível (CHECK do
+// banco) e é único sem distinguir maiúsculas, então isso nunca confunde duas pessoas.
+// A trava de tentativas usa a MESMA chave: variar acento/maiúscula não abre balde novo.
+const loginKey = (v: any): string =>
+  String(v ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, "").trim().toLowerCase();
 // uuid só na forma canônica (minúsculo, com hífens). O banco converte QUALQUER grafia
 // (MAIÚSCULA, sem hífen, entre chaves) para o mesmo uuid — comparar o texto do cliente
 // com EDSON_ID deixava passar o id do Edson escrito de outro jeito.
@@ -423,22 +430,31 @@ const canonUuid = (v: any): string | null => {
 // ele só olha — o servidor escreve com a chave de serviço, por fora da trava do banco.
 // Quem manda no OKR (Edson, admin de OKR) nunca é visualizador: a mesma regra de
 // okr_is_viewer() no banco e de isOkrViewer na tela.
+// O grupo "ADM Externo" (cargo ADM_EXTERNO) É o admin de visualização: o cargo sozinho
+// já basta, mesmo que a marca okr_viewer se perca (o banco também exige as duas juntas).
+const ADM_EXTERNO = "ADM_EXTERNO";
+const ehVisualizador = (r: any, id: string) =>
+  !!r && (r.okr_viewer || r.role === ADM_EXTERNO) && !r.okr_admin && id !== EDSON_ID;
 const currentRole = async (admin: any, sub: any): Promise<string | null> => {
   const id = canonUuid(sub); if (!id) return null;
   const { data, error } = await admin.from("users").select("role, okr_viewer, okr_admin").eq("id", id).limit(1);
   if (error) throw new Error("Nao consegui conferir o seu cargo. Tente de novo.");
   if (!data || !data.length) return null;
   const r = data[0] as any;
-  if (r.okr_viewer && !r.okr_admin && id !== EDSON_ID) return "VISUALIZACAO";
+  if (ehVisualizador(r, id)) return "VISUALIZACAO";
   return String(r.role || "");
 };
 // "Admin de visualização" do OKR, lido do cadastro (mesma regra acima). Falha LANÇA.
+// Quem NÃO está (mais) no cadastro também fica sem acesso: o crachá dura 24 h, e sem a
+// linha a regra do visualizador daria "não é" — um visualizador excluído ganharia MAIS.
 const isViewerDb = async (admin: any, sub: any): Promise<boolean> => {
-  const id = canonUuid(sub); if (!id || id === EDSON_ID) return false;
-  const { data, error } = await admin.from("users").select("okr_viewer, okr_admin").eq("id", id).limit(1);
+  const id = canonUuid(sub); if (!id) return true;
+  if (id === EDSON_ID) return false;
+  const { data, error } = await admin.from("users").select("role, okr_viewer, okr_admin").eq("id", id).limit(1);
   if (error) throw new Error("Nao consegui conferir o seu acesso. Tente de novo.");
   const r = data && (data[0] as any);
-  return !!(r && r.okr_viewer && !r.okr_admin);
+  if (!r) return true;
+  return ehVisualizador(r, id);
 };
 // Edson ou admin de OKR, lido do CADASTRO: só eles marcam alguém como "admin de
 // visualização" do OKR (a marca dá leitura do OKR de todos) e geram o link do painel.
@@ -533,14 +549,17 @@ app.post("/api/auth/login", async (req, res) => {
   // Anti brute-force. Por IP: trava um atacante martelando varias contas.
   // Por usuario: so conta FALHAS e zera no sucesso — nao trava quem acerta.
   const ip = clientIp(req);
-  const unameKey = String(username).trim().toLowerCase();
+  const unameKey = loginKey(username);
+  if (!unameKey) return res.status(400).json({ success: false, error: "Usuario e senha sao obrigatorios." });
   // IP alto de proposito: os 12 podem estar atras do MESMO IP do escritorio.
   // A trava real e a de FALHAS por usuario (nao afeta quem acerta a senha).
   if ((await rlHit(`login:ip:${ip}`, 900)) > 100) return tooMany(res, 900);
-  if ((await rlCount(`login:fail:${unameKey}`, 900)) >= 8) return tooMany(res, 900);
+  // Conta ANTES de conferir (como o pwGuard): conferir e só depois contar deixava uma
+  // rajada simultânea inteira passar pela trava. Acertar zera o balde.
+  if ((await rlHit(`login:fail:${unameKey}`, 900)) > 8) return tooMany(res, 900);
 
   const { data, error } = await admin.rpc("verify_login", {
-    p_username: String(username).trim(),
+    p_username: unameKey,
     p_password: String(password),
   });
   if (error) {
@@ -549,7 +568,6 @@ app.post("/api/auth/login", async (req, res) => {
   }
   const user = Array.isArray(data) ? data[0] : data;
   if (!user) {
-    await rlHit(`login:fail:${unameKey}`, 900); // registra a falha
     return res.status(401).json({ success: false, error: "Usuario ou senha invalidos." });
   }
   await rlReset(`login:fail:${unameKey}`); // sucesso limpa as falhas do usuario
@@ -560,14 +578,14 @@ app.post("/api/auth/login", async (req, res) => {
   // (C2). So o Edson ve salario, e por uma porta propria (/api/users/salaries).
   // "Admin de visualização" do OKR: o verify_login devolve colunas fixas, então a
   // marca é lida à parte (pelo id que acabou de provar a senha).
-  const { data: vw } = await admin.from("users").select("okr_viewer").eq("id", user.id).limit(1);
+  const { data: vw } = await admin.from("users").select("role, okr_viewer, okr_admin").eq("id", user.id).limit(1);
   const safeUser = {
     id: user.id, username: user.username, name: user.name, surname: user.surname,
     email: user.email, phone: user.phone, role: user.role,
     must_set_password: user.must_set_password,
     okr_enabled: user.okr_enabled, okr_only: user.okr_only, sector: user.sector,
     okr_admin: user.okr_admin,
-    okr_viewer: !!(vw && vw[0] && (vw[0] as any).okr_viewer),
+    okr_viewer: ehVisualizador(vw && vw[0], canonUuid(user.id) || ""),
   };
   return res.json({ success: true, user: safeUser, token });
 });
@@ -580,22 +598,26 @@ app.post("/api/auth/request-code", async (req, res) => {
   if (!admin) return res.status(503).json({ success: false, error: "Servidor de autenticacao nao configurado." });
   const { username } = req.body || {};
   if (!username) return res.status(400).json({ success: false, error: "Usuario obrigatorio." });
-  const uname = String(username).trim();
+  const uname = loginKey(username);
+  if (!uname) return res.status(400).json({ success: false, error: "Usuario obrigatorio." });
 
   // Anti abuso: pedir codigo tem efeito colateral (marca must_set_password e
   // dispara e-mail), entao limita por IP e por usuario, independente de sucesso.
   const ip = clientIp(req);
   if ((await rlHit(`reqcode:ip:${ip}`, 3600)) > 30) return tooMany(res, 3600);
-  if ((await rlHit(`reqcode:user:${uname.toLowerCase()}`, 3600)) > 4) return tooMany(res, 3600);
+  if ((await rlHit(`reqcode:user:${uname}`, 3600)) > 4) return tooMany(res, 3600);
 
-  const { data: rows } = await admin.from("users").select("email,name").ilike("username", uname).limit(1);
-  const u = rows && rows[0];
+  // Igualdade sem distinguir maiúsculas (ilike com % e _ escapados: sem curinga).
+  const { data: rows } = await admin.from("users").select("username,email,name").ilike("username", ilikeExact(uname)).limit(50);
+  // O PostgREST lê '*' como curinga no ilike (e não há como escapá-lo): o ilike só junta
+  // candidatos; quem decide é a comparação exata. Dali em diante vale o login GRAVADO.
+  const u = (rows || []).find((r: any) => loginKey(r.username) === uname);
   const email = u?.email?.trim();
   if (!u || !isValidEmail(email)) {
     return res.json({ success: true, delivered: "no_email" });
   }
 
-  const { data: code, error } = await admin.rpc("request_password_code", { p_username: uname, p_hours: 24 });
+  const { data: code, error } = await admin.rpc("request_password_code", { p_username: u.username, p_hours: 24 });
   if (error || !code) {
     console.error("[auth/request-code]", error?.message);
     return res.status(500).json({ success: false, error: "Erro ao gerar o codigo." });
@@ -617,7 +639,7 @@ Se nao foi voce que pediu, ignore este e-mail.
     // Desfaz a marcacao para nao deixar o usuario preso sem ter recebido o codigo.
     await admin.from("users")
       .update({ must_set_password: false, reset_code_hash: null, reset_code_expires: null })
-      .ilike("username", uname);
+      .eq("username", u.username);
     return res.status(500).json({ success: false, error: "Nao consegui enviar o e-mail com o codigo. Tente novamente." });
   }
   return res.json({ success: true, delivered: "email" });
@@ -634,12 +656,13 @@ app.post("/api/auth/set-password", async (req, res) => {
   // Anti brute-force do codigo (6 digitos = 1M combinacoes). Por IP e por
   // usuario (so falhas, zera no sucesso). Depois de N erros, trava a janela.
   const ip = clientIp(req);
-  const unameKey = String(username).trim().toLowerCase();
+  const unameKey = loginKey(username);
+  if (!unameKey) return res.status(400).json({ success: false, error: "Dados incompletos." });
   if ((await rlHit(`setpw:ip:${ip}`, 900)) > 60) return tooMany(res, 900);
-  if ((await rlCount(`setpw:fail:${unameKey}`, 900)) >= 6) return tooMany(res, 900);
+  if ((await rlHit(`setpw:fail:${unameKey}`, 900)) > 6) return tooMany(res, 900); // conta antes (ver login)
 
   const { data, error } = await admin.rpc("set_password_with_code", {
-    p_username: String(username).trim(),
+    p_username: unameKey,
     p_code: String(code),
     p_new_password: String(newPassword),
   });
@@ -648,7 +671,6 @@ app.post("/api/auth/set-password", async (req, res) => {
     return res.status(500).json({ success: false, error: "Erro ao salvar a senha." });
   }
   if (data !== true) {
-    await rlHit(`setpw:fail:${unameKey}`, 900); // registra a tentativa errada do codigo
     return res.status(400).json({ success: false, error: "Codigo invalido ou expirado." });
   }
   await rlReset(`setpw:fail:${unameKey}`); // sucesso limpa as falhas
@@ -796,8 +818,9 @@ app.post("/api/users/save", async (req, res) => {
       if (await inUse("username", user.username)) return res.json({ success: false, message: "Nome de usuário já existe." });
       if (await okrKeyTaken(user.username.toLowerCase())) return res.json({ success: false, message: "Esse nome de usuário está ligado ao OKR de outra pessoa." });
     } catch (e: any) { return res.json({ success: false, message: e.message }); }
-    // "Admin de visualização" do OKR: só o Edson ou o admin de OKR dá essa marca.
-    const newViewer = !!user.okrViewer;
+    // "Admin de visualização" do OKR: só o Edson ou o admin de OKR dá essa marca — e o
+    // grupo ADM Externo é essa marca (quem nasce nele nasce visualizador).
+    const newViewer = !!user.okrViewer || user.role === ADM_EXTERNO;
     if (newViewer) {
       try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson ou o admin de OKR marca alguém como admin de visualização do OKR." }); }
       catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
@@ -848,7 +871,7 @@ app.post("/api/users/save", async (req, res) => {
     // Renomear para um username que já existe (mesmo mudando maiúsculas, ex.: "EDSON") é recusado.
     try {
       if (await inUse("username", user.username, user.id)) return res.json({ success: false, message: "Nome de usuário já existe." });
-      const { data: cur, error: curErr } = await admin.from("users").select("username, okr_viewer, okr_admin").eq("id", user.id).limit(1);
+      const { data: cur, error: curErr } = await admin.from("users").select("username, role, okr_viewer, okr_admin").eq("id", user.id).limit(1);
       if (curErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
       if (!cur || !cur.length) return res.json({ success: false, message: "Usuário não encontrado." });
       const oldName = String((cur[0] as any).username || "").trim();
@@ -856,13 +879,17 @@ app.post("/api/users/save", async (req, res) => {
       // mudar a marca é só do Edson ou do admin de OKR.
       const wasViewer = !!(cur[0] as any).okr_viewer;
       wantViewer = user.okrViewer === undefined || user.okrViewer === null ? wasViewer : !!user.okrViewer;
-      if (wantViewer !== wasViewer && !(await isOkrMasterDb(admin, claims.sub))) {
-        return res.status(403).json({ success: false, error: "Só o Edson ou o admin de OKR muda a marca de admin de visualização do OKR." });
+      // O grupo ADM Externo É o visualizador: quem fica nele fica com a marca.
+      const wasExterno = (cur[0] as any).role === ADM_EXTERNO;
+      const wantExterno = (user.role === undefined || user.role === null ? (cur[0] as any).role : user.role) === ADM_EXTERNO;
+      if (wantExterno) wantViewer = true;
+      if ((wantViewer !== wasViewer || wantExterno !== wasExterno) && !(await isOkrMasterDb(admin, claims.sub))) {
+        return res.status(403).json({ success: false, error: "Só o Edson ou o admin de OKR muda o admin de visualização do OKR (e o grupo ADM Externo)." });
       }
       // O Edson e o admin de OKR editam o OKR de todos: marcá-los "só visualização"
       // fecharia as gravações deles no banco (e o Edson não teria como desfazer).
-      if (wantViewer && !wasViewer && (user.id === EDSON_ID || (cur[0] as any).okr_admin)) {
-        return res.json({ success: false, message: "O Edson e o admin de OKR não podem ser admin de visualização." });
+      if ((wantViewer && !wasViewer || wantExterno && !wasExterno) && (user.id === EDSON_ID || (cur[0] as any).okr_admin)) {
+        return res.json({ success: false, message: "O Edson e o admin de OKR não podem ser admin de visualização nem ADM Externo." });
       }
       if (oldName !== user.username) {
         // O login do Edson é fixo: o OKR e a governança dele são lidos pela chave 'edson'.
@@ -961,9 +988,9 @@ app.post("/api/okr/share", async (req, res) => {
 
   // "O seu OKR" = o nome de usuário ATUAL do cadastro (pelo id do crachá), não o
   // nome gravado no crachá, que dura 24 h e pode ter ficado para trás de uma troca.
-  const { data: me, error: meErr } = await admin.from("users").select("username, okr_viewer").eq("id", String(claims.sub || "")).limit(1);
+  const { data: me, error: meErr } = await admin.from("users").select("username, role, okr_viewer, okr_admin").eq("id", String(claims.sub || "")).limit(1);
   if (meErr) return res.status(500).json({ success: false, error: "Nao consegui conferir o usuario." });
-  if (me && me[0] && (me[0] as any).okr_viewer) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao gera link." });
+  if (ehVisualizador(me && me[0], canonUuid(claims.sub) || "")) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao gera link." });
   const self = String((me && me[0] && (me[0] as any).username) || "").trim().toLowerCase();
   const requested = String((req.body && (req.body as any).ownerKey) || "").trim().toLowerCase();
   const ownerKey = requested || self;
@@ -1128,7 +1155,7 @@ app.get("/api/labor/hourly-cost", async (req, res) => {
     return res.status(500).json({ success: false, error: "Erro ao calcular." });
   }
   const relevant = (data || []).filter(
-    (u: any) => u.role !== "CEO" && u.role !== "PROCESSOS" && Number(u.salary) > 0
+    (u: any) => u.role !== "CEO" && u.role !== "PROCESSOS" && u.role !== ADM_EXTERNO && Number(u.salary) > 0
   );
   const total = relevant.reduce((acc: number, u: any) => acc + Number(u.salary || 0), 0);
   const n = relevant.length || 1;

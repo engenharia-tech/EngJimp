@@ -72,7 +72,9 @@ export enum CalculationType {
   ADD_EXPENSE = 'ADD_EXPENSE'
 }
 
-export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'COORDENADOR' | 'PROCESSOS' | 'QUALIDADE';
+// ADM_EXTERNO = grupo "ADM Externo": gente de fora da engenharia que só VÊ o OKR
+// (Indicadores e Linha do tempo), sem editar nada. É o admin de visualização.
+export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'COORDENADOR' | 'PROCESSOS' | 'QUALIDADE' | 'ADM_EXTERNO';
 
 export interface User {
   id: string;
