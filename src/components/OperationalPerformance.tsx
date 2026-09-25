@@ -2385,6 +2385,27 @@ const CurrentActivityTracker: React.FC<{
     );
   }
 
+  // Sem tipos carregados, o <select> aparecia vazio com uma barra branca (a lista
+  // nativa aberta sem opções). Mostra o porquê e a saída, em vez de parecer quebrado.
+  if (activityTypes.filter(ty => ty.isActive !== false).length === 0) {
+    return (
+      <div className="space-y-3">
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">
+          <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Os tipos de atividade não carregaram.</p>
+          <p className="text-xs mt-1 text-amber-700/90 dark:text-amber-300/80">
+            Acontece quando a sessão fica velha ou a carga falha. Recarregue; se continuar, saia e entre de novo.
+          </p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="w-full py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-800 dark:text-white font-bold hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors uppercase text-sm"
+        >
+          Recarregar dados
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">

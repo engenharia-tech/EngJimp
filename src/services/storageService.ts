@@ -368,7 +368,10 @@ export const fetchAppState = async (): Promise<AppState> => {
       isActive: t.is_active
     }));
 
-    if (activityTypes.length === 0) {
+    // Só semeia se a leitura DEU CERTO e veio vazia. Se deu ERRO (sessão velha,
+    // rede, troca de deploy), "vazio" é mentira — semear aqui criaria tipos
+    // duplicados por cima dos 22 que existem.
+    if (activityTypes.length === 0 && !activityTypesRes.error) {
       console.log("SEEDING DEFAULT ACTIVITY TYPES...");
       const defaultTypes = DEFAULT_ACTIVITY_TYPES.map(name => ({ name, is_active: true }));
       const { data: seededData, error: seedError } = await supabase.from('activity_types').insert(defaultTypes).select();
