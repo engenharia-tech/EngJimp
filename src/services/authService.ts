@@ -29,6 +29,7 @@ const mapUser = (u: any): User => ({
   okrEnabled: !!u.okr_enabled,
   okrOnly: !!u.okr_only,
   okrAdmin: !!u.okr_admin,
+  okrViewer: !!u.okr_viewer,
   sector: u.sector || '',
 });
 

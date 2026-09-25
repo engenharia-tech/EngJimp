@@ -49,8 +49,16 @@ app.post("/api/send-email", async (req, res) => {
   console.log("[Email API] Received request on", process.env.VERCEL ? 'Vercel' : 'Local');
   // Exige cracha valido: sem isto, o endpoint era um relay ABERTO (qualquer um
   // enviava e-mail em nome da empresa). Agora so um usuario logado usa.
-  if (!verifyBearerToken(req)) {
+  const mailClaims = verifyBearerToken(req);
+  if (!mailClaims) {
     return res.status(401).json({ success: false, error: "Nao autorizado." });
+  }
+  // O admin de visualização do OKR só olha: não envia e-mail pela conta da empresa.
+  {
+    const adm = getSupabaseAdmin();
+    if (!adm) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+    try { if (await isViewerDb(adm, mailClaims.sub)) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao envia e-mail." }); }
+    catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
   }
   try {
     const { subject, body, to: bodyTo, fromName } = req.body;
@@ -151,6 +159,13 @@ app.post("/api/gemini/generate", async (req, res) => {
   const claims = verifyBearerToken(req);
   if (!claims) {
     return res.status(401).json({ success: false, error: "Nao autorizado." });
+  }
+  // O admin de visualização do OKR não usa o assistente (ele lê dados de engenharia).
+  {
+    const adm = getSupabaseAdmin();
+    if (!adm) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+    try { if (await isViewerDb(adm, claims.sub)) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao usa o assistente." }); }
+    catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
   }
   // Anti abuso de cota: por usuario e por IP (janela de 1 min).
   const ip = clientIp(req);
@@ -404,12 +419,35 @@ const canonUuid = (v: any): string | null => {
 // um admin rebaixado deixava de ser admin só quando o crachá vencia.
 // Falha na leitura LANÇA (a rota responde 503): "não consegui conferir" não pode
 // virar "não é admin" — o admin recebia "salvo" e a senha/cargo eram ignorados.
+// O "admin de visualização" do OKR nunca é admin aqui, qualquer que seja o cargo:
+// ele só olha — o servidor escreve com a chave de serviço, por fora da trava do banco.
+// Quem manda no OKR (Edson, admin de OKR) nunca é visualizador: a mesma regra de
+// okr_is_viewer() no banco e de isOkrViewer na tela.
 const currentRole = async (admin: any, sub: any): Promise<string | null> => {
   const id = canonUuid(sub); if (!id) return null;
-  const { data, error } = await admin.from("users").select("role").eq("id", id).limit(1);
+  const { data, error } = await admin.from("users").select("role, okr_viewer, okr_admin").eq("id", id).limit(1);
   if (error) throw new Error("Nao consegui conferir o seu cargo. Tente de novo.");
   if (!data || !data.length) return null;
-  return String((data[0] as any).role || "");
+  const r = data[0] as any;
+  if (r.okr_viewer && !r.okr_admin && id !== EDSON_ID) return "VISUALIZACAO";
+  return String(r.role || "");
+};
+// "Admin de visualização" do OKR, lido do cadastro (mesma regra acima). Falha LANÇA.
+const isViewerDb = async (admin: any, sub: any): Promise<boolean> => {
+  const id = canonUuid(sub); if (!id || id === EDSON_ID) return false;
+  const { data, error } = await admin.from("users").select("okr_viewer, okr_admin").eq("id", id).limit(1);
+  if (error) throw new Error("Nao consegui conferir o seu acesso. Tente de novo.");
+  const r = data && (data[0] as any);
+  return !!(r && r.okr_viewer && !r.okr_admin);
+};
+// Edson ou admin de OKR, lido do CADASTRO: só eles marcam alguém como "admin de
+// visualização" do OKR (a marca dá leitura do OKR de todos) e geram o link do painel.
+const isOkrMasterDb = async (admin: any, sub: any): Promise<boolean> => {
+  const id = canonUuid(sub); if (!id) return false;
+  if (id === EDSON_ID) return true;
+  const { data, error } = await admin.from("users").select("okr_admin").eq("id", id).limit(1);
+  if (error) throw new Error("Nao consegui conferir a sua permissao no OKR. Tente de novo.");
+  return !!(data && data[0] && (data[0] as any).okr_admin);
 };
 
 // ---- Rate limiting (anti brute-force). Serverless nao guarda estado em
@@ -520,12 +558,16 @@ app.post("/api/auth/login", async (req, res) => {
   const token = user.must_set_password ? null : signSupabaseJwt(user);
   // Sanitiza: o payload de login NUNCA leva salary/senha/hash para o navegador
   // (C2). So o Edson ve salario, e por uma porta propria (/api/users/salaries).
+  // "Admin de visualização" do OKR: o verify_login devolve colunas fixas, então a
+  // marca é lida à parte (pelo id que acabou de provar a senha).
+  const { data: vw } = await admin.from("users").select("okr_viewer").eq("id", user.id).limit(1);
   const safeUser = {
     id: user.id, username: user.username, name: user.name, surname: user.surname,
     email: user.email, phone: user.phone, role: user.role,
     must_set_password: user.must_set_password,
     okr_enabled: user.okr_enabled, okr_only: user.okr_only, sector: user.sector,
     okr_admin: user.okr_admin,
+    okr_viewer: !!(vw && vw[0] && (vw[0] as any).okr_viewer),
   };
   return res.json({ success: true, user: safeUser, token });
 });
@@ -754,14 +796,22 @@ app.post("/api/users/save", async (req, res) => {
       if (await inUse("username", user.username)) return res.json({ success: false, message: "Nome de usuário já existe." });
       if (await okrKeyTaken(user.username.toLowerCase())) return res.json({ success: false, message: "Esse nome de usuário está ligado ao OKR de outra pessoa." });
     } catch (e: any) { return res.json({ success: false, message: e.message }); }
+    // "Admin de visualização" do OKR: só o Edson ou o admin de OKR dá essa marca.
+    const newViewer = !!user.okrViewer;
+    if (newViewer) {
+      try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson ou o admin de OKR marca alguém como admin de visualização do OKR." }); }
+      catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+    }
     // Salario so e gravado se quem cria for o Edson. Um admin comum nem
     // enxerga salario (cliente recebe 0), entao nunca escreve esse campo.
     const { error } = await admin.from("users").insert([{
       id: user.id || randomUUID(), name: user.name, surname: user.surname, email: user.email, phone: user.phone,
       username: user.username, password: user.password, role: user.role,
       salary: claimsAreEdson(claims) ? (Number(user.salary) || 0) : 0,
-      okr_enabled: !!(user.okrEnabled || user.okrOnly), // "somente OKR" implica ter OKR
-      okr_only: !!user.okrOnly,
+      // Admin de visualização não tem OKR próprio nem é "somente OKR" (tem restrição própria).
+      okr_enabled: newViewer ? false : !!(user.okrEnabled || user.okrOnly), // "somente OKR" implica ter OKR
+      okr_only: newViewer ? false : !!user.okrOnly,
+      okr_viewer: newViewer,
       sector: user.sector || null,
     }]);
     if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
@@ -793,14 +843,27 @@ app.post("/api/users/save", async (req, res) => {
   // Todos podem editar dados de contato; SO admin muda username/role/salary/senha.
   const patch: any = { name: user.name, surname: user.surname, email: user.email, phone: user.phone };
   let renameTo = "";
+  let wantViewer = false;
   if (isAdmin) {
     // Renomear para um username que já existe (mesmo mudando maiúsculas, ex.: "EDSON") é recusado.
     try {
       if (await inUse("username", user.username, user.id)) return res.json({ success: false, message: "Nome de usuário já existe." });
-      const { data: cur, error: curErr } = await admin.from("users").select("username").eq("id", user.id).limit(1);
+      const { data: cur, error: curErr } = await admin.from("users").select("username, okr_viewer, okr_admin").eq("id", user.id).limit(1);
       if (curErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
       if (!cur || !cur.length) return res.json({ success: false, message: "Usuário não encontrado." });
       const oldName = String((cur[0] as any).username || "").trim();
+      // Admin de visualização: sem o campo no pedido (tela antiga) = fica como está;
+      // mudar a marca é só do Edson ou do admin de OKR.
+      const wasViewer = !!(cur[0] as any).okr_viewer;
+      wantViewer = user.okrViewer === undefined || user.okrViewer === null ? wasViewer : !!user.okrViewer;
+      if (wantViewer !== wasViewer && !(await isOkrMasterDb(admin, claims.sub))) {
+        return res.status(403).json({ success: false, error: "Só o Edson ou o admin de OKR muda a marca de admin de visualização do OKR." });
+      }
+      // O Edson e o admin de OKR editam o OKR de todos: marcá-los "só visualização"
+      // fecharia as gravações deles no banco (e o Edson não teria como desfazer).
+      if (wantViewer && !wasViewer && (user.id === EDSON_ID || (cur[0] as any).okr_admin)) {
+        return res.json({ success: false, message: "O Edson e o admin de OKR não podem ser admin de visualização." });
+      }
       if (oldName !== user.username) {
         // O login do Edson é fixo: o OKR e a governança dele são lidos pela chave 'edson'.
         if (user.id === EDSON_ID && oldName.toLowerCase() !== user.username.toLowerCase()) {
@@ -813,8 +876,9 @@ app.post("/api/users/save", async (req, res) => {
     patch.role = user.role;
     // A PRÓPRIA senha só muda por /api/auth/change-password, que confere a atual.
     if (user.password && !isSelf) patch.password = user.password;
-    patch.okr_enabled = !!(user.okrEnabled || user.okrOnly); // "somente OKR" implica ter OKR
-    patch.okr_only = !!user.okrOnly;
+    patch.okr_viewer = wantViewer;
+    patch.okr_enabled = wantViewer ? false : !!(user.okrEnabled || user.okrOnly); // "somente OKR" implica ter OKR
+    patch.okr_only = wantViewer ? false : !!user.okrOnly;
     patch.sector = user.sector || null;
   }
   // Salario: leitura E escrita restritas ao Edson. Sem esta guarda, um admin
@@ -897,8 +961,9 @@ app.post("/api/okr/share", async (req, res) => {
 
   // "O seu OKR" = o nome de usuário ATUAL do cadastro (pelo id do crachá), não o
   // nome gravado no crachá, que dura 24 h e pode ter ficado para trás de uma troca.
-  const { data: me, error: meErr } = await admin.from("users").select("username").eq("id", String(claims.sub || "")).limit(1);
+  const { data: me, error: meErr } = await admin.from("users").select("username, okr_viewer").eq("id", String(claims.sub || "")).limit(1);
   if (meErr) return res.status(500).json({ success: false, error: "Nao consegui conferir o usuario." });
+  if (me && me[0] && (me[0] as any).okr_viewer) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao gera link." });
   const self = String((me && me[0] && (me[0] as any).username) || "").trim().toLowerCase();
   const requested = String((req.body && (req.body as any).ownerKey) || "").trim().toLowerCase();
   const ownerKey = requested || self;
@@ -917,6 +982,81 @@ app.post("/api/okr/share", async (req, res) => {
     if (error) return res.json({ success: false, message: error.message });
   }
   return res.json({ success: true, token });
+});
+
+// POST /api/okr/panel/share { rotate?: boolean } — link público (só leitura) do PAINEL
+// de Indicadores. Só o Edson ou o admin de OKR. Sem `rotate`, reusa o link que existe;
+// com `rotate`, gera outro e o anterior para de funcionar.
+app.post("/api/okr/panel/share", async (req, res) => {
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "So o Edson ou o admin de OKR compartilha o painel." }); }
+  catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+  const rotate = !!(req.body && (req.body as any).rotate);
+  if (!rotate) {
+    const { data: row, error } = await admin.from("okr_panel_share").select("token").eq("id", 1).limit(1);
+    if (error) return res.status(500).json({ success: false, error: "Erro ao ler o link." });
+    if (row && row[0] && (row[0] as any).token) return res.json({ success: true, token: (row[0] as any).token });
+  }
+  const token = randomBytes(24).toString("hex");
+  const { error: upErr } = await admin.from("okr_panel_share")
+    .upsert({ id: 1, token, created_by: canonUuid(claims.sub), created_at: new Date().toISOString() }, { onConflict: "id" });
+  if (upErr) return res.status(500).json({ success: false, error: "Erro ao gerar o link." });
+  return res.json({ success: true, token, rotated: rotate });
+});
+
+// GET /api/okr/panel/public?token=... — leitura PÚBLICA (sem login) do painel de
+// Indicadores. Leva SÓ o que o painel mostra: nome, setor e, do período ativo de cada
+// OKR, os números dos KRs (atual/base/meta/status) — sem títulos, notas nem tarefas.
+app.get("/api/okr/panel/public", async (req, res) => {
+  const token = String((req.query && (req.query as any).token) || "").trim();
+  if (!token) return res.status(400).json({ success: false, error: "token ausente." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  const { data: sh, error: shErr } = await admin.from("okr_panel_share").select("token").eq("id", 1).limit(1);
+  if (shErr) return res.status(500).json({ success: false, error: "Erro ao ler." });
+  if (!sh || !sh[0] || (sh[0] as any).token !== token) return res.status(404).json({ success: false, error: "Link invalido." });
+  const [{ data: okrs, error: e1 }, { data: us, error: e2 }] = await Promise.all([
+    admin.from("okr_state").select("owner_key, data"),
+    admin.from("users").select("username, name, sector"),
+  ]);
+  if (e1 || e2) return res.status(500).json({ success: false, error: "Erro ao ler." });
+  const people: Record<string, { name: string; sector: string }> = {};
+  (us || []).forEach((u: any) => { people[String(u.username || "").trim().toLowerCase()] = { name: String(u.name || ""), sector: String(u.sector || "") }; });
+  // Esqueleto: a MESMA árvore que a tela lê (ids e os números do KR, sem texto), com o
+  // valor cru — quem normaliza é o migrateToStore do navegador, igual à tela interna,
+  // para o link público e a tela darem o mesmo número. Só o período ativo viaja.
+  const isObj = (x: any) => !!x && typeof x === "object" && !Array.isArray(x);
+  const raw = (v: any) => (v === null || ["number", "string", "boolean"].includes(typeof v)) ? v : undefined;
+  // Mesma regra do str() de src/okr/okr.ts (texto fica, nulo vira '', objeto vira JSON).
+  const ids = (v: any): string => typeof v === "string" ? v : v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+  const skelObjs = (os: any) => (Array.isArray(os) ? os : []).filter(isObj).map((o: any) => ({
+    id: ids(o.id),
+    keyResults: (Array.isArray(o.keyResults) ? o.keyResults : []).filter(isObj).map((k: any) => ({
+      id: ids(k.id), baseline: raw(k.baseline), target: raw(k.target), current: raw(k.current),
+      status: typeof k.status === "string" ? k.status : undefined, archived: !!k.archived,
+    })),
+  }));
+  const rows = (okrs || [])
+    .filter((r: any) => typeof r.owner_key === "string" && r.owner_key.trim() && !r.owner_key.startsWith("excluido:"))
+    .map((r: any, i: number) => {
+      const d = isObj(r.data) ? r.data : {};
+      const owner = ids(d.owner);
+      const periods = (Array.isArray(d.periods) ? d.periods : []).filter(isObj);
+      let data: any = { owner };
+      if (periods.length) {
+        const act = periods.find((q: any) => ids(q.id) === ids(d.activePeriodId)) || periods[0];
+        data = { owner, activePeriodId: ids(act.id), periods: [{ id: ids(act.id), label: "", range: "", checkins: [], objectives: skelObjs(act.objectives) }] };
+      } else if (Array.isArray(d.objectives)) {
+        data = { owner, objectives: skelObjs(d.objectives) };
+      }
+      const pp = people[r.owner_key] || { name: "", sector: "" };
+      // A chave do OKR é o LOGIN da pessoa: o link leva só um número de linha.
+      return { ownerKey: `p${i + 1}`, name: pp.name, sector: pp.sector, data };
+    });
+  return res.json({ success: true, rows });
 });
 
 // GET /api/okr/public?token=... — leitura PUBLICA (sem login) do OKR. So leitura.
@@ -975,9 +1115,13 @@ app.post("/api/users/delete", async (req, res) => {
 
 // GET /api/labor/hourly-cost — media (custo/hora) para o custo automatico.
 app.get("/api/labor/hourly-cost", async (req, res) => {
-  if (!verifyBearerToken(req)) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const hcClaims = verifyBearerToken(req);
+  if (!hcClaims) return res.status(401).json({ success: false, error: "Nao autorizado." });
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  // Custo/hora sai dos salários: não é do painel de OKR (a tela trata a recusa como 0).
+  try { if (await isViewerDb(admin, hcClaims.sub)) return res.status(403).json({ success: false, error: "Sem permissao." }); }
+  catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
   const { data, error } = await admin.from("users").select("role,salary");
   if (error) {
     console.error("[labor/hourly-cost]", error.message);

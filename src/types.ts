@@ -87,6 +87,7 @@ export interface User {
   okrEnabled?: boolean; // se true, o usuário tem o próprio OKR (aba). Edson vê/edita todos.
   okrOnly?: boolean;    // se true, o usuário só vê a aba OKR — nada de engenharia.
   okrAdmin?: boolean;   // se true, vê/edita o OKR de TODOS (como o Edson), sem engenharia.
+  okrViewer?: boolean;  // "admin de visualização": vê Indicadores e Linha do tempo de todos, sem editar nada nem ter OKR.
   sector?: string;      // setor do usuário (Comercial, PCP, RH, Fábrica, ...).
 }
 

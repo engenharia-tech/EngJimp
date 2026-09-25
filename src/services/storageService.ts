@@ -285,7 +285,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
 // password, password_hash, reset_code_hash, reset_code_expires — sao segredos
 // que so o servidor (service_role) le. Trocar select('*') por esta lista fecha
 // o vazamento do C2 (o salario/senha vinham crus para todo cliente).
-const USER_SAFE_COLUMNS = 'id, username, name, surname, email, phone, role, okr_enabled, okr_only, sector, created_at';
+const USER_SAFE_COLUMNS = 'id, username, name, surname, email, phone, role, okr_enabled, okr_only, okr_viewer, sector, created_at';
 
 // Media (custo/hora) calculada no servidor, sem expor salario individual.
 // Usada pelo "custo automatico" no app inteiro.
@@ -384,7 +384,7 @@ export const fetchAppState = async (): Promise<AppState> => {
       users = (usersRes.data || []).map((u: any) => ({
         id: u.id, username: u.username, password: '', name: u.name, surname: u.surname,
         email: u.email, phone: u.phone, role: u.role, okrEnabled: !!u.okr_enabled,
-        okrOnly: !!u.okr_only, sector: u.sector || '',
+        okrOnly: !!u.okr_only, okrViewer: !!u.okr_viewer, sector: u.sector || '',
         // salario so existe no cliente do Edson (via /api/users/salaries); 0 p/ o resto.
         salary: Number(edsonSalaries[u.id]) || 0
       })).sort((a, b) => a.name.localeCompare(b.name));
@@ -1003,6 +1003,33 @@ export const enableOkrShare = async (ownerKey?: string): Promise<string> => {
   const out = await res.json().catch(() => ({}));
   if (!res.ok || !out.success || !out.token) throw new Error(out.error || out.message || 'Falha ao compartilhar.');
   return out.token as string;
+};
+
+// Link público do PAINEL de Indicadores (só Edson / admin de OKR). `rotate` troca o
+// link: o anterior para de abrir.
+export const enableOkrPanelShare = async (rotate = false): Promise<string> => {
+  const res = await fetch('/api/okr/panel/share', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(rotate ? { rotate: true } : {}),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || !out.success || !out.token) throw new Error(out.error || out.message || 'Falha ao compartilhar.');
+  return out.token as string;
+};
+
+// Lê o painel pelo token público (sem login). Os OKRs passam pelo MESMO
+// migrateToStore da tela interna (o servidor manda o valor cru), e o nome/setor
+// vira um "usuário" mínimo para a tela casar pela chave, como faz por dentro.
+export const fetchPublicOkrPanel = async (token: string): Promise<{ rows: { ownerKey: string; store: OkrStore }[]; users: User[] } | null> => {
+  try {
+    const res = await fetch(`/api/okr/panel/public?token=${encodeURIComponent(token)}`);
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out.success || !Array.isArray(out.rows)) return null;
+    const rows = out.rows.map((r: any) => ({ ownerKey: String(r.ownerKey), store: migrateToStore(r.data) }));
+    const users: User[] = out.rows.map((r: any) => ({ id: String(r.ownerKey), username: String(r.ownerKey), password: '', name: String(r.name || ''), role: 'PROJETISTA', sector: String(r.sector || '') } as User));
+    return { rows, users };
+  } catch { return null; }
 };
 
 // Lê o OKR pelo token público (sem login), via servidor.
@@ -1900,6 +1927,7 @@ export const fetchUsers = async (): Promise<User[]> => {
       role: u.role,
       okrEnabled: !!u.okr_enabled,
       okrOnly: !!u.okr_only,
+      okrViewer: !!u.okr_viewer,
       sector: u.sector || '',
       salary: Number(edsonSalaries[u.id]) || 0
     })).sort((a, b) => a.name.localeCompare(b.name));
