@@ -21,7 +21,6 @@ import {
   addAuditLog
 } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
-import { getInterruptionRecipients } from '../services/notificationService';
 import { authHeaders } from '../services/authToken';
 
 interface InterruptionManagerProps {
@@ -311,29 +310,24 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
             details: `Interrupção no projeto ${newItem.projectNs} registrada por ${currentUser.name}`
         });
 
-        // Notifica Engenharia + Coordenacao + Comercial da interrupcao
-        // (destinos corporativos fixos — ver notificationService).
-        const interruptionRecipients = getInterruptionRecipients();
-        if (interruptionRecipients.length > 0) {
-          try {
-            if (!emailBody || emailBody.trim().length < 10) {
-              console.warn("Interruption email body is empty or too short. Skipping email.");
-            } else {
-              const userDisplayName = currentUser ? `${currentUser.name} ${currentUser.surname || ''}`.trim() : "JIMPNEXUS";
-              fetch('/api/send-email', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({
-                  subject: t('newInterruptionAlert', { ns }),
-                  body: emailBody.replace(/\n/g, '<br>'),
-                  to: interruptionRecipients.join(','),
-                  fromName: `${userDisplayName} - JIMPNEXUS`
-                })
-              });
-            }
-          } catch (emailErr) {
-            console.error('Erro ao disparar e-mail de interrupção:', emailErr);
+        // Notifica Engenharia + Coordenacao + Comercial da interrupcao. Quem
+        // recebe e o nome do remetente sao decididos pelo SERVIDOR (kind).
+        try {
+          if (!emailBody || emailBody.trim().length < 10) {
+            console.warn("Interruption email body is empty or too short. Skipping email.");
+          } else {
+            fetch('/api/send-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...authHeaders() },
+              body: JSON.stringify({
+                kind: 'interruption',
+                subject: t('newInterruptionAlert', { ns }),
+                body: emailBody.replace(/\n/g, '<br>')
+              })
+            });
           }
+        } catch (emailErr) {
+          console.error('Erro ao disparar e-mail de interrupção:', emailErr);
         }
       }
       resetForm();

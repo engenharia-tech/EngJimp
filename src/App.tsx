@@ -594,14 +594,17 @@ const AppContent: React.FC = () => {
             "info"
           );
 
+          // A auditoria é gravada por QUEM está logado (o banco só aceita o próprio
+          // user_id): o ajuste roda no navegador de quem estiver com o app aberto, não
+          // no do dono da atividade — o dono vai no texto.
           addAuditLog({
-            userId: runningAct.userId,
+            userId: currentUser.id,
             userName: "Sistema Nexus",
             action: "UPDATE",
             entityType: "OPERATIONAL_ACTIVITY",
             entityId: runningAct.id,
             entityName: runningAct.activityName,
-            details: `Ajuste automático de atividade esquecida de ${targetUserName} "${runningAct.activityName}": interrompida no final do expediente e dividida conforme jornada de trabalho.`
+            details: `Ajuste automático de atividade esquecida de ${targetUserName} "${runningAct.activityName}": interrompida no final do expediente e dividida conforme jornada de trabalho. (Ajuste feito pela sessão de ${currentUser.name}.)`
           });
         } catch (error) {
           console.error("[Cleanup] Error adjusting forgotten activity:", error);

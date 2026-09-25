@@ -53,27 +53,70 @@ app.post("/api/send-email", async (req, res) => {
   if (!mailClaims) {
     return res.status(401).json({ success: false, error: "Nao autorizado." });
   }
-  // O admin de visualização do OKR só olha: não envia e-mail pela conta da empresa.
-  {
-    const adm = getSupabaseAdmin();
-    if (!adm) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
-    try { if (await isViewerDb(adm, mailClaims.sub)) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao envia e-mail." }); }
-    catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
-  }
+  // Quem manda é lido do CADASTRO pelo id do crachá: o nome do remetente sai daqui,
+  // nunca do pedido. O admin de visualização do OKR só olha: não envia e-mail.
+  const adm = getSupabaseAdmin();
+  if (!adm) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  let sender: { name: string; role: string; isEdson: boolean };
   try {
-    const { subject, body, to: bodyTo, fromName } = req.body;
-    console.log(`[Email API] Request Body: Subject="${subject}", BodyLength=${body?.length}, To=${bodyTo}, FromName=${fromName}`);
-    
+    const sid = canonUuid(mailClaims.sub);
+    if (!sid) return res.status(401).json({ success: false, error: "Nao autorizado." });
+    if (await isViewerDb(adm, sid)) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao envia e-mail." });
+    const { data: me, error: meErr } = await adm.from("users").select("name, surname, role").eq("id", sid).limit(1);
+    if (meErr) throw new Error("Nao consegui conferir o seu cadastro. Tente de novo.");
+    const r = me && (me[0] as any);
+    if (!r) return res.status(401).json({ success: false, error: "Nao autorizado." });
+    sender = { name: `${r.name || ""} ${r.surname || ""}`.trim(), role: String(r.role || ""), isEdson: sid === EDSON_ID };
+  } catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+  try {
+    const { subject, body, to: bodyTo, kind } = req.body || {};
+    console.log(`[Email API] Request: sub=${mailClaims.sub}, kind=${kind || "-"}, Subject="${subject}", BodyLength=${body?.length}, To=${bodyTo}`);
+
     if (!subject || !body) {
       return res.status(400).json({ success: false, error: "Assunto ou corpo do e-mail ausente." });
     }
-    
+
     const host = process.env.EMAIL_HOST;
     const port = parseInt(process.env.EMAIL_PORT || "587");
     const user = process.env.EMAIL_USER;
     const pass = process.env.EMAIL_PASS;
     const from = process.env.EMAIL_FROM || user;
-    const to = bodyTo || process.env.EMAIL_TO;
+
+    // PARA QUEM: a notificação (interrupção/conclusão) vai para a lista do SERVIDOR
+    // e o `to` do pedido é ignorado. Fora dela, o `to` só pode ter endereços que
+    // alguém com poder já escolheu (listas de notificação, Configurações, EMAIL_TO);
+    // o teste de Configurações (só admin) também alcança os domínios da empresa.
+    // Antes qualquer logado mandava, pela conta oficial, para qualquer endereço da
+    // empresa com o nome de remetente que quisesse — phishing interno.
+    let to: string;
+    let recipients: string[];
+    if (kind === "interruption" || kind === "completion") {
+      recipients = NOTIFY_RECIPIENTS[kind];
+      to = recipients.join(",");
+    } else {
+      to = String(bodyTo || process.env.EMAIL_TO || "");
+      recipients = to.split(",").map((s) => s.trim()).filter(Boolean);
+      if (recipients.length === 0) {
+        return res.status(400).json({ success: false, error: "Nenhum destinatário válido." });
+      }
+      const trusted = new Set<string>([
+        ...NOTIFY_RECIPIENTS.interruption, ...NOTIFY_RECIPIENTS.completion,
+        ...String(process.env.EMAIL_TO || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
+        ...(await configuredRecipients(adm)),
+      ]);
+      const podeTestar = kind === "test" && (ADMIN_ROLES.includes(sender.role) || sender.isEdson);
+      if (kind === "test" && !podeTestar) {
+        return res.status(403).json({ success: false, error: "Só quem edita as Configurações envia o e-mail de teste." });
+      }
+      const blocked = recipients.filter((r) => {
+        const a = r.toLowerCase();
+        return !(trusted.has(a) || (podeTestar && recipientAllowed(a, new Set())));
+      });
+      if (blocked.length > 0) {
+        console.warn("[Email API] Destinatário bloqueado:", blocked.join(", "), "sub:", mailClaims.sub);
+        return res.status(403).json({ success: false, error: `Destinatário não permitido: ${blocked.join(", ")}.` });
+      }
+    }
 
     console.log(`[Email API] Config Check: Host=${host}, Port=${port}, User=${user}, Pass=${pass ? '***' : 'MISSING'}, To=${to}`);
 
@@ -83,20 +126,6 @@ app.post("/api/send-email", async (req, res) => {
         success: false,
         error: "Configuração de e-mail incompleta no servidor. Verifique as variáveis de ambiente."
       });
-    }
-
-    // Allow-list de destinatarios (residuo do C3): so dominios da empresa +
-    // enderecos configurados em settings. Fecha o phishing externo.
-    const adminForRecips = getSupabaseAdmin();
-    const configured = adminForRecips ? await configuredRecipients(adminForRecips) : new Set<string>();
-    const recipients = String(to).split(",").map((s) => s.trim()).filter(Boolean);
-    if (recipients.length === 0) {
-      return res.status(400).json({ success: false, error: "Nenhum destinatário válido." });
-    }
-    const blocked = recipients.filter((r) => !recipientAllowed(r, configured));
-    if (blocked.length > 0) {
-      console.warn("[Email API] Destinatário bloqueado:", blocked.join(", "));
-      return res.status(403).json({ success: false, error: `Destinatário não permitido: ${blocked.join(", ")}. Apenas endereços da empresa.` });
     }
 
     const transporter = nodemailer.createTransport({
@@ -110,8 +139,11 @@ app.post("/api/send-email", async (req, res) => {
       tls: { rejectUnauthorized: false }
     });
 
-    // Strip out quotes from fromName to avoid header corruption
-    const cleanFromName = fromName ? fromName.replace(/["']/g, '') : "JIMPNEXUS";
+    // O nome do remetente é FIXO pelo servidor: a conclusão sai como o sistema; o
+    // resto leva o nome de quem mandou, lido do cadastro. O `fromName` do pedido é
+    // ignorado — era por ele que um logado assinava como "TI" ou "Diretoria".
+    const nomeRemetente = kind === "completion" ? "JIMPNexus KPI" : `${sender.name || "Usuario"} - JIMPNEXUS`;
+    const cleanFromName = nomeRemetente.replace(/["'\r\n<>]/g, "");
 
     const mailPromise = transporter.sendMail({
       from: `"${cleanFromName}" <${from}>`,
@@ -504,6 +536,14 @@ function tooMany(res: express.Response, retryAfterSeconds: number) {
 // com o dominio da empresa (SPF/DKIM valido) para uma vitima EXTERNA (phishing).
 // Restringe a: dominios da empresa + os enderecos configurados em `settings`.
 const ALLOWED_EMAIL_DOMAINS = ["joinvilleimplementos.com.br", "furgoesjoinville.com.br", "jimp.com.br"];
+// DESTINOS DAS NOTIFICAÇÕES — a única lista. O navegador manda só o TIPO (`kind`)
+// e o servidor escolhe para quem vai; para mudar quem recebe, é aqui.
+// Conclusão de projeto -> Engenharia + Coordenação. Interrupção -> + Comercial
+// (as paradas são ocasionadas pelo Comercial).
+const NOTIFY_RECIPIENTS: Record<"completion" | "interruption", string[]> = {
+  completion: ["edson@jimp.com.br", "matheus.p@joinvilleimplementos.com.br"],
+  interruption: ["edson@jimp.com.br", "matheus.p@joinvilleimplementos.com.br", "comercial@furgoesjoinville.com.br"],
+};
 async function configuredRecipients(admin: any): Promise<Set<string>> {
   const set = new Set<string>();
   try {
@@ -748,6 +788,15 @@ app.post("/api/auth/confirm-password", async (req, res) => {
 // ninguem falando direto com o banco.
 // ============================================================
 const ADMIN_ROLES = ["GESTOR", "CEO", "COORDENADOR"];
+// CEO e GESTOR — decisão do Edson, 25/09/2026: "qualquer GESTOR". Os três cargos de
+// admin continuam cadastrando e editando, mas só um GESTOR dá ou tira CEO/GESTOR, e só
+// ele troca login, e-mail ou senha — ou exclui — as contas que leem o OKR de todos
+// (CEO, GESTOR, admin de OKR, admin de visualização). Antes um COORDENADOR ou CEO se
+// punha como CEO pela API (okr_is_ceo() libera o OKR de todos), ou trocava o e-mail de
+// um CEO ou do admin de OKR e pedia o código de "Criar / redefinir senha" no lugar dele.
+const CARGOS_DE_TOPO = ["CEO", "GESTOR"];
+const ehCargoDeTopo = (role: any) => CARGOS_DE_TOPO.includes(String(role ?? "").trim().toUpperCase());
+const contaQueLeTudo = (r: any) => !!r && (ehCargoDeTopo(r.role) || r.role === ADM_EXTERNO || !!r.okr_admin || !!r.okr_viewer);
 
 // POST /api/users/save { mode: 'create'|'update', user }
 app.post("/api/users/save", async (req, res) => {
@@ -759,7 +808,12 @@ app.post("/api/users/save", async (req, res) => {
   const { mode, user } = req.body || {};
   if (!user || !user.username) return res.status(400).json({ success: false, error: "Dados incompletos." });
   let isAdmin = false;
-  try { isAdmin = ADMIN_ROLES.includes(String(await currentRole(admin, claims.sub))); }
+  let isGestor = false; // só GESTOR mexe em CEO/GESTOR e nas contas que leem o OKR de todos
+  try {
+    const papel = await currentRole(admin, claims.sub);
+    isAdmin = ADMIN_ROLES.includes(String(papel));
+    isGestor = papel === "GESTOR" || claimsAreEdson(claims);
+  }
   catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
 
   // O id vem do cliente: só vale na forma canônica (o banco aceitaria o id do Edson em
@@ -814,6 +868,7 @@ app.post("/api/users/save", async (req, res) => {
 
   if (mode === "create") {
     if (!isAdmin) return res.status(403).json({ success: false, error: "Sem permissao para criar usuarios." });
+    if (ehCargoDeTopo(user.role) && !isGestor) return res.status(403).json({ success: false, error: "Só um GESTOR dá o cargo CEO ou GESTOR." });
     try {
       if (await inUse("username", user.username)) return res.json({ success: false, message: "Nome de usuário já existe." });
       if (await okrKeyTaken(user.username.toLowerCase())) return res.json({ success: false, message: "Esse nome de usuário está ligado ao OKR de outra pessoa." });
@@ -900,6 +955,24 @@ app.post("/api/users/save", async (req, res) => {
         renameTo = user.username;
       }
     } catch (e: any) { return res.json({ success: false, message: e.message }); }
+    // CEO/GESTOR e as contas que leem o OKR de todos (ver CARGOS_DE_TOPO): conferido
+    // contra o CADASTRO, antes de qualquer gravação (o login novo só é gravado lá embaixo).
+    if (!isGestor) {
+      const { data: alvo, error: alvoErr } = await admin.from("users").select("role, email, username, okr_admin, okr_viewer").eq("id", user.id).limit(1);
+      if (alvoErr || !alvo || !alvo.length) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
+      const a = alvo[0] as any;
+      const cargoNovo = user.role === undefined || user.role === null ? a.role : user.role; // sem o campo, o cargo fica
+      if (String(cargoNovo) !== String(a.role || "") && (ehCargoDeTopo(cargoNovo) || ehCargoDeTopo(a.role))) {
+        return res.status(403).json({ success: false, error: "Só um GESTOR dá ou tira o cargo CEO ou GESTOR." });
+      }
+      if (!isSelf && contaQueLeTudo(a)) {
+        const mudaEmail = String(user.email || "").trim().toLowerCase() !== String(a.email || "").trim().toLowerCase();
+        const mudaLogin = user.username !== String(a.username || "").trim();
+        if (mudaEmail || mudaLogin || !!user.password) {
+          return res.status(403).json({ success: false, error: "Login, e-mail e senha de CEO, GESTOR e dos admins do OKR só um GESTOR altera." });
+        }
+      }
+    }
     patch.role = user.role;
     // A PRÓPRIA senha só muda por /api/auth/change-password, que confere a atual.
     if (user.password && !isSelf) patch.password = user.password;
@@ -1104,7 +1177,12 @@ app.post("/api/users/delete", async (req, res) => {
   if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
-  try { if (!ADMIN_ROLES.includes(String(await currentRole(admin, claims.sub)))) return res.status(403).json({ success: false, error: "Sem permissao." }); }
+  let isGestor = false; // só GESTOR exclui CEO, GESTOR e as contas que leem o OKR de todos
+  try {
+    const papel = await currentRole(admin, claims.sub);
+    if (!ADMIN_ROLES.includes(String(papel))) return res.status(403).json({ success: false, error: "Sem permissao." });
+    isGestor = papel === "GESTOR" || claimsAreEdson(claims);
+  }
   catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
 
   const id = canonUuid((req.body || {}).id);
@@ -1115,8 +1193,11 @@ app.post("/api/users/delete", async (req, res) => {
 
   // Sem saber o login não dá para arquivar o OKR dele: não exclui (antes excluía e
   // o OKR ficava sem dono, calado).
-  const { data: cur, error: curErr } = await admin.from("users").select("username").eq("id", id).limit(1);
+  const { data: cur, error: curErr } = await admin.from("users").select("username, role, okr_admin, okr_viewer").eq("id", id).limit(1);
   if (curErr) return res.json({ success: false, message: "Nao consegui ler o usuario. Nada foi excluido; tente de novo." });
+  if (!isGestor && contaQueLeTudo(cur && cur[0])) {
+    return res.status(403).json({ success: false, error: "Só um GESTOR exclui CEO, GESTOR e os admins do OKR." });
+  }
   const oldKey = String((cur && cur[0] && (cur[0] as any).username) || "").trim().toLowerCase();
   await admin.from("projects").update({ user_id: null }).eq("user_id", id);
   await admin.from("innovations").update({ author_id: null }).eq("author_id", id);

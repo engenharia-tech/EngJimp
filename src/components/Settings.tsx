@@ -141,6 +141,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
+          kind: 'test',
           subject: t('testEmailSubject'),
           body: t('testEmailBody'),
           to: formData.emailTo
