@@ -613,6 +613,69 @@ app.post("/api/auth/set-password", async (req, res) => {
   return res.json({ success: true });
 });
 
+// ---- A senha de quem JÁ está logado (perfil e tela de bloqueio). Quem é vem do
+// crachá (sub), nunca do corpo; a conferência é feita NO BANCO, pelas funções
+// kpi_senha_confere / kpi_trocar_propria_senha (só service_role, mesma regra do
+// verify_login). Antes o navegador comparava com `user.password`, que o login
+// deixa vazio: o perfil nunca salvava e a tela de bloqueio nunca destravava.
+// As duas rotas dividem o limite de erros: 6 senhas erradas em 15 min travam.
+const PW_JANELA = 900;
+async function pwGuard(req: express.Request, res: express.Response): Promise<{ admin: any; id: string } | null> {
+  const claims = verifyBearerToken(req);
+  const id = claims ? canonUuid(claims.sub) : null;
+  if (!id) { res.status(401).json({ success: false, error: "Sessao expirada. Entre de novo." }); return null; }
+  const admin = getSupabaseAdmin();
+  if (!admin) { res.status(503).json({ success: false, error: "Servidor nao configurado." }); return null; }
+  if ((await rlHit(`pw:ip:${clientIp(req)}`, PW_JANELA)) > 60) { tooMany(res, PW_JANELA); return null; }
+  // A tentativa é CONTADA antes de conferir a senha (acertar zera). Conferir antes e
+  // contar depois deixava 60 pedidos simultâneos testarem 60 senhas (todos liam 0).
+  if ((await rlHit(`pw:fail:${id}`, PW_JANELA)) > 6) { tooMany(res, PW_JANELA); return null; }
+  return { admin, id };
+}
+
+// POST /api/auth/change-password { currentPassword, newPassword } — troca a PRÓPRIA senha.
+app.post("/api/auth/change-password", async (req, res) => {
+  const g = await pwGuard(req, res);
+  if (!g) return;
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ success: false, error: "Informe a senha atual e a nova." });
+  if (String(newPassword).length < 6) return res.status(400).json({ success: false, error: "A senha nova deve ter ao menos 6 caracteres." });
+
+  const { data, error } = await g.admin.rpc("kpi_trocar_propria_senha", {
+    p_user: g.id, p_atual: String(currentPassword), p_nova: String(newPassword),
+  });
+  if (error) {
+    console.error("[auth/change-password]", error.message);
+    return res.status(500).json({ success: false, error: "Erro ao trocar a senha." });
+  }
+  if (data === "ATUAL_ERRADA") {
+    return res.status(400).json({ success: false, error: "A senha atual está incorreta." });   // já contada no pwGuard
+  }
+  if (data === "CURTA") return res.status(400).json({ success: false, error: "A senha nova deve ter ao menos 6 caracteres." });
+  if (data !== "OK") return res.status(404).json({ success: false, error: "Usuário não encontrado." });
+  await rlReset(`pw:fail:${g.id}`);
+  return res.json({ success: true });
+});
+
+// POST /api/auth/confirm-password { password } — a tela de bloqueio confere a senha.
+app.post("/api/auth/confirm-password", async (req, res) => {
+  const g = await pwGuard(req, res);
+  if (!g) return;
+  const { password } = req.body || {};
+  if (!password) return res.status(400).json({ success: false, error: "Informe a senha." });
+
+  const { data, error } = await g.admin.rpc("kpi_senha_confere", { p_user: g.id, p_senha: String(password) });
+  if (error) {
+    console.error("[auth/confirm-password]", error.message);
+    return res.status(500).json({ success: false, error: "Erro ao conferir a senha." });
+  }
+  if (data !== true) {
+    return res.status(400).json({ success: false, error: "Senha incorreta." });   // já contada no pwGuard
+  }
+  await rlReset(`pw:fail:${g.id}`);
+  return res.json({ success: true });
+});
+
 // ============================================================
 // GESTAO DE USUARIOS (mediada pelo servidor) — C1 da auditoria.
 // Escritas em `users` param de sair do navegador. O servidor confere o
@@ -705,8 +768,27 @@ app.post("/api/users/save", async (req, res) => {
     return res.json({ success: true });
   }
 
+  // Meu Perfil: SÓ o contato da própria pessoa. O perfil manda o usuário que o
+  // navegador guardou no login (até 12 h de idade); pelo caminho de 'update', um
+  // admin que trocasse só o telefone regravava cargo, OKR, setor e até o login com
+  // esses valores velhos — desfazendo calado o que alguém mudou no meio do dia.
+  if (mode === "profile") {
+    if (!isSelf) return res.status(403).json({ success: false, error: "O perfil só altera o próprio usuário." });
+    const nome = String(user.name || "").trim();
+    if (!nome) return res.json({ success: false, message: "Informe o seu nome." });
+    const { error: pErr } = await admin.from("users")
+      .update({ name: nome, surname: String(user.surname || "").trim(), email: user.email, phone: user.phone || null })
+      .eq("id", user.id);
+    if (pErr) {
+      if ((pErr as any).code === "23505") return res.json({ success: false, message: "Este e-mail já pertence a outro usuário." });
+      return res.json({ success: false, message: `Erro DB: ${pErr.message}` });
+    }
+    return res.json({ success: true });
+  }
+
   // update
   if (!user.id) return res.status(400).json({ success: false, error: "id ausente." });
+  if (!String(user.name || "").trim()) return res.json({ success: false, message: "Informe o nome." });
   if (!isAdmin && !isSelf) return res.status(403).json({ success: false, error: "Sem permissao." });
   // Todos podem editar dados de contato; SO admin muda username/role/salary/senha.
   const patch: any = { name: user.name, surname: user.surname, email: user.email, phone: user.phone };
@@ -729,7 +811,8 @@ app.post("/api/users/save", async (req, res) => {
       }
     } catch (e: any) { return res.json({ success: false, message: e.message }); }
     patch.role = user.role;
-    if (user.password) patch.password = user.password;
+    // A PRÓPRIA senha só muda por /api/auth/change-password, que confere a atual.
+    if (user.password && !isSelf) patch.password = user.password;
     patch.okr_enabled = !!(user.okrEnabled || user.okrOnly); // "somente OKR" implica ter OKR
     patch.okr_only = !!user.okrOnly;
     patch.sector = user.sector || null;
@@ -754,6 +837,9 @@ app.post("/api/users/save", async (req, res) => {
   if (error) {
     if ((error as any).code === "23505") return res.json({ success: false, message: "E-mail ou nome de usuário já pertence a outra pessoa." });
     return res.json({ success: false, message: `Erro DB: ${error.message}${renameTo ? " (o login novo já foi gravado)" : ""}` });
+  }
+  if (isSelf && user.password) {
+    return res.json({ success: true, message: "Os dados foram salvos, mas a SUA senha não muda por aqui: troque em Meu Perfil, que confere a senha atual." });
   }
   return res.json({ success: true });
 });
