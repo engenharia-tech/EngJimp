@@ -136,6 +136,7 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
       setStatus: (id, status, version) => releSeVelho(svc.current.setStatus(id, status, version)),
       remove: (id) => releSeVelho(svc.current.remove(id)),
       sendTest: (itemId) => svc.current.sendTest(itemId),
+      ocupado: (pessoas, de, ate, ignorar) => svc.current.ocupado(pessoas, de, ate, ignorar),
     };
   }, [load]);
 

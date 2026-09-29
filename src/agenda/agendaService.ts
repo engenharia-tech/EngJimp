@@ -7,8 +7,8 @@
 import { supabase } from '../services/storageService';
 import { authHeaders } from '../services/authToken';
 import {
-  AgendaItem, AgendaItemInput, AgendaAlerta,
-  AGENDA_ITEM_COLS, AGENDA_ALERTA_COLS, mapAgendaItem, mapAgendaAlerta, toAgendaRow, validarAgenda,
+  AgendaItem, AgendaItemInput, AgendaAlerta, AgendaOcupado,
+  AGENDA_ITEM_COLS, AGENDA_ALERTA_COLS, OCUPADO_LOTE, mapAgendaItem, mapAgendaAlerta, mapAgendaOcupado, toAgendaRow, validarAgenda,
 } from './agenda';
 
 // A mudança não se aplica mais (sumiu, mudou por outra pessoa). A mensagem é para a pessoa.
@@ -29,6 +29,10 @@ export interface AgendaService {
   setStatus(id: string, status: AgendaItem['status'], version: string): Promise<AgendaItem>;
   remove(id: string): Promise<void>;
   sendTest(itemId: string): Promise<string>;
+  // Livre/ocupado (migração 016): os intervalos em que as pessoas estão ocupadas na janela
+  // [de, ate) — só o horário, nunca o conteúdo. `ignorar` = o compromisso que está sendo
+  // editado. null = a função ainda não existe no banco (016 não rodada): a tela não mostra nada.
+  ocupado(pessoas: string[], de: Date, ate: Date, ignorar?: string): Promise<AgendaOcupado[] | null>;
 }
 
 // Lança no erro: "não consegui ler" nunca vira "agenda vazia".
@@ -114,7 +118,36 @@ const sendTest = async (itemId: string): Promise<string> => {
   return String(out.para || 'o seu e-mail');
 };
 
-export const agendaService: AgendaService = { list, listAlertas, create, update, patchDates, setStatus, remove, sendTest };
+// A função da 016 ainda não existe: o PostgREST responde PGRST202 ("Could not find the
+// function … in the schema cache"); chamada direta ao Postgres dá 42883. Também cai aqui se
+// faltar uma função da 012 que ela usa (agenda desinstalada) — nos dois casos, "sem informação".
+const funcaoAusente = (e: any): boolean =>
+  e?.code === 'PGRST202' || e?.code === '42883'
+  || /could not find the function|function .*agenda_\w+.* does not exist/i.test(String(e?.message || ''));
+
+// Livre/ocupado — em lotes de até 60 pessoas (o limite do banco), em paralelo. Pessoa que
+// não aparece na resposta está LIVRE na janela. Erro que não seja "função ausente" LANÇA
+// (a tela diz "não consegui conferir" — nunca vira "todo mundo livre").
+const ocupado = async (pessoas: string[], de: Date, ate: Date, ignorar?: string): Promise<AgendaOcupado[] | null> => {
+  const ids = Array.from(new Set((pessoas || []).map(String).filter(Boolean)));
+  if (!ids.length) return [];
+  const lotes: string[][] = [];
+  for (let i = 0; i < ids.length; i += OCUPADO_LOTE) lotes.push(ids.slice(i, i + OCUPADO_LOTE));
+  const partes = await Promise.all(lotes.map(async (lote) => {
+    const args: Record<string, unknown> = { p_pessoas: lote, p_de: de.toISOString(), p_ate: ate.toISOString() };
+    if (ignorar) args.p_ignorar = ignorar;
+    const { data, error } = await supabase.rpc('agenda_ocupado', args);
+    if (error) {
+      if (funcaoAusente(error)) return null;
+      throw new Error(error.message || 'Não consegui conferir quem está livre.');
+    }
+    return (Array.isArray(data) ? data : []).map(mapAgendaOcupado).filter((o): o is AgendaOcupado => !!o);
+  }));
+  if (partes.some(p => p === null)) return null;
+  return (partes as AgendaOcupado[][]).flat();
+};
+
+export const agendaService: AgendaService = { list, listAlertas, create, update, patchDates, setStatus, remove, sendTest, ocupado };
 
 const NET_RE = /failed to fetch|fetch failed|networkerror|load failed|network request failed|timed? ?out|aborted/i;
 

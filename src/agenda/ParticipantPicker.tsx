@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Search, X, Check, AlertTriangle, UserRoundX } from 'lucide-react';
 import { User } from '../types';
-import { emailRecebeAlerta, AGENDA_EMAIL_DOMINIOS } from './agenda';
+import { emailRecebeAlerta, AGENDA_EMAIL_DOMINIOS, AgendaOcupado, resumoOcupado } from './agenda';
 
 // Escolha dos PARTICIPANTES de um compromisso da agenda (29/09/2026).
 //
@@ -18,8 +18,38 @@ import { emailRecebeAlerta, AGENDA_EMAIL_DOMINIOS } from './agenda';
 // Teclado: a busca é uma combobox sempre aberta (↑/↓ andam na lista, Enter marca/desmarca,
 // PageUp/PageDown pulam). A lista não é um popup de propósito: o Esc do modal (useDialog)
 // é capturado no document antes de chegar aqui, então um popup não teria como fechar sozinho.
+//
+// Livre/ocupado (migração 016 — decisão do Edson, 29/09 fim da tarde): com `ocupacao`, cada
+// pessoa CONSULTADA ganha um selo "livre" (verde) ou "ocupado 14:00–15:30" (âmbar; vários =
+// o primeiro + "+N"; dia inteiro = "ocupado o dia todo"). Só o HORÁRIO — nunca título,
+// local, tipo, participantes nem dono do compromisso que ocupa (o banco nem devolve). É
+// aviso: quem está ocupado continua podendo ser escolhido. Sem `ocupacao` (painel só
+// leitura, hora incompleta, 016 ainda não rodada, conferência em andamento), não há selo.
 
 export const PARTICIPANTES_MAX = 30;
+
+// O que o painel descobriu para a janela ATUAL do compromisso. Quem não está em `consultados`
+// fica sem selo (não se sabe); consultado e fora de `porPessoa` = livre.
+export interface OcupacaoInfo {
+  porPessoa: Map<string, AgendaOcupado[]>;
+  consultados: Set<string>;
+  janela: { inicio: Date; fim: Date };
+}
+
+const SELO = 'inline-flex items-center gap-1 shrink-0 whitespace-nowrap rounded-full border px-1.5 py-px text-[10px] font-bold tabular-nums';
+// null = livre; o resumo = ocupado. O texto diz tudo (não só a cor).
+const SeloDisp: React.FC<{ r: ReturnType<typeof resumoOcupado> }> = ({ r }) => r ? (
+  <span title={`Ocupado neste horário: ${r.todos.join(' · ')} (só o horário — o assunto não aparece)`}
+    className={`${SELO} bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-700`}>
+    <AlertTriangle size={10} aria-hidden="true" />
+    {r.texto}
+    {r.mais > 0 && <><span aria-hidden="true">+{r.mais}</span><span className="sr-only"> e mais {r.mais} {r.mais === 1 ? 'horário' : 'horários'}</span></>}
+  </span>
+) : (
+  <span className={`${SELO} bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800`}>
+    <Check size={10} strokeWidth={3} aria-hidden="true" />livre
+  </span>
+);
 
 const norm = (s: string | null | undefined) =>
   String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -58,9 +88,10 @@ interface Props {
   onChange: (ids: string[]) => void;
   excludeId?: string;
   disabled?: boolean;
+  ocupacao?: OcupacaoInfo | null;
 }
 
-export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, excludeId, disabled }) => {
+export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, excludeId, disabled, ocupacao }) => {
   const baseId = useId();
   const listId = `${baseId}-lista`;
   const [q, setQ] = useState('');
@@ -104,6 +135,9 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
   const cheio = ids.length >= PARTICIPANTES_MAX;
   const semEmailN = ids.filter(id => !temEmail(byId.get(id))).length;
   const foraN = ids.filter(id => emailForaDaEmpresa(byId.get(id))).length;
+  // undefined = não se sabe (sem selo); null = livre; resumo = ocupado.
+  const dispDe = (id: string) => ocupacao && ocupacao.consultados.has(id) ? resumoOcupado(ocupacao.porPessoa.get(id), ocupacao.janela) : undefined;
+  const ocupN = ids.filter(id => byId.has(id) && !!dispDe(id)).length;
 
   const toggle = (id: string) => {
     if (disabled) return;
@@ -118,7 +152,9 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
     if (cheio) { setLive(`Limite de ${PARTICIPANTES_MAX} participantes atingido.`); return; }
     const next = [...ids, id];
     onChange(next);
-    setLive(`${nome} entrou na lista${u && !temEmail(u) ? ' (sem e-mail — não recebe alerta)' : emailForaDaEmpresa(u) ? ' (e-mail fora da empresa — não recebe alerta)' : ''}. ${next.length} participante(s).`);
+    const d = u ? dispDe(id) : undefined;
+    const disp = d === undefined ? '' : d ? ` Ocupado neste horário: ${d.todos.join(', ')}.` : ' Livre neste horário.';
+    setLive(`${nome} entrou na lista${u && !temEmail(u) ? ' (sem e-mail — não recebe alerta)' : emailForaDaEmpresa(u) ? ' (e-mail fora da empresa — não recebe alerta)' : ''}.${disp} ${next.length} participante(s).`);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -146,6 +182,7 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
             const u = byId.get(id);
             const ok = recebeAlerta(u);
             const fora = emailForaDaEmpresa(u);
+            const disp = u ? dispDe(id) : undefined;
             const nome = u ? nomeCompleto(u) : 'Usuário fora do cadastro';
             const tip = !u ? 'Não está mais no cadastro — não recebe alerta.'
               : ok ? `${nome}${u.sector ? ` · ${u.sector}` : ''}`
@@ -163,6 +200,7 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
                   </span>
                   <span className="truncate">{nome}</span>
                   {u && !ok && <AlertTriangle size={11} className="shrink-0" aria-label={fora ? 'e-mail fora da empresa' : 'sem e-mail'} />}
+                  {disp !== undefined && <SeloDisp r={disp} />}
                   {!disabled && (
                     <button type="button" onClick={() => toggle(id)} aria-label={`Tirar ${nome} da lista`}
                       className="shrink-0 -mr-0.5 p-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 hover:text-rose-600 dark:hover:text-rose-400 outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
@@ -216,6 +254,7 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
               const blocked = !on && cheio;
               const ok = temEmail(u);
               const fora = emailForaDaEmpresa(u);
+              const disp = dispDe(u.id);
               const isActive = focused && i === active;
               return (
                 <li
@@ -237,6 +276,7 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
                   <span className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className={`truncate ${on ? 'font-bold text-slate-800 dark:text-white' : 'font-medium text-slate-700 dark:text-slate-200'}`}>{nomeCompleto(u)}</span>
                     {u.sector && <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-full px-2 py-0.5 shrink-0">{u.sector}</span>}
+                    {disp !== undefined && <SeloDisp r={disp} />}
                     {!ok && (
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
                         <AlertTriangle size={11} aria-hidden="true" /> sem e-mail — não recebe alerta
@@ -256,11 +296,12 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
         </div>
       )}
 
-      {(cheio || semEmailN > 0 || foraN > 0) && (
+      {(cheio || semEmailN > 0 || foraN > 0 || ocupN > 0) && (
         <p className="text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1.5">
           <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
           <span className="min-w-0">
             {cheio && <>Limite de {PARTICIPANTES_MAX} participantes por compromisso. </>}
+            {ocupN > 0 && <>{ocupN === 1 ? '1 escolhido já tem' : `${ocupN} escolhidos já têm`} compromisso neste horário — é só um aviso, dá para salvar assim mesmo. </>}
             {semEmailN > 0 && <>{semEmailN === 1 ? '1 escolhido está' : `${semEmailN} escolhidos estão`} sem e-mail cadastrado e não recebe{semEmailN === 1 ? '' : 'm'} alerta. </>}
             {foraN > 0 && <>{foraN === 1 ? '1 escolhido tem' : `${foraN} escolhidos têm`} e-mail de fora da empresa e provavelmente não recebe{foraN === 1 ? '' : 'm'} alerta — a agenda só manda para {dominiosEmpresaTexto()} (ou para um endereço liberado em Configurações).</>}
           </span>

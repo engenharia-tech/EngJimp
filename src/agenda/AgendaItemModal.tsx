@@ -9,13 +9,13 @@ import { useDialog } from '../hooks/useDialog';
 import { useToast } from '../components/Toast';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import {
-  AgendaItem, AgendaItemInput, AgendaAlerta, AgendaTipo, AgendaStatus, AgendaLembrete, AgendaAlertaEstado,
-  AGENDA_TIPOS, AGENDA_LEMBRETES, AGENDA_ALERTAS_PADRAO, AGENDA_CODIGO_LABEL, AGENDA_ESTADO_LABEL, STATUS_LABEL,
+  AgendaItem, AgendaItemInput, AgendaAlerta, AgendaTipo, AgendaStatus, AgendaLembrete, AgendaAlertaEstado, AgendaOcupado,
+  AGENDA_TIPOS, AGENDA_LEMBRETES, AGENDA_ALERTAS_PADRAO, AGENDA_CODIGO_LABEL, AGENDA_ESTADO_LABEL, STATUS_LABEL, OCUPADO_JANELA_MAX_DIAS,
   tipoInfo, parseDay, todayBR, addDaysStr, dayDiffStr, brInstant, momentoAlerta, previewAlertas, normHour, toAgendaRow,
-  fmtDayLong, fmtQuando, fmtFalta, fmtInstantBR, validarAgenda, novoAgendaInput, itemToInput,
+  fmtDayLong, fmtQuando, fmtFalta, fmtInstantBR, validarAgenda, novoAgendaInput, itemToInput, intervaloAgenda, resumoOcupado,
 } from './agenda';
 import { AgendaService, AgendaStaleError, agendaErrorMessage } from './agendaService';
-import { ParticipantPicker, nomeCompleto, temEmail, recebeAlerta, emailForaDaEmpresa, dominiosEmpresaTexto } from './ParticipantPicker';
+import { ParticipantPicker, OcupacaoInfo, nomeCompleto, temEmail, recebeAlerta, emailForaDaEmpresa, dominiosEmpresaTexto } from './ParticipantPicker';
 import { alertaAtrasado, foraDeBrasilia, fusoDoNavegador, fmtNoSeuFuso } from './AgendaList';
 
 // O MODAL DO COMPROMISSO da agenda (29/09/2026) — criar, editar e ver.
@@ -263,6 +263,12 @@ const ModalCrash: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
 type Busy = null | 'save' | 'status' | 'cancel' | 'delete' | 'test';
 
+// Livre/ocupado: parado 400 ms antes de perguntar; sem resposta em 10 s, a tela diz que não
+// conseguiu conferir (se a resposta chegar depois, ela ainda vale).
+const OCUPADO_PAUSA_MS = 400;
+const OCUPADO_ESPERA_MS = 10000;
+type Disp = { fase: 'conferindo' | 'erro'; chave: string } | { fase: 'ok'; chave: string; info: OcupacaoInfo };
+
 const ModalBody: React.FC<AgendaItemModalProps> = ({ mode, item, initial, users: usersProp, currentUser, alertas, service, onClose, onSaved, onDeleted }) => {
   const { addToast } = useToast();
   const uid = useId();
@@ -472,6 +478,62 @@ const ModalBody: React.FC<AgendaItemModalProps> = ({ mode, item, initial, users:
   const historico = useMemo(() => !itemId ? [] : (alertas || [])
     .filter(a => a && a.itemId === itemId)
     .sort((a, b) => (Date.parse(a.disparaEm) || 0) - (Date.parse(b.disparaEm) || 0) || a.id - b.id), [alertas, itemId]);
+
+  // ---- Livre/ocupado (migração 016 — decisão do Edson, 29/09 fim da tarde) ---------------
+  // Com data/hora válidas e o compromisso ativo, pergunta ao banco quem já está ocupado na
+  // janela dele (a MESMA régua do .ics: intervaloAgenda): o dono, os escolhidos e todos os
+  // candidatos do seletor (o serviço divide em lotes de 60). Volta SÓ o horário — nunca o
+  // assunto. É aviso: nada aqui trava o salvar. Espera a pessoa parar de mexer (400 ms);
+  // resposta de uma janela velha é descartada (rede lenta não mistura horários); no editar,
+  // o próprio compromisso fica de fora (p_ignorar). A 016 ainda não rodada (null) desliga o
+  // recurso calado até o painel fechar.
+  const janelaOcup = useMemo(() => {
+    if (readOnly || input.status !== 'ativo') return null;
+    if (!form.allDay && !normHour(form.horaIni)) return null;                 // hora pela metade
+    if (validarAgenda({ ...input, titulo: 'x', local: '', descricao: '', participantes: [] })) return null;   // data/hora inválida
+    return intervaloAgenda(input);
+  }, [readOnly, form.allDay, form.horaIni, input]);
+  const janelaLonga = !!janelaOcup && janelaOcup.fim.getTime() - janelaOcup.inicio.getTime() > OCUPADO_JANELA_MAX_DIAS * 86400000;
+  const idsOcup = useMemo(() => uniq([ownerId, ...users.map(u => u?.id), ...form.participantes].filter((x): x is string => !!x)).sort(),
+    [ownerId, users, form.participantes]);
+  const [tentarOcup, setTentarOcup] = useState(0);
+  const [ocupAusente, setOcupAusente] = useState(false);
+  const [disp, setDisp] = useState<Disp | null>(null);
+  const chaveOcup = janelaOcup && !janelaLonga && !ocupAusente
+    ? [janelaOcup.inicio.toISOString(), janelaOcup.fim.toISOString(), itemId, tentarOcup, idsOcup.join(',')].join('|') : '';
+  const ocupSeq = useRef(0);
+  const ocupReq = useRef({ ids: idsOcup, janela: janelaOcup });
+  ocupReq.current = { ids: idsOcup, janela: janelaOcup };
+  const serviceRef = useRef(service); serviceRef.current = service;
+  useEffect(() => {
+    const my = ++ocupSeq.current;
+    if (!chaveOcup) { setDisp(null); return; }
+    const chave = chaveOcup;
+    setDisp({ fase: 'conferindo', chave });
+    let limite = 0;
+    const pausa = window.setTimeout(() => {
+      const { ids, janela } = ocupReq.current;
+      const svc = serviceRef.current;
+      if (!janela || typeof svc?.ocupado !== 'function') { setDisp(null); return; }
+      const vale = () => my === ocupSeq.current && mounted.current;
+      limite = window.setTimeout(() => { if (vale()) setDisp(d => d && d.chave === chave && d.fase === 'conferindo' ? { fase: 'erro', chave } : d); }, OCUPADO_ESPERA_MS);
+      Promise.resolve()
+        .then(() => svc.ocupado(ids, janela.inicio, janela.fim, itemId || undefined))
+        .then(r => {
+          if (!vale()) return;
+          if (r === null) { setOcupAusente(true); setDisp(null); return; }
+          const porPessoa = new Map<string, AgendaOcupado[]>();
+          (Array.isArray(r) ? r : []).forEach(o => { if (!o || !o.pessoa) return; const l = porPessoa.get(o.pessoa); if (l) l.push(o); else porPessoa.set(o.pessoa, [o]); });
+          setDisp({ fase: 'ok', chave, info: { porPessoa, consultados: new Set(ids), janela } });
+        }, () => { if (vale()) setDisp({ fase: 'erro', chave }); })
+        .finally(() => window.clearTimeout(limite));
+    }, OCUPADO_PAUSA_MS);
+    return () => { window.clearTimeout(pausa); window.clearTimeout(limite); };
+  }, [chaveOcup, itemId]);
+  // Só vale o que foi conferido para a janela de AGORA (nunca o selo de um horário anterior).
+  const dispAtual = disp && chaveOcup && disp.chave === chaveOcup ? disp : null;
+  const ocupacao: OcupacaoInfo | null = dispAtual && dispAtual.fase === 'ok' ? dispAtual.info : null;
+  const donoOcup = ocupacao && ocupacao.consultados.has(ownerId) ? resumoOcupado(ocupacao.porPessoa.get(ownerId), ocupacao.janela) : null;
 
   // ---- Gravações -------------------------------------------------------------------------
   const run = async (kind: Exclude<Busy, null>, fn: () => Promise<void>, fallback: string) => {
@@ -791,10 +853,40 @@ const ModalBody: React.FC<AgendaItemModalProps> = ({ mode, item, initial, users:
       {/* PARTICIPANTES */}
       <section ref={partRef} className="space-y-2" aria-labelledby={`${uid}-s-part`}>
         <h3 id={`${uid}-s-part`} className={kickerCls}>Participantes</h3>
+        {donoOcup && (
+          <p className="text-xs text-amber-800 dark:text-amber-200 flex items-start gap-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-2">
+            <AlertTriangle size={13} className="shrink-0 mt-px text-amber-500" aria-hidden="true" />
+            <span className="min-w-0 break-words"><b>{souDono ? 'Você já tem' : `${donoNome} já tem`} compromisso neste horário</b> <span className="tabular-nums">({donoOcup.todos.join(' · ')})</span>. É só um aviso — dá para salvar assim mesmo.</span>
+          </p>
+        )}
+        {/* Leitor de tela: o conflito do dono é anunciado quando aparece (região viva sempre presente). */}
+        <p className="sr-only" aria-live="polite">{donoOcup ? `${souDono ? 'Você já tem' : `${donoNome} já tem`} compromisso neste horário.` : ''}</p>
         <p className="text-[11px] text-slate-500 dark:text-slate-400">Escolha entre os usuários cadastrados. Eles recebem no e-mail cadastrado o convite, os lembretes e os avisos de mudança — mas não veem o compromisso no app.</p>
+        {dispAtual && dispAtual.fase === 'conferindo' && (
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+            <Loader2 size={11} className="shrink-0 animate-spin" aria-hidden="true" />Conferindo quem está livre neste horário…
+          </p>
+        )}
+        {ocupacao && (
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-start gap-1.5">
+            <Clock size={11} className="shrink-0 mt-px" aria-hidden="true" />“Livre” e “ocupado” valem para o horário acima e mostram só o horário ocupado — nunca o assunto do compromisso.
+          </p>
+        )}
+        {dispAtual && dispAtual.fase === 'erro' && (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <Info size={11} className="shrink-0" aria-hidden="true" />
+            <span>Não consegui conferir quem está livre neste horário — dá para salvar assim mesmo.</span>
+            <button type="button" onClick={() => setTentarOcup(n => n + 1)} className={`font-semibold text-blue-600 dark:text-blue-400 hover:underline rounded ${focusRing}`}>Tentar de novo</button>
+          </p>
+        )}
+        {janelaLonga && !ocupAusente && (
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-start gap-1.5">
+            <Info size={11} className="shrink-0 mt-px" aria-hidden="true" />Compromisso com mais de {OCUPADO_JANELA_MAX_DIAS} dias: não dá para conferir quem está livre.
+          </p>
+        )}
         {/* Gravando: a lista fica visível (sem pular o layout), mas não aceita clique; a busca o fieldset desliga. */}
         <div className={isBusy ? 'pointer-events-none opacity-70' : ''}>
-          <ParticipantPicker users={users} value={form.participantes} onChange={ids => set({ participantes: ids })} excludeId={ownerId} />
+          <ParticipantPicker users={users} value={form.participantes} onChange={ids => set({ participantes: ids })} excludeId={ownerId} ocupacao={ocupacao} />
         </div>
         {erroCampo('participantes')}
       </section>
