@@ -1629,6 +1629,302 @@ app.get("/api/users/salaries", async (req, res) => {
   return res.json({ success: true, salaries });
 });
 
+// ========================= INFRA =========================
+// Indicador de uso (29/09/2026) — pedido do Edson: "um lugar onde eu possa ver o nível que está
+// o banco de dados … no cantinho superior, em todas as minhas telas". SÓ para ele (pelo id).
+// Decisões dele, 29/09: e-mail de alerta a 80%, 1 por dia; sem token da Vercel por ora (o
+// painel mostra os limites do plano + o link para o uso do time).
+//  - GET /api/infra/uso: o chip "BD x%" e o painel (src/components/UsoInfra.tsx). 401 sem crachá,
+//    403 se não é o Edson — ANTES de ir ao banco. Mede pela infra_uso_banco() (migração 014, só
+//    service_role) com prazo de 3 s e cache em memória de 10 min ("Medir agora" = ?forcar=1, no
+//    máximo 1 a cada 30 s). A 014 não rodou (PGRST202) → 200 com status 'nao_instalado' (o chip
+//    fica cinza, nunca 500). Falha/demora do banco → 200 com status 'erro' (o resto do painel
+//    — Vercel e links — continua).
+//  - GET|POST /api/infra/verificar: o pg_cron chama 1x por dia (migração 015) com o MESMO segredo
+//    do disparador da agenda (AGENDA_CRON_SECRET). Mede na hora; se o uso >= INFRA_ALERTA_PCT
+//    (padrão 80) e o alerta de hoje (dia de Joinville) ainda não saiu (tabela infra_alerta),
+//    manda UM e-mail ao Edson — o e-mail CADASTRADO dele, pelo id — e anota o dia.
+// Limites e planos: variáveis de SERVIDOR (nunca VITE_) — INFRA_DB_LIMITE_MB (padrão 500),
+// INFRA_PLANO_SUPABASE (free), INFRA_PLANO_VERCEL (hobby), INFRA_ALERTA_PCT (80). Sem elas vale o
+// confirmado por print do Edson em 29/09 (Supabase FREE, Vercel HOBBY). O uso da Vercel e o
+// egress/logs do Supabase NÃO são medidos aqui (sem API sem token): vão como referência + link.
+const INFRA_LIMITES_CONFERIDOS_EM = "2026-09-29";
+const INFRA_CACHE_MS = 10 * 60 * 1000;
+const INFRA_FORCAR_MIN_MS = 30 * 1000;
+const INFRA_RPC_PRAZO_MS = 3000;
+const INFRA_EMAIL_PRAZO_MS = 9000;
+const INFRA_MB = 1024 * 1024;
+// Vercel Hobby (vercel.com/docs/plans/hobby, conferida em 29/09/2026). A cota é do TIME inteiro
+// (KPI, pedidos, CMMS, TAESA e portal somados); estourou = espera 30 dias ou o time é pausado.
+const INFRA_VERCEL_HOBBY = { cpu_ativa_horas: 4, invocacoes: 1000000, cdn_requests: 1000000, transferencia_gb: 100 };
+// Supabase Free: o que só o painel Usage da organização mede (não há API sem token).
+const INFRA_SUPABASE_FREE_PAINEL = { egress_gb: 5, logs_gb: 1 };
+// Links de uso: o da Vercel abre o Usage do time escolhido no painel; o do Supabase, o Usage
+// da organização ("_" = o painel pede para escolher).
+const INFRA_LINK_VERCEL_USO = "https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fusage&title=Uso";
+const INFRA_LINK_SUPABASE_USO = "https://supabase.com/dashboard/org/_/usage";
+// Se o cadastro do Edson não tiver e-mail válido, o alerta vai para o e-mail de notificação
+// dele (o mesmo de NOTIFY_RECIPIENTS; o gmail é só o login).
+const INFRA_EDSON_EMAIL_RESERVA = "edson@jimp.com.br";
+
+// Variável numérica de servidor: fora do intervalo, vazia ou lixo = o padrão.
+const infraNumero = (bruto: unknown, padrao: number, min: number, max: number): { valor: number; daVariavel: boolean } => {
+  const s = String(bruto ?? "").trim().replace(",", ".");
+  const n = s ? Number(s) : NaN;
+  if (s && !(Number.isFinite(n) && n >= min && n <= max)) console.warn(`[Infra] valor inválido numa variável INFRA_* (${JSON.stringify(s.slice(0, 20))}); vale o padrão ${padrao}.`);
+  return Number.isFinite(n) && n >= min && n <= max ? { valor: n, daVariavel: true } : { valor: padrao, daVariavel: false };
+};
+const infraPlano = (bruto: unknown, padrao: string): string => {
+  const s = String(bruto ?? "").trim().toLowerCase();
+  return /^[a-z][a-z0-9_-]{0,19}$/.test(s) ? s : padrao;
+};
+const infraConfig = () => {
+  const limite = infraNumero(process.env.INFRA_DB_LIMITE_MB, 500, 1, 10000000);
+  return {
+    limiteMb: limite.valor,
+    limiteBytes: Math.round(limite.valor * INFRA_MB),
+    limiteOrigem: limite.daVariavel ? "variavel" : "padrao",
+    alertaPct: infraNumero(process.env.INFRA_ALERTA_PCT, 80, 1, 100).valor,
+    planoSupabase: infraPlano(process.env.INFRA_PLANO_SUPABASE, "free"),
+    planoVercel: infraPlano(process.env.INFRA_PLANO_VERCEL, "hobby"),
+  };
+};
+type InfraCfg = ReturnType<typeof infraConfig>;
+// % com 3 casas, arredondado PARA BAIXO: o chip mostra o inteiro de baixo, e "80%" na tela
+// acontece exatamente quando o alerta (>= 80) dispara.
+const infraPct = (usado: number, limite: number): number => Math.floor((usado / limite) * 100000) / 1000;
+const infraNaoNeg = (v: any): number => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : 0; };
+const infraMascara = (e: string): string => String(e).replace(/^(.)[^@]*(@.*)$/, "$1***$2");
+// O dia de Joinville (AAAA-MM-DD), qualquer que seja o fuso da máquina (a Vercel roda em UTC).
+const infraDiaJoinville = (d: Date): string => {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const g = (t: string) => (p.find((x) => x.type === t) || { value: "" }).value;
+  return `${g("year")}-${g("month")}-${g("day")}`;
+};
+
+type InfraBanco = {
+  usado_bytes: number; app_bytes: number; somente_leitura: boolean; medido_em: string;
+  maiores: { nome: string; total_bytes: number; dados_bytes: number; linhas_aprox: number }[];
+};
+type InfraMedida = { status: "ok"; banco: InfraBanco } | { status: "nao_instalado" | "erro"; motivo: string };
+const INFRA_NAO_INSTALADO = "A medição ainda não está instalada no banco: rode a migração 014_infra_uso.sql no SQL Editor do Supabase.";
+const INFRA_ERRO_MEDIR = "Não consegui medir o banco agora. Tente de novo em alguns minutos.";
+
+// UMA ida ao banco: infra_uso_banco() com prazo de 3 s (e o pedido é cancelado no prazo).
+const infraMedirBanco = async (admin: any): Promise<InfraMedida> => {
+  const ctrl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const prazo = new Promise<never>((_, falha) => {
+      timer = setTimeout(() => { falha(Object.assign(new Error("prazo"), { code: "INFRA_PRAZO" })); ctrl.abort(); }, INFRA_RPC_PRAZO_MS);
+    });
+    const { data, error } = (await Promise.race([admin.rpc("infra_uso_banco").abortSignal(ctrl.signal), prazo])) as any;
+    if (error) {
+      const code = String(error.code || "");
+      // PGRST202 = a função não existe para o PostgREST (a 014 não rodou, ou faltou o reload
+      // schema); 42883 = não existe no banco.
+      if (code === "PGRST202" || code === "42883") return { status: "nao_instalado", motivo: INFRA_NAO_INSTALADO };
+      console.error("[Infra] infra_uso_banco falhou:", code || "(sem código)", String(error.message || "").slice(0, 200));
+      return { status: "erro", motivo: INFRA_ERRO_MEDIR };
+    }
+    const d = data && typeof data === "object" ? data : null;
+    const usado = d ? Number(d.total_bytes) : NaN;
+    if (!d || !Number.isFinite(usado) || usado <= 0) {
+      console.error("[Infra] infra_uso_banco devolveu algo inesperado:", typeof data);
+      return { status: "erro", motivo: INFRA_ERRO_MEDIR };
+    }
+    const maiores = (Array.isArray(d.maiores) ? d.maiores : []).slice(0, 10).map((m: any) => ({
+      nome: String((m && m.nome) || "?").slice(0, 120),
+      total_bytes: infraNaoNeg(m && m.total_bytes),
+      dados_bytes: infraNaoNeg(m && m.dados_bytes),
+      linhas_aprox: infraNaoNeg(m && m.linhas_aprox),
+    }));
+    const medidoMs = Date.parse(String(d.medido_em || ""));
+    return {
+      status: "ok",
+      banco: {
+        usado_bytes: usado,
+        app_bytes: infraNaoNeg(d.app_bytes),
+        somente_leitura: d.somente_leitura === true,
+        medido_em: new Date(Number.isFinite(medidoMs) ? medidoMs : Date.now()).toISOString(),
+        maiores,
+      },
+    };
+  } catch (e: any) {
+    if (e && e.code === "INFRA_PRAZO") {
+      console.error("[Infra] infra_uso_banco passou de 3 s.");
+      return { status: "erro", motivo: "O banco demorou mais de 3 s para responder. Tente de novo em alguns minutos." };
+    }
+    console.error("[Infra] infra_uso_banco falhou:", (e && (e.code || e.name)) || "erro");
+    return { status: "erro", motivo: INFRA_ERRO_MEDIR };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+// Cache do chip (memória da instância): só a medição BOA fica guardada — "não instalado" e erro
+// voltam a perguntar ao banco (rodou a 014 → o chip acende na próxima leitura). Pedidos ao mesmo
+// tempo dividem UMA ida ao banco.
+let infraCache: { em: number; banco: InfraBanco } | null = null;
+let infraUltimaForcada = 0;
+let infraEmVoo: Promise<InfraMedida> | null = null;
+const infraMedir = async (admin: any, forcar: boolean): Promise<{ medida: InfraMedida; doCache: boolean }> => {
+  const agora = Date.now();
+  if (infraCache && agora - infraCache.em < INFRA_CACHE_MS && !(forcar && agora - infraUltimaForcada >= INFRA_FORCAR_MIN_MS)) {
+    return { medida: { status: "ok", banco: infraCache.banco }, doCache: true };
+  }
+  if (forcar) infraUltimaForcada = agora;
+  if (!infraEmVoo) infraEmVoo = infraMedirBanco(admin).finally(() => { infraEmVoo = null; });
+  const medida = await infraEmVoo;
+  if (medida.status === "ok") infraCache = { em: Date.now(), banco: medida.banco };
+  return { medida, doCache: false };
+};
+
+const infraResposta = (medida: InfraMedida, cfg: InfraCfg, doCache: boolean) => ({
+  success: true,
+  status: medida.status,
+  ...(medida.status !== "ok" ? { motivo: medida.motivo } : {}),
+  banco: medida.status === "ok" ? {
+    usado_bytes: medida.banco.usado_bytes,
+    limite_bytes: cfg.limiteBytes,
+    pct: infraPct(medida.banco.usado_bytes, cfg.limiteBytes),
+    maiores: medida.banco.maiores,
+    somente_leitura: medida.banco.somente_leitura,
+    medido_em: medida.banco.medido_em,
+    app_bytes: medida.banco.app_bytes,
+    limite_origem: cfg.limiteOrigem,
+  } : null,
+  vercel: {
+    plano: cfg.planoVercel,
+    limites: cfg.planoVercel === "hobby" ? INFRA_VERCEL_HOBBY : null,
+    link_uso: INFRA_LINK_VERCEL_USO,
+  },
+  supabase: {
+    plano: cfg.planoSupabase,
+    links: { uso: INFRA_LINK_SUPABASE_USO },
+    limites_so_no_painel: cfg.planoSupabase === "free" ? INFRA_SUPABASE_FREE_PAINEL : null,
+  },
+  limites_conferidos_em: INFRA_LIMITES_CONFERIDOS_EM,
+  cache: doCache,
+});
+
+// GET /api/infra/uso — o chip e o painel. SÓ o Edson.
+app.get("/api/infra/uso", async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Não autorizado." });
+  // Antes de qualquer ida ao banco: quem não é o Edson não custa nem uma consulta.
+  if (!claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Sem permissão." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor não configurado." });
+  const { medida, doCache } = await infraMedir(admin, String(req.query.forcar || "") === "1");
+  return res.json(infraResposta(medida, infraConfig(), doCache));
+});
+
+const infraFmtMb = (b: number): string =>
+  (b / INFRA_MB).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const infraFmtTam = (b: number): string =>
+  b >= INFRA_MB ? `${infraFmtMb(b)} MB` : `${Math.max(1, Math.round(b / 1024)).toLocaleString("pt-BR")} kB`;
+const infraTextoAlerta = (banco: InfraBanco, cfg: InfraCfg, pct: number) => {
+  const quando = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(new Date(banco.medido_em));
+  const pctTxt = Math.floor(pct).toLocaleString("pt-BR");
+  const limiteTxt = cfg.limiteMb.toLocaleString("pt-BR");
+  const linhas = [
+    `Alerta diário do uso do banco do KPI (Supabase, plano ${cfg.planoSupabase.toUpperCase()}).`,
+    "",
+    `Uso agora: ${infraFmtMb(banco.usado_bytes)} MB de ${limiteTxt} MB (${pctTxt}%).`,
+    `O aviso sai a partir de ${cfg.alertaPct.toLocaleString("pt-BR")}%.`,
+    banco.somente_leitura ? "ATENÇÃO: o banco JÁ ESTÁ EM SOMENTE LEITURA — ninguém consegue gravar." : "Somente leitura: não (o banco ainda aceita gravação).",
+    `Medido em ${quando} (horário de Brasília).`,
+    "",
+    "As maiores tabelas:",
+    ...banco.maiores.map((m, i) => `  ${i + 1}. ${m.nome} — ${infraFmtTam(m.total_bytes)} (dados ${infraFmtTam(m.dados_bytes)}, ~${Math.round(m.linhas_aprox).toLocaleString("pt-BR")} linhas)`),
+    "",
+    cfg.planoSupabase === "free"
+      ? `No plano FREE, passou de ${limiteTxt} MB o banco fica SOMENTE LEITURA na hora: ninguém grava KPI, OKR nem Agenda.`
+      : `Limite configurado: ${limiteTxt} MB (INFRA_DB_LIMITE_MB).`,
+    "Antes de apagar qualquer dado, chame o Claude: o que dá para limpar depende da tabela.",
+    `Uso da organização no Supabase: ${INFRA_LINK_SUPABASE_USO}`,
+    "",
+    `Este aviso sai no máximo 1 vez por dia enquanto o uso estiver em ${cfg.alertaPct.toLocaleString("pt-BR")}% ou mais.`,
+  ];
+  return { subject: `[JIMPNexus KPI] Banco em ${pctTxt}% — ${infraFmtMb(banco.usado_bytes)} MB de ${limiteTxt} MB`, text: linhas.join("\n") };
+};
+
+// GET/POST /api/infra/verificar — só o pg_cron (Authorization: Bearer <o segredo da agenda>).
+app.all("/api/infra/verificar", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  if (req.method !== "GET" && req.method !== "POST") {
+    return res.status(405).set("Allow", "GET, POST").json({ success: false, error: "Metodo nao permitido." });
+  }
+  const inicio = Date.now();
+  const segredo = agendaSegredo();
+  if (!segredo) return res.status(503).json({ success: false, error: "Verificador nao configurado." });
+  const recebido = (String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i) || [])[1];
+  if (!recebido || !agendaSegredoConfere(recebido.trim(), segredo)) {
+    console.warn("[Infra] verificar recusado (segredo ausente ou diferente). ip:", clientIp(req));
+    return res.status(401).json({ success: false, error: "Nao autorizado." });
+  }
+  // Sem SMTP não mede nem anota nada (a mesma regra do disparador da agenda).
+  const smtp = agendaSmtp();
+  if (!smtp) return res.status(503).json({ success: false, status: "erro", error: "E-mail nao configurado no servidor (EMAIL_HOST/EMAIL_USER/EMAIL_PASS)." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+
+  const cfg = infraConfig();
+  const medida = await infraMedirBanco(admin); // sempre na hora: o alerta vê o número de agora
+  if (medida.status !== "ok") {
+    return res.status(medida.status === "nao_instalado" ? 200 : 502).json({ success: false, status: medida.status, motivo: medida.motivo });
+  }
+  const pct = infraPct(medida.banco.usado_bytes, cfg.limiteBytes);
+  if (pct < cfg.alertaPct) return res.json({ success: true, status: "ok", alerta: "abaixo", pct, limite_pct: cfg.alertaPct });
+
+  // RESERVA o dia ANTES de mandar (a chave é o dia): duas chamadas ao mesmo tempo não mandam
+  // dois e-mails. Se o envio falhar, a reserva é desfeita e a próxima chamada tenta de novo.
+  const dia = infraDiaJoinville(new Date());
+  const { error: reservaErr } = await admin.from("infra_alerta").insert({ dia, pct });
+  if (reservaErr) {
+    const code = String(reservaErr.code || "");
+    if (code === "23505") return res.json({ success: true, status: "ok", alerta: "ja_enviado_hoje", pct, dia });
+    if (code === "PGRST205" || code === "42P01") return res.json({ success: false, status: "nao_instalado", motivo: INFRA_NAO_INSTALADO });
+    console.error("[Infra] nao consegui anotar o alerta do dia:", code || "(sem código)", String(reservaErr.message || "").slice(0, 200));
+    return res.status(502).json({ success: false, status: "erro", motivo: "Não consegui anotar o alerta de hoje; nada foi enviado." });
+  }
+
+  // Para quem: o e-mail CADASTRADO do Edson (pelo id, nunca pelo endereço). Sem cadastro
+  // legível ou sem e-mail válido: o e-mail de notificação dele.
+  let para = INFRA_EDSON_EMAIL_RESERVA;
+  try {
+    const { data } = (await agendaComPrazo(admin.from("users").select("email").eq("id", EDSON_ID).limit(1) as any, 2000)) as any;
+    const e = String((data && data[0] && data[0].email) || "").trim();
+    if (isValidEmail(e)) para = e;
+  } catch (e: any) {
+    console.warn("[Infra] cadastro do Edson não lido a tempo; vai para o e-mail de notificação dele:", (e && e.code) || "erro");
+  }
+
+  const { subject, text } = infraTextoAlerta(medida.banco, cfg, pct);
+  const transporte = nodemailer.createTransport(agendaSmtpBase(smtp));
+  try {
+    await agendaComPrazo(transporte.sendMail({
+      from: { name: "JIMPNexus KPI · Uso", address: smtp.from },
+      to: para,
+      subject,
+      text,
+      headers: { "Auto-Submitted": "auto-generated", "X-Auto-Response-Suppress": "All" },
+    }), Math.max(1500, INFRA_EMAIL_PRAZO_MS - (Date.now() - inicio)));
+  } catch (e: any) {
+    // Só o código do erro no log: a mensagem do SMTP pode ecoar usuário/senha.
+    console.error("[Infra] alerta de uso nao saiu:", (e && (e.code || e.responseCode)) || "erro");
+    const { error: desfazErr } = await admin.from("infra_alerta").delete().eq("dia", dia);
+    if (desfazErr) console.error("[Infra] nao consegui desfazer a reserva do dia", dia, String(desfazErr.code || ""));
+    return res.status(502).json({ success: false, status: "erro", motivo: "O servidor de e-mail recusou ou não respondeu; o alerta fica para a próxima chamada." });
+  } finally {
+    try { transporte.close(); } catch { /* já fechado */ }
+  }
+  console.log(`[Infra] alerta de uso (${pct}%) enviado para ${infraMascara(para)}`);
+  return res.json({ success: true, status: "ok", alerta: "enviado", pct, dia, para: infraMascara(para) });
+});
+
 // Global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Global Error:", err);
