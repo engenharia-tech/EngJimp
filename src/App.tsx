@@ -61,6 +61,7 @@ import { OkrGovernance } from './okr/OkrGovernance';
 import { OkrExecutors } from './okr/OkrExecutors';
 import { AgendaView } from './agenda/AgendaView';
 import { NovaVersaoAviso } from './components/NovaVersaoAviso';
+import { useUsoInfra, UsoInfraChip, UsoInfraPainel } from './components/UsoInfra';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -714,6 +715,11 @@ const AppContent: React.FC = () => {
   // nunca isOkrMaster. A MESMA regra está no banco (agenda_pode_usar / agenda_e_edson,
   // migração 012) — este gate só esconde a aba; quem barra de verdade é a RLS.
   const canUseAgenda = !isOkrViewer && (canUseOkr || isOkrMaster);
+  // INDICADOR DE USO (pedido do Edson, 29/09): "BD x%" no canto superior, em todas as telas, SÓ
+  // para o Edson (isEdsonOwner, pelo id; o servidor confere de novo — 403 para os outros). Um
+  // leitor só para o chip do desktop e o do celular; pausa com a tela bloqueada. Fica aqui, antes
+  // dos return antecipados (links públicos / login), pela regra dos hooks.
+  const usoInfra = useUsoInfra(isEdsonOwner, !isLocked);
   // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou o username de outro.
   const [okrTarget, setOkrTarget] = useState<string>('self');
 
@@ -1592,6 +1598,10 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
+      {/* Indicador de uso (29/09): chip fixo no canto superior direito (desktop) + o painel. Só o Edson. */}
+      {isEdsonOwner && <UsoInfraChip uso={usoInfra} variante="desktop" />}
+      {isEdsonOwner && <UsoInfraPainel uso={usoInfra} />}
+
       {/* Sidebar for Desktop */}
       <aside className={`hidden md:flex flex-col ${isSidebarCollapsed ? 'w-20' : 'w-64'} ${theme === 'dark' ? 'bg-black border-slate-800 text-white' : 'bg-white border-gray-200 text-slate-900'} border-r fixed h-full z-10 shadow-xl transition-all duration-300 ease-in-out`}>
         <div className={`p-4 border-b ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'}`}>
@@ -1750,6 +1760,8 @@ const AppContent: React.FC = () => {
             />
         </div>
         <div className="flex items-center gap-2">
+            {/* Indicador de uso (29/09): no celular, dentro do cabeçalho. Só o Edson. */}
+            {isEdsonOwner && <UsoInfraChip uso={usoInfra} variante="mobile" />}
             <button
                 onClick={toggleTheme}
                 className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-black border border-slate-700' : 'bg-gray-100 border border-gray-200'} transition-colors text-gray-600 dark:text-slate-300`}
