@@ -53,12 +53,14 @@ import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { notifyProjectCompletion } from './services/notificationService';
 import { isTokenExpired, getAuthToken, setAuthToken, getTokenSub } from './services/authToken';
 import { confirmOwnPassword } from './services/authService';
-import { Target, CalendarRange, Compass } from 'lucide-react';
+import { Target, CalendarRange, Compass, CalendarClock } from 'lucide-react';
 import { OkrView, OkrPublicPage } from './okr/OkrView';
 import { OkrIndicators, OkrPanelPublicPage } from './okr/OkrIndicators';
 import { OkrTimeline } from './okr/OkrTimeline';
 import { OkrGovernance } from './okr/OkrGovernance';
 import { OkrExecutors } from './okr/OkrExecutors';
+import { AgendaView } from './agenda/AgendaView';
+import { NovaVersaoAviso } from './components/NovaVersaoAviso';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
 // Logo está em public/logo.svg — referenciado como URL estática, sem import de módulo
 const logoImg = '/logo.svg';
@@ -176,7 +178,9 @@ const LanguageSwitcher = ({
 );
 
 const App: React.FC = () => {
-  return <AppContent />;
+  // Aviso "saiu uma versão nova" (decisão do Edson, 29/09): fora do AppContent para valer na
+  // tela de login e logado sem desmontar ao entrar/sair; nos links públicos ele não aparece.
+  return <><AppContent /><NovaVersaoAviso /></>;
 };
 
 const AppContent: React.FC = () => {
@@ -702,18 +706,27 @@ const AppContent: React.FC = () => {
     [isEdsonOwner, isOkrAdmin, isOkrViewer, currentUser]
   );
   const canSeeOkrManagement = canSeeOkrIndicators && !isOkrViewer;
+  // AGENDA (pedido do Edson, 29/09): só quem está no OKR — tem OKR próprio, é "somente
+  // OKR", admin de OKR ou o Edson. O admin de visualização (okr_viewer / ADM_EXTERNO) NÃO
+  // tem agenda. QUEM VÊ não é a regra do OKR: cada um vê SÓ a sua; só o Edson (isEdsonOwner,
+  // pelo id) vê a dos outros, e a dele só ele — o admin de OKR NÃO ("As agendas eu não
+  // gostaria que ele visse. Somente eu", Edson, 29/09). Por isso a tela recebe isEdsonOwner,
+  // nunca isOkrMaster. A MESMA regra está no banco (agenda_pode_usar / agenda_e_edson,
+  // migração 012) — este gate só esconde a aba; quem barra de verdade é a RLS.
+  const canUseAgenda = !isOkrViewer && (canUseOkr || isOkrMaster);
   // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou o username de outro.
   const [okrTarget, setOkrTarget] = useState<string>('self');
 
   // Usuário "somente OKR" só circula pelas abas da família OKR (Meu OKR e,
-  // para o admin, Indicadores/Linha do tempo/Governança). Qualquer outra aba
-  // (engenharia) é redirecionada para "okr".
+  // para o admin, Indicadores/Linha do tempo/Governança) e pela Agenda. Qualquer
+  // outra aba (engenharia) é redirecionada para "okr". O visualizador não tem
+  // agenda: fica em Indicadores/Linha do tempo.
   useEffect(() => {
     if (isOkrViewer) {
       if (!['okr_ind', 'okr_timeline'].includes(activeTab)) setActiveTab('okr_ind');
       return;
     }
-    const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov', 'okr_exec'];
+    const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov', 'okr_exec', 'agenda'];
     if (isOkrOnly && !okrTabs.includes(activeTab)) setActiveTab('okr');
   }, [isOkrViewer, isOkrOnly, activeTab, setActiveTab]);
 
@@ -1657,6 +1670,8 @@ const AppContent: React.FC = () => {
               {canSeeOkrManagement && <NavItem subItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             </div>
           ))}
+          {/* Agenda: só quem está no OKR (canUseAgenda) — recolhido e aberto usam o mesmo item. */}
+          {canUseAgenda && <NavItem id="agenda" labelKey="agenda" icon={CalendarClock} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
 
           {canUseTracker && (
             <>
@@ -1779,6 +1794,7 @@ const AppContent: React.FC = () => {
                 {canSeeOkrManagement && <NavItem subItem id="okr_exec" labelKey="okrExecutors" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
               </div>
             )}
+            {canUseAgenda && <NavItem id="agenda" labelKey="agenda" icon={CalendarClock} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {canUseTracker && (
               <>
                 <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
@@ -2039,6 +2055,13 @@ const AppContent: React.FC = () => {
           {activeTab === 'okr_exec' && canSeeOkrManagement && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
               <OkrExecutors currentUser={currentUser} editable={isOkrMaster} />
+            </div>
+          )}
+
+          {/* Agenda (29/09): mesmo gate do menu desktop e do mobile (canUseAgenda). */}
+          {activeTab === 'agenda' && canUseAgenda && currentUser && (
+            <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
+              <AgendaView currentUser={currentUser} users={data.users} isMaster={isEdsonOwner} />
             </div>
           )}
 
