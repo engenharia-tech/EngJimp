@@ -1,0 +1,426 @@
+# Copia de seguranca semanal do banco do KPI de Engenharia (Supabase, projeto "KPI Jimp").
+#
+# Por que existe: o plano Free do Supabase NAO faz backup (painel: "Last backup: No backups").
+# Decisao do Edson, 29/09/2026: "sim" (CLAUDE.md de app/KPI, secao 13).
+#
+# O que faz, todo domingo 06:00 UTC (03:00 em Joinville) e quando alguem clica "Run workflow":
+#   1. confere os 2 segredos (SUPABASE_DB_URL e BACKUP_SENHA). Sem eles, termina VERDE com um
+#      aviso amarelo: a copia fica desligada ate os segredos existirem;
+#   2. copia o banco inteiro com o Supabase CLI: papeis (roles), esquema e dados;
+#   3. junta tudo num .tar.gz e CRIPTOGRAFA com a senha BACKUP_SENHA (gpg, AES-256);
+#   4. abre a copia criptografada de novo, num lugar temporario, e confere o conteudo;
+#   5. guarda SO o arquivo criptografado, como "artifact" do GitHub, por 90 dias.
+# Nada em texto claro sai da maquina do GitHub. Como ligar, baixar e restaurar: docs/BACKUP.md.
+#
+# Gasto estimado (GitHub Free, repositorio privado: 2.000 min/mes e 500 MB de artifacts por conta):
+#   ~3 min por copia (o GitHub arredonda cada job para cima) x ~4,3 domingos = ~13 min/mes (<1%);
+#   cada copia criptografada tem ~1-3 MB; 90 dias = ~13 copias guardadas = ~15-40 MB (3-8%).
+#   Sem os segredos, cada domingo gasta 1 min (so a conferencia).
+
+name: Cópia de segurança do banco
+
+on:
+  schedule:
+    - cron: '0 6 * * 0'   # domingo 06:00 UTC = 03:00 em Joinville
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-banco
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Projeto do KPI no Supabase. A string de conexao TEM de ser deste projeto (evita copiar o
+  # banco errado: existem dois "JimpNexus"). Se um dia o banco mudar de projeto, troque aqui.
+  PROJETO_REF: otajfsjtpucdmkwgmeku
+  PGCONNECT_TIMEOUT: '30'
+  PGAPPNAME: copia-de-seguranca-github
+
+jobs:
+  backup:
+    name: Copiar, criptografar e guardar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Conferir os segredos
+        id: segredos
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_SENHA: ${{ secrets.BACKUP_SENHA }}
+        run: |
+          umask 077
+          falta=""
+          [ -n "${SUPABASE_DB_URL:-}" ] || falta="$falta SUPABASE_DB_URL"
+          [ -n "${BACKUP_SENHA:-}" ] || falta="$falta BACKUP_SENHA"
+          if [ -n "$falta" ]; then
+            echo "::warning title=Cópia de segurança DESLIGADA::Faltam os segredos:${falta}. Nenhuma cópia foi feita. Como ligar: docs/BACKUP.md (Settings > Secrets and variables > Actions)."
+            {
+              echo "## Cópia de segurança NÃO feita"
+              echo
+              echo "Faltam os segredos:${falta}."
+              echo "Enquanto eles não existirem, esta rotina só passa aqui e termina, sem erro."
+              echo "Como ligar: \`docs/BACKUP.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          erro() {
+            echo "::error title=Cópia de segurança::$1"
+            { echo "## Cópia de segurança: segredo com problema"; echo; echo "$1"; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          # Esconde um valor em todo o log daqui para a frente (escapa o que o GitHub reserva).
+          mascarar() {
+            local v="$1"
+            [ -n "$v" ] || return 0
+            v="${v//'%'/'%25'}"; v="${v//$'\r'/'%0D'}"; v="${v//$'\n'/'%0A'}"
+            echo "::add-mask::$v"
+          }
+
+          case "$SUPABASE_DB_URL" in
+            *YOUR-PASSWORD*|*'['*|*']'*)
+              erro "SUPABASE_DB_URL ainda tem [YOUR-PASSWORD]. Troque esse trecho (com os colchetes) pela senha do banco." ;;
+            *[[:space:]]*)
+              erro "SUPABASE_DB_URL tem espaço ou quebra de linha (no começo, no meio ou no fim). Cole a string de novo, numa linha só e sem espaços." ;;
+          esac
+          # postgresql://USUARIO:SENHA@HOST:PORTA/BANCO
+          re='^postgres(ql)?://([^:@/?#]+):([^@/?#]+)@([^:/?#@]+):([0-9]+)/([^?#]+)(\?[^#]*)?$'
+          if [[ ! "$SUPABASE_DB_URL" =~ $re ]]; then
+            erro "SUPABASE_DB_URL não parece uma string de conexão (postgresql://usuario:senha@host:5432/postgres). Se a senha do banco tem símbolos como @ / ? # %, troque-a por uma só com letras e números (docs/BACKUP.md)."
+          fi
+          usuario="${BASH_REMATCH[2]}"
+          senha_bd="${BASH_REMATCH[3]}"
+          host="${BASH_REMATCH[4]}"
+          porta="${BASH_REMATCH[5]}"
+          # A string inteira o GitHub já esconde (é segredo); a senha sozinha, não. Esconde as duas
+          # formas dela: como está na string e decodificada (%40 -> @).
+          mascarar "$senha_bd"
+          mascarar "$(printf '%b' "${senha_bd//'%'/'\x'}")"
+
+          case "$host" in
+            db.*.supabase.co)
+              erro "SUPABASE_DB_URL é a conexão DIRETA do Supabase, que só funciona por IPv6, e as máquinas do GitHub não têm IPv6. Use a do Session pooler (botão Connect > Session pooler)." ;;
+          esac
+          [ "$porta" != "6543" ] || erro "SUPABASE_DB_URL é do Transaction pooler (porta 6543). Use a do Session pooler (porta 5432): a cópia precisa de uma sessão inteira."
+          case "$usuario@$host" in
+            *"$PROJETO_REF"*) ;;
+            *) erro "SUPABASE_DB_URL não é do projeto KPI Jimp ($PROJETO_REF). Confira se copiou a string do projeto certo." ;;
+          esac
+
+          # Senha da criptografia: espaço/quebra de linha no começo ou no fim não contam
+          # (é o que a pessoa digita na hora de abrir a cópia).
+          senha="$BACKUP_SENHA"
+          senha="${senha#"${senha%%[![:space:]]*}"}"
+          senha="${senha%"${senha##*[![:space:]]}"}"
+          mascarar "$senha"
+          case "$senha" in
+            *$'\n'*|*$'\r'*) erro "BACKUP_SENHA tem mais de uma linha. Recrie o segredo com a senha numa linha só." ;;
+          esac
+          [ "${#senha}" -ge 16 ] || erro "BACKUP_SENHA é curta demais (${#senha} caracteres). Use 16 ou mais: quem tem acesso ao repositório pode baixar a cópia, e é essa senha que protege salários e senhas."
+          if [ "$senha" != "$BACKUP_SENHA" ]; then
+            echo "::notice title=Cópia de segurança::BACKUP_SENHA tinha espaço ou quebra de linha no começo ou no fim. Foram ignorados: a senha que abre a cópia é a sem eles."
+          fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+          echo "Segredos presentes e no formato certo (projeto $PROJETO_REF, porta $porta)."
+
+      - name: Instalar o Supabase CLI
+        if: steps.segredos.outputs.ok == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Ver a versão do banco e contar as linhas
+        id: versao
+        if: steps.segredos.outputs.ok == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          umask 077
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client >/dev/null
+          fi
+          echo "Supabase CLI: $(supabase --version)"
+          linha="$(psql -X -q -A -t -F $'\t' -v ON_ERROR_STOP=1 -d "$SUPABASE_DB_URL" -c "
+            select version(),
+                   current_setting('server_version_num'),
+                   current_setting('default_transaction_read_only'),
+                   (select count(*) from public.users),
+                   (select count(*) from public.okr_state),
+                   (select count(*) from public.agenda_item)")"
+          IFS=$'\t' read -r versao versao_num somente_leitura n_users n_okr n_agenda <<< "$linha"
+          echo "Servidor: $versao"
+          echo "Linhas agora no banco: users=$n_users okr_state=$n_okr agenda_item=$n_agenda"
+          if [ "$somente_leitura" = "on" ]; then
+            echo "::warning title=Banco em SOMENTE LEITURA::O banco está em somente leitura (passou de 500 MB no plano Free?). A cópia continua, mas o app não grava."
+          fi
+          {
+            echo "versao=$versao"
+            echo "versao_num=$versao_num"
+            echo "cli=$(supabase --version)"
+            echo "n_users=$n_users"
+            echo "n_okr=$n_okr"
+            echo "n_agenda=$n_agenda"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Copiar o banco (papéis, esquema e dados)
+        id: copia
+        if: steps.segredos.outputs.ok == 'true'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          umask 077
+          ARQS="$RUNNER_TEMP/copia/arquivos"
+          rm -rf "$RUNNER_TEMP/copia"
+          mkdir -p "$ARQS"
+          cd "$ARQS"
+          echo "1/4 papéis (roles, sem senhas)"
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f roles.sql --role-only
+          echo "2/4 esquema (tabelas, funções, políticas, gatilhos, permissões)"
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f schema.sql
+          echo "3/4 dados de todos os esquemas copiáveis"
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f data.sql --data-only --use-copy
+          echo "4/4 só os dados do app (esquema public), para restaurar por cima"
+          if ! supabase db dump --db-url "$SUPABASE_DB_URL" -f data-public.sql --data-only --use-copy --schema public; then
+            rm -f data-public.sql
+            echo "::warning title=Cópia de segurança::Não saiu o data-public.sql (só os dados do app). A cópia completa continua valendo; restaurar por cima vai precisar de um passo a mais (docs/BACKUP.md)."
+          fi
+          ls -l
+
+      - name: Compactar e criptografar
+        id: cifra
+        if: steps.segredos.outputs.ok == 'true'
+        env:
+          BACKUP_SENHA: ${{ secrets.BACKUP_SENHA }}
+          VERSAO: ${{ steps.versao.outputs.versao }}
+          CLI: ${{ steps.versao.outputs.cli }}
+          N_USERS: ${{ steps.versao.outputs.n_users }}
+          N_OKR: ${{ steps.versao.outputs.n_okr }}
+          N_AGENDA: ${{ steps.versao.outputs.n_agenda }}
+        run: |
+          umask 077
+          ARQS="$RUNNER_TEMP/copia/arquivos"
+          SAIDA="$RUNNER_TEMP/saida"
+          rm -rf "$SAIDA"
+          mkdir -p "$SAIDA"
+          NOME="backup-kpi-$(date -u +%Y-%m-%d_%H%M)UTC"
+
+          # Só para restaurar POR CIMA, no mesmo projeto (docs/BACKUP.md, caminho B).
+          cat > "$ARQS/limpar-public.sql" <<'SQL'
+          -- limpar-public.sql: use SO para restaurar POR CIMA, no MESMO projeto (docs/BACKUP.md, caminho B).
+          -- APAGA todas as linhas de todas as tabelas do esquema public (os dados do app) para o
+          -- data-public.sql recolocar as da copia. Rode os dois JUNTOS, numa transacao so
+          -- (psql --single-transaction): se algo der errado no meio, nada e apagado.
+          do $$
+          declare
+            lista text;
+          begin
+            select string_agg(format('%I.%I', schemaname, tablename), ', ' order by tablename)
+              into lista
+              from pg_tables
+             where schemaname = 'public';
+            if lista is not null then
+              execute 'truncate table ' || lista || ' restart identity cascade';
+            end if;
+          end
+          $$;
+          SQL
+
+          {
+            echo "Cópia de segurança do banco do KPI de Engenharia"
+            echo "Projeto Supabase: $PROJETO_REF (KPI Jimp)"
+            echo "Feita em: $(date -u '+%Y-%m-%d %H:%M') UTC ($(TZ=America/Sao_Paulo date '+%d/%m/%Y %H:%M') em Joinville)"
+            echo "Servidor: $VERSAO"
+            echo "Supabase CLI: $CLI"
+            echo "Linhas no banco na hora da cópia: users=$N_USERS okr_state=$N_OKR agenda_item=$N_AGENDA"
+            echo
+            echo "Arquivos:"
+            echo "  roles.sql          papéis (roles) criados no projeto, sem senhas"
+            echo "  schema.sql         estrutura: tabelas, funções, políticas (RLS), gatilhos, permissões"
+            echo "  data.sql           dados de todos os esquemas copiáveis (public, auth, cron, vault...)"
+            echo "  data-public.sql    só os dados do app (esquema public), para restaurar por cima"
+            echo "  limpar-public.sql  apaga as linhas do esquema public (só para restaurar por cima)"
+            echo "  SHA256SUMS         conferência: sha256sum -c SHA256SUMS"
+            echo
+            echo "Como restaurar: docs/BACKUP.md no repositório engenharia-tech/EngJimp."
+            echo "Projeto NOVO (não mexe no atual):"
+            echo "  psql --single-transaction -v ON_ERROR_STOP=1 -f roles.sql -f schema.sql \\"
+            echo "       -c \"SET session_replication_role = replica\" -f data.sql -d \"<string do Session pooler do projeto novo>\""
+            echo "MESMO projeto (APAGA o que houver nas tabelas do app e põe a cópia no lugar):"
+            echo "  psql --single-transaction -v ON_ERROR_STOP=1 -c \"SET session_replication_role = replica\" \\"
+            echo "       -f limpar-public.sql -f data-public.sql -d \"<string do Session pooler>\""
+          } > "$ARQS/LEIA-ME.txt"
+
+          cd "$ARQS"
+          sha256sum -- *.sql LEIA-ME.txt > SHA256SUMS
+          arquivos=( *.sql LEIA-ME.txt SHA256SUMS )
+          tar -czf "$RUNNER_TEMP/copia/copia.tar.gz" -- "${arquivos[@]}"
+
+          senha="$BACKUP_SENHA"
+          senha="${senha#"${senha%%[![:space:]]*}"}"
+          senha="${senha%"${senha##*[![:space:]]}"}"
+          export GNUPGHOME="$RUNNER_TEMP/gpg-cifra"
+          rm -rf "$GNUPGHOME"
+          mkdir -p "$GNUPGHOME"
+          # A senha entra por um descritor (fd 3), nunca na linha de comando nem no log.
+          gpg --batch --yes --no-tty --quiet \
+              --pinentry-mode loopback --passphrase-fd 3 --no-symkey-cache \
+              --symmetric --cipher-algo AES256 \
+              --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 65011712 \
+              --compress-algo none \
+              --output "$SAIDA/$NOME.tar.gz.gpg" \
+              "$RUNNER_TEMP/copia/copia.tar.gz" 3< <(printf '%s' "$senha")
+          gpgconf --kill gpg-agent || true
+          (cd "$SAIDA" && sha256sum -- "$NOME.tar.gz.gpg" > "$NOME.tar.gz.gpg.sha256")
+          echo "nome=$NOME" >> "$GITHUB_OUTPUT"
+          ls -l "$SAIDA"
+
+      - name: Conferir que a cópia criptografada abre
+        id: conferir
+        if: steps.segredos.outputs.ok == 'true'
+        env:
+          BACKUP_SENHA: ${{ secrets.BACKUP_SENHA }}
+          NOME: ${{ steps.cifra.outputs.nome }}
+          VERSAO: ${{ steps.versao.outputs.versao }}
+          N_USERS: ${{ steps.versao.outputs.n_users }}
+          N_OKR: ${{ steps.versao.outputs.n_okr }}
+          N_AGENDA: ${{ steps.versao.outputs.n_agenda }}
+        run: |
+          umask 077
+          SAIDA="$RUNNER_TEMP/saida"
+          CONF="$RUNNER_TEMP/conferencia"
+          ARQ="$SAIDA/$NOME.tar.gz.gpg"
+          rm -rf "$CONF"
+          mkdir -p "$CONF/abrir"
+          falhou() {
+            echo "::error title=Cópia de segurança::A conferência falhou: $1"
+            { echo "## Cópia de segurança: a conferência FALHOU"; echo; echo "$1"; echo; echo "Nada foi guardado."; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+
+          # 1) O que vai ser guardado é só isto: o .gpg e o .sha256 dele.
+          [ "$(ls -1 "$SAIDA" | wc -l)" -eq 2 ] || falhou "a pasta de saída devia ter só o .gpg e o .sha256"
+          [ -s "$ARQ" ] && [ -s "$ARQ.sha256" ] || falhou "faltou o arquivo criptografado"
+          # 2) Está criptografado de verdade: começa como OpenPGP de senha e não tem texto do banco.
+          primeiro="$(od -An -tx1 -N1 "$ARQ" | tr -d ' \n')"
+          case "$primeiro" in
+            8c|c3) ;;
+            *) falhou "o arquivo não começa como um OpenPGP criptografado por senha (primeiro byte: $primeiro)" ;;
+          esac
+          if LC_ALL=C grep -qaE 'CREATE TABLE|COPY "?public|INSERT INTO' "$ARQ"; then
+            falhou "o arquivo que ia ser guardado tem texto do banco em claro"
+          fi
+          (cd "$SAIDA" && sha256sum -c --quiet -- "$NOME.tar.gz.gpg.sha256") || falhou "o .sha256 não confere"
+
+          # 3) Abre com a senha, numa pasta do gpg nova (sem senha guardada em cache).
+          senha="$BACKUP_SENHA"
+          senha="${senha#"${senha%%[![:space:]]*}"}"
+          senha="${senha%"${senha##*[![:space:]]}"}"
+          export GNUPGHOME="$CONF/gpg"
+          mkdir -p "$GNUPGHOME"
+          if ! gpg --batch --no-tty --quiet \
+                   --pinentry-mode loopback --passphrase-fd 3 --no-symkey-cache \
+                   --status-fd 4 --output "$CONF/copia.tar.gz" --decrypt "$ARQ" \
+                   3< <(printf '%s' "$senha") 4> "$CONF/status.txt"; then
+            gpgconf --kill gpg-agent || true
+            falhou "a cópia criptografada não abriu com a BACKUP_SENHA"
+          fi
+          gpgconf --kill gpg-agent || true
+          grep -q '^\[GNUPG:\] DECRYPTION_OKAY' "$CONF/status.txt" || falhou "o gpg não confirmou a abertura"
+          grep -q '^\[GNUPG:\] GOODMDC' "$CONF/status.txt" || falhou "o gpg não confirmou a integridade (MDC)"
+          grep -qE '^\[GNUPG:\] DECRYPTION_INFO [0-9]+ 9( |$)' "$CONF/status.txt" || falhou "a cifra não é AES-256"
+          cmp -s "$CONF/copia.tar.gz" "$RUNNER_TEMP/copia/copia.tar.gz" || falhou "o que saiu ao abrir é diferente do que entrou"
+
+          # 4) O conteúdo: arquivos inteiros, esquema com as tabelas do app, dados presentes.
+          tar -xzf "$CONF/copia.tar.gz" -C "$CONF/abrir"
+          cd "$CONF/abrir"
+          sha256sum -c --quiet SHA256SUMS || falhou "algum arquivo dentro da cópia não confere com o SHA256SUMS"
+          for f in roles.sql schema.sql data.sql limpar-public.sql LEIA-ME.txt; do
+            [ -f "$f" ] || falhou "faltou $f dentro da cópia"
+          done
+          grep -q 'CREATE TABLE' schema.sql || falhou "o schema.sql não tem nenhum CREATE TABLE"
+          # Linhas do bloco COPY de uma tabela do public (-1 = o bloco não existe).
+          linhas_copy() {
+            awk -v t="$1" '
+              BEGIN { n = -1; re = "^COPY \"?public\"?[.]\"?" t "\"? " }
+              dentro && $0 == "\\." { dentro = 0; next }
+              dentro { n++; next }
+              $0 ~ re { dentro = 1; if (n < 0) n = 0 }
+              END { print n }' "$2"
+          }
+          resumo=""
+          for par in "users:$N_USERS" "okr_state:$N_OKR" "agenda_item:$N_AGENDA"; do
+            t="${par%%:*}"
+            no_banco="${par#*:}"
+            grep -qE "^CREATE TABLE (IF NOT EXISTS )?\"?public\"?[.]\"?$t\"? " schema.sql \
+              || falhou "a tabela $t não está no schema.sql"
+            na_copia="$(linhas_copy "$t" data.sql)"
+            [ "$na_copia" -ge 0 ] || falhou "os dados da tabela $t não estão no data.sql"
+            if [ "$t" = "users" ] && [ "$na_copia" -lt 1 ]; then
+              falhou "a tabela users veio vazia na cópia"
+            fi
+            if [ "$na_copia" != "$no_banco" ]; then
+              echo "::warning title=Cópia de segurança::$t: $no_banco linhas no banco antes da cópia e $na_copia na cópia (alguém gravou no meio?)."
+            fi
+            if [ -f data-public.sql ] && [ "$(linhas_copy "$t" data-public.sql)" != "$na_copia" ]; then
+              echo "::warning title=Cópia de segurança::$t: o data-public.sql não bate com o data.sql."
+            fi
+            resumo="$resumo| $t | $no_banco | $na_copia |"$'\n'
+          done
+          [ -f data-public.sql ] && publico="sim" || publico="NÃO (ver aviso)"
+
+          tamanho="$(du -h "$ARQ" | cut -f1)"
+          {
+            echo "## Cópia de segurança feita e conferida"
+            echo
+            echo "- Arquivo: \`$NOME.tar.gz.gpg\` ($tamanho, criptografado com AES-256)"
+            echo "- Fica em **Artifacts**, no fim desta página, por 90 dias. Só abre com a BACKUP_SENHA."
+            echo "- Servidor: $VERSAO"
+            echo "- data-public.sql (para restaurar por cima): $publico"
+            echo
+            echo "| tabela | linhas no banco | linhas na cópia |"
+            echo "|---|---|---|"
+            printf '%s' "$resumo"
+            echo
+            echo "Como baixar e restaurar: \`docs/BACKUP.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Conferido: abre com a senha, AES-256, integridade ok, tabelas users/okr_state/agenda_item presentes."
+
+      - name: Guardar a cópia criptografada (artifact, 90 dias)
+        if: steps.segredos.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cifra.outputs.nome }}
+          path: ${{ runner.temp }}/saida/
+          retention-days: 90
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Dicas se deu erro
+        if: failure()
+        run: |
+          {
+            echo
+            echo "### O que costuma ser"
+            echo "- **password authentication failed**: a senha do banco dentro de SUPABASE_DB_URL está errada (ou acabou de ser trocada: espere 2 min e rode de novo)."
+            echo "- **server version mismatch**: o Postgres do Supabase ficou mais novo que o do CLI. Peça ao Claude para ajustar o workflow."
+            echo "- **timeout / could not connect / Network is unreachable**: projeto pausado no Supabase, ou Network Restrictions ligado em Database > Settings."
+            echo "- **not allowed to be used** (setup-cli): Settings > Actions > General > permitir as actions do Supabase."
+            echo "- Passo a passo e restauração: \`docs/BACKUP.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apagar da máquina o que estava em texto claro
+        if: always()
+        run: |
+          for d in "$RUNNER_TEMP/gpg-cifra" "$RUNNER_TEMP/conferencia/gpg"; do
+            [ -d "$d" ] && GNUPGHOME="$d" gpgconf --kill gpg-agent 2>/dev/null || true
+          done
+          rm -rf "$RUNNER_TEMP/copia" "$RUNNER_TEMP/conferencia" "$RUNNER_TEMP/gpg-cifra"
+          echo "Arquivos em texto claro apagados (a máquina do GitHub também é descartada no fim)."
