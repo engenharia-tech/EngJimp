@@ -309,3 +309,82 @@ export const itemToInput = (it: AgendaItem): AgendaItemInput => ({
   inicioDia: it.inicioDia, inicioHora: it.inicioHora, fimDia: it.fimDia, fimHora: it.fimHora,
   participantes: [...it.participantes], alertas: [...it.alertas], status: it.status,
 });
+
+// ---- Livre/ocupado ao convidar (migração 016 — 29/09, fim da tarde) ---------
+// Pedido do Edson: "quando eu anexo pessoas nas atividades, é importante ver se ela não tem
+// compromisso na hora". Decisão dele: mostrar SÓ "ocupado" e o HORÁRIO, para todos (inclusive
+// o horário ocupado do Edson) — nunca título, local, descrição, tipo, participantes nem o
+// dono do compromisso que ocupa. O banco nem devolve isso (public.agenda_ocupado só dá pessoa,
+// início, fim e "dia inteiro"). É a única exceção à regra "cada um vê só a sua".
+
+export interface AgendaOcupado {
+  pessoa: string;       // id do usuário que está ocupado
+  inicio: string;       // ISO (instante)
+  fim: string;          // ISO (instante; exclusivo)
+  diaInteiro: boolean;
+}
+export const OCUPADO_LOTE = 60;               // o banco recusa mais de 60 pessoas por consulta
+export const OCUPADO_JANELA_MAX_DIAS = 62;    // e janela maior que 62 dias
+
+// O intervalo [início, fim) que um compromisso OCUPA — a MESMA regra da 016 e do convite
+// .ics do servidor (buildIcs): dia inteiro = das 00:00 do 1º dia às 00:00 do dia seguinte
+// ao último; com hora de fim = até ela; sem hora de fim no mesmo dia = 1 h; sem hora de fim
+// em vários dias = até 23:59 do último dia; fim que não fica depois do início = 1 h.
+export const intervaloAgenda = (i: Pick<AgendaItemInput, 'inicioDia' | 'inicioHora' | 'fimDia' | 'fimHora'>): { inicio: Date; fim: Date } | null => {
+  if (!parseDay(i.inicioDia)) return null;
+  const fimDia = parseDay(i.fimDia) ? i.fimDia : i.inicioDia;
+  const hi = normHour(i.inicioHora);
+  if (!hi) {
+    const a = brInstant(i.inicioDia, '00:00'), b = brInstant(addDaysStr(fimDia, 1), '00:00');
+    return a && b ? { inicio: a, fim: b } : null;
+  }
+  const ini = brInstant(i.inicioDia, hi); if (!ini) return null;
+  const hf = normHour(i.fimHora);
+  let fim = hf ? brInstant(fimDia, hf) : fimDia > i.inicioDia ? brInstant(fimDia, '23:59') : null;
+  if (!fim || fim.getTime() <= ini.getTime()) fim = new Date(ini.getTime() + 3600000);
+  return { inicio: ini, fim };
+};
+
+// Linha da função do banco → objeto da tela (linha torta é descartada, nunca derruba a tela).
+export const mapAgendaOcupado = (r: any): AgendaOcupado | null => {
+  if (!r || !r.pessoa) return null;
+  const a = new Date(String(r.inicio ?? '')), b = new Date(String(r.fim ?? ''));
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return null;
+  return { pessoa: String(r.pessoa), inicio: a.toISOString(), fim: b.toISOString(), diaInteiro: r.dia_inteiro === true };
+};
+
+// Dia e hora de um instante no relógio de Brasília (Joinville), qualquer que seja o do navegador.
+const fmtPartesBR = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const partesBR = (d: Date): { dia: string; hora: string } => {
+  const p = fmtPartesBR.formatToParts(d);
+  const g = (t: string) => p.find(x => x.type === t)?.value || '';
+  return { dia: `${g('year')}-${g('month')}-${g('day')}`, hora: `${g('hour')}:${g('minute')}` };
+};
+const ddmm = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
+
+// UM intervalo ocupado, escrito em relação à janela do compromisso que está sendo montado.
+// Compromisso de um dia só e intervalo nesse dia: só as horas ("14:00–15:30", "o dia todo");
+// senão entra a data ("15/10 14:00–15:30", "09/10 22:00 → 10/10 02:00", "de 10/10 a 20/10").
+export const fmtOcupado = (o: Pick<AgendaOcupado, 'inicio' | 'fim' | 'diaInteiro'>, janela: { inicio: Date; fim: Date }): string => {
+  const a = new Date(o.inicio), b = new Date(o.fim);
+  const jIni = partesBR(janela.inicio).dia, jFim = partesBR(new Date(janela.fim.getTime() - 1)).dia;
+  const umDia = jIni === jFim ? jIni : null;
+  if (o.diaInteiro) {
+    const d1 = partesBR(a).dia, d2 = partesBR(new Date(b.getTime() - 1)).dia;   // o fim é exclusivo (00:00 do dia seguinte)
+    if (umDia && d1 <= umDia && umDia <= d2) return 'o dia todo';
+    return d1 === d2 ? `o dia todo em ${ddmm(d1)}` : `de ${ddmm(d1)} a ${ddmm(d2)}`;
+  }
+  const pa = partesBR(a), pb = partesBR(b);
+  if (pa.dia === pb.dia) return umDia === pa.dia ? `${pa.hora}–${pb.hora}` : `${ddmm(pa.dia)} ${pa.hora}–${pb.hora}`;
+  return `${ddmm(pa.dia)} ${pa.hora} → ${ddmm(pb.dia)} ${pb.hora}`;
+};
+
+// O selo de uma pessoa: o PRIMEIRO intervalo (o que começa antes; dia inteiro na frente) e
+// quantos mais há. null = livre.
+export const resumoOcupado = (lista: AgendaOcupado[] | null | undefined, janela: { inicio: Date; fim: Date }): { texto: string; mais: number; todos: string[] } | null => {
+  if (!lista || !lista.length) return null;
+  const ord = [...lista].sort((x, y) => Date.parse(x.inicio) - Date.parse(y.inicio)
+    || Number(y.diaInteiro) - Number(x.diaInteiro) || Date.parse(x.fim) - Date.parse(y.fim));
+  const todos = Array.from(new Set(ord.map(o => fmtOcupado(o, janela))));
+  return { texto: `ocupado ${todos[0]}`, mais: todos.length - 1, todos };
+};
