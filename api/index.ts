@@ -2,7 +2,10 @@ import express from "express";
 import nodemailer from "nodemailer";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
-import { createHmac, randomBytes, randomUUID } from "crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto";
+// Agenda (29/09): só TIPOS aqui em cima (somem na compilação). As funções de
+// ./_agenda.ts são carregadas na hora pelas rotas da agenda (agendaMod, bloco AGENDA).
+import type { AgendaEmail, AgendaPessoa } from "./_agenda.js";
 
 const app = express();
 app.use(express.json({ limit: "50mb" }));
@@ -1169,6 +1172,371 @@ app.get("/api/okr/public", async (req, res) => {
   if (error) return res.status(500).json({ success: false, error: "Erro ao ler." });
   if (!data || data.length === 0) return res.status(404).json({ success: false, error: "Link invalido." });
   return res.json({ success: true, data: (data[0] as any).data });
+});
+
+// ========================= AGENDA =========================
+// Agenda dos usuários do OKR (29/09/2026, migração 012) — tabela própria, separada do OKR.
+// O BANCO monta a fila de e-mails (agenda_alerta, por gatilho); aqui só se ENVIA:
+//  - /api/agenda/disparar: o pg_cron do Supabase chama a cada 5 min (migração 013) com um
+//    segredo. Pega o que venceu (agenda_pegar_devidos), manda pelo SMTP da empresa e marca
+//    (agenda_marcar_envio). Falha de envio volta para a fila sozinha (até 5 tentativas);
+//    com o SMTP INTEIRO fora a rodada para e o resto volta ADIADO, sem gastar tentativa.
+//    No sucesso, o marcar leva quem o SMTP ACEITOU (p_recebeu, os ids): é por esse registro
+//    que o banco decide quem ganha depois o 'cancelado' e o 'removido' (29/09, 2º cético).
+//  - /api/agenda/testar: quem está logado pede um alerta de TESTE de um compromisso que
+//    enxerga — vai SÓ para o e-mail cadastrado de quem pediu.
+// Destinatário é sempre o e-mail do CADASTRO (users.email), nunca um endereço digitado
+// (decisão do Edson, 29/09 — a mesma trava do /api/send-email). E SÓ da empresa (domínios +
+// Configurações) ou o do Edson — decisão do Edson, 29/09 à tarde (agendaRecebe, logo abaixo).
+//
+// As funções de e-mail/.ics (./_agenda.ts) são carregadas aqui, na hora, e não no topo do
+// arquivo: se o módulo faltar no pacote da Vercel, cai SÓ a agenda — login e o resto da
+// API continuam de pé. O ".js" é de propósito (a função roda como ESM na Vercel; tsc e tsx
+// resolvem o ".js" para o ".ts").
+type AgendaMod = typeof import("./_agenda.js");
+let agendaModP: Promise<AgendaMod> | null = null;
+const agendaMod = (): Promise<AgendaMod> => {
+  if (!agendaModP) agendaModP = import("./_agenda.js").catch((e) => { agendaModP = null; throw e; });
+  return agendaModP;
+};
+
+const AGENDA_APP_URL = "https://kpieng.jimpnexus.com";
+const AGENDA_LOTE = 10;              // alertas por chamada de agenda_pegar_devidos
+const AGENDA_ORCAMENTO_MS = 7500;    // depois disto não começa envio nem lote novo (Vercel)
+const AGENDA_LIMITE_MS = 9000;       // teto de uma rodada inteira, contando o último envio
+
+// O link do botão do e-mail vem da configuração do servidor — NUNCA do cabeçalho Host do
+// pedido (um Host forjado poria um link de phishing no e-mail oficial).
+const agendaAppUrl = (): string => {
+  const u = String(process.env.APP_URL || "").trim().replace(/\/+$/, "");
+  return /^https?:\/\/[^\s"'<>\\]+$/i.test(u) ? u : AGENDA_APP_URL;
+};
+
+// Segredo do disparador: AGENDA_CRON_SECRET (ou CRON_SECRET). Curto demais = desligado.
+const agendaSegredo = (): string | null => {
+  const s = String(process.env.AGENDA_CRON_SECRET || process.env.CRON_SECRET || "").trim();
+  return s.length >= 16 ? s : null;
+};
+// Tempo constante: compara os SHA-256 (sempre 32 bytes), sem vazar tamanho nem prefixo.
+const agendaSegredoConfere = (recebido: string, esperado: string): boolean =>
+  timingSafeEqual(createHash("sha256").update(recebido, "utf8").digest(), createHash("sha256").update(esperado, "utf8").digest());
+
+// SMTP: a mesma conta e a mesma configuração do sendPlainMail / /api/send-email.
+const agendaSmtp = () => {
+  const host = process.env.EMAIL_HOST;
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+  if (!host || !user || !pass) return null;
+  const p = parseInt(process.env.EMAIL_PORT || "465", 10);
+  const port = Number.isFinite(p) && p > 0 ? p : 465;
+  return { host, port, user, pass, from: process.env.EMAIL_FROM || user };
+};
+type AgendaSmtp = NonNullable<ReturnType<typeof agendaSmtp>>;
+const agendaSmtpBase = (c: AgendaSmtp) => ({
+  host: c.host, port: c.port, secure: c.port === 465, auth: { user: c.user, pass: c.pass },
+  connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 10000,
+  tls: { rejectUnauthorized: false }, // alinha com /api/send-email (cert do mail server)
+});
+const agendaMensagem = (c: AgendaSmtp, email: AgendaEmail, para: AgendaPessoa[]) => {
+  const enderecos = para.map((p) => ({ name: String(p.nome || "").replace(/["<>,;\\\r\n]/g, "").trim(), address: String(p.email) }));
+  // Aviso "removido" para mais de uma pessoa (tiradas da lista na mesma gravação): uma não
+  // fica sabendo quem mais saiu. O To: é o próprio sistema e os endereços vão só no envelope
+  // (como Cco — o cabeçalho não os lista). Decisão do Edson, 29/09 (P1/S2).
+  const oculto = email.ocultarDestinatarios && enderecos.length > 1;
+  return {
+    from: { name: "JIMPNexus KPI · Agenda", address: c.from },
+    to: oculto ? [{ name: "JIMPNexus KPI · Agenda", address: c.from }] : enderecos,
+    ...(oculto ? { envelope: { from: c.from, to: enderecos.map((e) => e.address) } } : {}),
+    subject: email.subject,
+    text: email.text,
+    html: email.html,
+    attachments: [{ filename: email.icsFilename, content: email.ics, contentType: "text/calendar; charset=utf-8; method=PUBLISH" }],
+    // E-mail automático: sem "fora do escritório" de volta para a conta do sistema.
+    headers: { "Auto-Submitted": "auto-generated", "X-Auto-Response-Suppress": "All" },
+  };
+};
+// Promessa com prazo: o SMTP pendurado não pode segurar a função até a Vercel matar.
+const agendaComPrazo = <T>(p: Promise<T>, ms: number): Promise<T> => new Promise<T>((ok, falha) => {
+  const t = setTimeout(() => falha(Object.assign(new Error("o servidor de e-mail demorou demais"), { code: "TIMEOUT" })), ms);
+  p.then((v) => { clearTimeout(t); ok(v); }, (e) => { clearTimeout(t); falha(e); });
+});
+
+// ---- E-mail da agenda SÓ para a empresa — decisão do Edson, 29/09 (tarde) ----
+// Recebe quem tem e-mail de domínio da empresa (ALLOWED_EMAIL_DOMAINS: jimp.com.br,
+// joinvilleimplementos.com.br, furgoesjoinville.com.br) ou um endereço configurado em
+// Configurações (settings: email_to, interruption_email_to, email_from) — a MESMA regra do
+// /api/send-email (recipientAllowed + configuredRecipients) — e o EDSON, qualquer que seja o
+// e-mail dele (pelo id, nunca pelo endereço). Endereço de fora não recebe (a tela avisa).
+// Por quê: o "Meu Perfil" troca o e-mail sem senha, e a conta oficial não pode virar canal
+// de texto livre para fora (a mesma trava do /api/send-email, 25/09).
+// Domínio EXATO, o padrão da casa: "x@mail.jimp.com.br" NÃO passa (subdomínio não é caixa
+// que o Edson listou; se um dia precisar, o endereço entra em Configurações). Maiúsculas e
+// espaços em volta não contam (recipientAllowed normaliza).
+// Configurações que não dá para ler (erro, ou mais de 2 s) = vale SÓ o domínio: nunca abre.
+const AGENDA_SO_EMPRESA = "Seu e-mail cadastrado é de fora da empresa — a agenda só manda alerta para e-mails @jimp.com.br, @joinvilleimplementos.com.br ou @furgoesjoinville.com.br.";
+const AGENDA_SETTINGS_PRAZO_MS = 2000;
+const agendaConfiaveis = (admin: any): Promise<Set<string>> =>
+  agendaComPrazo(configuredRecipients(admin), AGENDA_SETTINGS_PRAZO_MS).catch((e) => {
+    console.warn("[Agenda] Configurações não lidas a tempo; vale só o domínio da empresa:", e?.code || e?.message || e);
+    return new Set<string>();
+  });
+// Passa sem precisar das Configurações: o Edson (pelo id) ou um domínio da empresa.
+const agendaPassaDireto = (p: AgendaPessoa): boolean =>
+  canonUuid(p.id) === EDSON_ID || recipientAllowed(String(p.email || ""), new Set<string>());
+// Recebe? `confiaveis` = os endereços de Configurações (null = ninguém precisou deles).
+const agendaRecebe = (p: AgendaPessoa, confiaveis: Set<string> | null): boolean =>
+  agendaPassaDireto(p) || (!!confiaveis && recipientAllowed(String(p.email || ""), confiaveis));
+
+// GET/POST /api/agenda/disparar — só o pg_cron (Authorization: Bearer <segredo>).
+app.all("/api/agenda/disparar", async (req, res) => {
+  if (req.method !== "GET" && req.method !== "POST") {
+    return res.status(405).set("Allow", "GET, POST").json({ success: false, error: "Metodo nao permitido." });
+  }
+  const segredo = agendaSegredo();
+  if (!segredo) return res.status(503).json({ success: false, error: "Disparador da agenda nao configurado." });
+  const m = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i);
+  if (!m || !agendaSegredoConfere(m[1].trim(), segredo)) {
+    console.warn("[Agenda] disparo recusado (segredo ausente ou diferente). ip:", clientIp(req));
+    return res.status(401).json({ success: false, error: "Nao autorizado." });
+  }
+  // Sem SMTP não se tira NADA da fila (senão os alertas gastariam tentativas à toa).
+  const smtp = agendaSmtp();
+  if (!smtp) return res.status(503).json({ success: false, error: "E-mail nao configurado no servidor (EMAIL_HOST/EMAIL_USER/EMAIL_PASS)." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  let ag: AgendaMod;
+  try { ag = await agendaMod(); }
+  catch (e: any) {
+    console.error("[Agenda] modulo _agenda nao carregou:", e?.message || e);
+    return res.status(500).json({ success: false, error: "Modulo da agenda nao carregou no servidor." });
+  }
+
+  const inicio = Date.now();
+  const appUrl = agendaAppUrl();
+  const segredos = [smtp.pass, smtp.user, segredo, process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.SUPABASE_JWT_SECRET];
+  const cont = { enviados: 0, falhas: 0, semDestinatario: 0, adiados: 0, lotes: 0 };
+  let erroFila: string | null = null;
+  // O SMTP INTEIRO falhou nesta rodada (senha trocada, servidor fora, conexão caiu): a rodada
+  // para e o resto volta ADIADO, sem gastar tentativa (achado S3, 29/09). Guarda o erro curto.
+  let smtpFora: string | null = null;
+  // E-mail só para a empresa (decisão do Edson, 29/09): os endereços de Configurações, lidos no
+  // máximo UMA vez por rodada — e só se alguém não passa direto (domínio da empresa / Edson).
+  let confiaveis: Set<string> | null = null;
+  let foraDaEmpresa = 0; // destinatários cortados na rodada (vai no log e na resposta)
+
+  // Marca o resultado; tenta 2x — um "enviado" que não foi marcado voltaria para a fila
+  // em 10 min e a pessoa receberia o e-mail de novo. `recebeu` (só no sucesso, sempre no
+  // sucesso) = os ids de quem o SMTP aceitou; nas falhas não vai (o banco tem default null).
+  const marcar = async (id: number, ok: boolean, erro: string | null, destinatarios: string | null, recebeu?: string[]) => {
+    for (let i = 0; i < 2; i++) {
+      const { error } = await admin.rpc("agenda_marcar_envio", {
+        p_id: id, p_ok: ok, p_erro: erro, p_destinatarios: destinatarios, ...(recebeu ? { p_recebeu: recebeu } : {}),
+      });
+      if (!error) return;
+      console.error(`[Agenda] marcar_envio(${id}) falhou:`, ag.mensagemCurta(error, segredos));
+    }
+  };
+
+  // UM transporte por chamada, com a conexão reaproveitada entre os e-mails do lote.
+  const transporte = nodemailer.createTransport({ ...agendaSmtpBase(smtp), pool: true, maxConnections: 1, maxMessages: 100 });
+  try {
+    while (Date.now() - inicio < AGENDA_ORCAMENTO_MS) {
+      const { data, error } = await admin.rpc("agenda_pegar_devidos", { p_limite: AGENDA_LOTE });
+      if (error) {
+        erroFila = ag.mensagemCurta(error, segredos);
+        console.error("[Agenda] agenda_pegar_devidos falhou:", erroFila);
+        break;
+      }
+      cont.lotes++;
+      const linhas: any[] = Array.isArray(data) ? data : [];
+      const adiar: number[] = [];
+      const devidos = linhas.map((bruta) => ag.normalizarDevido(bruta));
+      // Configurações só quando alguém do lote não passa direto (o comum — todo mundo @empresa —
+      // não custa leitura nenhuma). Aqui, ANTES do laço: o orçamento de tempo lá embaixo já conta
+      // o que ela gastou (até 2 s).
+      if (!confiaveis && devidos.some((d) => !!d && d.destinatarios.some((p) => !agendaPassaDireto(p)))) {
+        confiaveis = await agendaConfiaveis(admin);
+      }
+      for (const d of devidos) {
+        if (!d) { console.error("[Agenda] linha da fila sem alerta_id; ignorada."); continue; }
+        const decorrido = Date.now() - inicio;
+        if (smtpFora || decorrido >= AGENDA_ORCAMENTO_MS) {
+          // Já está 'enviando': volta para a fila (sai na próxima rodada). Marcados JUNTOS,
+          // depois do laço — um por um eram N idas ao banco em série DEPOIS do teto, e a
+          // rodada passava de 10 s (bancada 29/09: 10,1 s com o SMTP pendurado e 100 ms por
+          // ida ao banco; a Vercel corta a função e os alertas ficavam presos em 'enviando').
+          // Com o SMTP fora, tentar o resto só gastaria as tentativas (5 = 'falhou' de vez).
+          adiar.push(d.alerta_id);
+          continue;
+        }
+        // Quem é de fora da empresa sai ANTES de montar o e-mail (o "Enviado para" lista só quem
+        // recebe). O registro e o log dizem que houve corte — sem o endereço inteiro (maskEmail).
+        const para = d.destinatarios.filter((p) => agendaRecebe(p, confiaveis));
+        const fora = d.destinatarios.filter((p) => !para.includes(p));
+        const notaFora = ag.registroForaDaEmpresa(fora);
+        if (fora.length) {
+          foraDaEmpresa += fora.length;
+          console.warn(`[Agenda] alerta ${d.alerta_id}: ${fora.length} destinatario(s) de fora da empresa nao recebe(m): ${fora.map((p) => ag.maskEmail(p.email)).join(", ")}`);
+        }
+        if (!para.length) {
+          // Ninguém (ou só gente de fora): encerra. Quem foi cortado vai em p_destinatarios (o
+          // p_erro fica o 'SEM_DESTINATARIO' exato: é por ele que a 012 encerra sem repetir).
+          cont.semDestinatario++;
+          await marcar(d.alerta_id, false, "SEM_DESTINATARIO", notaFora || null);
+          continue;
+        }
+        try {
+          const email = ag.buildAgendaEmail({
+            codigo: d.codigo, item: d.item, dono: d.dono, participantes: d.participantes,
+            destinatarios: para, appUrl,
+          });
+          const info: any = await agendaComPrazo(transporte.sendMail(agendaMensagem(smtp, email, para)), Math.max(1500, AGENDA_LIMITE_MS - decorrido));
+          cont.enviados++;
+          // O SMTP pode aceitar uns e recusar outros (sem erro): o registro diz quem ficou de fora,
+          // e SÓ quem ele ACEITOU conta como quem recebeu (p_recebeu). Recusado pelo SMTP e cortado
+          // por ser de fora da empresa NÃO contam (29/09, furos A e B do 2º cético). Id que não é
+          // uuid não vai (o banco recusaria a lista inteira e o alerta ficaria sem marcar).
+          const { aceitos, recusados } = ag.aceitosPeloSmtp(para, info);
+          const recebeu = Array.from(new Set(aceitos.map((p) => canonUuid(p.id)).filter((x): x is string => !!x)));
+          const registro = ag.formatarDestinatarios(aceitos) + (recusados.length ? ` | recusado pelo servidor: ${recusados.join(", ")}` : "")
+            + (notaFora ? ` | ${notaFora}` : "");
+          if (recusados.length) console.warn(`[Agenda] alerta ${d.alerta_id}: ${recusados.length} destinatario(s) recusado(s) pelo SMTP.`);
+          await marcar(d.alerta_id, true, null, registro, recebeu);
+        } catch (e: any) {
+          const msg = ag.mensagemCurta(e, segredos);
+          // Falha de UM e-mail (destinatário/mensagem recusados) = falha comum: marca e segue.
+          // Do servidor INTEIRO = a rodada para (o resto do lote volta ADIADO lá em cima). Se
+          // foi com certeza antes de a mensagem sair (login/DNS/TLS/conexão), nem este gasta
+          // tentativa; se pode ter sido depois do DATA, este gasta (o teto de 5 segura o
+          // reenvio — sem ele, um e-mail já entregue sairia de novo a cada rodada).
+          const falha = ag.classificarFalhaSmtp(e);
+          if (falha !== "comum") smtpFora = msg;
+          console.error(`[Agenda] alerta ${d.alerta_id} (${d.codigo}) nao saiu: ${msg}${falha !== "comum" ? " — servidor de e-mail fora; a rodada para" : ""}`);
+          if (falha === "fora-antes") {
+            adiar.push(d.alerta_id);
+          } else {
+            cont.falhas++;
+            await marcar(d.alerta_id, false, msg, null);
+          }
+        }
+      }
+      if (adiar.length) {
+        cont.adiados += adiar.length;
+        const motivo = smtpFora
+          ? "ADIADO: o servidor de e-mail falhou nesta rodada; sai na próxima."
+          : "ADIADO: a rodada do disparador acabou o tempo antes deste envio.";
+        await Promise.all(adiar.map((id) => marcar(id, false, motivo, null)));
+      }
+      if (smtpFora || linhas.length < AGENDA_LOTE) break; // SMTP fora, ou a fila esvaziou
+    }
+  } finally {
+    try { transporte.close(); } catch { /* já fechado */ }
+  }
+
+  console.log(`[Agenda] disparo: enviados=${cont.enviados} falhas=${cont.falhas} semDestinatario=${cont.semDestinatario} adiados=${cont.adiados} lotes=${cont.lotes}${foraDaEmpresa ? ` foraDaEmpresa=${foraDaEmpresa}` : ""} ms=${Date.now() - inicio}${erroFila ? " (erro ao ler a fila)" : ""}${smtpFora ? ` (servidor de e-mail fora: ${smtpFora})` : ""}`);
+  if (erroFila && cont.lotes === 0) {
+    return res.status(500).json({ success: false, error: "Nao consegui ler a fila da agenda.", ...cont });
+  }
+  // SMTP fora: success false e o erro (sem segredo) na resposta — ela fica em
+  // net._http_response (013), onde o Edson confere o disparador. foraDaEmpresa (só quando
+  // houve) = quantos destinatários de fora da empresa ficaram sem o e-mail nesta rodada.
+  return res.json({ success: !erroFila && !smtpFora, ...cont, ...(foraDaEmpresa ? { foraDaEmpresa } : {}), ...(smtpFora ? { smtpFora } : {}) });
+});
+
+// POST /api/agenda/testar { itemId } — alerta de TESTE agora, só para quem pediu.
+app.post("/api/agenda/testar", async (req, res) => {
+  const inicioRota = Date.now(); // o prazo do SMTP conta o que as leituras já gastaram (corte da Vercel em 10 s)
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Não autorizado." });
+  const sid = canonUuid(claims.sub);
+  if (!sid) return res.status(401).json({ success: false, error: "Não autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor não configurado." });
+  try {
+    if (await isViewerDb(admin, sid)) return res.status(403).json({ success: false, error: "Usuário de visualização não usa a agenda." });
+  } catch (e: any) {
+    console.error("[Agenda] teste: conferir o acesso falhou:", e?.message || e);
+    return res.status(503).json({ success: false, error: "Não consegui conferir o seu acesso. Tente de novo." });
+  }
+  // Conta ANTES de agir: 5 testes a cada 15 min por pessoa (é e-mail pela conta oficial).
+  if ((await rlHit(`agenda-teste:${sid}`, 900)) > 5) return tooMany(res, 900);
+  const itemId = canonUuid((req.body || {}).itemId);
+  if (!itemId) return res.status(400).json({ success: false, error: "Compromisso inválido." });
+  const smtp = agendaSmtp();
+  if (!smtp) return res.status(503).json({ success: false, error: "E-mail não configurado no servidor." });
+  let ag: AgendaMod;
+  try { ag = await agendaMod(); }
+  catch (e: any) {
+    console.error("[Agenda] modulo _agenda nao carregou:", e?.message || e);
+    return res.status(500).json({ success: false, error: "Módulo da agenda não carregou no servidor." });
+  }
+
+  // Quem pode testar: quem ENXERGA o compromisso — o dono, e o Edson (só ele vê a agenda dos
+  // outros; a dele, só ele). A mesma regra da política agenda_item_ler (012). O admin de OKR,
+  // o CEO e o convidado NÃO: decisão do Edson, 29/09 ("A minha agenda somente eu mesmo posso
+  // ver"). Qualquer outro recebe o MESMO 404 de "não existe" — não revela o compromisso.
+  let email: AgendaEmail;
+  let para: AgendaPessoa;
+  try {
+    const { data: rows, error } = await admin.from("agenda_item")
+      .select("id, owner_id, titulo, tipo, local, descricao, inicio_dia, inicio_hora, fim_dia, fim_hora, participantes, status, updated_at")
+      .eq("id", itemId).limit(1);
+    if (error) throw new Error("Não consegui ler o compromisso. Tente de novo.");
+    const it = rows && (rows[0] as any);
+    const donoId = it ? canonUuid(it.owner_id) : null;
+    const partIds: string[] = it && Array.isArray(it.participantes)
+      ? it.participantes.map((x: any) => canonUuid(x)).filter((x: string | null): x is string => !!x)
+      : [];
+    const pode = !!it && (donoId === sid || sid === EDSON_ID);
+    if (!pode) return res.status(404).json({ success: false, error: "Compromisso não encontrado." });
+
+    const ids = Array.from(new Set([sid, donoId, ...partIds].filter((x): x is string => !!x)));
+    const { data: pessoas, error: pErr } = await admin.from("users").select("id, name, surname, email").in("id", ids);
+    if (pErr) throw new Error("Não consegui ler o cadastro. Tente de novo.");
+    const porId = new Map<string, any>();
+    (pessoas || []).forEach((u: any) => { const k = canonUuid(u.id); if (k) porId.set(k, u); });
+    const nomeDe = (u: any) => `${(u && u.name) || ""} ${(u && u.surname) || ""}`.trim();
+    const eu = porId.get(sid);
+    const meuEmail = String((eu && eu.email) || "").trim();
+    if (!eu || !isValidEmail(meuEmail)) return res.status(400).json({ success: false, error: "Você não tem e-mail cadastrado — cadastre em “Meu Perfil”." });
+    para = { id: sid, nome: nomeDe(eu), email: meuEmail };
+    // E-mail de fora da empresa não recebe nem o teste; o do Edson, sim (pelo id). As
+    // Configurações só são lidas quando o domínio não basta. Decisão do Edson, 29/09 (tarde).
+    if (!agendaPassaDireto(para) && !agendaRecebe(para, await agendaConfiaveis(admin))) {
+      return res.status(400).json({ success: false, error: AGENDA_SO_EMPRESA });
+    }
+    const participantes = partIds.map((id) => nomeDe(porId.get(id))).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    email = ag.buildAgendaEmail({
+      codigo: "1d",
+      item: {
+        id: String(it.id), titulo: String(it.titulo || ""), tipo: String(it.tipo || "outro"),
+        local: it.local ?? null, descricao: it.descricao ?? null,
+        inicio_dia: String(it.inicio_dia || ""), inicio_hora: it.inicio_hora ?? null,
+        fim_dia: String(it.fim_dia || it.inicio_dia || ""), fim_hora: it.fim_hora ?? null,
+        status: String(it.status || "ativo"), updated_at: String(it.updated_at || ""),
+      },
+      dono: { id: donoId || "", nome: nomeDe(porId.get(donoId || "")), email: null },
+      participantes,
+      destinatarios: [para],
+      appUrl: agendaAppUrl(),
+      teste: true,
+    });
+  } catch (e: any) {
+    console.error("[Agenda] teste: leitura falhou:", e?.message || e);
+    return res.status(503).json({ success: false, error: String(e?.message || "Não consegui ler o compromisso. Tente de novo.") });
+  }
+
+  const transporte = nodemailer.createTransport(agendaSmtpBase(smtp));
+  try {
+    await agendaComPrazo(transporte.sendMail(agendaMensagem(smtp, email, [para])), Math.max(1500, 9000 - (Date.now() - inicioRota)));
+  } catch (e: any) {
+    console.error(`[Agenda] teste do compromisso ${itemId} nao saiu:`, ag.mensagemCurta(e, [smtp.pass, smtp.user]));
+    return res.status(502).json({ success: false, error: ag.smtpErroAmigavel(e) });
+  } finally {
+    try { transporte.close(); } catch { /* já fechado */ }
+  }
+  console.log(`[Agenda] teste do compromisso ${itemId} enviado para ${ag.maskEmail(para.email)}`);
+  return res.json({ success: true, para: ag.maskEmail(para.email) });
 });
 
 // POST /api/users/delete { id } — so admin, nao pode excluir a si mesmo
