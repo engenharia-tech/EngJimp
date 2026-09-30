@@ -131,18 +131,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
           if ((oldUser.phone || '') !== phone) changedProps.push(`Telefone (ex: "${oldUser.phone || ''}", novo: "${phone}")`);
           if (oldUser.username !== username) changedProps.push(`Login (ex: "${oldUser.username}", novo: "${username}")`);
           if (oldUser.role !== role) changedProps.push(`Cargo (ex: "${oldUser.role}", novo: "${role}")`);
-          if ((oldUser.salary || 0) !== salary) {
-            const oldSal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(oldUser.salary || 0);
-            const newSal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(salary);
-            changedProps.push(`Salário (ex: "${oldSal}", novo: "${newSal}")`);
-          }
+          // Salário é só do Edson, mas o Log de Auditoria é lido por GESTOR, CEO e COORDENADOR
+          // (migração 011): o log diz QUE mudou, nunca os valores (decisão do Edson, 30/09).
+          if ((oldUser.salary || 0) !== salary) changedProps.push('Salário (alterado)');
         }
         details = changedProps.length > 0 
           ? `Usuário ${userPayload.username} editado por ${currentUser.name}. Modificações: ${changedProps.join(', ')}`
           : `Usuário ${userPayload.username} editado por ${currentUser.name} sem alterações de conteúdo.`;
       } else {
-        const fmtSal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(userPayload.salary || 0);
-        details = `Usuário ${userPayload.username} [Cargo: ${userPayload.role}, Salário: ${fmtSal}] criado por ${currentUser.name}`;
+        details = `Usuário ${userPayload.username} [Cargo: ${userPayload.role}] criado por ${currentUser.name}`;
       }
 
       addAuditLog({
@@ -267,9 +264,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   // Fonte unica: isEdsonUser (mesma regra do servidor claimsAreEdson). [[identity]]
   const isEdson = isEdsonUser(currentUser);
   const isCoordenador = currentUser.role === 'COORDENADOR';
-  // Só o Edson e o admin de OKR marcam o "admin de visualização" (o servidor confere).
-  // O próprio Edson nunca é marcado (fecharia as gravações dele).
-  const canMarkOkrViewer = isEdson || !!currentUser.okrAdmin;
+  // Só o Edson (ou um GESTOR que também seja admin de OKR) marca o "admin de visualização" e
+  // o grupo ADM Externo — o servidor confere. Um CEO admin de OKR não (Edson, 30/09: "só um
+  // GESTOR ou você muda quem é só visualização"). O próprio Edson nunca é marcado.
+  const canMarkOkrViewer = isEdson || (!!currentUser.okrAdmin && isGestor);
   const EDSON_UUID = '1e570c78-7278-4e8d-a90e-a820c11bb07a';
   // O grupo ADM Externo É o visualizador — deduzido na hora, não gravado no estado: escolher
   // o cargo por engano e voltar não deixa a pessoa marcada nem com o OKR desligado.

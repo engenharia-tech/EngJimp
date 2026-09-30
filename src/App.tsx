@@ -2020,7 +2020,7 @@ const AppContent: React.FC = () => {
                           heading={`OKR — ${person?.name || target}${person?.sector ? ` · ${person.sector}` : ''}`}
                           ownerName={person?.name || target}
                           seedEmpty
-                          canShare
+                          canShare={isEdsonOwner}
                           privacyNote={`Você edita o de ${person?.name || target}`}
                         />
                       )}
@@ -2048,7 +2048,7 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'okr_ind' && canSeeOkrIndicators && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              <OkrIndicators currentUser={currentUser} users={data.users} canShare={isOkrMaster} />
+              <OkrIndicators currentUser={currentUser} users={data.users} canShare={isOkrMaster} canRotate={isEdsonOwner} />
             </div>
           )}
 
