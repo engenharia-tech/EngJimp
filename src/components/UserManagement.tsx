@@ -1,11 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy } from 'lucide-react';
+import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy, UserX } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { isEdsonUser } from '../utils/identity';
-import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts, addAuditLog } from '../services/storageService';
+import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts, addAuditLog, desligarUsuario } from '../services/storageService';
 import { getWebhookUrl, saveWebhookUrl } from '../services/webhookService';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
+import { Dialog } from './Dialog';
+import { hojeJoinville, ultimoDiaTrabalhado } from '../utils/custoHora';
+
+// 'AAAA-MM-DD' → 'dd/mm/aaaa' (ou 'dd/mm' com curto) pelo texto — sem Date, o fuso não troca o dia.
+const diaBr = (dia: string | null | undefined, curto = false): string => {
+  const [a, m, d] = String(dia || '').slice(0, 10).split('-');
+  if (!a || !m || !d) return String(dia || '');
+  return curto ? `${d}/${m}` : `${d}/${m}/${a}`;
+};
+// O primeiro dia em que o desligamento vale para a rota (/api/users/desligar recusa antes disto).
+const DESLIGAR_DESDE = '2026-01-01';
 
 interface UserManagementProps {
     currentUser: User;
@@ -72,6 +83,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   const [isRegistering, setIsRegistering] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [deleteConfirmationUser, setDeleteConfirmationUser] = useState<User | null>(null);
+  // Desligar (decisão do Edson, 30/09/2026: desligar, não excluir — tudo o que a pessoa fez continua
+  // no nome dela). O modal pede o ÚLTIMO dia trabalhado (até hoje; o servidor recusa data futura).
+  const [desligarAlvo, setDesligarAlvo] = useState<User | null>(null);
+  const [desligarDia, setDesligarDia] = useState<string>('');
+  const [desligarErro, setDesligarErro] = useState<string>('');
+  const [isDesligando, setIsDesligando] = useState(false);
 
   useEffect(() => {
     loadList();
@@ -216,6 +233,78 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     }
   };
 
+  const abrirDesligar = (user: User) => {
+    setDesligarAlvo(user);
+    setDesligarDia(hojeJoinville());
+    setDesligarErro('');
+  };
+
+  const fecharDesligar = () => {
+    if (isDesligando) return;
+    setDesligarAlvo(null);
+    setDesligarErro('');
+  };
+
+  // Quem aperta é o Edson ou um GESTOR; o SERVIDOR confere de novo (cargo lido do cadastro), grava
+  // tudo numa transação só (datas, senha sorteada, e-mail fora) e recalcula o custo/hora a partir do
+  // dia seguinte ao último dia — nunca antes do 1º dia do mês corrente (mês fechado não muda).
+  const confirmarDesligar = async () => {
+    if (!desligarAlvo || isDesligando) return;
+    const alvo = desligarAlvo;
+    const ultimoDia = desligarDia;
+    const hoje = hojeJoinville();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ultimoDia)) { setDesligarErro('Informe o último dia trabalhado.'); return; }
+    if (ultimoDia > hoje) { setDesligarErro('O último dia não pode ser no futuro: desligue no fim do último dia.'); return; }
+    if (ultimoDia < DESLIGAR_DESDE) { setDesligarErro(`O último dia não pode ser antes de ${diaBr(DESLIGAR_DESDE)}.`); return; }
+
+    setIsDesligando(true);
+    setDesligarErro('');
+    try {
+      const result = await desligarUsuario(alvo.id, ultimoDia);
+      if (!result.success) {
+        setDesligarErro(result.message || 'Não consegui desligar agora. Tente de novo.');
+        return;
+      }
+      setDesligarAlvo(null);
+      addToast(result.custoDesde ? `Desligado. O custo muda a partir de ${diaBr(result.custoDesde, true)}.` : 'Desligado.', 'success');
+      if (result.message) addToast(result.message, 'warning'); // desligou, mas o servidor tem algo a dizer
+      // O log diz quem e quando, nunca salário nem custo (o Log é lido por GESTOR, CEO e COORDENADOR).
+      addAuditLog({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        action: 'UPDATE',
+        entityType: 'USER',
+        entityId: alvo.id,
+        entityName: alvo.username,
+        details: `Usuário ${alvo.username} (${alvo.name}) desligado (último dia ${diaBr(ultimoDia)}) por ${currentUser.name}`
+      });
+      await loadList();
+      onUsersChange?.();
+    } catch {
+      setDesligarErro('Erro ao conectar ao servidor.');
+    } finally {
+      setIsDesligando(false);
+    }
+  };
+
+  // Selo junto do nome: "DESLIGA EM dd/mm" enquanto o último dia não passou (no último dia ainda é
+  // ativo) e "DESLIGADO · ÚLTIMO DIA dd/mm/aaaa" depois.
+  const seloDesligado = (u: User) => {
+    const ultimo = ultimoDiaTrabalhado(u);
+    if (!ultimo) return null;
+    const passou = ultimo < hojeJoinville();
+    return (
+      <span
+        title={`Último dia trabalhado: ${diaBr(ultimo)}`}
+        className={`font-mono text-[10px] font-bold tracking-[0.12em] uppercase px-1.5 py-0.5 rounded border ${passou
+          ? 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-900/40'
+          : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900/40'}`}
+      >
+        {passou ? `Desligado · último dia ${diaBr(ultimo)}` : `Desliga em ${diaBr(ultimo, true)}`}
+      </span>
+    );
+  };
+
   const resetForm = () => {
     setName('');
     setSurname('');
@@ -276,7 +365,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   
   const canCreateUser = isGestor;
   const canDeleteUser = isGestor;
-  
+  // Desligar: o Edson (pelo id) ou um GESTOR — decisão do Edson, 30/09/2026 (o servidor confere pelo
+  // cadastro). Nunca a si mesmo, nunca o Edson, e não aparece para quem já tem último dia gravado.
+  const canDesligar = currentUser.id === EDSON_UUID || isGestor;
+  const canDesligarUser = (targetUser: User) =>
+      canDesligar && targetUser.id !== currentUser.id && targetUser.id !== EDSON_UUID && !ultimoDiaTrabalhado(targetUser);
+
   const canEditUser = (targetUser: User) => {
       if (isGestor) return true;
       if (currentUser.id === targetUser.id) return true;
@@ -501,11 +595,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                                     <span className="text-[10px] text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">@{u.username}</span>
                                     {currentUser.id === u.id && <span className="text-[10px] text-blue-600 dark:text-blue-400 font-black uppercase bg-blue-50 dark:bg-blue-900/30 px-1.5 rounded">Você</span>}
                                 </div>
+                                {ultimoDiaTrabalhado(u) && <div className="mt-1">{seloDesligado(u)}</div>}
                             </div>
                         </div>
                         <div className="flex bg-gray-50 dark:bg-slate-800 p-1.5 rounded-lg gap-1 border border-gray-200 dark:border-slate-700">
                            {canEditThisUser && (
                             <button onClick={() => handleEdit(u)} className="p-1.5 text-indigo-600 dark:text-indigo-400"><Edit className="w-4 h-4" /></button>
+                           )}
+                           {canDesligarUser(u) && (
+                            <button onClick={() => abrirDesligar(u)} className="p-1.5 text-amber-600 dark:text-amber-400" title="Desligar" aria-label={`Desligar ${u.name}`}><UserX className="w-4 h-4" /></button>
                            )}
                            {canDeleteUser && (
                             <button onClick={() => handleDelete(u)} className="p-1.5 text-red-600 dark:text-red-400"><Trash2 className="w-4 h-4" /></button>
@@ -557,7 +655,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             {users.map((u) => {
               const canEditThisUser = canEditUser(u);
               const canDeleteThisUser = canDeleteUser; // Only Gestor
-              const showActions = canEditThisUser || canDeleteThisUser;
+              const canDesligarThisUser = canDesligarUser(u);
+              const showActions = canEditThisUser || canDeleteThisUser || canDesligarThisUser;
 
               return (
               <tr key={u.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${currentUser.id === u.id ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''}`}>
@@ -569,6 +668,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                     <div>
                       <div className="font-bold">{u.name} {u.surname}</div>
                       {currentUser.id === u.id && <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded-full">Você</span>}
+                      {ultimoDiaTrabalhado(u) && <div className="mt-1">{seloDesligado(u)}</div>}
                     </div>
                   </div>
                 </td>
@@ -602,6 +702,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                       title="Editar Usuário"
                     >
                       <Edit className="w-4 h-4" />
+                    </button>
+                    )}
+                    {canDesligarThisUser && (
+                    <button
+                      onClick={() => abrirDesligar(u)}
+                      className="text-gray-400 dark:text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 p-2 rounded transition"
+                      title="Desligar (mantém o histórico)"
+                      aria-label={`Desligar ${u.name}`}
+                    >
+                      <UserX className="w-4 h-4" />
                     </button>
                     )}
                     {canDeleteThisUser && (
@@ -1033,6 +1143,62 @@ NOTIFY pgrst, 'reload config';`}
                 </div>
             </div>
         </div>
+      )}
+      {/* Desligar — decisão do Edson, 30/09/2026: desligar, não excluir */}
+      {desligarAlvo && (
+        <Dialog
+          onClose={fecharDesligar}
+          label={`Desligar ${desligarAlvo.name}`}
+          zClassName="z-50"
+          panelClassName="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 border border-gray-100 dark:border-slate-700 border-l-4 border-l-amber-500 outline-none"
+        >
+          <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-gray-400 dark:text-slate-500 mb-0.5">Equipe · <span className="text-orange-500 dark:text-orange-400">Desligar</span></p>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2 flex items-center">
+            <UserX className="w-5 h-5 mr-2 text-amber-600 dark:text-amber-400" />
+            Desligar {desligarAlvo.name} {desligarAlvo.surname || ''}
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
+            Tira o acesso (senha e e-mail), mantém todo o histórico no nome dele e tira o salário do custo/hora a partir do dia seguinte. Não se desfaz pela tela.
+          </p>
+          <label htmlFor="um-desligar-dia" className="block text-sm font-medium text-black dark:text-white mb-1">Último dia trabalhado</label>
+          <input
+            id="um-desligar-dia"
+            type="date"
+            value={desligarDia}
+            min={DESLIGAR_DESDE}
+            max={hojeJoinville()}
+            onChange={e => { setDesligarDia(e.target.value); setDesligarErro(''); }}
+            disabled={isDesligando}
+            className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+          />
+          <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">
+            No último dia a pessoa ainda conta. Se o último dia for de um mês já fechado, o custo só muda a partir do 1º dia deste mês (mês fechado não muda).
+          </p>
+          {desligarErro && (
+            <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400 flex items-start gap-1.5">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {desligarErro}
+            </p>
+          )}
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              type="button"
+              onClick={fecharDesligar}
+              disabled={isDesligando}
+              className="px-4 py-2 text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors disabled:opacity-50"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={confirmarDesligar}
+              disabled={isDesligando || !desligarDia}
+              className="px-4 py-2 text-white bg-amber-600 hover:bg-amber-700 rounded-lg font-medium transition-colors shadow-sm flex items-center disabled:opacity-60"
+            >
+              {isDesligando ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UserX className="w-4 h-4 mr-2" />}
+              {isDesligando ? 'Desligando...' : 'Desligar'}
+            </button>
+          </div>
+        </Dialog>
       )}
       {/* Duplicate Resolution Modal */}
       {showDuplicateModal && (

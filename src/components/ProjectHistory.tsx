@@ -10,6 +10,7 @@ import { useToast } from './Toast';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { useLanguage } from '../i18n/LanguageContext';
 import { resolveUser, buildUsersMap, resolveProjectUser } from '../utils/userUtils';
+import { podeVerReais, custoEmReaisOrdemHistorico, taxaNaData, custoParaExportar, usuariosParaSeletor, rotuloDesligado } from '../utils/custoHora';
 
 interface ProjectHistoryProps {
   data: AppState;
@@ -355,21 +356,19 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + (curr.totalTimeSeconds || 0), 0);
       const netSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds - interruptionSeconds);
       const totalSeconds = netSeconds + interruptionSeconds;
-      
-      const hourlyRate = data.settings?.hourlyCost || 0;
-      const productiveCost = (netSeconds / 3600) * hourlyRate;
-      const interruptionCost = (interruptionSeconds / 3600) * hourlyRate;
-      const totalCost = productiveCost + interruptionCost;
 
+      // Custo por período — 30/09/2026. Antes: o recálculo punha em R$ os segundos com
+      // settings.hourlyCost (o valor MANUAL cru, mesmo no modo automático) e mandava gravar.
+      // Agora: leva só os segundos. Nenhum R$ calculado no navegador vai ao banco — a RLS deixa
+      // todo logado ler `projects`, e custo ÷ horas devolveria a taxa. O custo gravado antigo fica
+      // como está (o storage não manda as colunas de custo no update); a tela calcula na hora,
+      // pela série (taxaNaData), só para quem vê R$.
       if (Math.abs(project.totalActiveSeconds - netSeconds) > 2) {
         await onUpdate({
           ...project,
           totalActiveSeconds: netSeconds,
           interruptionSeconds,
-          totalSeconds,
-          productiveCost,
-          interruptionCost,
-          totalCost
+          totalSeconds
         });
         addToast(t('projectUpdatedSuccess'), 'success');
       } else {
@@ -635,24 +634,14 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     }
   };
 
-  const engineeringHourlyRate = useMemo(() => {
-    let rate = data.settings.hourlyCost;
-
-    // Taxa media (fallback) vem do servidor (C2) — sem salario individual aqui.
-    const averageRate = data.settings.hourlyCostCalculated ?? 0;
-
-    if (data.settings.useAutomaticCost) {
-      // If automatic cost is enabled, we use the average as the base, 
-      // but individual projects will use the specific user's rate if available.
-      return averageRate;
-    }
-
-    if (rate <= 0) {
-      return averageRate;
-    }
-    
-    return rate;
-  }, [data.settings.hourlyCost, data.settings.useAutomaticCost, data.settings.hourlyCostCalculated]);
+  // Custo/hora por período — 30/09/2026. Decisões do Edson (30/09): "congelar cada mês" e R$ só
+  // para o Edson e para os CEOs.
+  // Antes: UMA taxa (a média de hoje, ou o valor manual) para projetos de qualquer data, e o R$
+  //   aparecia para GESTOR/COORDENADOR (isGestor).
+  // Agora: quem vê R$ é o SERVIDOR que diz (settings.custoHora → podeVerReais), e cada projeto usa a
+  //   taxa do dia dele (taxaNaData pelo startTime, em Joinville) — jan–ago dão o mesmo número de antes.
+  //   O isGestor continua valendo só para o filtro de suspeitos.
+  const veReais = podeVerReais(data.settings);
 
   // Calculate Stats
   const stats = useMemo(() => {
@@ -662,13 +651,12 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       return acc + (p.totalActiveSeconds || 0);
     }, 0);
     const avgSeconds = totalProjects > 0 ? totalSeconds / totalProjects : 0;
-    
+
     let totalCost = 0;
-    if (isGestor) {
+    if (veReais) {
       filteredProjects.forEach(p => {
-        // Cost should also focus on active productive time
-        const pActiveSeconds = p.totalActiveSeconds || 0;
-        totalCost += engineeringHourlyRate * (pActiveSeconds / 3600);
+        // Custo do tempo ativo produtivo, na taxa do dia do projeto
+        totalCost += custoEmReaisOrdemHistorico(data.settings, p.totalActiveSeconds || 0, p.startTime);
       });
     }
 
@@ -680,7 +668,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       avgMinutes: Math.floor((avgSeconds % 3600) / 60),
       totalCost
     };
-  }, [filteredProjects, isGestor, engineeringHourlyRate]);
+  }, [filteredProjects, veReais, data.settings]);
 
   const handleExportExcel = () => {
     if (filteredProjects.length === 0) {
@@ -694,8 +682,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         const activeHours = (p.totalActiveSeconds || 0) / 3600;
         const estHours = (p.estimatedSeconds || 0) / 3600;
         const efficiency = estHours > 0 ? `${Math.round((activeHours / estHours) * 100)}%` : '-';
-        
-        return {
+
+        const linha: Record<string, string | number> = {
           '#': idx + 1,
           'N.S.': p.ns || '',
           'Cliente': p.clientName || '',
@@ -708,9 +696,13 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           'Data Início': p.startTime ? new Date(p.startTime).toLocaleDateString('pt-BR') : '',
           'Horas Reais (h)': parseFloat(activeHours.toFixed(2)),
           'Horas Previstas (h)': parseFloat(estHours.toFixed(2)),
-          'Eficiência': efficiency,
-          'Custo Estimado (R$)': p.totalCost ? parseFloat(p.totalCost.toFixed(2)) : 0
+          'Eficiência': efficiency
         };
+        // Decisão do Edson, 30/09: "jan–ago com o custo gravado na época (quando > 0); de 01/09 em
+        // diante pela série; só para quem vê R$". Quem não vê R$ exporta SEM a coluna de custo.
+        const custo = custoParaExportar(data.settings, p);
+        if (custo !== null) linha['Custo Estimado (R$)'] = custo ? parseFloat(custo.toFixed(2)) : 0;
+        return linha;
       });
 
       const ws = XLSX.utils.json_to_sheet(exportData);
@@ -779,9 +771,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
         const hoursReal = ((p.totalActiveSeconds || 0) / 3600).toFixed(1) + 'h';
         const hoursEst = p.estimatedSeconds ? ((p.estimatedSeconds || 0) / 3600).toFixed(1) + 'h' : '-';
         const dateStr = p.startTime ? new Date(p.startTime).toLocaleDateString('pt-BR') : '-';
-        const costStr = p.totalCost ? `R$ ${p.totalCost.toFixed(2)}` : 'R$ 0,00';
 
-        return [
+        const linha: (string | number)[] = [
           idx + 1,
           p.ns || '-',
           p.clientName || '-',
@@ -792,14 +783,21 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
           designerName,
           hoursReal,
           hoursEst,
-          p.status === 'COMPLETED' ? 'Fim' : 'Ativo',
-          costStr
+          p.status === 'COMPLETED' ? 'Fim' : 'Ativo'
         ];
+        // Mesma regra do Excel (decisão do Edson, 30/09): coluna de custo só para quem vê R$;
+        // jan–ago = o gravado quando > 0, de 01/09 em diante = a série.
+        const custo = veReais ? custoParaExportar(data.settings, p) : null;
+        if (veReais) linha.push(custo ? `R$ ${custo.toFixed(2)}` : 'R$ 0,00');
+        return linha;
       });
+
+      const cabecalho = ['#', 'N.S.', 'Cliente', 'Código', 'Tipo', 'Implemento', 'Data', 'Projetista', 'H. Real', 'H. Prev', 'Status'];
+      if (veReais) cabecalho.push('Custo');
 
       (doc as any).autoTable({
         startY: 90,
-        head: [['#', 'N.S.', 'Cliente', 'Código', 'Tipo', 'Implemento', 'Data', 'Projetista', 'H. Real', 'H. Prev', 'Status', 'Custo']],
+        head: [cabecalho],
         body: tableRows,
         styles: { fontSize: 8, cellPadding: 5 },
         headStyles: { fillColor: [43, 62, 104], textColor: [255, 255, 255], fontStyle: 'bold' },
@@ -912,7 +910,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             </div>
             <div className="text-2xl font-bold text-black dark:text-white">{stats.avgHours}h {stats.avgMinutes}m</div>
           </div>
-          {isGestor && (
+          {veReais && (
             <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800">
               <div className="text-xs text-gray-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5 text-red-500" />
@@ -1178,11 +1176,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                     <span className="block text-[10px] text-gray-400 dark:text-slate-500 uppercase font-black">{t('scheduleTimeCol')}</span>
                                     <span className="text-xs font-bold text-gray-700 dark:text-slate-200">{formatDate(project.startTime)}</span>
                                 </div>
-                                {isGestor && (
+                                {veReais && (
                                     <div className="col-span-2 border-t border-gray-100 dark:border-slate-800 pt-2">
                                         <span className="block text-[10px] text-gray-400 dark:text-slate-500 uppercase font-black">{t('costCol')}</span>
                                         <span className="text-xs font-black text-red-600 dark:text-red-400">
-                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(engineeringHourlyRate * (pActiveSeconds / 3600))}
+                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(custoEmReaisOrdemHistorico(data.settings, pActiveSeconds, project.startTime))}
                                         </span>
                                     </div>
                                 )}
@@ -1236,7 +1234,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 <th className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black transition-colors" onClick={() => handleSort('startTime')}>
                   <div className="flex items-center">{t('scheduleTimeCol')} <SortIcon columnKey="startTime" /></div>
                 </th>
-                {isGestor && <th className="p-4">{t('costCol')}</th>}
+                {veReais && <th className="p-4">{t('costCol')}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1247,8 +1245,10 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const user = resolveProjectUser(project, data.users) || (project.userId ? usersMap[project.userId] : null);
                 const pActiveSeconds = project.totalActiveSeconds;
                 const pInterruptionSeconds = project.interruptionSeconds || 0;
-                const cost = engineeringHourlyRate * (pActiveSeconds / 3600);
-                
+                // taxa do DIA do projeto (série por período); 0 para quem não vê R$ — a coluna nem aparece
+                const taxaDoProjeto = veReais ? taxaNaData(data.settings, project.startTime) : 0;
+                const cost = veReais ? custoEmReaisOrdemHistorico(data.settings, pActiveSeconds, project.startTime) : 0;
+
                 const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
 
                 return (
@@ -1420,15 +1420,15 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                     </div>
                   </td>
 
-                  {isGestor && (
+                  {veReais && (
                     <td className="p-4">
-                      {engineeringHourlyRate > 0 ? (
+                      {taxaDoProjeto > 0 ? (
                         <div className="flex flex-col">
                           <span className="text-sm font-bold text-red-600 dark:text-red-400">
                             {new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(cost)}
                           </span>
                           <span className="text-[10px] text-gray-500 dark:text-slate-500">
-                            {new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(engineeringHourlyRate)}/h
+                            {new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(taxaDoProjeto)}/h
                           </span>
                         </div>
                       ) : (
@@ -1441,7 +1441,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
               })}
               {filteredProjects.length === 0 && (
                 <tr>
-                  <td colSpan={isGestor ? 10 : 9} className="p-20 text-center">
+                  <td colSpan={veReais ? 10 : 9} className="p-20 text-center">
                     <div className="flex flex-col items-center justify-center space-y-4">
                       <div className="w-16 h-16 bg-gray-50 dark:bg-slate-900 rounded-full flex items-center justify-center">
                         <Search className="w-8 h-8 text-gray-300 dark:text-slate-700" />
@@ -1755,10 +1755,12 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             {data.users.length === 0 ? (
                                 <option disabled>{t('loadingUsers')}...</option>
                             ) : (
-                                data.users.map(user => {
+                                // Desligar sem excluir (Edson, 30/09): quem já tinha saído na data do
+                                // projeto some da escolha; quem já está no registro continua aparecendo.
+                                usuariosParaSeletor<User>(data.users, editForm.startDate, editForm.userId).map(user => {
                                     return (
                                         <option key={user.id} value={user.id}>
-                                            {user.name} {user.surname ? user.surname : ''}
+                                            {user.name} {user.surname ? user.surname : ''}{rotuloDesligado(user)}
                                         </option>
                                     );
                                 })

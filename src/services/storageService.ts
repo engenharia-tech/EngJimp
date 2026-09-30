@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus, InnovationType, GanttTask, AuditLog } from '../types';
+import { AppState, ProjectSession, IssueRecord, User, UserRole, InnovationRecord, CalculationType, ProjectType, ImplementType, InterruptionRecord, InterruptionType, InterruptionStatus, InterruptionArea, AppSettings, ActivityType, OperationalActivity, ProjectRequest, ProjectRequestStatus, InnovationType, GanttTask, AuditLog, CustoHoraInfo, CustoHoraPeriodo } from '../types';
 import { SEOKeyword, SEOMetric, SEOTask, SEOData } from '../types';
 import { DEFAULT_INTERRUPTION_TYPES, DEFAULT_ACTIVITY_TYPES } from '../constants';
 import { calcActiveSeconds } from '../utils/workdayCalc';
@@ -282,7 +282,8 @@ export const fetchSettings = async (): Promise<AppSettings> => {
       }
     } catch { /* mantem localStorage/defaults */ }
   }
-  console.log("FINAL SETTINGS OBJECT:", settings);
+  // (30/09/2026) Não imprime mais o objeto: ele leva o custo/hora (decisão do Edson: taxa
+  // não aparece em log).
   return settings;
 };
 
@@ -292,15 +293,68 @@ export const fetchSettings = async (): Promise<AppSettings> => {
 // o vazamento do C2 (o salario/senha vinham crus para todo cliente).
 const USER_SAFE_COLUMNS = 'id, username, name, surname, email, phone, role, okr_enabled, okr_only, okr_viewer, sector, created_at';
 
-// Media (custo/hora) calculada no servidor, sem expor salario individual.
-// Usada pelo "custo automatico" no app inteiro.
-export const fetchAutoHourlyCost = async (): Promise<number> => {
+// Desligado (decisão do Edson, 30/09/2026: "desligar, não excluir"). A 022 cria
+// `users.desligado_em` (o último dia trabalhado) com grant de coluna para o
+// navegador — seletores, divisores e o nome no histórico precisam da data; a
+// coluna não guarda salário. (O `custo_ate` NÃO tem grant e nunca vem para cá.)
+// Antes: só USER_SAFE_COLUMNS. Agora: + desligado_em, e com QUALQUER erro nessa
+// leitura (a 022 não rodou = 42703; grant faltando = 42501; cache do PostgREST…)
+// relê SEM a coluna — todo mundo fica "ativo", mas `users` nunca volta vazio (vazio
+// derrubava os nomes para o id cru e zerava seletores e divisores — cético, 30/09).
+// Log só com o código do erro.
+const selecionarUsuarios = async (): Promise<{ data: any[] | null; error: any }> => {
+  const com = await supabase.from('users').select(`${USER_SAFE_COLUMNS}, desligado_em`);
+  if (!com.error) return { data: com.data as any[] | null, error: null };
+  console.warn('[users] leitura com desligado_em falhou; relendo sem a coluna:', (com.error as any)?.code || '(sem código)');
+  const sem = await supabase.from('users').select(USER_SAFE_COLUMNS);
+  return { data: sem.data as any[] | null, error: sem.error };
+};
+
+/** 'AAAA-MM-DD' da coluna date `desligado_em`, ou null (ativo / coluna ausente). */
+const lerDesligadoEm = (v: any): string | null =>
+  typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v.trim()) ? v.trim().slice(0, 10) : null;
+
+// Custo/hora POR PERÍODO (decisão do Edson, 30/09/2026: "congelar cada mês"; R$ só
+// para o Edson e os CEOs). Quem vê R$ é decidido pelo SERVIDOR (GET
+// /api/labor/hourly-cost): Edson pelo id, CEO pelo cadastro. A série (`periodos`) só
+// chega para eles; os demais recebem só `taxaInovacoes` (a taxa de antes, que já
+// conheciam — a tela de Inovações não muda).
+// Antes: a leitura antiga devolvia UMA média (hourlyRate) a todos, aplicada a
+// registros de qualquer data. O campo `hourlyRate` (que o servidor ainda manda na
+// transição, para abas com o pacote antigo) é IGNORADO aqui.
+// Falha/sem crachá/!ok → carregado:false: as telas ficam sem R$ (nunca "R$ 0" como custo).
+// Nunca imprimir a resposta (leva taxa).
+const CUSTO_HORA_VAZIO: CustoHoraInfo = { carregado: false, instalado: false, podeVerReais: false, periodos: [], taxaInovacoes: null };
+
+export const fetchCustoHora = async (): Promise<CustoHoraInfo> => {
   try {
-    const res = await fetch('/api/labor/hourly-cost', { headers: { ...authHeaders() } });
-    if (!res.ok) return 0;
-    const data = await res.json().catch(() => ({}));
-    return Number(data?.hourlyRate) || 0;
-  } catch { return 0; }
+    if (!getAuthToken()) return { ...CUSTO_HORA_VAZIO, periodos: [] };
+    const res = await fetch('/api/labor/hourly-cost', { headers: { ...authHeaders() }, cache: 'no-store' });
+    if (!res.ok) return { ...CUSTO_HORA_VAZIO, periodos: [] };
+    const data: any = await res.json().catch(() => null);
+    if (!data || data.success !== true) return { ...CUSTO_HORA_VAZIO, periodos: [] };
+    const podeVerReais = data.podeVerReais === true;
+    const periodos: CustoHoraPeriodo[] = [];
+    if (podeVerReais && Array.isArray(data.periodos)) {
+      for (const p of data.periodos) {
+        const desde = typeof p?.desde === 'string' ? p.desde.trim().slice(0, 10) : '';
+        const taxa = Number(p?.taxa);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !Number.isFinite(taxa) || taxa < 0) continue;
+        periodos.push({ desde, taxa });
+      }
+      periodos.sort((a, b) => (a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0));
+    }
+    const ti = Number(data.taxaInovacoes);
+    return {
+      carregado: true,
+      instalado: data.instalado === true,
+      podeVerReais,
+      periodos,
+      taxaInovacoes: data.taxaInovacoes !== null && data.taxaInovacoes !== undefined && Number.isFinite(ti) && ti > 0 ? ti : null,
+    };
+  } catch {
+    return { ...CUSTO_HORA_VAZIO, periodos: [] };
+  }
 };
 
 // Salarios individuais { [id]: valor }. O servidor so responde para o Edson;
@@ -340,11 +394,11 @@ export const fetchAppState = async (): Promise<AppState> => {
       supabase.from('activity_types').select('*').order('name', { ascending: true }),
       supabase.from('operational_activities').select('*').order('start_time', { ascending: false }),
       supabase.from('project_requests').select('*').order('created_at', { ascending: false }),
-      supabase.from('users').select(USER_SAFE_COLUMNS),
+      selecionarUsuarios(),    // [8] colunas seguras + desligado_em (relê sem ela a qualquer erro)
       supabase.from('gantt_tasks').select('*').is('deleted_at', null).order('order', { ascending: true }),
       supabase.from('audit_logs').select('*').order('timestamp', { ascending: false }).limit(500),
       fetchSettings(),
-      fetchAutoHourlyCost(),   // [12] media custo/hora (servidor, sem salario individual)
+      fetchCustoHora(),        // [12] custo/hora por período (servidor decide quem vê R$; sem salário individual)
       fetchEdsonSalaries()     // [13] salarios individuais — SO chega preenchido para o Edson
     ];
 
@@ -361,11 +415,14 @@ export const fetchAppState = async (): Promise<AppState> => {
     const ganttTasksRes = results[9] as any;
     const auditLogsRes = results[10] as any;
     settings = results[11] as AppSettings;
-    const autoHourlyCost = (results[12] as number) || 0;
+    const custoHora = (results[12] as CustoHoraInfo) || { carregado: false, instalado: false, podeVerReais: false, periodos: [], taxaInovacoes: null };
     const edsonSalaries = (results[13] as Record<string, number>) || {};
-    // Taxa media (custo/hora) vem do servidor — nenhum salario individual foi
-    // baixado. Alimenta o "custo automatico" em todas as telas.
-    if (autoHourlyCost > 0) settings = { ...settings, hourlyCostCalculated: autoHourlyCost };
+    // Custo/hora por período (30/09/2026): vem do servidor — nenhum salário individual
+    // foi baixado. Vai SEMPRE em settings.custoHora; a taxa de cada registro é
+    // taxaNaData(settings, startTime) (src/utils/custoHora.ts). settings.hourlyCost
+    // continua sendo SÓ o valor manual (antes: a média única entrava num campo à parte
+    // e o App a injetava em hourlyCost).
+    settings = { ...settings, custoHora };
 
     // Sessão do "admin de visualização" do OKR (marca ou grupo ADM Externo): o banco só
     // devolve a própria linha de `users` e nada da engenharia. Ele nunca semeia nada.
@@ -396,6 +453,9 @@ export const fetchAppState = async (): Promise<AppState> => {
         id: u.id, username: u.username, password: '', name: u.name, surname: u.surname,
         email: u.email, phone: u.phone, role: u.role, okrEnabled: !!u.okr_enabled,
         okrOnly: !!u.okr_only, okrViewer: !!u.okr_viewer, sector: u.sector || '',
+        // Desligado (30/09/2026): NÃO se filtra aqui — o nome tem de resolver no histórico.
+        // Quem esconde é cada seletor/divisor (custoHora.ts: ativoNaData, usuariosParaSeletor).
+        desligadoEm: lerDesligadoEm(u.desligado_em),
         // salario so existe no cliente do Edson (via /api/users/salaries); 0 p/ o resto.
         salary: Number(edsonSalaries[u.id]) || 0
       })).sort((a, b) => a.name.localeCompare(b.name));
@@ -765,7 +825,8 @@ export const getDatabaseStats = async () => {
 
 export const updateSettings = async (settings: AppSettings): Promise<AppState> => {
   try {
-    console.log("UPDATING SETTINGS WITH:", settings);
+    // (30/09/2026) Sem console.log do objeto: ele leva settings.custoHora (a série do
+    // custo/hora, no navegador do Edson e dos CEOs) — taxa não aparece em log (cético, 30/09).
     // Update LocalStorage first for immediate feedback
     localStorage.setItem('hourly_cost', (settings.hourlyCost || 150).toString());
     if (settings.logoUrl !== undefined) localStorage.setItem('logo_url', settings.logoUrl || '');
@@ -786,7 +847,12 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     // A tabela settings e de UMA LINHA LARGA: montamos um objeto com as
     // colunas e fazemos UPDATE da linha existente (ou INSERT se nao houver).
     const row: Record<string, any> = {};
-    if (settings.hourlyCost !== undefined) row.hourly_cost = settings.hourlyCost;
+    // hourly_cost é SÓ o valor MANUAL (30/09/2026). Antes: no modo automático a tela recebia a
+    // MÉDIA em hourlyCost e ela era gravada aqui, em settings.hourly_cost — coluna que todo
+    // logado lê. Agora só vai junto do modo manual (use_automatic_cost = false), a mesma régua
+    // do /api/settings/save (que também só aceita de Edson/CEO). Decisão do Edson, 30/09: o
+    // valor antigo NÃO é zerado — só se para de gravar a média nele. `custoHora` nunca vai.
+    if (settings.hourlyCost !== undefined && settings.useAutomaticCost === false) row.hourly_cost = settings.hourlyCost;
     if (settings.logoUrl !== undefined) row.logo_url = settings.logoUrl || '';
     if (settings.companyName !== undefined) row.company_name = settings.companyName || '';
     if (settings.emailTo !== undefined) row.email_to = settings.emailTo || '';
@@ -1100,9 +1166,12 @@ export const addProject = async (project: ProjectSession): Promise<AppState> => 
       total_active_seconds: project.totalActiveSeconds,
       interruption_seconds: project.interruptionSeconds || 0,
       total_seconds: project.totalSeconds || 0,
-      productive_cost: project.productiveCost || 0,
-      interruption_cost: project.interruptionCost || 0,
-      total_cost: project.totalCost || 0,
+      // Custo por período (30/09/2026): nenhum R$ calculado no navegador vai ao banco — a RLS
+      // deixa todo logado ler `projects`, e total_cost ÷ horas devolveria a taxa. Projeto novo
+      // grava 0 nas três; a tela calcula na hora, só para quem vê R$ (custoHora.ts).
+      productive_cost: 0,
+      interruption_cost: 0,
+      total_cost: 0,
       pauses: project.pauses,
       variations: project.variations,
       status: project.status,
@@ -1138,9 +1207,10 @@ export const addProjectsBatch = async (projects: ProjectSession[]): Promise<AppS
       total_active_seconds: project.totalActiveSeconds,
       interruption_seconds: project.interruptionSeconds || 0,
       total_seconds: project.totalSeconds || 0,
-      productive_cost: project.productiveCost || 0,
-      interruption_cost: project.interruptionCost || 0,
-      total_cost: project.totalCost || 0,
+      // 30/09/2026: 0 nas três colunas de custo, como no addProject (nenhum R$ do navegador vai ao banco).
+      productive_cost: 0,
+      interruption_cost: 0,
+      total_cost: 0,
       pauses: project.pauses,
       variations: project.variations,
       status: project.status,
@@ -1177,9 +1247,9 @@ export const updateProject = async (project: ProjectSession, skipFetch = false):
         total_active_seconds: Math.round(Number.isFinite(project.totalActiveSeconds) ? project.totalActiveSeconds : 0),
         interruption_seconds: Math.round(Number.isFinite(project.interruptionSeconds) ? (project.interruptionSeconds || 0) : 0),
         total_seconds: Math.round(Number.isFinite(project.totalSeconds) ? (project.totalSeconds || 0) : 0),
-        productive_cost: Number(Number(project.productiveCost || 0).toFixed(2)),
-        interruption_cost: Number(Number(project.interruptionCost || 0).toFixed(2)),
-        total_cost: Number(Number(project.totalCost || 0).toFixed(2)),
+        // 30/09/2026: as três colunas de custo SAÍRAM do update — nenhum R$ calculado no
+        // navegador vai ao banco (todo logado lê `projects`). O custo gravado antes fica como
+        // está (a exportação de jan–ago usa ele — decisão do Edson, 30/09).
         estimated_seconds: Math.round(Number.isFinite(project.estimatedSeconds) ? project.estimatedSeconds : 0),
         pauses: project.pauses || [],
         variations: project.variations || [],
@@ -1954,9 +2024,11 @@ export const deleteProjectRequest = async (id: string): Promise<AppState> => {
 // nunca o recebem (não é da engenharia — ver fetchAppState).
 export const fetchUsers = async (opts: { incluirExternos?: boolean } = {}): Promise<User[]> => {
   try {
-    // Colunas seguras (sem salary/senha/hash) + salarios do Edson em paralelo.
+    // Colunas seguras (sem salary/senha/hash) + desligado_em (30/09/2026: a tela Equipe
+    // mostra o selo e esconde "Desligar" de quem já saiu; relê sem a coluna a qualquer
+    // erro) + salarios do Edson em paralelo.
     const [{ data, error }, edsonSalaries] = await Promise.all([
-      supabase.from('users').select(USER_SAFE_COLUMNS),
+      selecionarUsuarios(),
       fetchEdsonSalaries(),
     ]);
     if (error) throw error;
@@ -1973,6 +2045,7 @@ export const fetchUsers = async (opts: { incluirExternos?: boolean } = {}): Prom
       okrOnly: !!u.okr_only,
       okrViewer: !!u.okr_viewer,
       sector: u.sector || '',
+      desligadoEm: lerDesligadoEm(u.desligado_em),
       salary: Number(edsonSalaries[u.id]) || 0
     })).sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
@@ -2047,6 +2120,34 @@ export const deleteUser = async (id: string): Promise<{ success: boolean; messag
     return { success: false, message: data.message || data.error || 'Erro ao excluir usuário.' };
   } catch (error: any) {
     console.error("FAILED TO DELETE USER", error);
+    return { success: false, message: 'Erro ao conectar ao servidor.' };
+  }
+};
+
+// Desligar SEM excluir (decisão do Edson, 30/09/2026: "desligar, não excluir"). Só o
+// Edson ou um GESTOR — quem confere é o servidor (POST /api/users/desligar), que numa
+// transação só grava o último dia, tira o acesso (senha e e-mail) e refaz o custo/hora a
+// partir do dia seguinte (nunca antes do 1º dia do mês corrente: mês fechado não muda).
+// `custoDesde` = o 1º dia sem o salário da pessoa no custo. Mesmo padrão do deleteUser;
+// o erro do servidor vem em `error` (400/401/403/404/409/503/500).
+export const desligarUsuario = async (
+  id: string,
+  ultimoDia: string, // 'AAAA-MM-DD' = último dia trabalhado (inclusive)
+): Promise<{ success: boolean; message?: string; custoDesde?: string }> => {
+  try {
+    const res = await fetch('/api/users/desligar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ id, ultimoDia }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
+      const custoDesde = typeof data.custoDesde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.custoDesde) ? data.custoDesde : undefined;
+      return { success: true, message: data.message, ...(custoDesde ? { custoDesde } : {}) };
+    }
+    return { success: false, message: data.message || data.error || 'Erro ao desligar usuário.' };
+  } catch {
+    console.error('FAILED TO DESLIGAR USER');
     return { success: false, message: 'Erro ao conectar ao servidor.' };
   }
 };
@@ -2331,26 +2432,19 @@ export const findDuplicateProjects = async (): Promise<{ success: boolean; dupli
   }
 };
 
+// Botão "Recalcular custos" da Equipe. Decisão do Edson, 30/09/2026: "DEIXAR como está (não
+// tirar)". Só parou de buscar taxa (30/09): o custo/hora agora é por período e calculado na
+// tela, e nenhum R$ do navegador vai ao banco — a conta que ficava aqui nunca era gravada.
 export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; message: string }> => {
   try {
-    const settings = await fetchSettings();
-
-    let costPerSecond = settings.hourlyCost / 3600;
-    if (settings.hourlyCost <= 0) {
-      // Taxa media vem do servidor (nao somamos salario no cliente — C2).
-      const hourlyRate = await fetchAutoHourlyCost();
-      costPerSecond = hourlyRate / 3600;
-    }
-
     const { data: projects, error: fetchError } = await supabase
       .from('projects')
       .select('id, total_active_seconds, notes');
-    
+
     if (fetchError) throw fetchError;
 
     let updatedCount = 0;
     for (const p of projects || []) {
-      const totalCost = (p.total_active_seconds || 0) * costPerSecond;
       const { error: updateError } = await supabase
         .from('projects')
         .update({ 
@@ -2709,8 +2803,13 @@ if (typeof window !== "undefined") {
 // padrões da migração 019, para limpar o que ainda vier do banco ou da cópia do navegador.
 const SALARIO_EDICAO_RE = /Salário \(ex: "[^"]*", novo: "[^"]*"\)/g;
 const SALARIO_CRIACAO_RE = /(\[Cargo: [^,\]]*), Salário: [^\]]*\]/g;
+// O custo/hora também sai dos valores (Configurações gravava 'Custo Hora (ex: "…", novo: "…")'): com a
+// série por período, a taxa deixa deduzir salário (decisão do Edson, 30/09) — o mesmo padrão da 022.
+const CUSTO_HORA_RE = /Custo Hora \(ex: "[^"]*", novo: "[^"]*"\)/g;
 export const semSalarioNoLog = (d: unknown): unknown =>
-  typeof d === 'string' ? d.replace(SALARIO_EDICAO_RE, 'Salário (alterado)').replace(SALARIO_CRIACAO_RE, '$1]') : d;
+  typeof d === 'string'
+    ? d.replace(SALARIO_EDICAO_RE, 'Salário (alterado)').replace(SALARIO_CRIACAO_RE, '$1]').replace(CUSTO_HORA_RE, 'Custo Hora (alterado)')
+    : d;
 
 export const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Promise<void> => {
   try {

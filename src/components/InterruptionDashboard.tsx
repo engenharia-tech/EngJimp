@@ -7,6 +7,7 @@ import {
 import { AppState, InterruptionRecord, InterruptionStatus, User } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
 import { resolveUser, getUserDisplayName } from '../utils/userUtils';
+import { podeVerReais, novaSomaPorTaxa, rotuloDesligado } from '../utils/custoHora';
 
 interface InterruptionDashboardProps {
   data: AppState;
@@ -35,56 +36,84 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
 
   const [selectedDesigner, setSelectedDesigner] = useState<string | null>(null);
 
+  // Custo/hora por período (decisão do Edson, 30/09/2026: "congelar cada mês"; R$ só para ele e
+  // para os CEOs — quem decide é o servidor, em settings.custoHora). Antes: UMA taxa para todas as
+  // paradas, de qualquer data. Agora: cada parada paga a taxa do dia dela (o startTime).
+  const veReais = podeVerReais(data.settings);
+
   const designerStats = useMemo(() => {
-    const stats: Record<string, { 
+    const stats: Record<string, {
       id: string,
-      name: string, 
-      totalInterruptions: number, 
+      name: string,
+      rotulo: string,
+      totalInterruptions: number,
       totalLostTime: number,
+      totalLostCost: number,
       projectIds: Set<string>
     }> = {};
 
+    const somas: Record<string, ReturnType<typeof novaSomaPorTaxa>> = {};
     interruptions.forEach(i => {
       const designerId = i.designerId;
       const designer = resolveUser(designerId, data.users);
       const designerName = getUserDisplayName(designerId, data.users, undefined, 'Raphael');
-      
+
       if (!stats[designerId]) {
-        stats[designerId] = { 
+        stats[designerId] = {
           id: designerId,
-          name: designerName, 
-          totalInterruptions: 0, 
+          name: designerName,
+          // Desligado continua na lista, no nome dele (decisão do Edson, 30/09/2026).
+          rotulo: rotuloDesligado(designer),
+          totalInterruptions: 0,
           totalLostTime: 0,
+          totalLostCost: 0,
           projectIds: new Set()
         };
       }
       stats[designerId].totalInterruptions += 1;
       stats[designerId].totalLostTime += i.totalTimeSeconds;
+      (somas[designerId] ||= novaSomaPorTaxa(data.settings)).somar(i.totalTimeSeconds, i.startTime);
       if (i.projectNs) stats[designerId].projectIds.add(i.projectNs);
     });
 
+    Object.keys(somas).forEach(k => { if (stats[k]) stats[k].totalLostCost = somas[k].total(); });
     return Object.values(stats).sort((a, b) => a.name.localeCompare(b.name));
-  }, [interruptions, data.users]);
+  }, [interruptions, data.users, data.settings]);
 
   const areaStats = useMemo(() => {
-    const stats: Record<string, { 
-      area: string, 
-      totalInterruptions: number, 
-      totalLostTime: number 
+    const stats: Record<string, {
+      area: string,
+      totalInterruptions: number,
+      totalLostTime: number,
+      totalLostCost: number
     }> = {};
 
+    const somasArea: Record<string, ReturnType<typeof novaSomaPorTaxa>> = {};
     interruptions.forEach(i => {
       let area = i.responsibleArea ? i.responsibleArea.trim().toUpperCase() : 'OUTROS';
       if (area === 'PRODUÇÃO') area = 'PRODUCAO';
       if (!stats[area]) {
-        stats[area] = { area, totalInterruptions: 0, totalLostTime: 0 };
+        stats[area] = { area, totalInterruptions: 0, totalLostTime: 0, totalLostCost: 0 };
       }
       stats[area].totalInterruptions += 1;
       stats[area].totalLostTime += i.totalTimeSeconds;
+      (somasArea[area] ||= novaSomaPorTaxa(data.settings)).somar(i.totalTimeSeconds, i.startTime);
     });
 
+    Object.keys(somasArea).forEach(k => { if (stats[k]) stats[k].totalLostCost = somasArea[k].total(); });
     return Object.values(stats).sort((a, b) => b.totalLostTime - a.totalLostTime);
-  }, [interruptions]);
+  }, [interruptions, data.settings]);
+
+  // Quem não vê R$: a fatia de cada área no tempo parado total.
+  const totalLostTimeAllAreas = useMemo(
+    () => areaStats.reduce((acc, s) => acc + (s.totalLostTime || 0), 0),
+    [areaStats]
+  );
+
+  const formatPercent = (part: number, total: number) => {
+    const pct = total > 0 ? (part / total) * 100 : 0;
+    return `${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+  };
 
   const selectedDesignerData = useMemo(() => {
     if (!selectedDesigner) return null;
@@ -96,15 +125,6 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
     const m = Math.floor((seconds % 3600) / 60);
     return `${h}h ${m}m`;
   };
-
-  const costPerSecond = useMemo(() => {
-    let hourlyRate = data.settings.hourlyCost;
-    if (data.settings.useAutomaticCost || hourlyRate <= 0) {
-      // Taxa media do servidor (C2) — sem salario individual no cliente.
-      hourlyRate = data.settings.hourlyCostCalculated ?? 0;
-    }
-    return hourlyRate / 3600;
-  }, [data.settings.hourlyCost, data.settings.useAutomaticCost, data.settings.hourlyCostCalculated]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(val);
@@ -133,8 +153,17 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
                   <p className="text-[10px] text-gray-400 uppercase font-bold">{t('interruptionCount')}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-red-600 dark:text-red-400">{formatCurrency(stat.totalLostTime * costPerSecond)}</p>
-                  <p className="text-[10px] text-gray-400 uppercase font-bold">{t('estimatedCost')}</p>
+                  {veReais ? (
+                    <>
+                      <p className="text-sm font-bold text-red-600 dark:text-red-400">{formatCurrency(stat.totalLostCost)}</p>
+                      <p className="text-[10px] text-gray-400 uppercase font-bold">{t('estimatedCost')}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold text-red-600 dark:text-red-400">{formatPercent(stat.totalLostTime, totalLostTimeAllAreas)}</p>
+                      <p className="text-[10px] text-gray-400 uppercase font-bold">% do tempo parado</p>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="mt-3 w-full bg-gray-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
@@ -177,7 +206,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
                 </div>
                 <div className="text-left">
                   <p className="font-bold text-black dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    {stat.name}
+                    {stat.name}{stat.rotulo}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-slate-400">
                     {t('stopsRecorded', { count: stat.totalInterruptions })}
@@ -213,7 +242,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
                   {selectedDesignerData.name.charAt(0)}
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-black dark:text-white">{selectedDesignerData.name}</h3>
+                  <h3 className="text-xl font-bold text-black dark:text-white">{selectedDesignerData.name}{selectedDesignerData.rotulo}</h3>
                   <p className="text-xs text-gray-500 dark:text-slate-400 uppercase font-bold tracking-wider">{t('impactDetail')}</p>
                 </div>
               </div>
@@ -260,17 +289,20 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
                 </div>
               </div>
 
-              <div className="space-y-1 col-span-2 pt-4 border-t border-gray-100 dark:border-slate-700">
-                <p className="text-xs font-bold text-red-500 uppercase tracking-wider">{t('totalStopCost')}</p>
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
-                    <TrendingDown className="w-6 h-6 text-red-600 dark:text-red-400" />
+              {/* Custo total das paradas: só para quem vê R$ (Edson e CEOs, decisão de 30/09/2026) */}
+              {veReais && (
+                <div className="space-y-1 col-span-2 pt-4 border-t border-gray-100 dark:border-slate-700">
+                  <p className="text-xs font-bold text-red-500 uppercase tracking-wider">{t('totalStopCost')}</p>
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                      <TrendingDown className="w-6 h-6 text-red-600 dark:text-red-400" />
+                    </div>
+                    <p className="text-4xl font-black text-red-600 dark:text-red-400">
+                      {formatCurrency(selectedDesignerData.totalLostCost)}
+                    </p>
                   </div>
-                  <p className="text-4xl font-black text-red-600 dark:text-red-400">
-                    {formatCurrency(selectedDesignerData.totalLostTime * costPerSecond)}
-                  </p>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="p-6 bg-gray-50 dark:bg-slate-900 border-t border-gray-100 dark:border-slate-700">

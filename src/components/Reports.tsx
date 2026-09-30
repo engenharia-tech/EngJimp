@@ -1,14 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { resolveUser } from '../utils/userUtils';
 import { isExcludedFromEngineering, usersIndex } from '../utils/pndSplit';
+import { podeVerReais, avisoSemSerie, taxaNaData, fracaoAteDesligar, limitesDoMes } from '../utils/custoHora';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { 
-  AppState, 
-  ProjectSession, 
-  InterruptionRecord, 
-  User 
+import {
+  AppSettings,
+  AppState,
+  ProjectSession,
+  InterruptionRecord,
+  User
 } from '../types';
 import { 
   FileText, 
@@ -64,6 +66,46 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [visibleSections, setVisibleSections] = useState<string[]>(['summary']);
 
+  // Custo/hora por período (decisão do Edson, 30/09/2026: "congelar cada mês"; R$ só para o Edson e
+  // para os CEOs).
+  // Antes: UMA taxa (settings.hourlyCost) × segundos, aplicada a registro de qualquer data.
+  // Agora: cada registro paga a taxa do dia dele (o startTime), lida por taxaNaData de
+  // src/utils/custoHora.ts. Quem vê R$ é decidido pelo SERVIDOR (settings.custoHora); para os outros,
+  // as colunas, os totais e as exportações de custo somem e a tela mostra só horas e %.
+  const cfg = settings as AppSettings | null | undefined;
+  const veReais = podeVerReais(cfg);
+  const semSerie = avisoSemSerie(cfg);
+
+  // A conta é a MESMA de antes, segundos × (taxa ÷ 3600); só a taxa passou a ser a do dia do registro.
+  // Não é (segundos ÷ 3600) × taxa: medido em 30/09, com uma taxa "redonda" (45 ou 50) essa ordem muda
+  // o centavo mostrado em 0,4% a 3,3% dos registros (com outras, em 0%) — e jan–ago têm de sair iguais
+  // ao centavo qualquer que seja a taxa. 0 para quem não vê R$ (nunca mostrar como custo).
+  const custoDoRegistro = (segundos: number | null | undefined, quando: string | null | undefined): number => {
+    const s = Number(segundos);
+    if (!Number.isFinite(s) || s === 0) return 0;
+    const taxa = taxaNaData(cfg, quando);
+    return taxa ? s * (taxa / 3600) : 0;
+  };
+  // Onde a conta antiga era (Σ segundos) × taxa (total do período, gargalos), os segundos são somados
+  // POR TAXA e multiplicados no fim: num período de uma taxa só, o número sai o de antes, bit a bit
+  // (somar o custo registro a registro muda o centavo de 1,9% a 3,6% dos totais com essas taxas — 30/09).
+  const novaSomaPorTaxa = () => {
+    const porTaxa = new Map<number, number>();
+    return {
+      somar(segundos: number | null | undefined, quando: string | null | undefined) {
+        const s = Number(segundos);
+        if (!Number.isFinite(s) || s === 0) return;
+        const taxa = taxaNaData(cfg, quando);
+        if (taxa) porTaxa.set(taxa, (porTaxa.get(taxa) || 0) + s);
+      },
+      total() {
+        let t = 0;
+        porTaxa.forEach((s, taxa) => { t += s * (taxa / 3600); });
+        return t;
+      },
+    };
+  };
+
   const sections = [
     { id: 'summary', label: 'HORAS REALIZADAS VS. MENSAIS', icon: <TrendingDown className="w-4 h-4" /> },
     { id: 'ranking', label: 'RANKING DE PRODUTIVIDADE', icon: <Target className="w-4 h-4" /> },
@@ -71,7 +113,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     { id: 'status', label: 'STATUS DE PROJETOS', icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: 'productivity', label: 'PRODUTIVIDADE DETALHADA', icon: <Activity className="w-4 h-4" /> },
     { id: 'designers', label: 'ATIVIDADE POR PROJETISTA', icon: <Users className="w-4 h-4" /> },
-    { id: 'clients', label: 'CUSTOS POR CLIENTE', icon: <UserIcon className="w-4 h-4" /> },
+    { id: 'clients', label: veReais ? 'CUSTOS POR CLIENTE' : 'HORAS POR CLIENTE', icon: <UserIcon className="w-4 h-4" /> },
     { id: 'deadlines', label: 'PREVISÃO DE PRAZOS', icon: <Clock className="w-4 h-4" /> },
     { id: 'bottlenecks', label: 'ANÁLISE DE GARGALOS', icon: <AlertTriangle className="w-4 h-4" /> },
     { id: 'detailedInterruptions', label: 'DETALHADO DE PARADAS', icon: <AlertCircle className="w-4 h-4" /> },
@@ -94,9 +136,26 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     return [currentYear, currentYear - 1, currentYear - 2];
   }, []);
 
-  const costPerSecond = useMemo(() => {
-    return (settings?.hourlyCost || 0) / 3600;
-  }, [settings]);
+  // Limites ('AAAA-MM-DD') do período FILTRADO: mês, trimestre, semestre ou ano (cético 30/09: não
+  // "o mês selecionado").
+  const periodoFiltrado = (): { inicio: string; fim: string } => {
+    let primeiroMes = 0;
+    let ultimoMes = 11;
+    if (filterType === 'MONTH') {
+      primeiroMes = selectedMonth;
+      ultimoMes = selectedMonth;
+    } else if (filterType === 'QUARTER') {
+      primeiroMes = (selectedQuarter - 1) * 3;
+      ultimoMes = primeiroMes + 2;
+    } else if (filterType === 'SEMESTER') {
+      primeiroMes = (selectedSemester - 1) * 6;
+      ultimoMes = primeiroMes + 5;
+    }
+    return {
+      inicio: limitesDoMes(primeiroMes, selectedYear).inicio,
+      fim: limitesDoMes(ultimoMes, selectedYear).fim,
+    };
+  };
 
   const isDateInPeriod = (date: Date) => {
     const year = date.getFullYear();
@@ -198,22 +257,37 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     });
 
     const projectProductiveSeconds = filtered.reduce((acc, curr) => acc + (curr.totalActiveSeconds || 0), 0);
-    const activityProductiveSeconds = filteredOperationalDevActivities.reduce((acc, a) => {
-      if (a.durationSeconds && a.durationSeconds > 0) return acc + a.durationSeconds;
-      if (!a.startTime) return acc;
-      const end = a.endTime ? new Date(a.endTime) : new Date();
-      return acc + Math.max(0, Math.floor((end.getTime() - new Date(a.startTime).getTime()) / 1000));
-    }, 0);
+    // Custo do período: cada registro na taxa do SEU dia (30/09/2026); 0 para quem não vê R$.
+    const custoProdutivo = novaSomaPorTaxa();
+    filtered.forEach(p => custoProdutivo.somar(p.totalActiveSeconds, p.startTime));
+    let activityProductiveSeconds = 0;
+    filteredOperationalDevActivities.forEach(a => {
+      let segundos = 0;
+      if (a.durationSeconds && a.durationSeconds > 0) segundos = a.durationSeconds;
+      else if (a.startTime) {
+        const end = a.endTime ? new Date(a.endTime) : new Date();
+        segundos = Math.max(0, Math.floor((end.getTime() - new Date(a.startTime).getTime()) / 1000));
+      }
+      activityProductiveSeconds += segundos;
+      custoProdutivo.somar(segundos, a.startTime);
+    });
 
     const totalProductiveSeconds = projectProductiveSeconds + activityProductiveSeconds;
+    const totalProductiveCost = custoProdutivo.total();
     const totalInterruptionSeconds = filtered.reduce((acc, curr) => acc + (curr.interruptionSeconds || 0), 0);
     const totalSeconds = totalProductiveSeconds + totalInterruptionSeconds;
-    
+
     const lossPercentage = totalSeconds > 0 ? (totalInterruptionSeconds / totalSeconds) * 100 : 0;
 
     // Calculate Monthly Capacity
     // Assuming 22 workdays, 8.8 hours per day per designer
-    const designersCount = data.users.filter(u => u.role === 'PROJETISTA' || u.role === 'COORDENADOR').length || 1;
+    // Quem conta (desligar, não excluir — decisão do Edson, 30/09/2026): cada PROJETISTA/COORDENADOR
+    // pesa a fração de DIAS ÚTEIS do período filtrado em que ainda estava (até o último dia,
+    // inclusive). Sem desligado a fração é 1 e o número é o de antes; desligado antes do período = 0.
+    const { inicio, fim } = periodoFiltrado();
+    const designersCount = data.users
+      .filter(u => u.role === 'PROJETISTA' || u.role === 'COORDENADOR')
+      .reduce((acc, u) => acc + fracaoAteDesligar(u, inicio, fim), 0) || 1;
     const monthlyCapacitySeconds = 22 * 8.8 * 3600 * designersCount;
     const capacityPercentage = (totalProductiveSeconds / monthlyCapacitySeconds) * 100;
 
@@ -221,6 +295,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       projects: filtered,
       totalCount: filtered.length + filteredOperationalDevActivities.length,
       totalProductiveSeconds,
+      totalProductiveCost,
       totalInterruptionSeconds,
       totalSeconds,
       lossPercentage,
@@ -228,7 +303,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       monthlyCapacitySeconds,
       capacityPercentage
     };
-  }, [data.projects, data.operationalActivities, data.activityTypes, data.users, selectedMonth, selectedYear, currentUser]);
+  }, [data.projects, data.operationalActivities, data.activityTypes, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, settings]);
 
   const clientData = useMemo(() => {
     const filtered = data.projects.filter(p => {
@@ -274,14 +349,15 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       }
       stats[clientName].count += 1;
       // Calculate cost based on productive time only as per user request
-      const projectCost = p.totalActiveSeconds * costPerSecond;
+      // (na taxa do dia do projeto — 30/09/2026)
+      const projectCost = custoDoRegistro(p.totalActiveSeconds, p.startTime);
       stats[clientName].totalCost += projectCost;
       stats[clientName].productiveSeconds += p.totalActiveSeconds;
       stats[clientName].interruptionSeconds += p.interruptionSeconds || 0;
     });
 
     return Object.values(stats).sort((a, b) => a.clientName.localeCompare(b.clientName));
-  }, [data.projects, selectedMonth, selectedYear, currentUser]);
+  }, [data.projects, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, settings]);
 
   const bottleneckData = useMemo(() => {
     const filtered = data.interruptions.filter(i => {
@@ -294,27 +370,29 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       return isDateInPeriod(date);
     });
 
-    const stats: Record<string, { area: string, count: number, totalSeconds: number }> = {};
-    
+    const stats: Record<string, { area: string, count: number, totalSeconds: number, custo: ReturnType<typeof novaSomaPorTaxa> }> = {};
+
     filtered.forEach(i => {
       let area = i.responsibleArea ? i.responsibleArea.trim().toUpperCase() : 'OUTROS';
       if (area === 'PRODUÇÃO') area = 'PRODUCAO';
       if (!stats[area]) {
-        stats[area] = { area, count: 0, totalSeconds: 0 };
+        stats[area] = { area, count: 0, totalSeconds: 0, custo: novaSomaPorTaxa() };
       }
       stats[area].count += 1;
       stats[area].totalSeconds += i.totalTimeSeconds || 0;
+      // Cada parada na taxa do SEU dia (30/09/2026), não os segundos somados × uma taxa só.
+      stats[area].custo.somar(i.totalTimeSeconds, i.startTime);
     });
 
     return Object.values(stats)
-      .map(s => ({
+      .map(({ custo, ...s }) => ({
         ...s,
         totalHours: Math.round(s.totalSeconds / 3600),
         avgMinutes: s.count > 0 ? Math.round((s.totalSeconds / s.count) / 60) : 0,
-        totalCost: s.totalSeconds * costPerSecond
+        totalCost: custo.total()
       }))
       .sort((a, b) => a.area.localeCompare(b.area));
-  }, [data.interruptions, selectedMonth, selectedYear, currentUser, costPerSecond]);
+  }, [data.interruptions, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, settings]);
 
   const detailedInterruptionData = useMemo(() => {
     const filtered = data.interruptions.filter(i => {
@@ -327,7 +405,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
     return filtered.map(i => {
       const designer = data.users.find(u => u.id === i.designerId);
-      const cost = (i.totalTimeSeconds || 0) * costPerSecond;
+      const cost = custoDoRegistro(i.totalTimeSeconds || 0, i.startTime);
       
       let designerName = 'N/A';
       if (designer) {
@@ -342,7 +420,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
         cost
       };
     }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-  }, [data.interruptions, data.users, selectedMonth, selectedYear, currentUser, costPerSecond]);
+  }, [data.interruptions, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, settings]);
 
   const designerData = useMemo(() => {
     const pndIdx = usersIndex(data.users);
@@ -371,9 +449,12 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     }> = {};
 
     // Initialize with all proposers if GESTOR/CEO
+    // Menos quem já estava desligado antes do período (fração 0): a linha zerada seria ruído. Quem tem
+    // registro no período entra pelos registros, como sempre (desligar, não excluir — 30/09/2026).
     if (currentUser.role !== 'PROJETISTA') {
+      const { inicio, fim } = periodoFiltrado();
       data.users.forEach(u => {
-        if (u.role === 'PROJETISTA' || u.role === 'COORDENADOR') {
+        if ((u.role === 'PROJETISTA' || u.role === 'COORDENADOR') && fracaoAteDesligar(u, inicio, fim) > 0) {
           stats[u.name] = { 
             name: u.name, 
             count: 0, 
@@ -411,7 +492,8 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       stats[name].types[type] = (stats[name].types[type] || 0) + 1;
 
       // Calculate cost based on productive time only as per user request
-      const projectCost = p.totalActiveSeconds * costPerSecond;
+      // (na taxa do dia do projeto — 30/09/2026)
+      const projectCost = custoDoRegistro(p.totalActiveSeconds, p.startTime);
       stats[name].totalCost += projectCost;
       stats[name].projects.push({
         ns: p.ns,
@@ -474,7 +556,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       stats[name].productiveSeconds += duration;
       stats[name].types[assignedType] = (stats[name].types[assignedType] || 0) + 1;
 
-      const actCost = duration * costPerSecond;
+      const actCost = custoDoRegistro(duration, a.startTime);
       stats[name].totalCost += actCost;
       stats[name].projects.push({
         ns: a.activityName || 'Atividade Operacional',
@@ -484,7 +566,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     });
 
     return Object.values(stats).sort((a, b) => a.name.localeCompare(b.name));
-  }, [data.projects, data.operationalActivities, data.activityTypes, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, costPerSecond]);
+  }, [data.projects, data.operationalActivities, data.activityTypes, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, settings]);
 
   const projectStatusData = useMemo(() => {
     const filtered = data.projects.filter(p => isProjectInPeriod(p));
@@ -502,12 +584,12 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       else if (p.status === 'PAUSED') stats.PAUSED++;
       else if (p.status === 'COMPLETED') {
         stats.COMPLETED++;
-        stats.TOTAL_COST += (p.totalActiveSeconds * costPerSecond);
+        stats.TOTAL_COST += custoDoRegistro(p.totalActiveSeconds, p.startTime);
       }
     });
 
     return stats;
-  }, [data.projects, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear]);
+  }, [data.projects, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, settings]);
 
   const deadlinePredictions = useMemo(() => {
     // Calculate historical average by project type
@@ -590,7 +672,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
         stats[ns].contributors[userId] = { userId, name: userName, sessions: 0, seconds: 0, cost: 0 };
       }
       
-      const projectCost = (p.totalActiveSeconds || 0) * costPerSecond;
+      const projectCost = custoDoRegistro(p.totalActiveSeconds || 0, p.startTime);
       
       stats[ns].totalSessions += 1;
       stats[ns].totalProductiveSeconds += (p.totalActiveSeconds || 0);
@@ -611,7 +693,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     }
 
     return result;
-  }, [data.projects, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, costPerSecond, isDateInPeriod]);
+  }, [data.projects, data.users, filterType, selectedMonth, selectedQuarter, selectedSemester, selectedYear, currentUser, settings, isDateInPeriod]);
 
   const innovationData = useMemo(() => {
     const filtered = data.innovations.filter(i => {
@@ -661,7 +743,9 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     const filteredIssues = data.issues.filter(i => isDateInPeriod(new Date(i.date)));
     const filteredInterruptions = data.interruptions.filter(i => isDateInPeriod(new Date(i.startTime)));
     
-    const result = await analyzePerformance(filteredProjects, filteredIssues, filteredInterruptions, data.settings, data.users);
+    // As MESMAS configurações que decidem o veReais desta tela (30/09/2026): quem não vê R$ não manda
+    // custo nenhum ao Gemini (geminiService decide por settings.custoHora).
+    const result = await analyzePerformance(filteredProjects, filteredIssues, filteredInterruptions, cfg ?? data.settings, data.users);
     setAiAnalysis(result);
     setIsLoadingAi(false);
   };
@@ -712,14 +796,16 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
     }
   };
 
+  // Exportações: a coluna de custo só sai para quem vê R$ (decisão do Edson, 30/09/2026), com o mesmo
+  // valor da tela (registro a registro, na taxa do dia de cada um).
   const handleExportDesigners = (format: 'CSV' | 'PDF' | 'EXCEL') => {
-    const headers = ['Projetista', 'Projetos Liberados', 'Tempo Produtivo', 'Tempo Parada', 'Custo Total'];
+    const headers = ['Projetista', 'Projetos Liberados', 'Tempo Produtivo', 'Tempo Parada', ...(veReais ? ['Custo Total'] : [])];
     const rows = designerData.map(item => [
       item.name,
       item.count,
       formatDuration(item.productiveSeconds),
       formatDuration(item.interruptionSeconds),
-      item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      ...(veReais ? [item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })] : [])
     ]);
 
     if (format === 'CSV') {
@@ -755,44 +841,48 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   };
 
   const handleExportClients = (format: 'CSV' | 'PDF' | 'EXCEL') => {
-    const headers = ['Cliente', 'Qtd. Projetos', 'Tempo Produtivo', 'Tempo Parada', 'Custo Total'];
+    const headers = ['Cliente', 'Qtd. Projetos', 'Tempo Produtivo', 'Tempo Parada', ...(veReais ? ['Custo Total'] : [])];
     const data = clientData.map(item => [
       item.clientName,
       item.count,
       formatDuration(item.productiveSeconds),
       formatDuration(item.interruptionSeconds),
-      item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      ...(veReais ? [item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })] : [])
     ]);
+    // Sem R$ o relatório é de HORAS por cliente (nome do arquivo e título dizem o que ele contém).
+    const nomeArquivo = veReais ? 'relatorio_custos_cliente' : 'relatorio_horas_cliente';
 
     if (format === 'CSV') {
       const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...data.map(r => r.join(','))].join('\n');
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `relatorio_custos_cliente_${getPeriodLabel().replace(/ /g, '_')}.csv`);
+      link.setAttribute("download", `${nomeArquivo}_${getPeriodLabel().replace(/ /g, '_')}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } else if (format === 'PDF') {
       const doc = new jsPDF();
-      doc.text(`Relatório de Custos por Cliente - ${getPeriodLabel()}`, 14, 15);
+      doc.text(`${veReais ? 'Relatório de Custos por Cliente' : 'Relatório de Horas por Cliente'} - ${getPeriodLabel()}`, 14, 15);
       (doc as any).autoTable({
         head: [headers],
         body: data,
         startY: 20,
       });
-      doc.save(`relatorio_custos_cliente_${getPeriodLabel().replace(/ /g, '_')}.pdf`);
+      doc.save(`${nomeArquivo}_${getPeriodLabel().replace(/ /g, '_')}.pdf`);
     } else if (format === 'EXCEL') {
       const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Custos por Cliente");
-      XLSX.writeFile(wb, `relatorio_custos_cliente_${getPeriodLabel().replace(/ /g, '_')}.xlsx`);
+      XLSX.utils.book_append_sheet(wb, ws, veReais ? "Custos por Cliente" : "Horas por Cliente");
+      XLSX.writeFile(wb, `${nomeArquivo}_${getPeriodLabel().replace(/ /g, '_')}.xlsx`);
     }
   };
 
   const handleExportProductivity = (format: 'CSV' | 'PDF' | 'EXCEL') => {
-    const headers = ['NS', 'Cliente', 'Projetista', 'Produtivo', 'Parada', 'Total', 'Custo'];
-    const data = productivityData.projects.map(p => {
+    const headers = ['NS', 'Cliente', 'Projetista', 'Produtivo', 'Parada', 'Total', ...(veReais ? ['Custo'] : [])];
+    // `linhas`, e não `data`: o nome antigo sombreava a prop e o data.users de dentro do map lia a
+    // própria constante ainda sem valor (ReferenceError em qualquer período com projeto).
+    const linhas = productivityData.projects.map(p => {
       const user = data.users.find(u => u.id === p.userId);
       const designerName = user ? user.name : 'N/A';
       return [
@@ -802,12 +892,12 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
         formatDuration(p.totalActiveSeconds),
         formatDuration(p.interruptionSeconds || 0),
         formatDuration(p.totalSeconds || 0),
-        (p.totalActiveSeconds * costPerSecond).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        ...(veReais ? [custoDoRegistro(p.totalActiveSeconds, p.startTime).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })] : [])
       ];
     });
 
     if (format === 'CSV') {
-      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...data.map(r => r.join(','))].join('\n');
+      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...linhas.map(r => r.join(','))].join('\n');
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
@@ -820,12 +910,12 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       doc.text(`Relatório de Produtividade - ${getPeriodLabel()}`, 14, 15);
       (doc as any).autoTable({
         head: [headers],
-        body: data,
+        body: linhas,
         startY: 20,
       });
       doc.save(`relatorio_produtividade_${getPeriodLabel().replace(/ /g, '_')}.pdf`);
     } else if (format === 'EXCEL') {
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...linhas]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Produtividade");
       XLSX.writeFile(wb, `relatorio_produtividade_${getPeriodLabel().replace(/ /g, '_')}.xlsx`);
@@ -833,12 +923,15 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   };
 
   const handleExportBottlenecks = (format: 'CSV' | 'PDF' | 'EXCEL') => {
-    const headers = ['Área', 'Qtd. Paradas', 'Tempo Total Perdido', 'Tempo Médio', 'Custo Estimado'];
+    // Antes o cabeçalho tinha 'Custo Estimado' e a linha não tinha o valor (coluna vazia). Agora: para
+    // quem vê R$, o valor da tela; para os outros, nem o cabeçalho.
+    const headers = ['Área', 'Qtd. Paradas', 'Tempo Total Perdido', 'Tempo Médio', ...(veReais ? ['Custo Estimado'] : [])];
     const data = bottleneckData.map(item => [
       item.area,
       item.count,
       `${item.totalHours}h`,
-      `${item.avgMinutes}m`
+      `${item.avgMinutes}m`,
+      ...(veReais ? [item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })] : [])
     ]);
 
     if (format === 'CSV') {
@@ -868,7 +961,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   };
 
   const handleExportDetailedInterruptions = (format: 'CSV' | 'PDF' | 'EXCEL') => {
-    const headers = ['Data', 'NS', 'Cliente', 'Quem Registrou', 'Área', 'Tempo', 'Custo'];
+    const headers = ['Data', 'NS', 'Cliente', 'Quem Registrou', 'Área', 'Tempo', ...(veReais ? ['Custo'] : [])];
     const data = detailedInterruptionData.map(item => [
       new Date(item.startTime).toLocaleDateString('pt-BR'),
       item.projectNs,
@@ -876,7 +969,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       item.designerName,
       item.responsibleArea,
       formatDuration(item.totalTimeSeconds),
-      item.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      ...(veReais ? [item.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })] : [])
     ]);
 
     if (format === 'CSV') {
@@ -906,13 +999,13 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
   };
 
   const handleExportNsAggregation = (format: 'CSV' | 'PDF' | 'EXCEL') => {
-    const headers = ['NS / Código', 'Cliente', 'Total de Lançamentos', 'Tempo Total', 'Custo Total'];
+    const headers = ['NS / Código', 'Cliente', 'Total de Lançamentos', 'Tempo Total', ...(veReais ? ['Custo Total'] : [])];
     const data = nsAggregationData.map(item => [
       item.ns,
       item.clientName,
       item.totalSessions,
       formatDuration(item.totalProductiveSeconds),
-      item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      ...(veReais ? [item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })] : [])
     ]);
 
     if (format === 'CSV') {
@@ -1016,6 +1109,15 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
             </select>
           </div>
         </div>
+
+        {/* O servidor diz que esta pessoa vê R$, mas a série ainda não existe (a 022 não rodou):
+            avisar em vez de mostrar "R$ 0,00" como se fosse custo. */}
+        {semSerie && (
+          <p className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            Custo em R$ indisponível: o custo/hora por período ainda não foi instalado no banco. Os valores aparecem depois dessa atualização.
+          </p>
+        )}
 
         {/* Dashboard Visibility Toggles */}
         <div className="pt-4 border-t border-gray-100 dark:border-slate-800">
@@ -1260,7 +1362,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
         {expandedSection === 'status' && (
           <div className="p-6 border-t border-gray-100 dark:border-slate-700 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className={`grid grid-cols-1 ${veReais ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4`}>
               <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
                 <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">Em Andamento</p>
                 <p className="text-2xl font-black text-blue-800 dark:text-blue-300">{projectStatusData.IN_PROGRESS}</p>
@@ -1273,12 +1375,14 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                 <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase">Concluídos</p>
                 <p className="text-2xl font-black text-emerald-800 dark:text-emerald-300">{projectStatusData.COMPLETED}</p>
               </div>
-              <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-100 dark:border-purple-900/30">
-                <p className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase">Valor Total (Concluídos)</p>
-                <p className="text-2xl font-black text-purple-800 dark:text-purple-300">
-                  {projectStatusData.TOTAL_COST.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
-                </p>
-              </div>
+              {veReais && (
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-100 dark:border-purple-900/30">
+                  <p className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase">Valor Total (Concluídos)</p>
+                  <p className="text-2xl font-black text-purple-800 dark:text-purple-300">
+                    {projectStatusData.TOTAL_COST.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                  </p>
+                </div>
+              )}
               <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
                 <p className="text-xs font-bold text-gray-600 dark:text-slate-400 uppercase">Total do Período</p>
                 <p className="text-2xl font-black text-gray-800 dark:text-slate-200">{projectStatusData.TOTAL}</p>
@@ -1338,7 +1442,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                     <th className="p-3 text-center uppercase">Produtivo</th>
                     <th className="p-3 text-center uppercase">Parada</th>
                     <th className="p-3 text-center uppercase">Total</th>
-                    <th className="p-3 text-right uppercase">Custo</th>
+                    {veReais && <th className="p-3 text-right uppercase">Custo</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1356,26 +1460,31 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                         <td className="p-3 text-center text-emerald-600 dark:text-emerald-400 font-medium">{formatDuration(p.totalActiveSeconds)}</td>
                         <td className="p-3 text-center text-red-600 dark:text-red-400 font-medium">{formatDuration(p.interruptionSeconds || 0)}</td>
                         <td className="p-3 text-center text-black dark:text-white font-bold">{formatDuration(p.totalSeconds || 0)}</td>
-                        <td className="p-3 text-right text-black dark:text-white font-bold">
-                          {(p.totalActiveSeconds * costPerSecond).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </td>
+                        {veReais && (
+                          <td className="p-3 text-right text-black dark:text-white font-bold">
+                            {custoDoRegistro(p.totalActiveSeconds, p.startTime).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
                   {productivityData.projects.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-gray-500 italic uppercase">Nenhum projeto com atividade neste período.</td>
+                      <td colSpan={veReais ? 8 : 7} className="p-8 text-center text-gray-500 italic uppercase">Nenhum projeto com atividade neste período.</td>
                     </tr>
                   )}
                   {productivityData.projects.length > 0 && (
                     <tr className="bg-gray-50 dark:bg-slate-900 font-bold border-t-2 border-gray-200 dark:border-slate-600">
-                      <td colSpan={3} className="p-3 text-right text-black dark:text-white">TOTAL DO PERÍODO:</td>
+                      {/* 4 = NS, Cliente, Projetista e Estimativa (com 3, os totais caíam uma coluna à esquerda) */}
+                      <td colSpan={4} className="p-3 text-right text-black dark:text-white">TOTAL DO PERÍODO:</td>
                       <td className="p-3 text-center text-emerald-600 dark:text-emerald-400">{formatDuration(productivityData.totalProductiveSeconds)}</td>
                       <td className="p-3 text-center text-red-600 dark:text-red-400">{formatDuration(productivityData.totalInterruptionSeconds)}</td>
                       <td className="p-3 text-center text-black dark:text-white">{formatDuration(productivityData.totalSeconds)}</td>
-                      <td className="p-3 text-right text-black dark:text-white">
-                        {(productivityData.totalProductiveSeconds * costPerSecond).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </td>
+                      {veReais && (
+                        <td className="p-3 text-right text-black dark:text-white">
+                          {productivityData.totalProductiveCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                      )}
                     </tr>
                   )}
                 </tbody>
@@ -1458,7 +1567,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                     <th className="p-3 text-center uppercase">Total Liberados</th>
                     <th className="p-3 text-center uppercase">Tempo Produtivo</th>
                     <th className="p-3 text-center uppercase">Tempo Parada</th>
-                    <th className="p-3 text-right uppercase">Custo Total</th>
+                    {veReais && <th className="p-3 text-right uppercase">Custo Total</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1480,27 +1589,31 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                         <td className="p-3 text-center font-bold text-slate-900 dark:text-white">{item.count}</td>
                         <td className="p-3 text-center text-emerald-600 dark:text-emerald-400">{formatDuration(item.productiveSeconds)}</td>
                         <td className="p-3 text-center text-red-600 dark:text-red-400">{formatDuration(item.interruptionSeconds)}</td>
-                        <td className="p-3 text-right text-black dark:text-white font-bold">
-                          {item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </td>
+                        {veReais && (
+                          <td className="p-3 text-right text-black dark:text-white font-bold">
+                            {item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </td>
+                        )}
                       </tr>
                       {expandedDesigner === item.name && item.projects.length > 0 && (
                         <tr className="bg-slate-50 dark:bg-slate-900/50">
-                          <td colSpan={5} className="p-0">
+                          <td colSpan={veReais ? 8 : 7} className="p-0">
                             <div className="p-4 space-y-2">
                               <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Detalhamento de Liberações</h4>
-                              <div className="grid grid-cols-3 gap-4 text-xs font-medium text-gray-400 border-b border-gray-200 dark:border-slate-700 pb-1">
+                              <div className={`grid ${veReais ? 'grid-cols-3' : 'grid-cols-2'} gap-4 text-xs font-medium text-gray-400 border-b border-gray-200 dark:border-slate-700 pb-1`}>
                                 <span>NS / Projeto</span>
                                 <span>Cliente</span>
-                                <span className="text-right">Custo do Projeto</span>
+                                {veReais && <span className="text-right">Custo do Projeto</span>}
                               </div>
                               {item.projects.map((proj, idx) => (
-                                <div key={idx} className="grid grid-cols-3 gap-4 text-xs py-1 border-b border-gray-100 dark:border-slate-800 last:border-0">
+                                <div key={idx} className={`grid ${veReais ? 'grid-cols-3' : 'grid-cols-2'} gap-4 text-xs py-1 border-b border-gray-100 dark:border-slate-800 last:border-0`}>
                                   <span className="text-black dark:text-white">{proj.ns}</span>
                                   <span className="text-gray-600 dark:text-gray-400">{proj.client}</span>
-                                  <span className="text-right font-bold text-black dark:text-white">
-                                    {proj.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                  </span>
+                                  {veReais && (
+                                    <span className="text-right font-bold text-black dark:text-white">
+                                      {proj.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    </span>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1511,7 +1624,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                   ))}
                   {designerData.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-500 italic">Nenhum dado de produtividade para este período.</td>
+                      <td colSpan={veReais ? 8 : 7} className="p-8 text-center text-gray-500 italic">Nenhum dado de produtividade para este período.</td>
                     </tr>
                   )}
                   {designerData.length > 0 && (
@@ -1535,9 +1648,11 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                       <td className="p-3 text-center text-red-600 dark:text-red-400">
                         {formatDuration(designerData.reduce((acc, curr) => acc + curr.interruptionSeconds, 0))}
                       </td>
-                      <td className="p-3 text-right text-black dark:text-white">
-                        {designerData.reduce((acc, curr) => acc + curr.totalCost, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </td>
+                      {veReais && (
+                        <td className="p-3 text-right text-black dark:text-white">
+                          {designerData.reduce((acc, curr) => acc + curr.totalCost, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                      )}
                     </tr>
                   )}
                 </tbody>
@@ -1577,7 +1692,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
         >
           <div className="flex items-center gap-3">
             <Users className="w-5 h-5 text-indigo-600" />
-            <h3 className="font-bold text-black dark:text-white">Custo de Engenharia por Cliente</h3>
+            <h3 className="font-bold text-black dark:text-white">{veReais ? 'Custo de Engenharia por Cliente' : 'Horas de Engenharia por Cliente'}</h3>
           </div>
           {expandedSection === 'clients' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
         </button>
@@ -1592,7 +1707,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                     <th className="p-3 text-center uppercase">Projetos</th>
                     <th className="p-3 text-center uppercase">Tempo Produtivo</th>
                     <th className="p-3 text-center uppercase">Tempo Parada</th>
-                    <th className="p-3 text-right uppercase">Custo Total</th>
+                    {veReais && <th className="p-3 text-right uppercase">Custo Total</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1602,14 +1717,16 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                       <td className="p-3 text-center text-black dark:text-white">{item.count}</td>
                       <td className="p-3 text-center text-emerald-600 dark:text-emerald-400">{formatDuration(item.productiveSeconds)}</td>
                       <td className="p-3 text-center text-red-600 dark:text-red-400">{formatDuration(item.interruptionSeconds)}</td>
-                      <td className="p-3 text-right text-black dark:text-white font-bold">
-                        {item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </td>
+                      {veReais && (
+                        <td className="p-3 text-right text-black dark:text-white font-bold">
+                          {item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {clientData.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-500 italic">Nenhum dado financeiro para este período.</td>
+                      <td colSpan={veReais ? 5 : 4} className="p-8 text-center text-gray-500 italic">{veReais ? 'Nenhum dado financeiro para este período.' : 'Nenhum dado para este período.'}</td>
                     </tr>
                   )}
                 </tbody>
@@ -1755,7 +1872,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                     <th className="p-3 text-center uppercase">Qtd. Paradas</th>
                     <th className="p-3 text-center uppercase">Tempo Total Perdido</th>
                     <th className="p-3 text-center uppercase">Tempo Médio</th>
-                    <th className="p-3 text-right uppercase">Custo Estimado</th>
+                    {veReais && <th className="p-3 text-right uppercase">Custo Estimado</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1774,14 +1891,16 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                       <td className="p-3 text-center text-black dark:text-white">{item.count}</td>
                       <td className="p-3 text-center text-red-600 dark:text-red-400 font-bold">{item.totalHours}h</td>
                       <td className="p-3 text-center text-black dark:text-white">{item.avgMinutes}m</td>
-                      <td className="p-3 text-right text-black dark:text-white font-bold">
-                        {(item as any).totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </td>
+                      {veReais && (
+                        <td className="p-3 text-right text-black dark:text-white font-bold">
+                          {item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {bottleneckData.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-500 italic">Nenhuma parada registrada neste período.</td>
+                      <td colSpan={veReais ? 5 : 4} className="p-8 text-center text-gray-500 italic">Nenhuma parada registrada neste período.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1838,7 +1957,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                     <th className="p-3 uppercase">Quem Registrou</th>
                     <th className="p-3 uppercase">Área</th>
                     <th className="p-3 text-center uppercase">Tempo</th>
-                    <th className="p-3 text-right uppercase">Custo</th>
+                    {veReais && <th className="p-3 text-right uppercase">Custo</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1850,14 +1969,16 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                       <td className="p-3 text-black dark:text-white">{item.designerName}</td>
                       <td className="p-3 text-black dark:text-white">{item.responsibleArea}</td>
                       <td className="p-3 text-center text-red-600 dark:text-red-400 font-medium">{formatDuration(item.totalTimeSeconds)}</td>
-                      <td className="p-3 text-right text-black dark:text-white font-bold">
-                        {item.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </td>
+                      {veReais && (
+                        <td className="p-3 text-right text-black dark:text-white font-bold">
+                          {item.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {detailedInterruptionData.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-gray-500 italic">Nenhuma parada registrada neste período.</td>
+                      <td colSpan={veReais ? 7 : 6} className="p-8 text-center text-gray-500 italic">Nenhuma parada registrada neste período.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1907,7 +2028,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
             <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-100 dark:border-orange-900/30 flex items-start gap-3">
               <Info className="w-5 h-5 text-orange-600 mt-0.5" />
               <p className="text-sm text-orange-800 dark:text-orange-200">
-                Este relatório agrupa todos os lançamentos feitos para o mesmo <strong>NS / Código</strong>, somando as contribuições de diferentes projetistas para chegar ao valor total do projeto.
+                Este relatório agrupa todos os lançamentos feitos para o mesmo <strong>NS / Código</strong>, somando as contribuições de diferentes projetistas para chegar ao {veReais ? 'valor total' : 'tempo total'} do projeto.
               </p>
             </div>
 
@@ -1919,7 +2040,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                     <th className="p-3 uppercase">Cliente</th>
                     <th className="p-3 text-center uppercase">Total de Lançamentos</th>
                     <th className="p-3 text-center uppercase">Tempo Total</th>
-                    <th className="p-3 text-right uppercase">Custo Total</th>
+                    {veReais && <th className="p-3 text-right uppercase">Custo Total</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -1938,29 +2059,33 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                         <td className="p-3 text-black dark:text-white">{item.clientName}</td>
                         <td className="p-3 text-center font-bold text-orange-600 dark:text-orange-400">{item.totalSessions}</td>
                         <td className="p-3 text-center text-emerald-600 dark:text-emerald-400">{formatDuration(item.totalProductiveSeconds)}</td>
-                        <td className="p-3 text-right text-black dark:text-white font-bold">
-                          {item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </td>
+                        {veReais && (
+                          <td className="p-3 text-right text-black dark:text-white font-bold">
+                            {item.totalCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </td>
+                        )}
                       </tr>
                       {expandedNs === item.ns && (
                         <tr className="bg-slate-50 dark:bg-slate-900/50">
-                          <td colSpan={5} className="p-0">
+                          <td colSpan={veReais ? 5 : 4} className="p-0">
                             <div className="p-4 space-y-2">
                               <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Detalhamento por Projetista</h4>
-                              <div className="grid grid-cols-4 gap-4 text-xs font-medium text-gray-400 border-b border-gray-200 dark:border-slate-700 pb-1">
+                              <div className={`grid ${veReais ? 'grid-cols-4' : 'grid-cols-3'} gap-4 text-xs font-medium text-gray-400 border-b border-gray-200 dark:border-slate-700 pb-1`}>
                                 <span>Projetista</span>
                                 <span className="text-center">Lançamentos</span>
                                 <span className="text-center">Tempo</span>
-                                <span className="text-right">Custo Contribuído</span>
+                                {veReais && <span className="text-right">Custo Contribuído</span>}
                               </div>
                               {Object.values(item.contributors).map((contributor: any, idx) => (
-                                <div key={idx} className="grid grid-cols-4 gap-4 text-xs py-1 border-b border-gray-100 dark:border-slate-800 last:border-0">
+                                <div key={idx} className={`grid ${veReais ? 'grid-cols-4' : 'grid-cols-3'} gap-4 text-xs py-1 border-b border-gray-100 dark:border-slate-800 last:border-0`}>
                                   <span className="text-black dark:text-white">{contributor.name}</span>
                                   <span className="text-center text-gray-600 dark:text-gray-400">{contributor.sessions}</span>
                                   <span className="text-center text-emerald-600 dark:text-emerald-400">{formatDuration(contributor.seconds)}</span>
-                                  <span className="text-right font-bold text-black dark:text-white">
-                                    {contributor.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                  </span>
+                                  {veReais && (
+                                    <span className="text-right font-bold text-black dark:text-white">
+                                      {contributor.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    </span>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1971,7 +2096,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
                   ))}
                   {nsAggregationData.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-500 italic">Nenhum dado para este período.</td>
+                      <td colSpan={veReais ? 5 : 4} className="p-8 text-center text-gray-500 italic">Nenhum dado para este período.</td>
                     </tr>
                   )}
                 </tbody>

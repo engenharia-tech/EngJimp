@@ -19,10 +19,8 @@ import { authHeaders } from './authToken';
 // ====================================================================
 
 // --- formatacao ---
+// (30/09/2026) O formatador de R$ saiu: o e-mail de conclusão não leva mais custo (ver abaixo).
 const horas = (secs?: number): string => ((secs || 0) / 3600).toFixed(2);
-const brl = (v?: number): string =>
-  ('R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
-    .replace(/ /g, ' '); // evita NBSP
 const hhmmss = (secs?: number): string => {
   const s = Math.max(0, Math.floor(secs || 0));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
@@ -32,6 +30,12 @@ const hhmmss = (secs?: number): string => {
 // Template padrao do e-mail de CONCLUSAO. As tags [ ... ] sao substituidas
 // pelos valores do projeto. E editavel em Configuracoes -> Template de
 // e-mail de conclusao; se vazio, usa-se este padrao.
+//
+// SEM R$ (30/09/2026). Decisão do Edson: "Tirar o R$ do e-mail (nos dois caminhos); nada de
+// e-mail separado." O e-mail vai ao Edson e ao Matheus (COORDENADOR), e R$ é só para o Edson e
+// os CEOs. Antes: três linhas de custo (produtivo, interrupções, total), com o custo que o
+// navegador gravava no projeto. Agora: só horas. As tags [CUSTO_*] saíram da lista; um modelo
+// salvo antigo que ainda as tenha imprime '—' no lugar (nunca a tag crua, nunca um valor).
 export const DEFAULT_COMPLETION_TEMPLATE = [
   'BOM DIA,',
   '',
@@ -46,10 +50,6 @@ export const DEFAULT_COMPLETION_TEMPLATE = [
   'TEMPO PLANEJADO: [TEMPO_PLANEJADO] HORAS',
   'TEMPO EXECUTADO: [TEMPO_EXECUTADO] HORAS',
   'TEMPO DE INTERRUPÇÃO: [TEMPO_INTERRUPCAO]',
-  '',
-  'CUSTO PRODUTIVO: [CUSTO_PRODUTIVO]',
-  'CUSTO DE INTERRUPÇÕES: [CUSTO_INTERRUPCAO]',
-  'CUSTO TOTAL DO PROJETO: [CUSTO_TOTAL]',
   '',
   'INTERRUPÇÕES: [QTD_INTERRUPCOES]',
   '',
@@ -67,9 +67,11 @@ export const DEFAULT_COMPLETION_TEMPLATE = [
 export const COMPLETION_TEMPLATE_TAGS = [
   '[NS]', '[CLIENTE]', '[CODIGO]', '[DESIGNER]', '[LIBERADO_POR]',
   '[TEMPO_PLANEJADO]', '[TEMPO_EXECUTADO]', '[TEMPO_INTERRUPCAO]',
-  '[CUSTO_PRODUTIVO]', '[CUSTO_INTERRUPCAO]', '[CUSTO_TOTAL]',
   '[QTD_INTERRUPCOES]', '[DETALHE_INTERRUPCOES]', '[OBSERVACOES]',
 ];
+
+// Tags de custo de modelos salvos ANTES de 30/09/2026: viram '—' (sem R$ no e-mail).
+const TAGS_DE_CUSTO_ANTIGAS = ['[CUSTO_PRODUTIVO]', '[CUSTO_INTERRUPCAO]', '[CUSTO_TOTAL]'];
 
 /**
  * E-mail de CONCLUSAO de projeto (disparado quando um PROJETISTA conclui).
@@ -115,13 +117,11 @@ export const notifyProjectCompletion = async (
       '[TEMPO_PLANEJADO]': horas(project.estimatedSeconds),
       '[TEMPO_EXECUTADO]': horas(project.totalActiveSeconds),
       '[TEMPO_INTERRUPCAO]': hhmmss(project.interruptionSeconds),
-      '[CUSTO_PRODUTIVO]': brl(project.productiveCost),
-      '[CUSTO_INTERRUPCAO]': brl(project.interruptionCost),
-      '[CUSTO_TOTAL]': brl(project.totalCost),
       '[QTD_INTERRUPCOES]': String(doProjeto.length),
       '[DETALHE_INTERRUPCOES]': detalhe,
       '[OBSERVACOES]': observacoes,
     };
+    for (const tag of TAGS_DE_CUSTO_ANTIGAS) vars[tag] = '—';
 
     const modelo = (template && template.trim()) ? template : DEFAULT_COMPLETION_TEMPLATE;
     let texto = modelo;

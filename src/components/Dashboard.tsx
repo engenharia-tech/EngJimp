@@ -20,6 +20,7 @@ import { parseISO } from 'date-fns';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser, getUserDisplayName } from '../utils/userUtils';
 import { isExcludedFromEngineering, usersIndex, isPndCarveoutUser } from '../utils/pndSplit';
+import { podeVerReais, avisoSemSerie, custoEmReais, novaSomaPorTaxa, fracaoAteDesligar, limitesDoMes, rotuloDesligado } from '../utils/custoHora';
 
 interface DashboardProps {
   data: AppState;
@@ -1163,13 +1164,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     // Use available designers excluding non-engineering roles.
     // Corte P&D: o Edson (P&D) sai do divisor de per capita — não é capacidade de entrega.
-    const engineeringUsers = availableDesigners.filter(u => ['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(u.role) && !isPndCarveoutUser(u));
-    
+    // (fica EXATAMENTE como em 23/09, commit d96e50f — cético de 30/09: jan–ago não mudam.)
+    //
+    // Desligado (decisão do Edson, 30/09/2026: desligar, não excluir): pesa pela fração de DIAS
+    // ÚTEIS do período em que ainda estava (fracaoAteDesligar, só pelo desligadoEm); quem saiu antes
+    // do período fica fora da conta e da lista de pesos. Sem desligamento no período a fração é 1 e
+    // o número é o de antes, ao centavo.
+    const fracaoNoPeriodo: Record<string, number> = {};
+    const engineeringUsers = availableDesigners.filter(u => {
+      if (!['PROJETISTA', 'COORDENADOR', 'GESTOR'].includes(u.role) || isPndCarveoutUser(u)) return false;
+      const fracao = fracaoAteDesligar(u, startDate, endDate);
+      fracaoNoPeriodo[u.id] = fracao;
+      return fracao > 0;
+    });
+
     // Calculate sum of weights
     let totalWeight = 0;
+    let temDesligadoNoPeriodo = false;
     engineeringUsers.forEach(u => {
       const weight = designerWeights[u.id] !== undefined ? designerWeights[u.id] : 1.0;
-      totalWeight += weight;
+      const fracao = fracaoNoPeriodo[u.id];
+      if (fracao < 1) temDesligadoNoPeriodo = true;
+      totalWeight += weight * fracao;
     });
 
     // If totalWeight is 0 (all excluded), fallback to 1 to avoid division by zero
@@ -1184,6 +1200,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       calculatedMonths: calculatedMonthDiff,
       engineeringUsers,
       totalWeight,
+      temDesligadoNoPeriodo,
       isCustomized: overrideMonths !== null || Object.values(designerWeights).some(w => w !== 1.0)
     };
   }, [totalHours, startDate, endDate, availableDesigners, overrideMonths, designerWeights]);
@@ -1239,34 +1256,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val);
   };
 
-  const costPerSecond = useMemo(() => {
-    return (settings?.hourlyCost || 0) / 3600;
-  }, [settings]);
+  // Custo/hora por período (decisão do Edson, 30/09/2026: "congelar cada mês"; R$ só para ele e
+  // para os CEOs). Quem vê R$ é o SERVIDOR que diz (settings.custoHora); quem não vê recebe horas e %.
+  // Antes: UMA taxa (settings.hourlyCost) para todos os registros, de qualquer data.
+  // Agora: cada registro paga a taxa do dia dele (o startTime) — custoEmReais / taxaNaData.
+  const veReais = podeVerReais(settings);
+  const semSerieDeCusto = avisoSemSerie(settings);
 
   const costData = useMemo(() => {
     let totalProductive = 0;
+    let productiveSeconds = 0;
 
-    // 1. Costs from finished projects
+    // 1. Costs from finished projects — cada um na taxa do dia em que começou
     filteredProjects.forEach(p => {
-      // Recalculate based on the new formula for consistency
-      const productiveCost = (p.totalActiveSeconds / 3600) * (costPerSecond * 3600);
-      totalProductive += productiveCost;
+      productiveSeconds += p.totalActiveSeconds || 0;
+      totalProductive += custoEmReais(settings, p.totalActiveSeconds, p.startTime);
     });
 
-    // 2. Costs from filtered interruptions
+    // 2. Costs from filtered interruptions — idem, pela data da parada
     const totalInterruptionSeconds = filteredInterruptions.reduce((acc, i) => acc + i.totalTimeSeconds, 0);
-    const totalInterruptionCost = totalInterruptionSeconds * costPerSecond;
+    // Soma na ordem antiga (segundos por taxa × taxa/3600): jan–ago sai no mesmo centavo de antes.
+    const somaParadas = novaSomaPorTaxa(settings);
+    filteredInterruptions.forEach(i => somaParadas.somar(i.totalTimeSeconds, i.startTime));
+    const totalInterruptionCost = somaParadas.total();
 
     const totalOverall = totalProductive + totalInterruptionCost;
+    const totalOverallSeconds = productiveSeconds + (totalInterruptionSeconds || 0);
 
     return {
       productive: totalProductive,
       interruption: totalInterruptionCost,
+      productiveSeconds,
       totalInterruptionSeconds,
       total: totalOverall,
-      percentageLost: totalOverall > 0 ? (totalInterruptionCost / totalOverall) * 100 : 0
+      // Quem não vê R$: a mesma proporção, pelas HORAS.
+      percentageLost: veReais
+        ? (totalOverall > 0 ? (totalInterruptionCost / totalOverall) * 100 : 0)
+        : (totalOverallSeconds > 0 ? ((totalInterruptionSeconds || 0) / totalOverallSeconds) * 100 : 0)
     };
-  }, [filteredProjects, filteredInterruptions, costPerSecond]);
+  }, [filteredProjects, filteredInterruptions, settings, veReais]);
 
   // --- NOVO GRÁFICO: Horas Realizadas vs Meta Mensal ---
   const hoursVsGoalData = useMemo(() => {
@@ -1366,8 +1394,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     // 3. Group based on releaseGrouping
     const designersInTeam = data.users.filter(u => u.role === 'PROJETISTA');
-    const teamSize = designersInTeam.length || 1;
     const isAll = selectedDesignerForReleases === 'ALL';
+    const designerEscolhido = isAll ? null : data.users.find(u => u.id === selectedDesignerForReleases);
+
+    // Pessoas na capacidade do mês. Antes: todos os PROJETISTA cadastrados, em qualquer mês.
+    // Agora (decisão do Edson, 30/09/2026: desligar, não excluir): cada um pesa pela fração de DIAS
+    // ÚTEIS do mês em que ainda estava (a mesma regra de feriados da capacidade abaixo) — o Rogerio,
+    // último dia 02/10, conta 2 dos dias úteis de outubro e nenhum depois. Sem desligado no mês = o
+    // número inteiro de antes (Σ de 1). Com um projetista escolhido, a fração é a dele (mínimo o
+    // mês cheio, como antes, se a conta desse 0).
+    const pessoasNoMes = (monthIndex: number, year: number): number => {
+      // Ano fora do razoável (registro com data torta, ex.: 1970 lido como "DEZ/69" → 2069): conta como
+      // antes (1 por projetista) — data ruim não pode mudar número por causa de um desligamento.
+      if (!Number.isFinite(year) || year < 2000 || year > new Date().getFullYear() + 1) return isAll ? (designersInTeam.length || 1) : 1;
+      const { inicio, fim } = limitesDoMes(monthIndex, year);
+      if (!isAll) return fracaoAteDesligar(designerEscolhido, inicio, fim) || 1;
+      let soma = 0;
+      designersInTeam.forEach(u => { soma += fracaoAteDesligar(u, inicio, fim); });
+      return soma || 1;
+    };
+
+    // Σ pessoas(mês) × capacidade(mês), somando as capacidades de quem tem o mesmo número de pessoas
+    // primeiro: sem desligado, dá EXATAMENTE pessoas × Σ capacidades, na mesma ordem de soma de antes.
+    const capacidadeDaEquipe = (meses: Array<[number, number]>): number => {
+      const capPorPessoas = new Map<number, number>();
+      meses.forEach(([m, y]) => {
+        const pessoas = pessoasNoMes(m, y);
+        capPorPessoas.set(pessoas, (capPorPessoas.get(pessoas) || 0) + getCapacityForMonth(m, y));
+      });
+      let total = 0;
+      capPorPessoas.forEach((cap, pessoas) => { total += pessoas * cap; });
+      return total;
+    };
 
     // Helper to calculate working hours in a month for 2026 or fallback
     const getCapacityForMonth = (monthIndex: number, year: number): number => {
@@ -1422,19 +1480,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           uniqueMonthKeys.add(`${d.getMonth()}/${d.getFullYear()}`);
         });
 
-        let globalCapacity = 0;
+        const mesesDaCapacidade: Array<[number, number]> = [];
         if (uniqueMonthKeys.size > 0) {
           uniqueMonthKeys.forEach(mKey => {
             const [mStr, yStr] = mKey.split('/');
-            globalCapacity += getCapacityForMonth(parseInt(mStr), parseInt(yStr));
+            mesesDaCapacidade.push([parseInt(mStr), parseInt(yStr)]);
           });
         } else {
           for (let m = 0; m < 6; m++) {
-            globalCapacity += getCapacityForMonth(m, 2026);
+            mesesDaCapacidade.push([m, 2026]);
           }
         }
 
-        const capacityBase = (isAll ? teamSize : 1) * globalCapacity;
+        // Σ por mês de pessoas(mês) × capacidade(mês) (antes: todos os projetistas × Σ capacidades).
+        const capacityBase = capacidadeDaEquipe(mesesDaCapacidade);
         const percentage = parseFloat(((totalHours / capacityBase) * 100).toFixed(1));
         const rest = Math.max(0, capacityBase - totalHours);
 
@@ -1498,14 +1557,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         const parsedYear = parseInt(yStr);
         const fullYear = parsedYear < 100 ? parsedYear + 2000 : parsedYear;
         const singleCapacity = getCapacityForMonth(mIdx !== -1 ? mIdx : 0, fullYear);
-        capacityBase = (isAll ? teamSize : 1) * singleCapacity;
+        capacityBase = pessoasNoMes(mIdx !== -1 ? mIdx : 0, fullYear) * singleCapacity;
       } else {
         const fullYear = parseInt(key);
-        let yearlyCapacity = 0;
+        const mesesDoAno: Array<[number, number]> = [];
         for (let m = 0; m < 12; m++) {
-          yearlyCapacity += getCapacityForMonth(m, fullYear);
+          mesesDoAno.push([m, fullYear]);
         }
-        capacityBase = (isAll ? teamSize : 1) * yearlyCapacity;
+        // Σ dos 12 meses de pessoas(mês) × capacidade(mês).
+        capacityBase = capacidadeDaEquipe(mesesDoAno);
       }
       
       const percentage = parseFloat(((hours / capacityBase) * 100).toFixed(1));
@@ -2313,7 +2373,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                 >
                   <option value="ALL">{t('all')}</option>
                   {availableDesigners.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
+                    <option key={u.id} value={u.id}>{u.name}{rotuloDesligado(u)}</option>
                   ))}
                 </select>
               </div>
@@ -2643,7 +2703,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                  </div>
                  <div className="mt-2 pt-2 border-t border-gray-50 dark:border-slate-800/50 flex flex-col gap-0.5">
                     <p className="text-[10px] text-gray-400 uppercase">
-                      Ref: <strong className="text-gray-600 dark:text-slate-300">{perCapitaStats.designerCount}</strong> projetistas {perCapitaStats.isCustomized ? 'equivalentes' : 'ativos'}
+                      Ref: <strong className="text-gray-600 dark:text-slate-300">{perCapitaStats.designerCount}</strong> projetistas {perCapitaStats.isCustomized || perCapitaStats.temDesligadoNoPeriodo ? 'equivalentes' : 'ativos'}
                     </p>
                     <p className="text-[10px] text-gray-500 font-bold uppercase">
                       {perCapitaStats.monthsInPeriod} {perCapitaStats.monthsInPeriod === 1 ? 'MÊS SELECIONADO' : 'MESES SELECIONADOS'}
@@ -2706,25 +2766,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
 
 
-          {/* Cost KPI */}
+          {/* Cost KPI — R$ só para o Edson e os CEOs (decisão do Edson, 30/09/2026); os outros veem horas */}
           <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
-            <div>
-              <p className="text-[10px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalProjectValue')}</p>
-              <p className="text-sm sm:text-xl font-black text-blue-800 dark:text-blue-300">{formatCurrency(costData.productive)}</p>
-              <p className="text-[10px] sm:text-[10px] text-blue-500 font-medium mt-0.5 sm:mt-1">{t('productiveTimeBase')}</p>
-            </div>
+            {veReais ? (
+              <div>
+                <p className="text-[10px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalProjectValue')}</p>
+                <p className="text-sm sm:text-xl font-black text-blue-800 dark:text-blue-300">{formatCurrency(costData.productive)}</p>
+                <p className="text-[10px] sm:text-[10px] text-blue-500 font-medium mt-0.5 sm:mt-1">{t('productiveTimeBase')}</p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-[10px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-0.5 sm:mb-1">Horas produtivas</p>
+                <p className="text-sm sm:text-xl font-black text-blue-800 dark:text-blue-300">{formatDuration(costData.productiveSeconds)}</p>
+                <p className="text-[10px] sm:text-[10px] text-blue-500 font-medium mt-0.5 sm:mt-1 uppercase">
+                  {semSerieDeCusto ? 'Custo/hora ainda indisponível' : 'Tempo produtivo no período'}
+                </p>
+              </div>
+            )}
             <div className="h-7 w-7 sm:h-8 sm:w-8 bg-blue-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0">
-              <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              {veReais ? <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             </div>
           </div>
 
-          {/* Interruption Cost KPI */}
+          {/* Interruption Cost KPI — quem não vê R$ vê as horas paradas e a fatia delas no total */}
           <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-red-100 dark:border-red-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
-            <div>
-              <p className="text-[10px] sm:text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('interruptionCost')}</p>
-              <p className="text-sm sm:text-xl font-black text-red-800 dark:text-red-300">{formatCurrency(costData.interruption)}</p>
-              <p className="text-[10px] sm:text-[10px] text-red-500 font-medium mt-0.5 sm:mt-1">{t('totalTime')}: {formatDuration(costData.totalInterruptionSeconds)}</p>
-            </div>
+            {veReais ? (
+              <div>
+                <p className="text-[10px] sm:text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('interruptionCost')}</p>
+                <p className="text-sm sm:text-xl font-black text-red-800 dark:text-red-300">{formatCurrency(costData.interruption)}</p>
+                <p className="text-[10px] sm:text-[10px] text-red-500 font-medium mt-0.5 sm:mt-1">{t('totalTime')}: {formatDuration(costData.totalInterruptionSeconds)}</p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-[10px] sm:text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-0.5 sm:mb-1">Horas de interrupção</p>
+                <p className="text-sm sm:text-xl font-black text-red-800 dark:text-red-300">{formatDuration(costData.totalInterruptionSeconds || 0)}</p>
+                <p className="text-[10px] sm:text-[10px] text-red-500 font-medium mt-0.5 sm:mt-1 uppercase">
+                  {costData.percentageLost.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% do total
+                </p>
+              </div>
+            )}
             <div className="h-7 w-7 sm:h-8 sm:w-8 bg-red-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 flex-shrink-0">
               <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
@@ -3294,15 +3374,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
               </h3>
               <button 
                 onClick={() => {
+                  // A coluna de custo só sai para quem vê R$ (decisão do Edson, 30/09/2026), e cada
+                  // parada paga a taxa do dia dela.
                   const headers = [
-                    t('nsHeader'), 
-                    t('clientHeader'), 
-                    t('designerCol'), 
-                    t('reason'), 
-                    t('area'), 
-                    t('start'), 
-                    t('totalTime'), 
-                    t('estimatedCost')
+                    t('nsHeader'),
+                    t('clientHeader'),
+                    t('designerCol'),
+                    t('reason'),
+                    t('area'),
+                    t('start'),
+                    t('totalTime'),
+                    ...(veReais ? [t('estimatedCost')] : [])
                   ];
                   const rows = filteredInterruptions.map(i => [
                     i.projectNs,
@@ -3312,14 +3394,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     i.responsibleArea ? t(i.responsibleArea.toLowerCase() as any) : 'N/A',
                     i.startTime,
                     formatDuration(i.totalTimeSeconds),
-                    formatCurrency(i.totalTimeSeconds * costPerSecond)
+                    ...(veReais ? [formatCurrency(custoEmReais(settings, i.totalTimeSeconds, i.startTime))] : [])
                   ]);
                   const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
                   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                   const link = document.createElement("a");
                   const url = URL.createObjectURL(blob);
                   link.setAttribute("href", url);
-                  link.setAttribute("download", `relatorio_interrupcoes_custos_${new Date().toISOString().split('T')[0]}.csv`);
+                  link.setAttribute("download", `${veReais ? 'relatorio_interrupcoes_custos_' : 'relatorio_interrupcoes_'}${new Date().toISOString().split('T')[0]}.csv`);
                   link.style.visibility = 'hidden';
                   document.body.appendChild(link);
                   link.click();
@@ -3342,13 +3424,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('reason')}</th>
                     <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('area')}</th>
                     <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('totalTime')}</th>
-                    <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('estimatedCost')}</th>
+                    {veReais && (
+                      <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('estimatedCost')}</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredInterruptions.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-10 text-center text-gray-400 dark:text-slate-500 italic text-sm">
+                      <td colSpan={veReais ? 7 : 6} className="py-10 text-center text-gray-400 dark:text-slate-500 italic text-sm">
                         {t('noInterruptions')}
                       </td>
                     </tr>
@@ -3361,7 +3445,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                         <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{item.problemType}</td>
                         <td className="py-3 px-4 text-xs text-gray-600 dark:text-slate-300">{item.responsibleArea ? t(item.responsibleArea.toLowerCase() as any) : 'N/A'}</td>
                         <td className="py-3 px-4 text-xs font-mono text-gray-700 dark:text-slate-200">{formatDuration(item.totalTimeSeconds)}</td>
-                        <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{formatCurrency(item.totalTimeSeconds * costPerSecond)}</td>
+                        {veReais && (
+                          <td className="py-3 px-4 text-xs font-bold text-red-600 dark:text-red-400">{formatCurrency(custoEmReais(settings, item.totalTimeSeconds, item.startTime))}</td>
+                        )}
                       </tr>
                     ))
                   )}
@@ -3407,7 +3493,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       >
                         <option value="ALL">TODOS OS PROJETISTAS DA EQUIPE</option>
                         {availableDesigners.map((u) => (
-                          <option key={u.id} value={u.id}>{u.name}</option>
+                          <option key={u.id} value={u.id}>{u.name}{rotuloDesligado(u)}</option>
                         ))}
                       </select>
                     </div>
@@ -3770,7 +3856,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                     >
                         <option value="ALL">{t('overviewAll')}</option>
                         {availableDesigners.map((u) => (
-                            <option key={u.id} value={u.id}>{u.name}</option>
+                            <option key={u.id} value={u.id}>{u.name}{rotuloDesligado(u)}</option>
                         ))}
                     </select>
                 </div>
@@ -4089,7 +4175,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                         <option value="ALL">🌟 Todos os Colaboradores</option>
                         {data.users.map(u => (
                           <option key={u.id} value={u.id}>
-                            👤 {u.name} {u.surname || ''} ({u.role})
+                            👤 {u.name} {u.surname || ''} ({u.role}){rotuloDesligado(u)}
                           </option>
                         ))}
                       </select>

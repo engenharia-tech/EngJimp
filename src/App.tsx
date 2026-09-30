@@ -772,16 +772,14 @@ const AppContent: React.FC = () => {
 
   // --- HANDLERS ---
 
-  const calculatedHourlyRate = useMemo(() => {
-    // Media (custo/hora) calculada no SERVIDOR — nenhum salario individual e
-    // baixado para o cliente (C2). Vem em settings.hourlyCostCalculated.
-    return data.settings.hourlyCostCalculated ?? 0;
-  }, [data.settings.hourlyCostCalculated]);
-
-  const effectiveSettings = useMemo(() => ({
-    ...data.settings,
-    hourlyCost: data.settings.useAutomaticCost ? calculatedHourlyRate : data.settings.hourlyCost
-  }), [data.settings, calculatedHourlyRate]);
+  // Custo/hora POR PERÍODO (decisão do Edson, 30/09/2026: "congelar cada mês"; R$ só para o
+  // Edson e os CEOs). Antes: aqui a MÉDIA única do servidor entrava em hourlyCost no modo
+  // automático — e a tela de Configurações gravava essa média em settings.hourly_cost, que todo
+  // logado lê (e ainda a registrava no Log de Auditoria). Agora nada é injetado: a série mora em
+  // settings.custoHora (só chega com períodos para quem vê R$) e cada tela pega a taxa do dia do
+  // registro com taxaNaData/custoEmReais (src/utils/custoHora.ts). settings.hourlyCost volta a ser
+  // SÓ o valor MANUAL.
+  const effectiveSettings = data.settings;
 
   const handleProjectCreate = async (project: ProjectSession): Promise<AppState | undefined> => {
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
@@ -2094,7 +2092,6 @@ const AppContent: React.FC = () => {
               onDeleteActivityType={onDeleteActivityType}
               onUpdateProject={handleProjectUpdate}
               onCreateProject={handleProjectCreate}
-              effectiveHourlyCost={effectiveSettings.hourlyCost}
               onDeleteProject={onDeleteProjectFromPerformance}
               onUpdateInterruption={onUpdateInterruption}
               onDeleteInterruption={onDeleteInterruption}
