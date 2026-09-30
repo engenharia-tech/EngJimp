@@ -63,7 +63,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('PROJETISTA');
   const [salary, setSalary] = useState<number>(0);
-  const [okrEnabled, setOkrEnabled] = useState<boolean>(false);
+  // OKR e Agenda para todos (Edson, 30/09: "libere okr e agenda para todos"): usuário novo
+  // já nasce com OKR; quem cria pode desmarcar. O visualizador continua sem (a marca dele zera).
+  const [okrEnabled, setOkrEnabled] = useState<boolean>(true);
   const [okrOnly, setOkrOnly] = useState<boolean>(false);
   const [okrViewer, setOkrViewer] = useState<boolean>(false);
   const [sector, setSector] = useState<string>('');
@@ -226,7 +228,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setPassword('');
     setSalary(0);
     setRole('PROJETISTA');
-    setOkrEnabled(false);
+    setOkrEnabled(true);
     setOkrOnly(false);
     setOkrViewer(false);
     setSector('');
@@ -427,7 +429,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               />
               <span className="text-sm">
                 <span className="font-semibold text-black dark:text-white">Habilitar OKR</span>
-                <span className="block text-xs text-gray-500 dark:text-slate-400">Dá a ele a aba "Meu OKR" (editável). O Edson vê e edita o de todos.</span>
+                <span className="block text-xs text-gray-500 dark:text-slate-400">Dá a ele a aba "Meu OKR" (editável) e a Agenda. O Edson vê e edita o de todos.</span>
               </span>
             </label>
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
