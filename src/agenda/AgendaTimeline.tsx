@@ -12,9 +12,17 @@
 // (Dia = 1 dia … Ano = 12 meses); o resto rola na horizontal. O eixo se adapta ao que
 // cabe (horas, blocos de dia, números, segundas, meses) e a barra vai do início ao fim do
 // HORÁRIO (07:00–12:00 = 5/24 do dia), não mais do dia inteiro.
+//
+// REALIZADO (30/09/2026) — Edson: "integrar as atividades que eu já estou fazendo para
+// aparecerem no fluxo". As atividades JÁ LANÇADAS no Desempenho Operacional entram como
+// barras "realizado", SÓ LEITURA (sem arraste, sem modal; o title diz nome, horário e
+// duração), num bloco próprio, uma linha por TIPO de atividade — pela mesma régua de
+// horário dos compromissos (brInstant: hora de Brasília). Quem entra é decidido pela tela
+// da agenda (a mesma privacidade: cada um só as suas; só o Edson vê as dos outros). O eixo
+// só se estica pelos últimos REALIZADO_DIAS dias; atividade aberta vai até agora.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MoveHorizontal, Lock, Crosshair, Check } from 'lucide-react';
+import { MoveHorizontal, Lock, Crosshair, Check, Activity } from 'lucide-react';
 import { User } from '../types';
 import { AgendaItem, AgendaTipo, AGENDA_TIPOS, tipoInfo, parseDay, toDay, addDaysStr, dayDiffStr, fmtDay, fmtQuando, STATUS_LABEL, brInstant, intervaloAgenda, normHour, todayBR } from './agenda';
 import { TipoIcon, nomePorId, porInicio, ddmm } from './AgendaList';
@@ -38,11 +46,48 @@ export const lerJanela = (v: string | null | undefined): AgendaJanela => {
   return JANELAS.some(j => j.id === v) ? (v as AgendaJanela) : JANELA_PADRAO;
 };
 
+// Uma atividade JÁ FEITA do Desempenho Operacional (só leitura na linha do tempo).
+export interface AgendaRealizado {
+  id: string;
+  userId: string;
+  tipoNome: string;            // nome do tipo de atividade (a linha em que ela cai)
+  nome: string;                // nome lançado (activityName)
+  notas: string;
+  inicioMs: number;            // instante do início
+  fimMs: number | null;        // null = em andamento (a barra vai até agora)
+  duracaoSeg: number;          // o que o Desempenho Operacional contou (expediente, sem almoço)
+}
+// O eixo não se estica por atividade mais velha que isto (nem que ela esteja aberta há meses).
+export const REALIZADO_DIAS = 60;
+// Verde-acinzentado, contorno tracejado e hachurado: nunca se confunde com a barra cheia de um
+// compromisso (as cores dos tipos são cheias). Lê bem no claro e no escuro.
+const REAL_COR = '#7aa191';
+const REAL_BG = 'repeating-linear-gradient(135deg, rgba(122,161,145,0.60) 0 3px, rgba(122,161,145,0.20) 3px 6px)';
+// Texto no verde-acinzentado: mais escuro no claro, mais claro no escuro (contraste).
+const REAL_TXT = 'text-[#46695b] dark:text-[#a3c9b8]';
+const fmtHoraBR = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
+const horaBR = (ms: number) => fmtHoraBR.format(new Date(ms));
+const fmtDur = (seg: number): string => {
+  const m = Math.max(0, Math.round(seg / 60));
+  const h = Math.floor(m / 60), r = m % 60;
+  return h ? `${h}h${r ? ` ${p2(r)}min` : ''}` : `${r}min`;
+};
+
 type Mode = 'move' | 'start' | 'end';
 interface Drag { key: string; pointerId: number; mode: Mode; x0: number; px: number; py: number; pxPerDay: number; dDays: number; started: boolean; minD: number; maxD: number; }
 type Datas = { inicioDia: string; fimDia: string };
-// Um bloco da linha do tempo: um TIPO (na agenda de uma pessoa) ou uma PESSOA (em "todas").
-interface Grupo { key: string; tipo: AgendaTipo | null; title: string; sub: string; color: string; list: AgendaItem[] }
+// As atividades realizadas de um TIPO: uma linha só (várias barras nela).
+interface FilaReal { key: string; nome: string; list: AgendaRealizado[] }
+// Um bloco da linha do tempo: um TIPO (na agenda de uma pessoa), uma PESSOA (em "todas") ou o
+// bloco "Realizado" (na agenda de uma pessoa). `real` = as linhas de realizado do bloco.
+interface Grupo { key: string; tipo: AgendaTipo | null; title: string; sub: string; color: string; list: AgendaItem[]; real: FilaReal[]; bloco?: 'realizado' }
+const filasReal = (lista: AgendaRealizado[], prefixo: string): FilaReal[] => {
+  const m = new Map<string, AgendaRealizado[]>();
+  lista.forEach(r => { const l = m.get(r.tipoNome); if (l) l.push(r); else m.set(r.tipoNome, [r]); });
+  return Array.from(m.entries())
+    .map(([nome, list]) => ({ key: `${prefixo}:${nome}`, nome, list: list.sort((a, b) => a.inicioMs - b.inicioMs) }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+};
 
 const DEAD_ZONE_PX = 5;     // menos que isso é clique/tremida, não arraste
 const HANDLE_IN_PX = 40;    // barra mais curta que isso: as alças ficam do lado de FORA
@@ -104,9 +149,12 @@ export interface AgendaTimelineProps {
   savingId: string | null;        // gravando as datas de um item: ninguém arrasta até acabar
   onOpen: (item: AgendaItem) => void;
   onCommitDates: (item: AgendaItem, datas: Datas) => void;
+  realizado?: AgendaRealizado[];  // atividades já feitas (JÁ filtradas pela privacidade da agenda); só leitura
 }
 
-export const AgendaTimeline: React.FC<AgendaTimelineProps> = ({ items, axisItems, groupBy, janela, usersById, currentUserId, hoje, savingId, onOpen, onCommitDates }) => {
+const SEM_REALIZADO: AgendaRealizado[] = [];
+
+export const AgendaTimeline: React.FC<AgendaTimelineProps> = ({ items, axisItems, groupBy, janela, usersById, currentUserId, hoje, savingId, onOpen, onCommitDates, realizado = SEM_REALIZADO }) => {
   const [drag, setDrag] = useState<Drag | null>(null);
   // O ref é a verdade do arraste (muda na hora); o estado só redesenha. Nunca copiar o
   // estado para o ref no render (um render atrasado ressuscitava o arraste encerrado).
@@ -121,19 +169,30 @@ export const AgendaTimeline: React.FC<AgendaTimelineProps> = ({ items, axisItems
   const mesesMin = Math.max(1, Math.round(jan.dias / MES_DIAS));   // Dia e Semana: 1
 
   // Eixo: do mês do menor início (ou hoje, o que vier antes) − 1 ao mês do maior fim (ou
-  // hoje) + 1, e no mínimo os meses da janela escolhida.
+  // hoje) + 1, e no mínimo os meses da janela escolhida. O realizado entra pelo dia de
+  // Joinville de cada ponta, e nunca antes de REALIZADO_DIAS atrás (não estica anos).
   const { mkStart, mkEnd } = useMemo(() => {
     let lo = hoje, hi = hoje;
     axisItems.forEach(i => {
       if (parseDay(i.inicioDia) && i.inicioDia < lo) lo = i.inicioDia;
       if (parseDay(i.fimDia) && i.fimDia > hi) hi = i.fimDia;
     });
+    if (realizado.length) {
+      const agora = Date.now(), corte = agora - REALIZADO_DIAS * DIA_MS;
+      realizado.forEach(r => {
+        const fim = r.fimMs ?? agora;
+        if (!Number.isFinite(r.inicioMs) || !Number.isFinite(fim) || fim < corte) return;
+        const a = todayBR(new Date(Math.max(r.inicioMs, corte))), b = todayBR(new Date(Math.max(fim, r.inicioMs)));
+        if (a < lo) lo = a;
+        if (b > hi) hi = b;
+      });
+    }
     const lod = parseDay(lo) || new Date(), hid = parseDay(hi) || new Date();
     const a = lod.getFullYear() * 12 + lod.getMonth() - 1;
     let z = hid.getFullYear() * 12 + hid.getMonth() + 1;
     while (z - a + 1 < mesesMin) z++;
     return { mkStart: a, mkEnd: z };
-  }, [axisItems, hoje, mesesMin]);
+  }, [axisItems, hoje, mesesMin, realizado]);
   const months = useMemo(() => { const arr: number[] = []; for (let m = mkStart; m <= mkEnd; m++) arr.push(m); return arr; }, [mkStart, mkEnd]);
   const axisStartDay = toDay(new Date(Math.floor(mkStart / 12), mkStart % 12, 1));
   const axisEndDay = toDay(new Date(Math.floor(mkEnd / 12), mkEnd % 12 + 1, 0));   // último dia do último mês
@@ -266,16 +325,26 @@ export const AgendaTimeline: React.FC<AgendaTimelineProps> = ({ items, axisItems
 
   const groups = useMemo<Grupo[]>(() => {
     const valid = items.filter(i => parseDay(i.inicioDia) && parseDay(i.fimDia));
+    // Só o realizado que cai no eixo (o de fora não faria linha vazia).
+    const ax0 = brInstant(axisStartDay, '00:00')?.getTime() ?? 0;
+    const ax1 = ax0 + totalDays * DIA_MS, agora = Date.now();
+    const reais = realizado.filter(r => Number.isFinite(r.inicioMs) && r.inicioMs < ax1 && (r.fimMs ?? agora) > ax0);
     if (groupBy === 'tipo') {
-      return AGENDA_TIPOS.map((t): Grupo => ({ key: t.id, tipo: t.id, title: t.plural, sub: '', color: t.color, list: valid.filter(i => i.tipo === t.id).sort(porInicio) }))
+      const out = AGENDA_TIPOS.map((t): Grupo => ({ key: t.id, tipo: t.id, title: t.plural, sub: '', color: t.color, list: valid.filter(i => i.tipo === t.id).sort(porInicio), real: [] }))
         .filter(g => g.list.length > 0);
+      if (reais.length) out.push({ key: '__realizado', tipo: null, title: 'Realizado', sub: 'Desempenho Operacional', color: REAL_COR, list: [], real: filasReal(reais, 'r'), bloco: 'realizado' });
+      return out;
     }
     const g = new Map<string, AgendaItem[]>();
     valid.forEach(i => { const l = g.get(i.ownerId); if (l) l.push(i); else g.set(i.ownerId, [i]); });
-    return Array.from(g.entries()).map(([ownerId, list]) => ({
-      key: ownerId, tipo: null, title: nomePorId(usersById, ownerId), sub: (usersById.get(ownerId)?.sector || '').trim(), color: '', list: list.sort(porInicio),
+    const gr = new Map<string, AgendaRealizado[]>();
+    reais.forEach(r => { const l = gr.get(r.userId); if (l) l.push(r); else gr.set(r.userId, [r]); });
+    const ids = Array.from(new Set([...g.keys(), ...gr.keys()]));
+    return ids.map((id): Grupo => ({
+      key: id, tipo: null, title: nomePorId(usersById, id), sub: (usersById.get(id)?.sector || '').trim(), color: '',
+      list: (g.get(id) || []).sort(porInicio), real: filasReal(gr.get(id) || [], id),
     })).sort((a, b) => (a.sub || 'zz').localeCompare(b.sub || 'zz') || a.title.localeCompare(b.title));
-  }, [items, groupBy, usersById]);
+  }, [items, groupBy, usersById, realizado, axisStartDay, totalDays]);
 
   // ---- Arrastar (só o DONO, só item ativo, só mouse) --------------------------
   const canDrag = (it: AgendaItem) => it.ownerId === currentUserId && it.status === 'ativo';
@@ -458,7 +527,11 @@ export const AgendaTimeline: React.FC<AgendaTimelineProps> = ({ items, axisItems
             <div key={gr.key} className="mb-1.5">
               <div className="flex items-stretch py-1.5">
                 <div className={`${labelCol} !flex-row !justify-start items-center gap-2 min-w-0`}>
-                  {gr.tipo
+                  {gr.bloco === 'realizado'
+                    ? <><Activity size={13} className={`shrink-0 ${REAL_TXT}`} aria-hidden="true" />
+                        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-slate-600 dark:text-slate-300 truncate" title="Atividades já lançadas no Desempenho Operacional — só leitura">{gr.title} <span className="hidden sm:inline text-slate-400 dark:text-slate-500">({gr.sub})</span></span>
+                        <span className="text-[10px] text-slate-300 dark:text-slate-600 shrink-0">· {gr.real.reduce((n, f) => n + f.list.length, 0)}</span></>
+                    : gr.tipo
                     ? <><TipoIcon tipo={gr.tipo} size={13} className="shrink-0" style={{ color: gr.color }} />
                         <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-slate-600 dark:text-slate-300 truncate">{gr.title}</span>
                         <span className="text-[10px] text-slate-300 dark:text-slate-600 shrink-0">· {gr.list.length}</span></>
@@ -555,12 +628,56 @@ export const AgendaTimeline: React.FC<AgendaTimelineProps> = ({ items, axisItems
                   </div>
                 );
               })}
+              {/* REALIZADO: uma linha por tipo de atividade, várias barras nela — só leitura
+                  (sem arraste, sem modal: o title diz nome, horário e duração). */}
+              {gr.real.map(fila => {
+                const totalSeg = fila.list.reduce((s, r) => s + (r.fimMs === null ? Math.max(0, agoraMs - r.inicioMs) / 1000 : r.duracaoSeg), 0);
+                return (
+                  <div key={fila.key} className="flex items-stretch py-1">
+                    <div className={`${labelCol} pr-2 min-w-0`}>
+                      <div className="truncate text-[11px] font-semibold text-slate-600 dark:text-slate-300" title={fila.nome}>{fila.nome}</div>
+                      <div className="flex items-center gap-1.5 min-w-0 text-[10px] text-slate-400">
+                        <span className={`font-mono font-bold uppercase tracking-wide rounded-full px-1.5 shrink-0 border border-dashed ${REAL_TXT}`} style={{ borderColor: REAL_COR }}>realizado</span>
+                        <span className="truncate tabular-nums">{fila.list.length} · {fmtDur(totalSeg)}</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 relative h-7 self-center" style={bg ? { backgroundImage: bg } : undefined}>
+                      <div className="absolute inset-0 grid pointer-events-none" style={{ gridTemplateColumns: monthCols }}>
+                        {months.map(m => <div key={m} className="border-l border-gray-100 dark:border-slate-800" />)}
+                      </div>
+                      {gradeStyle && <div className="absolute top-0 bottom-0 pointer-events-none" style={gradeStyle} aria-hidden="true" />}
+                      {todayPct !== null && <div className="absolute top-0 bottom-0 w-px bg-orange-400/60 pointer-events-none" style={{ left: `${todayPct}%` }} />}
+                      {fila.list.map(r => {
+                        const aberta = r.fimMs === null;
+                        const fim = Math.max(r.inicioMs, aberta ? agoraMs : (r.fimMs as number));
+                        const aD = (r.inicioMs - axis0) / DIA_MS, bD = (fim - axis0) / DIA_MS;
+                        if (bD < 0 || aD > totalDays) return null;
+                        const left = pctOf(aD); const width = Math.max(0, pctOf(bD) - left);
+                        const widthPx = Math.max(MIN_BAR_PX, trackW * width / 100);
+                        const dia0 = todayBR(new Date(r.inicioMs)), dia1 = todayBR(new Date(fim));
+                        const quando = `${ddmm(dia0)} ${horaBR(r.inicioMs)}–${aberta ? 'agora' : `${dia1 !== dia0 ? `${ddmm(dia1)} ` : ''}${horaBR(fim)}`}`;
+                        const extra = /\[HORA_EXTRA\]/.test(r.notas);
+                        const notas = r.notas.replace('[HORA_EXTRA]', '').trim();
+                        const dur = aberta ? `em andamento há ${fmtDur((agoraMs - r.inicioMs) / 1000)}` : `duração ${fmtDur(r.duracaoSeg)}`;
+                        const tip = `Realizado · ${r.nome}${r.nome.toLowerCase() !== fila.nome.toLowerCase() ? ` (${fila.nome})` : ''} · ${quando} · ${dur}${extra ? ' · hora extra' : ''}${r.userId !== currentUserId ? ` · de ${nomePorId(usersById, r.userId)}` : ''}${notas ? ` · ${notas.length > 90 ? `${notas.slice(0, 89)}…` : notas}` : ''} · só leitura (lançado no Desempenho Operacional)`;
+                        return (
+                          <div key={r.id} role="img" aria-label={tip} title={tip}
+                            className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-[4px] border border-dashed flex items-center overflow-clip px-1 ${widthPx > 320 ? 'justify-start' : 'justify-center'}`}
+                            style={{ left: `${left}%`, width: `${width}%`, minWidth: MIN_BAR_PX, borderColor: REAL_COR, backgroundImage: REAL_BG, ...(aberta ? { borderRightStyle: 'solid', borderRightWidth: 3 } : {}) }}>
+                            {widthPx >= 140 && <span className={`text-[10px] font-semibold text-slate-700 dark:text-slate-200 tabular-nums truncate pointer-events-none ${widthPx > 320 ? 'sticky' : ''}`} style={widthPx > 320 ? { left: 'calc(var(--lab) + 0.5rem)' } : undefined}>{horaBR(r.inicioMs)}–{aberta ? 'agora' : horaBR(fim)} · {r.nome}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
       </div>
       <p className="text-[10px] text-slate-400 px-5 pb-4">
-        A barra vai do início ao fim do horário (07:00–12:00 ocupa 5 horas do dia); compromisso de dia inteiro ocupa o dia inteiro, e sem hora de fim vale 1 hora (ou até o fim do último dia). Arrastar muda só as datas, de dia em dia — também nas janelas Dia e Semana; para mudar a hora, abra o compromisso. A hora fica, os alertas acompanham (o banco refaz a fila de e-mails) e quem já recebeu o convite é avisado da mudança por e-mail.{bg ? ' Fins de semana sombreados.' : ''} Hoje: {ddmm(hojeEf)}{janelaViva && agoraTxt ? `, agora ${agoraTxt} (hora de Brasília)` : ''}.
+        A barra vai do início ao fim do horário (07:00–12:00 ocupa 5 horas do dia); compromisso de dia inteiro ocupa o dia inteiro, e sem hora de fim vale 1 hora (ou até o fim do último dia). Arrastar muda só as datas, de dia em dia — também nas janelas Dia e Semana; para mudar a hora, abra o compromisso. A hora fica, os alertas acompanham (o banco refaz a fila de e-mails) e quem já recebeu o convite é avisado da mudança por e-mail.{groups.some(g => g.real.length > 0) ? ` Realizado (contorno tracejado): o que já foi lançado no Desempenho Operacional nos últimos ${REALIZADO_DIAS} dias, uma linha por tipo de atividade — só leitura (para mudar, é lá); a que está em andamento vai até agora.` : ''}{bg ? ' Fins de semana sombreados.' : ''} Hoje: {ddmm(hojeEf)}{janelaViva && agoraTxt ? `, agora ${agoraTxt} (hora de Brasília)` : ''}.
       </p>
     </div>
   );

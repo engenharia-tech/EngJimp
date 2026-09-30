@@ -14,17 +14,19 @@
 // relida (o gatilho do banco mexeu nela).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarClock, Plus, RefreshCw, ChartGantt, List, MailWarning, Plane, Bell, CalendarDays, Sparkles, Lock, X, Globe } from 'lucide-react';
-import { User } from '../types';
+import { User, OperationalActivity, ActivityType } from '../types';
+import type { AtividadePrefill } from '../components/OperationalPerformance';
 import { withOkrSafe } from '../okr/OkrSafe';
 import { useToast } from '../components/Toast';
 import {
   AgendaItem, AgendaAlerta, AgendaItemInput, AgendaTipo,
   AGENDA_TIPOS, todayBR, addDaysStr, brInstant, fmtQuando, fmtFalta, novoAgendaInput, emailRecebeAlerta,
+  normHour, intervaloAgenda,
 } from './agenda';
 import { temEmail, dominiosEmpresaTexto } from './ParticipantPicker';
 import { AgendaService, AgendaStaleError, agendaService, agendaErrorMessage } from './agendaService';
 import { AgendaItemModal } from './AgendaItemModal';
-import { AgendaTimeline, AgendaJanela, JANELAS, lerJanela } from './AgendaTimeline';
+import { AgendaTimeline, AgendaJanela, JANELAS, lerJanela, AgendaRealizado, REALIZADO_DIAS } from './AgendaTimeline';
 import { AgendaList, TipoIcon, nomePorId, porInicio, ddmm, instante, alertaAtrasado, foraDeBrasilia, fusoDoNavegador } from './AgendaList';
 
 export interface AgendaViewProps {
@@ -32,7 +34,28 @@ export interface AgendaViewProps {
   users: User[];
   isMaster: boolean;          // SÓ o Edson (isEdsonOwner): vê a agenda de todos, só leitura. NUNCA isOkrMaster.
   service?: AgendaService;    // padrão: o banco (agendaService); dá para abrir com dados de ensaio
+  // REALIZADO (30/09/2026): as atividades do Desempenho Operacional entram na linha do tempo,
+  // só leitura, com a MESMA privacidade da agenda (filtrada aqui: cada um só as suas; só o
+  // Edson — isMaster — vê as dos outros).
+  atividades?: OperationalActivity[];
+  tiposAtividade?: ActivityType[];
+  // "Lançar como atividade": só vem quando a pessoa tem o Desempenho Operacional (a mesma regra
+  // da aba no App). Sem ele, o botão não aparece.
+  onLancarAtividade?: (p: AtividadePrefill) => void;
 }
+
+// O compromisso → o lançamento pré-preenchido do Desempenho Operacional. Com hora: do início ao
+// fim do HORÁRIO, pela régua de sempre (intervaloAgenda, hora de Brasília). Dia inteiro: só as
+// datas (âncora ao meio-dia, que cai no mesmo dia em qualquer fuso de −12 a +8) e a hora fica
+// para a pessoa. A observação é o título; o TIPO a pessoa escolhe. Nada é gravado aqui.
+export const atividadeDoCompromisso = (it: Pick<AgendaItem, 'titulo' | 'inicioDia' | 'inicioHora' | 'fimDia' | 'fimHora'>): AtividadePrefill | null => {
+  const comHora = !!normHour(it.inicioHora);
+  const iv = comHora ? intervaloAgenda(it) : null;
+  const ini = iv ? iv.inicio : brInstant(it.inicioDia, '12:00');
+  const fim = iv ? iv.fim : brInstant(it.fimDia || it.inicioDia, '12:00');
+  if (!ini || !fim) return null;
+  return { seq: Date.now(), inicioIso: ini.toISOString(), fimIso: fim.toISOString(), semHora: !comHora, titulo: (it.titulo || '').trim() };
+};
 
 type Visao = 'timeline' | 'lista';
 type ModalMode = 'new' | 'edit' | 'view';
@@ -42,7 +65,9 @@ const ESC_MINHA = 'mine';
 const ESC_TODAS = 'all';
 const LS_VISAO = 'agenda_visao';
 const LS_JANELA = 'agenda_janela';
+const LS_REALIZADO = 'agenda_realizado';
 const NENHUM_ALERTA: AgendaAlerta[] = [];
+const NENHUM_REALIZADO: AgendaRealizado[] = [];
 
 // O navegador pode negar o armazenamento (janela anônima, política): aí só não lembra.
 const lsGet = (k: string): string | null => { try { return window.localStorage.getItem(k); } catch { return null; } };
@@ -56,7 +81,7 @@ const settle = <T,>(p: Promise<T>): Promise<Lido<T>> => p.then(v => ({ ok: true,
 const leituraMsg = (e: unknown, fallback: string) =>
   agendaErrorMessage(e, fallback).replace(/ — nada foi salvo/i, '').replace(/ Nada foi salvo\./, '');
 
-const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMaster, service = agendaService }) => {
+const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMaster, service = agendaService, atividades, tiposAtividade, onLancarAtividade }) => {
   const { addToast } = useToast();
   const me = currentUser.id;
 
@@ -78,6 +103,9 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
   const [janela, setJanela] = useState<AgendaJanela>(() => lerJanela(lsGet(LS_JANELA)));
   useEffect(() => { lsSet(LS_VISAO, visao); }, [visao]);
   useEffect(() => { lsSet(LS_JANELA, janela); }, [janela]);
+  // "Mostrar realizado": ligado por padrão, lembrado no navegador como as outras escolhas.
+  const [verRealizado, setVerRealizado] = useState<boolean>(() => lsGet(LS_REALIZADO) !== '0');
+  useEffect(() => { lsSet(LS_REALIZADO, verRealizado ? '1' : '0'); }, [verRealizado]);
   const [tipos, setTipos] = useState<AgendaTipo[]>([]);        // vazio = todos
   const [showDone, setShowDone] = useState(false);
   const [escopo, setEscopo] = useState<string>(ESC_MINHA);    // 'mine' | 'all' | id de uma pessoa (só master)
@@ -178,15 +206,50 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
   const shown = useMemo(() => scopedDone.filter(i => !tipos.length || tipos.includes(i.tipo)), [scopedDone, tipos]);
   const hiddenDone = scoped.length - scopedDone.length;
 
+  // ---- Realizado (Desempenho Operacional) — só leitura, só na linha do tempo ------------
+  // Os últimos REALIZADO_DIAS dias (a aberta conta até agora). PRIVACIDADE IGUAL À DA AGENDA:
+  // quem não é o Edson vê SÓ as suas (escopoEf é sempre 'mine' para ele); o Edson vê as de
+  // outra pessoa ou de todas quando escolhe. Os dados das outras pessoas nem chegam à linha do
+  // tempo de quem não é o Edson.
+  const realizadoBase = useMemo(() => {
+    const lista = Array.isArray(atividades) ? atividades : [];
+    const out: AgendaRealizado[] = [];
+    if (!lista.length) return out;
+    const nomes = new Map((Array.isArray(tiposAtividade) ? tiposAtividade : []).filter(t => t && t.id).map(t => [t.id, String(t.name || '').trim()] as const));
+    const agora = Date.now(), corte = agora - REALIZADO_DIAS * 86400000;
+    lista.forEach(a => {
+      if (!a || !a.id || !a.userId) return;
+      if (!isMaster && a.userId !== me) return;                                 // cada um só as suas
+      const ini = Date.parse(String(a.startTime || ''));
+      if (!Number.isFinite(ini) || ini > agora + 86400000) return;              // data torta ou no futuro
+      let fim: number | null = null;
+      if (a.endTime) { const f = Date.parse(String(a.endTime)); if (!Number.isFinite(f)) return; fim = Math.max(ini, f); }
+      if ((fim ?? agora) < corte) return;                                        // mais velha que 60 dias
+      const nome = String(a.activityName || '').trim();
+      out.push({
+        id: String(a.id), userId: a.userId, tipoNome: nomes.get(a.activityTypeId) || nome || 'Sem tipo', nome: nome || nomes.get(a.activityTypeId) || 'Atividade',
+        notas: String(a.notes || ''), inicioMs: ini, fimMs: fim, duracaoSeg: Math.max(0, Number(a.durationSeconds) || 0),
+      });
+    });
+    return out;
+  }, [atividades, tiposAtividade, isMaster, me]);
+  const realizado = useMemo(() => realizadoBase.filter(r =>
+    escopoEf === ESC_TODAS ? true
+      : escopoEf === ESC_MINHA ? r.userId === me
+      : r.userId === escopoEf), [realizadoBase, escopoEf, me]);
+  const comRealizado = visao === 'timeline' && verRealizado && realizado.length > 0;
+
   // Pessoas que têm compromisso (para o seletor do master). A escolhida fica na lista
   // mesmo se deixou de ter item — senão o seletor mostrava outra coisa com a tela filtrada.
+  // Quem só tem realizado nos últimos 60 dias também entra (só o master chega aqui).
   const pessoas = useMemo(() => {
     const ids = new Set<string>();
     all.forEach(i => { if (i.ownerId !== me) ids.add(i.ownerId); });
+    if (isMaster) realizadoBase.forEach(r => { if (r.userId !== me) ids.add(r.userId); });
     if (escopo !== ESC_MINHA && escopo !== ESC_TODAS) ids.add(escopo);
     return Array.from(ids).map(id => ({ id, nome: nomePorId(usersById, id), setor: (usersById.get(id)?.sector || '').trim() }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [all, me, escopo, usersById]);
+  }, [all, me, escopo, usersById, isMaster, realizadoBase]);
 
   const titulo = escopoEf === ESC_MINHA ? 'Minha agenda' : escopoEf === ESC_TODAS ? 'Agenda de todos' : `Agenda de ${nomePorId(usersById, escopoEf)}`;
   // A agenda de OUTRA pessoa é só leitura (em "todas", os seus continuam editáveis).
@@ -226,6 +289,16 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
   const openItem = useCallback((it: AgendaItem) => setModal(m => ({ open: true, seq: m.seq + 1, mode: it.ownerId === me ? 'edit' : 'view', item: it, initial: undefined })), [me]);
   // Estáveis: o useDialog refaz o foco quando o onClose muda de identidade.
   const closeModal = useCallback(() => setModal(m => ({ ...m, open: false })), []);
+  // "Lançar como atividade" (30/09): só o DONO, e só quem tem o Desempenho Operacional (sem
+  // onLancarAtividade o modal nem mostra o botão). Fecha o compromisso e abre a outra aba com
+  // o lançamento preenchido — quem grava é a pessoa, lá.
+  const lancarAtividade = useCallback((it: AgendaItem) => {
+    if (!onLancarAtividade || it.ownerId !== me) return;
+    const p = atividadeDoCompromisso(it);
+    if (!p) { addToast('Não consegui ler as datas deste compromisso.', 'error'); return; }
+    setModal(m => ({ ...m, open: false }));
+    onLancarAtividade(p);
+  }, [onLancarAtividade, me, addToast]);
   const onSaved = useCallback((saved: AgendaItem) => {
     saveSeq.current++;
     setItems(l => { const i = l.findIndex(x => x.id === saved.id); if (i < 0) return [...l, saved]; const n = l.slice(); n[i] = saved; return n; });
@@ -434,7 +507,16 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
               <X size={12} aria-hidden="true" /> todos
             </button>
           )}
-          <label className="sm:ml-auto text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 cursor-pointer select-none py-1">
+          {/* Só aparece na linha do tempo e quando há realizado para mostrar (nada de controle
+              que não faz nada). */}
+          {visao === 'timeline' && realizado.length > 0 && (
+            <label className="sm:ml-auto text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 cursor-pointer select-none py-1"
+              title={`Atividades já lançadas no Desempenho Operacional nos últimos ${REALIZADO_DIAS} dias — só leitura`}>
+              <input type="checkbox" checked={verRealizado} onChange={e => setVerRealizado(e.target.checked)} className="accent-blue-600" />
+              Mostrar realizado ({realizado.length})
+            </label>
+          )}
+          <label className={`${visao === 'timeline' && realizado.length > 0 ? 'sm:ml-3' : 'sm:ml-auto'} text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 cursor-pointer select-none py-1`}>
             <input type="checkbox" checked={showDone} onChange={e => setShowDone(e.target.checked)} className="accent-blue-600" />
             Mostrar concluídos e cancelados{!showDone && hiddenDone > 0 ? ` (${hiddenDone})` : ''}
           </label>
@@ -466,7 +548,7 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
           <p>{loadError}</p>
           <button type="button" onClick={() => { load(); }} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">Tentar de novo</button>
         </div>
-      ) : scoped.length === 0 ? (
+      ) : scoped.length === 0 && !comRealizado ? (
         <div className={`${card} relative p-8 sm:p-10 text-center space-y-4`}>
           <span aria-hidden="true" className="absolute left-3 top-3 w-3 h-3 border-l-2 border-t-2 border-orange-500/50" />
           <span aria-hidden="true" className="absolute right-3 bottom-3 w-3 h-3 border-r-2 border-b-2 border-orange-500/50" />
@@ -502,7 +584,7 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
             </button>
           )}
         </div>
-      ) : shown.length === 0 ? (
+      ) : shown.length === 0 && !comRealizado ? (
         <div className={`${card} p-10 text-center text-slate-500 dark:text-slate-400 space-y-3`}>
           <CalendarClock size={26} className="mx-auto opacity-50" aria-hidden="true" />
           <p>Nenhum compromisso com esses filtros.</p>
@@ -523,6 +605,7 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
           savingId={savingId}
           onOpen={openItem}
           onCommitDates={commitDates}
+          realizado={comRealizado ? realizado : NENHUM_REALIZADO}
         />
       ) : (
         <AgendaList
@@ -550,6 +633,7 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
           onClose={closeModal}
           onSaved={onSaved}
           onDeleted={onDeleted}
+          onLancarAtividade={onLancarAtividade ? lancarAtividade : undefined}
         />
       )}
     </div>

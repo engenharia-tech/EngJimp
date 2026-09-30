@@ -3322,6 +3322,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             {isPerCapitaModalOpen && (
               <PerCapitaConfigModal
                 perCapitaStats={perCapitaStats}
+                inicio={startDate}
+                fim={endDate}
                 totalHours={totalHours}
                 overrideMonths={overrideMonths}
                 designerWeights={designerWeights}

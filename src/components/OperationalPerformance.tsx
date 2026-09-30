@@ -66,7 +66,21 @@ const getOriginalId = (idString: string): string => {
   return match ? match[1] : idString;
 };
 
+// Veio da AGENDA (30/09/2026): "Lançar como atividade" num compromisso abre esta tela com o
+// lançamento de período ("PREENCHER LACUNA") já preenchido — data, horas (dia inteiro = a pessoa
+// digita) e a observação = título do compromisso. O TIPO a pessoa escolhe; nada é gravado sem
+// ela salvar. Consumido UMA vez (onPrefillConsumido): voltar à aba não reabre.
+export interface AtividadePrefill {
+  seq: number;
+  inicioIso: string;
+  fimIso: string;
+  semHora: boolean;
+  titulo: string;
+}
+
 interface OperationalPerformanceProps {
+  prefillAtividade?: AtividadePrefill | null;
+  onPrefillConsumido?: () => void;
   activities: OperationalActivity[];
   activityTypes: ActivityType[];
   projects: ProjectSession[];
@@ -91,6 +105,8 @@ interface OperationalPerformanceProps {
 }
 
 export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
+  prefillAtividade,
+  onPrefillConsumido,
   activities,
   activityTypes,
   projects,
@@ -232,7 +248,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
   const [isAddingType, setIsAddingType] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
-  const [isEditingGap, setIsEditingGap] = useState<{ start: string; end: string } | null>(null);
+  // semHora/daAgenda: só no lançamento que veio da agenda (dia inteiro = horas em branco; o
+  // título do compromisso para o aviso no topo da janela).
+  const [isEditingGap, setIsEditingGap] = useState<{ start: string; end: string; semHora?: boolean; daAgenda?: string } | null>(null);
   const [isEditingActivity, setIsEditingActivity] = useState<OperationalActivity | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [selectedActivityType, setSelectedActivityType] = useState('');
@@ -252,8 +270,14 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       setEditStartTime(isEditingActivity.startTime ? format(parseISO(isEditingActivity.startTime), 'HH:mm') : format(new Date(), 'HH:mm'));
       setEditEndTime(isEditingActivity.endTime ? format(parseISO(isEditingActivity.endTime), 'HH:mm') : format(new Date(), 'HH:mm'));
     } else if (isEditingGap) {
-      setEditStartTime(format(parseISO(isEditingGap.start), 'HH:mm'));
-      setEditEndTime(format(parseISO(isEditingGap.end), 'HH:mm'));
+      if (isEditingGap.semHora) {
+        // Compromisso de dia inteiro (da agenda): a hora é a pessoa que diz.
+        setEditStartTime('');
+        setEditEndTime('');
+      } else {
+        setEditStartTime(format(parseISO(isEditingGap.start), 'HH:mm'));
+        setEditEndTime(format(parseISO(isEditingGap.end), 'HH:mm'));
+      }
     }
   }, [isEditingActivity, isEditingGap]);
 
@@ -263,12 +287,38 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   }, [activityTypes]);
 
   // Set default selected activity type
+  // (Lançamento vindo da agenda: o TIPO fica em branco para a pessoa escolher — não adivinhar.)
   useEffect(() => {
+    if (isEditingGap?.daAgenda !== undefined) return;
     if (!selectedActivityType && activityTypes.length > 0) {
       const firstActive = activityTypes.find(t => t.isActive !== false);
       if (firstActive) setSelectedActivityType(firstActive.id);
     }
-  }, [activityTypes, selectedActivityType]);
+  }, [activityTypes, selectedActivityType, isEditingGap]);
+
+  // Veio da agenda: abre o acompanhamento no DIA do compromisso, na pessoa logada, com a janela
+  // de lançamento preenchida. Consumido na hora (o App esquece o pedido).
+  useEffect(() => {
+    if (!prefillAtividade) return;
+    const p = prefillAtividade;
+    onPrefillConsumido?.();
+    const ini = parseISO(p.inicioIso), fim = parseISO(p.fimIso);
+    if (isNaN(ini.getTime()) || isNaN(fim.getTime())) return;
+    setActiveTab('tracker');
+    setViewMode('day');
+    setSelectedDate(ini);
+    setSelectedUserId(currentUser.id);
+    setSelectedTimelineItem(null);
+    setIsEditingActivity(null);
+    setIsConfirmingDelete(false);
+    setSelectedActivityType('');
+    setGapName('');
+    setGapNotes(p.titulo);
+    setGapIsFlagged(false);
+    setGapIsOvertime(false);
+    setIsEditingGap({ start: ini.toISOString(), end: fim.toISOString(), semHora: p.semHora, daAgenda: p.titulo });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillAtividade]);
 
   const dateLocale = useMemo(() => {
     switch (language) {
@@ -2160,7 +2210,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl border border-gray-200 dark:border-slate-700">
             <div className="flex items-center justify-between mb-4">
               <h3 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                {isEditingActivity ? t('editActivity') : t('fillGap')}
+                {isEditingActivity ? t('editActivity') : isEditingGap?.daAgenda !== undefined ? 'LANÇAR ATIVIDADE' : t('fillGap')}
               </h3>
               {isEditingActivity && (
                 <div className="flex items-center gap-2">
@@ -2191,6 +2241,20 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                 </div>
               )}
             </div>
+
+            {!isEditingActivity && isEditingGap && isEditingGap.daAgenda !== undefined && (() => {
+              // Veio da agenda: diz de onde veio, o dia e o que falta — nada foi gravado ainda.
+              const d0 = parseISO(isEditingGap.start), d1 = parseISO(isEditingGap.end);
+              const dia0 = isNaN(d0.getTime()) ? '' : format(d0, 'dd/MM/yyyy');
+              const dia1 = isNaN(d1.getTime()) ? '' : format(d1, 'dd/MM/yyyy');
+              return (
+                <div role="note" className="mb-4 rounded-xl border border-blue-200 dark:border-blue-900/50 border-l-4 border-l-blue-500 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5 text-xs text-blue-900 dark:text-blue-100 space-y-1">
+                  <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-blue-500 dark:text-blue-300">Da agenda</p>
+                  <p className="break-words"><b>{isEditingGap.daAgenda || 'Compromisso'}</b> · {dia0}{dia1 && dia1 !== dia0 ? ` → ${dia1}` : ''}{isEditingGap.semHora ? ' (dia inteiro)' : ''}</p>
+                  <p>Escolha o <b>tipo de atividade</b>{isEditingGap.semHora ? <> e digite as <b>horas</b></> : ''}, confira e clique em salvar. Nada foi gravado ainda.</p>
+                </div>
+              );
+            })()}
 
             <div className="space-y-4 mb-6">
               <div className="grid grid-cols-2 gap-4">
