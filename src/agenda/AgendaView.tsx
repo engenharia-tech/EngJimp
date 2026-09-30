@@ -24,7 +24,7 @@ import {
 import { temEmail, dominiosEmpresaTexto } from './ParticipantPicker';
 import { AgendaService, AgendaStaleError, agendaService, agendaErrorMessage } from './agendaService';
 import { AgendaItemModal } from './AgendaItemModal';
-import { AgendaTimeline, AgendaJanela, JANELAS } from './AgendaTimeline';
+import { AgendaTimeline, AgendaJanela, JANELAS, lerJanela } from './AgendaTimeline';
 import { AgendaList, TipoIcon, nomePorId, porInicio, ddmm, instante, alertaAtrasado, foraDeBrasilia, fusoDoNavegador } from './AgendaList';
 
 export interface AgendaViewProps {
@@ -74,7 +74,8 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const [visao, setVisao] = useState<Visao>(() => (lsGet(LS_VISAO) === 'lista' ? 'lista' : 'timeline'));
-  const [janela, setJanela] = useState<AgendaJanela>(() => { const v = lsGet(LS_JANELA); return JANELAS.some(j => j.id === v) ? (v as AgendaJanela) : 'quad'; });
+  // Quem nunca escolheu abre em "Mês"; o "Quadrimestre" guardado até 29/09 vira "Trimestre".
+  const [janela, setJanela] = useState<AgendaJanela>(() => lerJanela(lsGet(LS_JANELA)));
   useEffect(() => { lsSet(LS_VISAO, visao); }, [visao]);
   useEffect(() => { lsSet(LS_JANELA, janela); }, [janela]);
   const [tipos, setTipos] = useState<AgendaTipo[]>([]);        // vazio = todos
@@ -388,10 +389,12 @@ const AgendaViewInner: React.FC<AgendaViewProps> = ({ currentUser, users, isMast
             <button type="button" onClick={() => setVisao('lista')} aria-pressed={visao === 'lista'} className={segBtn(visao === 'lista')}><List size={13} aria-hidden="true" /> Lista</button>
           </div>
           {visao === 'timeline' && (
-            <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="Quantos meses cabem na tela">
+            <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="Quanto cabe na tela: dia, semana, mês, trimestre, semestre ou ano">
               {JANELAS.map(j => (
-                <button key={j.id} type="button" onClick={() => setJanela(j.id)} aria-pressed={janela === j.id} aria-label={j.label} className={segBtn(janela === j.id)}>
-                  <span className="sm:hidden">{j.id === 'quad' ? 'Quad.' : j.id === 'sem' ? 'Sem.' : j.label}</span>
+                <button key={j.id} type="button" onClick={() => setJanela(j.id)} aria-pressed={janela === j.id} aria-label={j.label}
+                  title={`Cabe ${j.id === 'dia' ? 'um dia' : j.id === 'semana' ? 'uma semana' : j.id === 'mes' ? 'um mês' : j.id === 'tri' ? 'três meses' : j.id === 'sem' ? 'seis meses' : 'um ano'} na tela; o resto rola para os lados`}
+                  className={segBtn(janela === j.id).replace('px-3', 'px-2 sm:px-3')}>
+                  <span className="sm:hidden">{j.curto}</span>
                   <span className="hidden sm:inline">{j.label}</span>
                 </button>
               ))}
