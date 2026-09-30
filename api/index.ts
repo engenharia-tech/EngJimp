@@ -1575,8 +1575,39 @@ app.post("/api/users/delete", async (req, res) => {
     return res.status(403).json({ success: false, error: "Só um GESTOR exclui CEO, GESTOR e os admins do OKR." });
   }
   const oldKey = String((cur && cur[0] && (cur[0] as any).username) || "").trim().toLowerCase();
-  await admin.from("projects").update({ user_id: null }).eq("user_id", id);
-  await admin.from("innovations").update({ author_id: null }).eq("author_id", id);
+  // Quem tem REGISTRO não é excluído. No banco de produção (lido em 30/09), projetos, atividades,
+  // paradas, inovações e ocorrências ficam SEM DONO ao excluir (on delete set null) e a agenda é
+  // apagada junto (012) — o Rogerio Sinotti tinha 84 projetos e 120 atividades. Regra do Edson,
+  // 30/09: "preciso que as informações criadas por ele continuem registradas" → desligar, não
+  // excluir. Antes esta rota zerava o dono dos projetos e das inovações ANTES de tentar excluir,
+  // sem transação. Se não der para contar, também não exclui.
+  const REGISTROS_DO_USUARIO: [string, string, string][] = [
+    ["projects", "user_id", "projeto(s)"],
+    ["operational_activities", "user_id", "atividade(s)"],
+    ["interruptions", "designer_id", "parada(s)"],
+    ["innovations", "author_id", "inovação(ões)"],
+    ["issues", "reported_by", "ocorrência(s)"],
+    ["project_requests", "created_by", "pedido(s) criado(s)"],
+    ["project_requests", "assigned_to", "pedido(s) atribuído(s)"],
+    ["agenda_item", "owner_id", "compromisso(s) na agenda"],
+  ];
+  const achados: string[] = [];
+  for (const [tabela, coluna, rotulo] of REGISTROS_DO_USUARIO) {
+    const { count, error: cErr } = await admin.from(tabela).select("id", { count: "exact", head: true }).eq(coluna, id);
+    // NaN (Content-Range "*") também é "number": só vale inteiro >= 0.
+    if (cErr || !Number.isInteger(count) || (count as number) < 0) {
+      console.error("[users/delete] não consegui contar", tabela, coluna, cErr?.code || "");
+      return res.status(503).json({ success: false, message: "Não consegui conferir os registros deste usuário. Nada foi excluído." });
+    }
+    if ((count as number) > 0) achados.push(`${count} ${rotulo}`);
+  }
+  if (achados.length) {
+    return res.status(409).json({
+      success: false,
+      message: `Não excluí: este usuário tem ${achados.join(", ")}. Excluir apagaria a autoria desses registros. ` +
+        "Para quem saiu da empresa, o certo é desligar (tirar o acesso e manter o cadastro) — fale com o Edson.",
+    });
+  }
   const { data, error } = await admin.from("users").delete().eq("id", id).select();
   if (error) return res.json({ success: false, message: `Erro ao excluir: ${error.message}` });
   if (!data || data.length === 0) return res.json({ success: false, message: "Usuario nao encontrado." });
