@@ -27,12 +27,13 @@ type OkrRow = { ownerKey: string; store: OkrStore };
 interface Props {
   currentUser?: User;
   users: User[];
-  canShare?: boolean;   // Edson ou admin de OKR: gera/troca o link público do painel
+  canShare?: boolean;   // Edson ou admin de OKR: pega e copia o link público do painel
+  canRotate?: boolean;  // SÓ o Edson: "Gerar link novo" derruba o link já distribuído (30/09)
   external?: OkrRow[];  // link público: os OKRs já vêm do servidor (só os números)
 }
 
 // Visão macro do OKR por setor. Não edita nada, só lê.
-const OkrIndicatorsInner: React.FC<Props> = ({ users, canShare, external }) => {
+const OkrIndicatorsInner: React.FC<Props> = ({ users, canShare, canRotate, external }) => {
   const { addToast } = useToast();
   const [rows, setRows] = useState<OkrRow[] | null>(external || null);
   const [loading, setLoading] = useState(!external);
@@ -54,7 +55,7 @@ const OkrIndicatorsInner: React.FC<Props> = ({ users, canShare, external }) => {
       setShareLink(link);
       const msg = rotate ? 'Link novo copiado! O anterior parou de funcionar.' : 'Link copiado! Quem abrir só visualiza.';
       try { await navigator.clipboard.writeText(link); addToast(msg, 'success'); } catch { addToast('Link gerado.', 'success'); }
-    } catch { addToast('Não consegui gerar o link.', 'error'); } finally { setSharing(false); }
+    } catch (e) { addToast((e as Error)?.message || 'Não consegui gerar o link.', 'error'); } finally { setSharing(false); }
   };
 
   // owner_key (username minúsculo) -> usuário
@@ -129,7 +130,7 @@ const OkrIndicatorsInner: React.FC<Props> = ({ users, canShare, external }) => {
             <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 shrink-0">Link do painel (só leitura):</span>
             <input readOnly value={shareLink} onFocus={e => e.target.select()} className="flex-1 min-w-[180px] bg-transparent text-xs text-slate-600 dark:text-slate-300 outline-none" />
             <button onClick={() => { navigator.clipboard?.writeText(shareLink); addToast('Copiado!', 'success'); }} title="Copiar" className="shrink-0 text-blue-600 dark:text-blue-400"><Copy size={14} /></button>
-            <button onClick={() => share(true)} disabled={sharing} className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 disabled:opacity-50"><Link2 size={12} /> Gerar link novo</button>
+            {canRotate && <button onClick={() => share(true)} disabled={sharing} className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 disabled:opacity-50"><Link2 size={12} /> Gerar link novo</button>}
           </div>
         )}
       </div>

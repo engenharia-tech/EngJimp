@@ -635,8 +635,19 @@ export const fetchAppState = async (): Promise<AppState> => {
     try {
       const fallbackLogsStr = localStorage.getItem('local_audit_logs');
       if (fallbackLogsStr) {
-        fallbackLogs = JSON.parse(fallbackLogsStr);
+        const lidos = JSON.parse(fallbackLogsStr);
+        fallbackLogs = Array.isArray(lidos) ? lidos : [];
       }
+      // Salário fora do log (Edson, 30/09): a migração 019 limpa o banco; aqui sai da cópia que
+      // este navegador guarda, senão os valores antigos continuariam na tela de Auditoria.
+      let limpou = false;
+      fallbackLogs = fallbackLogs.map((l) => {
+        const d = semSalarioNoLog(l?.details);
+        if (d === l?.details) return l;
+        limpou = true;
+        return { ...l, details: d as string };
+      });
+      if (limpou) localStorage.setItem('local_audit_logs', JSON.stringify(fallbackLogs));
     } catch (e) {
       console.error("Erro ao carregar local_audit_logs:", e);
     }
@@ -651,7 +662,7 @@ export const fetchAppState = async (): Promise<AppState> => {
         entityId: l.entity_id,
         entityName: l.entity_name,
         timestamp: l.timestamp,
-        details: l.details,
+        details: semSalarioNoLog(l.details) as string,
         ipAddress: l.ip_address || undefined
       }));
 
@@ -2692,6 +2703,14 @@ export const fetchClientIp = async (): Promise<string> => {
 if (typeof window !== "undefined") {
   fetchClientIp().catch(() => {});
 }
+
+// Salário, só o Edson — e o Log de Auditoria é lido por GESTOR, CEO e COORDENADOR (011). O app
+// antigo gravava o valor em dois formatos (edição e criação de usuário); estes são os MESMOS dois
+// padrões da migração 019, para limpar o que ainda vier do banco ou da cópia do navegador.
+const SALARIO_EDICAO_RE = /Salário \(ex: "[^"]*", novo: "[^"]*"\)/g;
+const SALARIO_CRIACAO_RE = /(\[Cargo: [^,\]]*), Salário: [^\]]*\]/g;
+export const semSalarioNoLog = (d: unknown): unknown =>
+  typeof d === 'string' ? d.replace(SALARIO_EDICAO_RE, 'Salário (alterado)').replace(SALARIO_CRIACAO_RE, '$1]') : d;
 
 export const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Promise<void> => {
   try {

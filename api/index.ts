@@ -876,11 +876,12 @@ app.post("/api/users/save", async (req, res) => {
       if (await inUse("username", user.username)) return res.json({ success: false, message: "Nome de usuário já existe." });
       if (await okrKeyTaken(user.username.toLowerCase())) return res.json({ success: false, message: "Esse nome de usuário está ligado ao OKR de outra pessoa." });
     } catch (e: any) { return res.json({ success: false, message: e.message }); }
-    // "Admin de visualização" do OKR: só o Edson ou o admin de OKR dá essa marca — e o
-    // grupo ADM Externo é essa marca (quem nasce nele nasce visualizador).
+    // "Admin de visualização" do OKR: só o Edson, ou um GESTOR que seja admin de OKR, dá essa
+    // marca — e o grupo ADM Externo é essa marca (quem nasce nele nasce visualizador). Um CEO
+    // admin de OKR NÃO (Edson, 30/09: "só um GESTOR ou você muda quem é só visualização").
     const newViewer = !!user.okrViewer || user.role === ADM_EXTERNO;
     if (newViewer) {
-      try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson ou o admin de OKR marca alguém como admin de visualização do OKR." }); }
+      try { if (!isGestor || !(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson (ou um GESTOR admin de OKR) marca alguém como admin de visualização do OKR." }); }
       catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
     }
     // Salario so e gravado se quem cria for o Edson. Um admin comum nem
@@ -941,8 +942,10 @@ app.post("/api/users/save", async (req, res) => {
       const wasExterno = (cur[0] as any).role === ADM_EXTERNO;
       const wantExterno = (user.role === undefined || user.role === null ? (cur[0] as any).role : user.role) === ADM_EXTERNO;
       if (wantExterno) wantViewer = true;
-      if ((wantViewer !== wasViewer || wantExterno !== wasExterno) && !(await isOkrMasterDb(admin, claims.sub))) {
-        return res.status(403).json({ success: false, error: "Só o Edson ou o admin de OKR muda o admin de visualização do OKR (e o grupo ADM Externo)." });
+      // Mudar quem é "só visualização" (ou o grupo ADM Externo): só o Edson, ou um GESTOR admin
+      // de OKR. Um CEO admin de OKR não — senão rebaixaria um GESTOR pela API (Edson, 30/09).
+      if ((wantViewer !== wasViewer || wantExterno !== wasExterno) && (!isGestor || !(await isOkrMasterDb(admin, claims.sub)))) {
+        return res.status(403).json({ success: false, error: "Só o Edson (ou um GESTOR admin de OKR) muda o admin de visualização do OKR (e o grupo ADM Externo)." });
       }
       // O Edson e o admin de OKR editam o OKR de todos: marcá-los "só visualização"
       // fecharia as gravações deles no banco (e o Edson não teria como desfazer).
@@ -1098,6 +1101,11 @@ app.post("/api/okr/panel/share", async (req, res) => {
   try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "So o Edson ou o admin de OKR compartilha o painel." }); }
   catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
   const rotate = !!(req.body && (req.body as any).rotate);
+  // Gerar um link NOVO derruba o que o Edson já distribuiu (25/09 foi assim): só ele troca.
+  // O admin de OKR continua pegando e copiando o link atual. Decisão do Edson, 30/09.
+  if (rotate && !claimsAreEdson(claims)) {
+    return res.status(403).json({ success: false, error: "Só o Edson gera um link novo do painel. O link atual continua valendo." });
+  }
   if (!rotate) {
     const { data: row, error } = await admin.from("okr_panel_share").select("token").eq("id", 1).limit(1);
     if (error) return res.status(500).json({ success: false, error: "Erro ao ler o link." });
