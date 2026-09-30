@@ -457,6 +457,47 @@ const canonUuid = (v: any): string | null => {
   const s = String(v ?? "").trim().toLowerCase();
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s) ? s : null;
 };
+
+// ---- DESLIGADO (migração 022, 30/09/2026) — decisão do Edson, 30/09: quem sai da empresa é
+// DESLIGADO, não excluído ("preciso que as informações criadas por ele continuem registradas").
+// users.desligado_em = o ÚLTIMO dia trabalhado (inclusive): nesse dia a pessoa ainda entra; do dia
+// seguinte em diante (dia de Joinville) o servidor a trata como sem acesso em todas as rotas que
+// leem o cadastro — o crachá dura 24 h e não é revogado. O Edson nunca é desligado (pelo id).
+// O dia de Joinville (AAAA-MM-DD), qualquer que seja o fuso da máquina (a Vercel roda em UTC).
+function diaJoinville(d: Date = new Date()): string {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const g = (t: string) => (p.find((x) => x.type === t) || { value: "" }).value;
+  return `${g("year")}-${g("month")}-${g("day")}`;
+}
+const hojeJoinville = (): string => diaJoinville(new Date());
+const usuarioDesligado = (r: any, hoje: string = hojeJoinville()): boolean =>
+  !!r && !!r.desligado_em && String(r.desligado_em).slice(0, 10) < hoje;
+// A regra usada nas rotas: o Edson (pelo id) nunca conta como desligado.
+const desligadoPeloCadastro = (r: any, id: string | null): boolean => id !== EDSON_ID && usuarioDesligado(r);
+// Leitura de users COM desligado_em. QUALQUER erro na leitura com a coluna (a 022 não rodou = 42703;
+// cache velho do PostgREST; grant) → relê SEM ela (desligado_em = null, ninguém fica trancado para
+// fora) e registra só o código do erro, uma vez por código. Se a releitura também falhar (banco fora,
+// conexão) → devolve o erro, e quem chamou responde 503: "não consegui conferir" nunca vira "pode".
+const avisosSemDesligado = new Set<string>();
+async function lerComDesligado(consulta: (cols: string) => PromiseLike<any>, cols: string): Promise<{ data: any[] | null; error: any }> {
+  const r1: any = await consulta(`${cols}, desligado_em`);
+  if (!r1.error) return { data: r1.data || [], error: null };
+  const code = String((r1.error && r1.error.code) || "sem-codigo");
+  if (!avisosSemDesligado.has(code)) {
+    avisosSemDesligado.add(code);
+    console.warn("[users] leitura com desligado_em falhou; relida sem a coluna (a 022 rodou?):", code);
+  }
+  const r2: any = await consulta(cols);
+  if (r2.error) return { data: null, error: r2.error };
+  return { data: (r2.data || []).map((x: any) => ({ ...x, desligado_em: null })), error: null };
+}
+// UMA linha de users pelo id (ou null). Falha LANÇA com a frase de quem chamou (a rota responde 503).
+async function lerUsuario(admin: any, id: string, cols: string, msgErro = "Nao consegui conferir o seu cadastro. Tente de novo."): Promise<any | null> {
+  const { data, error } = await lerComDesligado((c) => admin.from("users").select(c).eq("id", id).limit(1), cols);
+  if (error) throw new Error(msgErro);
+  return (data && data[0]) || null;
+}
+
 // O cargo que vale é o do CADASTRO agora, não o gravado no crachá (que dura 24 h):
 // um admin rebaixado deixava de ser admin só quando o crachá vencia.
 // Falha na leitura LANÇA (a rota responde 503): "não consegui conferir" não pode
@@ -470,35 +511,38 @@ const canonUuid = (v: any): string | null => {
 const ADM_EXTERNO = "ADM_EXTERNO";
 const ehVisualizador = (r: any, id: string) =>
   !!r && (r.okr_viewer || r.role === ADM_EXTERNO) && !r.okr_admin && id !== EDSON_ID;
-const currentRole = async (admin: any, sub: any): Promise<string | null> => {
-  const id = canonUuid(sub); if (!id) return null;
-  const { data, error } = await admin.from("users").select("role, okr_viewer, okr_admin").eq("id", id).limit(1);
-  if (error) throw new Error("Nao consegui conferir o seu cargo. Tente de novo.");
-  if (!data || !data.length) return null;
-  const r = data[0] as any;
+// O cargo a partir da linha do cadastro (sem linha ou desligado = sem cargo: todas as rotas de admin
+// dão 403 — 022, 30/09).
+const papelDoCadastro = (r: any, id: string): string | null => {
+  if (!r || desligadoPeloCadastro(r, id)) return null;
   if (ehVisualizador(r, id)) return "VISUALIZACAO";
   return String(r.role || "");
+};
+const currentRole = async (admin: any, sub: any): Promise<string | null> => {
+  const id = canonUuid(sub); if (!id) return null;
+  const r = await lerUsuario(admin, id, "role, okr_viewer, okr_admin", "Nao consegui conferir o seu cargo. Tente de novo.");
+  return papelDoCadastro(r, id);
 };
 // "Admin de visualização" do OKR, lido do cadastro (mesma regra acima). Falha LANÇA.
 // Quem NÃO está (mais) no cadastro também fica sem acesso: o crachá dura 24 h, e sem a
 // linha a regra do visualizador daria "não é" — um visualizador excluído ganharia MAIS.
+// O DESLIGADO também (022): e-mail, assistente, custo/hora e agenda recusam como a um visualizador.
 const isViewerDb = async (admin: any, sub: any): Promise<boolean> => {
   const id = canonUuid(sub); if (!id) return true;
   if (id === EDSON_ID) return false;
-  const { data, error } = await admin.from("users").select("role, okr_viewer, okr_admin").eq("id", id).limit(1);
-  if (error) throw new Error("Nao consegui conferir o seu acesso. Tente de novo.");
-  const r = data && (data[0] as any);
+  const r = await lerUsuario(admin, id, "role, okr_viewer, okr_admin", "Nao consegui conferir o seu acesso. Tente de novo.");
   if (!r) return true;
+  if (desligadoPeloCadastro(r, id)) return true;
   return ehVisualizador(r, id);
 };
 // Edson ou admin de OKR, lido do CADASTRO: só eles marcam alguém como "admin de
 // visualização" do OKR (a marca dá leitura do OKR de todos) e geram o link do painel.
+// Desligado nunca é (022).
 const isOkrMasterDb = async (admin: any, sub: any): Promise<boolean> => {
   const id = canonUuid(sub); if (!id) return false;
   if (id === EDSON_ID) return true;
-  const { data, error } = await admin.from("users").select("okr_admin").eq("id", id).limit(1);
-  if (error) throw new Error("Nao consegui conferir a sua permissao no OKR. Tente de novo.");
-  return !!(data && data[0] && (data[0] as any).okr_admin);
+  const r = await lerUsuario(admin, id, "okr_admin", "Nao consegui conferir a sua permissao no OKR. Tente de novo.");
+  return !!r && !desligadoPeloCadastro(r, id) && !!r.okr_admin;
 };
 
 // ---- Rate limiting (anti brute-force). Serverless nao guarda estado em
@@ -613,22 +657,30 @@ app.post("/api/auth/login", async (req, res) => {
   if (!user) {
     return res.status(401).json({ success: false, error: "Usuario ou senha invalidos." });
   }
+  // "Admin de visualização" do OKR: o verify_login devolve colunas fixas, então a
+  // marca é lida à parte (pelo id que acabou de provar a senha) — e, junto, o desligamento (022).
+  // A conferência vem DEPOIS da senha (quem não a tem não descobre que a conta foi desligada) e
+  // ANTES do crachá. Não consegui ler = 503 (antes a falha passava calada, sem a marca).
+  const uid = canonUuid(user.id) || "";
+  let vw: any = null;
+  try { vw = await lerUsuario(admin, uid, "role, okr_viewer, okr_admin", "Nao consegui conferir o seu acesso. Tente de novo."); }
+  catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+  if (desligadoPeloCadastro(vw, uid)) {
+    return res.status(403).json({ success: false, error: "Este acesso foi encerrado." });
+  }
   await rlReset(`login:fail:${unameKey}`); // sucesso limpa as falhas do usuario
   // Cracha de sessao: so emitimos para quem NAO precisa criar senha (quem
   // precisa vai para a tela de criar senha, sem sessao valida ainda).
   const token = user.must_set_password ? null : signSupabaseJwt(user);
   // Sanitiza: o payload de login NUNCA leva salary/senha/hash para o navegador
   // (C2). So o Edson ve salario, e por uma porta propria (/api/users/salaries).
-  // "Admin de visualização" do OKR: o verify_login devolve colunas fixas, então a
-  // marca é lida à parte (pelo id que acabou de provar a senha).
-  const { data: vw } = await admin.from("users").select("role, okr_viewer, okr_admin").eq("id", user.id).limit(1);
   const safeUser = {
     id: user.id, username: user.username, name: user.name, surname: user.surname,
     email: user.email, phone: user.phone, role: user.role,
     must_set_password: user.must_set_password,
     okr_enabled: user.okr_enabled, okr_only: user.okr_only, sector: user.sector,
     okr_admin: user.okr_admin,
-    okr_viewer: ehVisualizador(vw && vw[0], canonUuid(user.id) || ""),
+    okr_viewer: ehVisualizador(vw, uid),
   };
   return res.json({ success: true, user: safeUser, token });
 });
@@ -651,12 +703,13 @@ app.post("/api/auth/request-code", async (req, res) => {
   if ((await rlHit(`reqcode:user:${uname}`, 3600)) > 4) return tooMany(res, 3600);
 
   // Igualdade sem distinguir maiúsculas (ilike com % e _ escapados: sem curinga).
-  const { data: rows } = await admin.from("users").select("username,email,name").ilike("username", ilikeExact(uname)).limit(50);
+  const { data: rows } = await lerComDesligado((c) => admin.from("users").select(c).ilike("username", ilikeExact(uname)).limit(50), "id,username,email,name");
   // O PostgREST lê '*' como curinga no ilike (e não há como escapá-lo): o ilike só junta
   // candidatos; quem decide é a comparação exata. Dali em diante vale o login GRAVADO.
   const u = (rows || []).find((r: any) => loginKey(r.username) === uname);
   const email = u?.email?.trim();
-  if (!u || !isValidEmail(email)) {
+  // Desligado (022) recebe a MESMA resposta neutra, sem código e sem e-mail: senão recriaria a senha.
+  if (!u || !isValidEmail(email) || desligadoPeloCadastro(u, canonUuid(u.id))) {
     return res.json({ success: true, delivered: "no_email" });
   }
 
@@ -704,6 +757,16 @@ app.post("/api/auth/set-password", async (req, res) => {
   if ((await rlHit(`setpw:ip:${ip}`, 900)) > 60) return tooMany(res, 900);
   if ((await rlHit(`setpw:fail:${unameKey}`, 900)) > 6) return tooMany(res, 900); // conta antes (ver login)
 
+  // Desligado (022) não cria senha nem com um código que tenha sobrado (a tentativa já foi contada).
+  {
+    const { data: cand, error: candErr } = await lerComDesligado((c) => admin.from("users").select(c).ilike("username", ilikeExact(unameKey)).limit(50), "id,username");
+    if (candErr) return res.status(503).json({ success: false, error: "Nao consegui conferir o usuario. Tente de novo." });
+    const alvo = (cand || []).find((r: any) => loginKey(r.username) === unameKey);
+    if (alvo && desligadoPeloCadastro(alvo, canonUuid(alvo.id))) {
+      return res.status(400).json({ success: false, error: "Codigo invalido ou expirado." });
+    }
+  }
+
   const { data, error } = await admin.rpc("set_password_with_code", {
     p_username: unameKey,
     p_code: String(code),
@@ -733,6 +796,11 @@ async function pwGuard(req: express.Request, res: express.Response): Promise<{ a
   if (!id) { res.status(401).json({ success: false, error: "Sessao expirada. Entre de novo." }); return null; }
   const admin = getSupabaseAdmin();
   if (!admin) { res.status(503).json({ success: false, error: "Servidor nao configurado." }); return null; }
+  // Fora do cadastro ou desligado (022): o crachá ainda vale até 24 h, a senha não.
+  try {
+    const eu = await lerUsuario(admin, id, "id");
+    if (!eu || desligadoPeloCadastro(eu, id)) { res.status(401).json({ success: false, error: "Sessao expirada. Entre de novo." }); return null; }
+  } catch (e: any) { res.status(503).json({ success: false, error: e.message }); return null; }
   if ((await rlHit(`pw:ip:${clientIp(req)}`, PW_JANELA)) > 60) { tooMany(res, PW_JANELA); return null; }
   // A tentativa é CONTADA antes de conferir a senha (acertar zera). Conferir antes e
   // contar depois deixava 60 pedidos simultâneos testarem 60 senhas (todos liam 0).
@@ -813,7 +881,11 @@ app.post("/api/users/save", async (req, res) => {
   let isAdmin = false;
   let isGestor = false; // só GESTOR mexe em CEO/GESTOR e nas contas que leem o OKR de todos
   try {
-    const papel = await currentRole(admin, claims.sub);
+    // Desligado (022): nenhum modo — nem o próprio contato pelo Meu Perfil, que não passa pelo cargo.
+    const meuId = canonUuid(claims.sub);
+    const eu = meuId ? await lerUsuario(admin, meuId, "role, okr_viewer, okr_admin", "Nao consegui conferir o seu cargo. Tente de novo.") : null;
+    if (meuId && desligadoPeloCadastro(eu, meuId)) return res.status(403).json({ success: false, error: "Este acesso foi encerrado." });
+    const papel = meuId ? papelDoCadastro(eu, meuId) : null;
     isAdmin = ADMIN_ROLES.includes(String(papel));
     isGestor = papel === "GESTOR" || claimsAreEdson(claims);
   }
@@ -989,6 +1061,8 @@ app.post("/api/users/save", async (req, res) => {
   }
   // Salario: leitura E escrita restritas ao Edson. Sem esta guarda, um admin
   // comum editando um usuario ZERARIA o salario real (o cliente dele tem 0).
+  // O custo/hora por período (022) segue sozinho: o gatilho de users recalcula a série de hoje em
+  // diante quando salário, cargo ou gente muda — pela tela ou pelo SQL Editor. Nada a chamar aqui.
   if (claimsAreEdson(claims) && user.salary !== undefined && user.salary !== null) {
     patch.salary = Number(user.salary) || 0;
   }
@@ -1031,9 +1105,10 @@ app.post("/api/settings/save", async (req, res) => {
   if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
-  let roleOk = false;
-  try { roleOk = ADMIN_ROLES.includes(String(await currentRole(admin, claims.sub))); }
+  let papel: string | null = null;
+  try { papel = await currentRole(admin, claims.sub); }
   catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+  const roleOk = ADMIN_ROLES.includes(String(papel));
   if (!(roleOk || claimsAreEdson(claims))) {
     return res.status(403).json({ success: false, error: "Sem permissao para alterar configuracoes." });
   }
@@ -1041,10 +1116,24 @@ app.post("/api/settings/save", async (req, res) => {
   const incoming = (req.body && req.body.row) || {};
   const row: any = {};
   for (const k of Object.keys(incoming)) if (SETTINGS_WRITABLE.has(k)) row[k] = incoming[k];
+  // CUSTO/HORA (022, 30/09/2026). R$ só para o Edson (pelo id) e os CEOs (cargo do cadastro) — decisão
+  // do Edson, 30/09: de qualquer outro admin, o valor e o modo são ignorados (o resto grava).
+  if (!(claimsAreEdson(claims) || papel === "CEO")) {
+    delete row.hourly_cost;
+    delete row.use_automatic_cost;
+  }
   if (Object.keys(row).length === 0) return res.json({ success: true }); // nada a gravar
 
-  const { data: existing, error: selErr } = await admin.from("settings").select("id").limit(1);
+  const { data: existing, error: selErr } = await admin.from("settings").select("id, use_automatic_cost").limit(1);
   if (selErr) return res.json({ success: false, message: selErr.message });
+  // O valor manual só é gravado junto do modo MANUAL. No automático a tela mandava a MÉDIA, e
+  // settings.hourly_cost todo logado lê: era o vazamento da taxa. Decisão do Edson, 30/09 (tarde):
+  // "não zerar; só parar de gravar a média nele" — o valor que já está lá fica como está.
+  if ("hourly_cost" in row) {
+    const modo = "use_automatic_cost" in row ? row.use_automatic_cost : (existing && existing[0] ? (existing[0] as any).use_automatic_cost : null);
+    if (modo === true || modo === "true") delete row.hourly_cost;
+  }
+  if (Object.keys(row).length === 0) return res.json({ success: true }); // nada a gravar
   if (existing && existing.length > 0) {
     const { error } = await admin.from("settings").update(row).eq("id", (existing[0] as any).id);
     if (error) return res.json({ success: false, message: error.message });
@@ -1067,8 +1156,10 @@ app.post("/api/okr/share", async (req, res) => {
 
   // "O seu OKR" = o nome de usuário ATUAL do cadastro (pelo id do crachá), não o
   // nome gravado no crachá, que dura 24 h e pode ter ficado para trás de uma troca.
-  const { data: me, error: meErr } = await admin.from("users").select("username, role, okr_viewer, okr_admin").eq("id", String(claims.sub || "")).limit(1);
+  const { data: me, error: meErr } = await lerComDesligado((c) => admin.from("users").select(c).eq("id", String(claims.sub || "")).limit(1), "username, role, okr_viewer, okr_admin");
   if (meErr) return res.status(500).json({ success: false, error: "Nao consegui conferir o usuario." });
+  // Desligado (022): o crachá ainda vale até 24 h, o link do OKR não sai.
+  if (desligadoPeloCadastro(me && me[0], canonUuid(claims.sub))) return res.status(403).json({ success: false, error: "Este acesso foi encerrado." });
   if (ehVisualizador(me && me[0], canonUuid(claims.sub) || "")) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao gera link." });
   const self = String((me && me[0] && (me[0] as any).username) || "").trim().toLowerCase();
   const requested = String((req.body && (req.body as any).ownerKey) || "").trim().toLowerCase();
@@ -1605,9 +1696,10 @@ app.post("/api/users/delete", async (req, res) => {
     return res.status(409).json({
       success: false,
       message: `Não excluí: este usuário tem ${achados.join(", ")}. Excluir apagaria a autoria desses registros. ` +
-        "Para quem saiu da empresa, o certo é desligar (tirar o acesso e manter o cadastro) — fale com o Edson.",
+        "Para quem saiu da empresa, o certo é desligar (tirar o acesso e manter o cadastro) — use Desligar na tela de Equipe (Edson ou GESTOR).",
     });
   }
+  // O custo/hora por período (022) segue a exclusão sozinho (gatilho de users, de hoje em diante).
   const { data, error } = await admin.from("users").delete().eq("id", id).select();
   if (error) return res.json({ success: false, message: `Erro ao excluir: ${error.message}` });
   if (!data || data.length === 0) return res.json({ success: false, message: "Usuario nao encontrado." });
@@ -1623,32 +1715,146 @@ app.post("/api/users/delete", async (req, res) => {
 // ============================================================
 // CUSTO / SALARIO (C2 da auditoria). O salario individual NUNCA mais sai do
 // banco para o navegador de ninguem — nem via select('*'). Duas portas:
-//  - /api/labor/hourly-cost: devolve SO a media agregada (custo/hora) que o
-//    app inteiro precisa para custear projetos. Nao revela salario de ninguem.
+//  - /api/labor/hourly-cost: devolve o custo/hora POR PERÍODO (022), e só para
+//    quem pode ver R$. Nao revela salario de ninguem.
 //  - /api/users/salaries: devolve os salarios individuais, SO para o Edson.
 // ============================================================
 
-// GET /api/labor/hourly-cost — media (custo/hora) para o custo automatico.
-app.get("/api/labor/hourly-cost", async (req, res) => {
-  const hcClaims = verifyBearerToken(req);
-  if (!hcClaims) return res.status(401).json({ success: false, error: "Nao autorizado." });
-  const admin = getSupabaseAdmin();
-  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
-  // Custo/hora sai dos salários: não é do painel de OKR (a tela trata a recusa como 0).
-  try { if (await isViewerDb(admin, hcClaims.sub)) return res.status(403).json({ success: false, error: "Sem permissao." }); }
-  catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+// ---- Custo/hora por período (022, 30/09/2026). Decisões do Edson, 30/09: "congelar cada mês" (jan–ago
+// valem o que valem hoje; setembro em diante sem o salário dele; quem é desligado sai do custo no dia
+// seguinte ao último dia) e R$ SÓ para o Edson (pelo id) e os CEOs (cargo lido do CADASTRO, não do
+// crachá). A série mora em custo_hora_periodo e só a service_role a lê.
+//  - Edson/CEO: { podeVerReais: true, periodos: [{desde, taxa}], taxaHoje, taxaInovacoes }.
+//  - demais: { podeVerReais: false, semReais: true, taxaInovacoes } — NUNCA periodos nem taxaHoje.
+//  - taxaInovacoes = a taxa de antes do corte (a linha que cobre 31/08/2026): a tela de Inovações não
+//    muda (decisão 5). Só para quem vê Inovações (a mesma lista de canSeeInnovations, App.tsx).
+// Antes: UMA média com os salários de HOJE, a todos (hourlyRate), aplicada a registros de qualquer data.
+const CUSTO_CARGOS_QUE_VEEM_INOVACOES = ["GESTOR", "CEO", "PROJETISTA", "COORDENADOR", "PROCESSOS"];
+const CUSTO_DIA_DAS_INOVACOES = "2026-08-31";
+// TRANSIÇÃO (cético de 30/09): uma aba aberta com o pacote de ANTES lê `hourlyRate`; sem ele o custo/hora
+// vira 0 e a tela antiga de Inovações GRAVA a economia errada. Até este dia (de Joinville, inclusive),
+// quem vê Inovações ainda recebe hourlyRate = taxaInovacoes — a taxa de antes, que essa pessoa já
+// recebia (não vaza nada novo). O pacote novo ignora o campo. Depois desta data, o campo some.
+const CUSTO_HOURLY_RATE_ANTIGO_ATE = "2026-10-07";
+
+// A regra de ANTES (a 022 não rodou): a média de hoje, como esta rota fazia até 30/09. Só serve para a
+// taxa das Inovações não virar 0 se o código subir antes da 022 (a ordem certa é a 022 primeiro).
+const custoTaxaDaRegraDeAntes = async (admin: any): Promise<number | null> => {
   const { data, error } = await admin.from("users").select("role,salary");
-  if (error) {
-    console.error("[labor/hourly-cost]", error.message);
-    return res.status(500).json({ success: false, error: "Erro ao calcular." });
-  }
+  if (error) { console.error("[labor/hourly-cost] regra de antes:", error.code || "(sem código)"); return null; }
   const relevant = (data || []).filter(
     (u: any) => u.role !== "CEO" && u.role !== "PROCESSOS" && u.role !== ADM_EXTERNO && Number(u.salary) > 0
   );
   const total = relevant.reduce((acc: number, u: any) => acc + Number(u.salary || 0), 0);
-  const n = relevant.length || 1;
-  const hourlyRate = total / n / 220; // media mensal / 220h
-  return res.json({ success: true, hourlyRate });
+  return total / (relevant.length || 1) / 220; // media mensal / 220h
+};
+
+// GET /api/labor/hourly-cost — a série (Edson/CEO) ou só a taxa das Inovações (demais).
+app.get("/api/labor/hourly-cost", async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  const hcClaims = verifyBearerToken(req);
+  if (!hcClaims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  const id = canonUuid(hcClaims.sub);
+  if (!id) return res.status(403).json({ success: false, error: "Sem permissao." });
+  let r: any = null;
+  try { r = await lerUsuario(admin, id, "role, okr_viewer, okr_admin, okr_only", "Nao consegui conferir o seu acesso. Tente de novo."); }
+  catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+  // Custo/hora sai dos salários: não é do painel de OKR, nem de quem saiu, nem de quem não está no cadastro.
+  if (!r || ehVisualizador(r, id) || desligadoPeloCadastro(r, id)) return res.status(403).json({ success: false, error: "Sem permissao." });
+  const ehEdson = claimsAreEdson(hcClaims);
+  const podeVerReais = ehEdson || r.role === "CEO";
+  const veInovacoes = ehEdson || (CUSTO_CARGOS_QUE_VEEM_INOVACOES.includes(String(r.role || "")) && !r.okr_only);
+  const hoje = hojeJoinville();
+  const transicao = hoje <= CUSTO_HOURLY_RATE_ANTIGO_ATE;
+  const antigo = (taxa: number | null) => (transicao && veInovacoes && taxa !== null ? { hourlyRate: taxa } : {});
+
+  const { data, error } = await admin.from("custo_hora_periodo").select("desde, taxa").eq("area", "engenharia").order("desde", { ascending: true });
+  if (error) {
+    const code = String(error.code || "");
+    // PGRST205 = a tabela não existe para o PostgREST (a 022 não rodou, ou faltou o reload schema).
+    if (code === "PGRST205" || code === "42P01") {
+      const taxaAntes = veInovacoes ? await custoTaxaDaRegraDeAntes(admin) : null;
+      return res.json({
+        success: true, instalado: false, podeVerReais, semReais: !podeVerReais, hoje,
+        ...(podeVerReais ? { periodos: [], taxaHoje: 0 } : {}),
+        taxaInovacoes: taxaAntes, ...antigo(taxaAntes),
+      });
+    }
+    console.error("[labor/hourly-cost] série:", code || "(sem código)");
+    return res.status(500).json({ success: false, error: "Erro ao ler o custo/hora." });
+  }
+  const periodos = (Array.isArray(data) ? data : [])
+    .map((p: any) => ({ desde: String((p && p.desde) || "").slice(0, 10), taxa: Number(p && p.taxa) }))
+    .filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.desde) && Number.isFinite(p.taxa) && p.taxa >= 0)
+    .sort((a, b) => (a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0));
+  // A taxa de um dia = a da última linha com desde <= dia; antes da primeira linha, a primeira (nunca 0).
+  const vigente = (dia: string): number => {
+    let t: number | null = null;
+    for (const p of periodos) { if (p.desde <= dia) t = p.taxa; else break; }
+    return t !== null ? t : (periodos.length ? periodos[0].taxa : 0);
+  };
+  const taxaInovacoes = veInovacoes ? vigente(CUSTO_DIA_DAS_INOVACOES) : null;
+  if (!podeVerReais) {
+    return res.json({ success: true, instalado: true, podeVerReais: false, semReais: true, hoje, taxaInovacoes, ...antigo(taxaInovacoes) });
+  }
+  return res.json({ success: true, instalado: true, podeVerReais: true, hoje, periodos, taxaHoje: vigente(hoje), taxaInovacoes, ...antigo(taxaInovacoes) });
+});
+
+// POST /api/users/desligar { id, ultimoDia: 'AAAA-MM-DD' } — DESLIGAR SEM EXCLUIR (022, 30/09/2026).
+// Decisão do Edson, 30/09: quem saiu é desligado, não excluído; desliga o Edson ou um GESTOR (cargo do
+// cadastro). O último dia é o último dia TRABALHADO (inclusive) e vai até hoje — nunca no futuro: o
+// desligamento é feito no fim do último dia. Tudo numa transação no banco (kpi_desligar_usuario, só
+// service_role): as datas, uma senha aleatória que ninguém conhece (hash e texto, pelo crypt do banco —
+// o verify_login da 001 só olha o hash quando ele existe), o e-mail fora do cadastro (sem ele, o "código
+// por e-mail" não chega a lugar nenhum), os códigos zerados e o custo/hora refeito a partir do dia
+// seguinte (nunca antes do mês corrente: mês fechado não muda). O cadastro e tudo o que a pessoa fez
+// ficam no nome dela. Resposta: custoDesde = o 1º dia sem o salário dela no custo.
+app.post("/api/users/desligar", async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  const meuId = canonUuid(claims.sub);
+  if (!meuId) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  let papel: string | null = null;
+  try { papel = await currentRole(admin, meuId); }
+  catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+  if (!(claimsAreEdson(claims) || papel === "GESTOR")) {
+    return res.status(403).json({ success: false, error: "Só o Edson ou um GESTOR desliga." });
+  }
+  const alvo = canonUuid((req.body || {}).id);
+  if (!alvo) return res.status(400).json({ success: false, error: "id ausente ou invalido." });
+  if (alvo === meuId) return res.status(400).json({ success: false, error: "Não dá para desligar a si mesmo." });
+  if (alvo === EDSON_ID) return res.status(403).json({ success: false, error: "A conta do Edson não pode ser desligada." });
+  const ultimoDia = String((req.body || {}).ultimoDia ?? "").trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ultimoDia);
+  const real = !!m && (() => {
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
+  })();
+  if (!real) return res.status(400).json({ success: false, error: "Informe o último dia trabalhado (AAAA-MM-DD)." });
+  if (ultimoDia > hojeJoinville()) return res.status(400).json({ success: false, error: "O último dia não pode ser no futuro: desligue no fim do último dia." });
+  if (ultimoDia < "2026-01-01") return res.status(400).json({ success: false, error: "O último dia tem de ser de 2026 em diante." });
+
+  const { data, error } = await admin.rpc("kpi_desligar_usuario", { p_user: alvo, p_ultimo_dia: ultimoDia });
+  if (error) {
+    const code = String(error.code || "");
+    const msg = String(error.message || "");
+    // PGRST202 = a função não existe para o PostgREST (a 022 não rodou); 42883 = não existe no banco.
+    if (code === "PGRST202" || code === "42883") return res.status(503).json({ success: false, error: "O desligamento ainda não está instalado no banco: rode a migração 022." });
+    if (/DESLIGAR_NAO_ACHEI/.test(msg)) return res.status(404).json({ success: false, error: "Usuário não encontrado." });
+    if (/DESLIGAR_JA_DESLIGADO/.test(msg)) return res.status(409).json({ success: false, error: "Já está desligado." });
+    if (/DESLIGAR_EDSON/.test(msg)) return res.status(403).json({ success: false, error: "A conta do Edson não pode ser desligada." });
+    if (/DESLIGAR_FUTURO/.test(msg)) return res.status(400).json({ success: false, error: "O último dia não pode ser no futuro: desligue no fim do último dia." });
+    if (/DESLIGAR_(DATA|DADOS)/.test(msg)) return res.status(400).json({ success: false, error: "Informe o último dia trabalhado (AAAA-MM-DD)." });
+    console.error("[users/desligar] falhou:", code || "(sem código)");
+    return res.status(500).json({ success: false, error: "Não consegui desligar. Nada foi gravado; tente de novo." });
+  }
+  const custoDesde = String((data && typeof data === "object" && (data as any).custo_desde) || "").slice(0, 10);
+  return res.json({ success: true, ...(/^\d{4}-\d{2}-\d{2}$/.test(custoDesde) ? { custoDesde } : {}) });
 });
 
 // GET /api/users/salaries — salarios individuais. SO o Edson (dono) ve.

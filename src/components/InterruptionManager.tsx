@@ -22,6 +22,7 @@ import {
 } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { authHeaders } from '../services/authToken';
+import { podeVerReais, custoEmReais, usuariosParaSeletor, rotuloDesligado } from '../utils/custoHora';
 
 interface InterruptionManagerProps {
   data: AppState;
@@ -188,14 +189,11 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     setEmailBody(body);
   }, [ns, client, problemType, area, responsible, description, otherLosses, formStartDate, formStartTime, isFormOpen, data.settings.interruptionEmailTemplate, editingInterruption]);
 
-  const costPerSecond = useMemo(() => {
-    let hourlyRate = data.settings.hourlyCost;
-    if (data.settings.useAutomaticCost || hourlyRate <= 0) {
-      // Taxa media do servidor (C2) — sem salario individual no cliente.
-      hourlyRate = data.settings.hourlyCostCalculated ?? 0;
-    }
-    return hourlyRate / 3600;
-  }, [data.settings.hourlyCost, data.settings.useAutomaticCost, data.settings.hourlyCostCalculated]);
+  // Custo/hora por período — 30/09/2026. Decisão do Edson (30/09): R$ só para o Edson e para os CEOs.
+  // Antes: UMA taxa (a média de hoje) para paradas de qualquer data, e o R$ aparecia para todo mundo.
+  // Agora: quem vê R$ é o SERVIDOR que diz (podeVerReais), e cada parada usa a taxa do dia dela
+  // (custoEmReais pelo startTime, em Joinville). Quem não vê R$ vê só o tempo.
+  const veReais = podeVerReais(data.settings);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat(language, { style: 'currency', currency: 'BRL' }).format(val);
@@ -697,11 +695,15 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                         {formatDuration(i.status === InterruptionStatus.RESOLVED ? i.totalTimeSeconds : elapsed)}
                       </div>
                       <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold tracking-widest mb-1">{t('elapsedTime')}</div>
-                      
-                      <div className="text-sm font-bold text-red-600 dark:text-red-400">
-                        {formatCurrency((i.status === InterruptionStatus.RESOLVED ? i.totalTimeSeconds : elapsed) * costPerSecond)}
-                      </div>
-                      <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold tracking-widest">{t('estimatedCost')}</div>
+
+                      {veReais && (
+                        <>
+                          <div className="text-sm font-bold text-red-600 dark:text-red-400">
+                            {formatCurrency(custoEmReais(data.settings, i.status === InterruptionStatus.RESOLVED ? i.totalTimeSeconds : elapsed, i.startTime))}
+                          </div>
+                          <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold tracking-widest">{t('estimatedCost')}</div>
+                        </>
+                      )}
                     </div>
 
                     <div className="flex gap-2 mt-4">
@@ -772,9 +774,10 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                     required
                   >
                     <option value="">Selecione o Projetista</option>
-                    {data.users.map(u => (
+                    {/* Desligar sem excluir (Edson, 30/09): some quem já tinha saído na data da parada; o já escolhido fica. */}
+                    {usuariosParaSeletor<User>(data.users, formStartDate, formDesignerId).map(u => (
                       <option key={u.id} value={u.id}>
-                        {u.name} {u.surname || ''} ({u.role})
+                        {u.name} {u.surname || ''}{rotuloDesligado(u)} ({u.role})
                       </option>
                     ))}
                   </select>

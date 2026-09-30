@@ -1035,23 +1035,18 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
       const finalSeconds = Math.max(0, totalWorkingSeconds - totalPauseWorkingSeconds - interruptionSeconds);
       const totalSeconds = finalSeconds + interruptionSeconds;
-      
-      // Use the hourly rate passed from settings (which is already the effective rate)
-      const hourlyRate = settings.hourlyCost;
 
-      const productiveCost = (finalSeconds / 3600) * hourlyRate;
-      const interruptionCost = (interruptionSeconds / 3600) * hourlyRate;
-      const totalCost = productiveCost + interruptionCost;
-
+      // Custo por período — 30/09/2026. Antes: a conclusão punha em R$ os segundos com a média do
+      // dia (settings.hourlyCost) e gravava productive/interruption/total_cost no projeto.
+      // Agora: nenhum R$ calculado no navegador vai ao banco — a RLS deixa todo logado ler
+      // `projects`, e custo ÷ horas devolveria a taxa (que, com a série, sai do salário de quem
+      // entrou ou saiu). O custo é calculado na hora, pela série, só para quem vê R$.
       const finishedProject: ProjectSession = {
         ...activeProject,
         endTime: finishedEndTime,
         totalActiveSeconds: finalSeconds,
         interruptionSeconds,
         totalSeconds,
-        productiveCost,
-        interruptionCost,
-        totalCost,
         estimatedSeconds: estimatedSeconds > 0 ? estimatedSeconds : activeProject.estimatedSeconds,
         status: 'COMPLETED',
         pauses: finalPauses
@@ -1340,7 +1335,9 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
       return;
     }
 
-    // Aggregate ALL sessions for this NS to show total time/cost
+    // Aggregate ALL sessions for this NS to show total time
+    // E-mail de conclusão SEM R$ — decisão do Edson, 30/09: "Tirar o R$ do e-mail (nos dois
+    // caminhos); nada de e-mail separado." Ele vai ao Edson e ao Matheus (COORDENADOR), que não vê R$.
     const sessions = [
       ...allProjects.filter(p => p.ns === project.ns && p.id !== project.id),
       project
@@ -1348,8 +1345,7 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
 
     const totalActiveSeconds = sessions.reduce((acc, p) => acc + getProjectLiveSeconds(p), 0);
     const totalEstimatedSeconds = sessions.reduce((acc, p) => acc + (p.estimatedSeconds || 0), 0);
-    const totalCostValue = sessions.reduce((acc, p) => acc + (p.totalCost || 0), 0);
-    
+
     const designers = sessions.map(p => {
         const u = resolveUser(p.userId, users);
         return u ? `${u.name} ${u.surname || ''}`.trim() : (p.userId && p.userId.length < 35 ? p.userId : t('unidentified'));
@@ -1363,20 +1359,15 @@ export const EngJimpTracker: React.FC<EngJimpTrackerProps> = ({
     if (hour >= 12 && hour < 18) greeting = t('goodAfternoon');
     else if (hour >= 18 || hour < 5) greeting = t('goodNight');
 
-    const lang = settings.language || 'pt-BR';
     const hours = (totalActiveSeconds / 3600).toFixed(2);
     const plannedHours = (totalEstimatedSeconds / 3600).toFixed(2);
-    const cost = totalCostValue.toLocaleString(lang, { style: 'currency', currency: 'BRL' });
-    
+
     // Get interruptions for this project NS (aggregated)
     const projectInterruptions = interruptions.filter(i => i.projectNs === project.ns && i.status === InterruptionStatus.RESOLVED);
     const interruptionCount = projectInterruptions.length;
-    
-    // Calculate interruption time and cost breakdown
+
+    // Calculate interruption time
     const interruptionSeconds = projectInterruptions.reduce((acc, curr) => acc + curr.totalTimeSeconds, 0);
-    const hourlyRate = settings.hourlyCost || 0;
-    const interruptionCostValue = (interruptionSeconds / 3600) * hourlyRate;
-    const productiveCostValue = Math.max(0, totalCostValue - interruptionCostValue);
 
     const interruptionReasons = projectInterruptions.map(i => 
       `- ${i.problemType}: ${i.description || t('noDescription')} (${formatTime(i.totalTimeSeconds)})`
@@ -1396,10 +1387,6 @@ Liberado por: ${currentUser ? `${currentUser.name} ${currentUser.surname || ''}`
 ${t('plannedTime')}: ${plannedHours} ${t('hours')}
 ${t('executedTime')}: ${hours} ${t('hours')}
 ${t('interruptionTime')}: ${formatTime(interruptionSeconds)}
-
-${t('productiveCost')}: ${productiveCostValue.toLocaleString(lang, { style: 'currency', currency: 'BRL' })}
-${t('interruptionCost')}: ${interruptionCostValue.toLocaleString(lang, { style: 'currency', currency: 'BRL' })}
-${t('totalProjectCost')}: ${cost}
 
 ${t('interruptionCount')}: ${interruptionCount}
 

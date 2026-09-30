@@ -9,6 +9,8 @@ import {
   totalGravadoConfere
 } from '../services/innovationCalc';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useToast } from './Toast';
+import { taxaInovacoes, taxaInovacoesDisponivel, usuariosParaSeletor, hojeJoinville, rotuloDesligado } from '../utils/custoHora';
 
 interface InnovationManagerProps {
   innovations: InnovationRecord[];
@@ -22,6 +24,14 @@ interface InnovationManagerProps {
 
 export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovations, onAdd, onUpdate, onStatusChange, onDelete, currentUser, settings }) => {
   const { t } = useLanguage();
+  const { addToast } = useToast();
+  // Custo/hora das Inovações (decisão do Edson, 30/09/2026): a taxa FIXA que cobre 31/08/2026 — a
+  // mesma média que esta tela usava até hoje (settings.hourlyCost era a média no modo automático).
+  // Vem do servidor em settings.custoHora.taxaInovacoes para quem vê Inovações, em qualquer modo
+  // (cético 30/09: o valor manual e a série de 01/09 em diante não mexem no KPI de inovações).
+  // innovationCalc.ts NÃO muda: o resultado mostrado e gravado é o mesmo de antes.
+  const taxaInov = taxaInovacoes(settings);
+  const taxaInovOk = taxaInovacoesDisponivel(settings);
   const [showForm, setShowForm] = useState(false);
   const [editingInnovation, setEditingInnovation] = useState<InnovationRecord | null>(null);
   const [viewingInnovation, setViewingInnovation] = useState<InnovationRecord | null>(null);
@@ -285,10 +295,18 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
       productivityAfter,
       unitProductCost,
       unitProductValue,
-      hourlyCost: settings?.hourlyCost
-  }), [unitSavings, quantity, calculationType, materials, machine, productivityBefore, productivityAfter, unitProductCost, unitProductValue, settings]);
+      hourlyCost: taxaInov
+  }), [unitSavings, quantity, calculationType, materials, machine, productivityBefore, productivityAfter, unitProductCost, unitProductValue, taxaInov]);
 
   const previewAnnualSavings = previewCalc.total;
+
+  // O total depende do custo/hora? Só quando a mão de obra evitada entra na conta (produtividade antes
+  // e depois diferentes, quantidade > 0 e a política a soma). Sem a taxa do servidor, salvar gravaria
+  // uma economia menor, calada — então a tela avisa e não salva (o mesmo vale para o registro gravado).
+  const dependeDaTaxa = (antes: number, depois: number, calc: { quantidade: number; maoDeObraContaNoTotal: boolean }) =>
+    antes > 0 && depois > 0 && antes !== depois && calc.quantidade > 0 && calc.maoDeObraContaNoTotal;
+  const faltaTaxaNoFormulario = !taxaInovOk && dependeDaTaxa(safeParse(productivityBefore), safeParse(productivityAfter), previewCalc);
+  const AVISO_SEM_TAXA = 'O custo/hora das inovações não carregou (sessão vencida ou página antiga). Saia e entre de novo, ou recarregue a página (Ctrl+Shift+R), antes de salvar: sem ele a mão de obra evitada fica de fora.';
 
   const addMaterial = () => {
     if (matName.trim() === '' || matUnitCost === '') return;
@@ -368,7 +386,12 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    if (faltaTaxaNoFormulario) {
+      addToast(AVISO_SEM_TAXA, 'error');
+      return;
+    }
+
     const total = previewAnnualSavings;
 
     // Proteção de dado: registros com valor fixo/legado (ex.: "Furgão Elétrico
@@ -688,9 +711,10 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   required
                 >
                   <option value="">{language === 'pt' ? 'Selecionar Autor...' : (language === 'es' ? 'Seleccionar Autor...' : 'Select Author...')}</option>
-                  {allUsers.map(u => (
+                  {/* Quem foi desligado some da lista; o autor já escolhido fica (decisão do Edson, 30/09/2026). */}
+                  {usuariosParaSeletor<User>(allUsers, hojeJoinville(), authorId).map(u => (
                     <option key={u.id} value={u.id}>
-                      {u.name} {u.surname ? ` ${u.surname}` : ''} ({u.role})
+                      {u.name} {u.surname ? ` ${u.surname}` : ''} ({u.role}){rotuloDesligado(u)}
                     </option>
                   ))}
                 </select>
@@ -1113,13 +1137,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                         <div>
                                             <div className="text-[10px] text-gray-400 uppercase">{t('current')}</div>
                                             <div className="text-xs font-bold text-gray-600 dark:text-slate-400">
-                                                {formatCurrency(((settings?.hourlyCost || 0) / safeParse(productivityBefore)) + safeParse(unitProductCost))}
+                                                {formatCurrency((taxaInov / safeParse(productivityBefore)) + safeParse(unitProductCost))}
                                             </div>
                                         </div>
                                         <div>
                                             <div className="text-[10px] text-blue-600 dark:text-blue-400 uppercase">{t('improved')}</div>
                                             <div className="text-xs font-bold text-blue-700 dark:text-blue-300">
-                                                {formatCurrency(((settings?.hourlyCost || 0) / safeParse(productivityAfter)) + safeParse(unitProductCost))}
+                                                {formatCurrency((taxaInov / safeParse(productivityAfter)) + safeParse(unitProductCost))}
                                             </div>
                                         </div>
                                     </div>
@@ -1151,6 +1175,11 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                             {previewCalc.maoDeObra !== 0 && (
                               <div className={previewCalc.maoDeObraContaNoTotal ? '' : 'opacity-60 line-through'}>
                                 Mão de obra evitada: {formatCurrency(previewCalc.maoDeObra)}
+                              </div>
+                            )}
+                            {faltaTaxaNoFormulario && (
+                              <div role="alert" className="font-sans text-amber-700 dark:text-amber-400 not-italic">
+                                {AVISO_SEM_TAXA}
                               </div>
                             )}
                             {previewCalc.ganhoCapacidade !== 0 && (
@@ -1427,8 +1456,16 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
 
                     {/* Reconciliação: por que "unit x qtde" não fecha com o total. */}
                     {(() => {
-                       const c = calcularEconomiaAnualDoRegistro(inv, settings?.hourlyCost);
-                       if (!totalGravadoConfere(inv, settings?.hourlyCost)) {
+                       const c = calcularEconomiaAnualDoRegistro(inv, taxaInov);
+                       // Sem a taxa do servidor a conta sairia sem a mão de obra: não acusar "valor fixo" à toa.
+                       if (!taxaInovOk && dependeDaTaxa(safeParse(inv.productivityBefore), safeParse(inv.productivityAfter), c)) {
+                         return (
+                           <div className="text-[10px] text-amber-600 dark:text-amber-500 italic leading-tight mt-0.5" title={AVISO_SEM_TAXA}>
+                             custo/hora não carregou
+                           </div>
+                         );
+                       }
+                       if (!totalGravadoConfere(inv, taxaInov)) {
                          return (
                            <div className="text-[10px] text-amber-600 dark:text-amber-500 italic leading-tight mt-0.5" title="Valor gravado à mão: não sai da fórmula.">
                              valor fixo (não calculado)
@@ -1706,13 +1743,13 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                           </div>
                                           <div className="text-right">
                                               <div className="text-2xl font-black text-emerald-600">
-                                                  {formatCurrency(calcularEconomiaAnualDoRegistro(viewingInnovation, settings?.hourlyCost).ganhoCapacidade)}
+                                                  {formatCurrency(calcularEconomiaAnualDoRegistro(viewingInnovation, taxaInov).ganhoCapacidade)}
                                               </div>
                                               <div className="text-[10px] text-gray-400">
-                                                  {calcularEconomiaAnualDoRegistro(viewingInnovation, settings?.hourlyCost).unidadesExtras.toFixed(0)} {t('extraUnits')} / {t('year')}
+                                                  {calcularEconomiaAnualDoRegistro(viewingInnovation, taxaInov).unidadesExtras.toFixed(0)} {t('extraUnits')} / {t('year')}
                                               </div>
                                               <div className="text-[10px] text-gray-500 dark:text-slate-400 italic max-w-[18rem]">
-                                                  {calcularEconomiaAnualDoRegistro(viewingInnovation, settings?.hourlyCost).capacidadeContaNoTotal
+                                                  {calcularEconomiaAnualDoRegistro(viewingInnovation, taxaInov).capacidadeContaNoTotal
                                                     ? 'Somada na economia anual (supõe vender toda a capacidade liberada).'
                                                     : 'Informativa: não somada na economia anual.'}
                                               </div>
@@ -1727,19 +1764,19 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                                           <div>
                                               <div className="text-[10px] text-gray-400 uppercase font-bold">{t('costPerUnit')} ({t('current')})</div>
                                               <div className="text-lg font-bold text-gray-600 dark:text-slate-400">
-                                                  {formatCurrency(((settings?.hourlyCost || 0) / (viewingInnovation.productivityBefore || 1)) + viewingInnovation.unitProductCost)}
+                                                  {formatCurrency((taxaInov / (viewingInnovation.productivityBefore || 1)) + viewingInnovation.unitProductCost)}
                                               </div>
                                           </div>
                                           <div>
                                               <div className="text-[10px] text-blue-600 dark:text-blue-400 uppercase font-bold">{t('costPerUnit')} ({t('improved')})</div>
                                               <div className="text-lg font-bold text-blue-700 dark:text-blue-300">
-                                                  {formatCurrency(((settings?.hourlyCost || 0) / (viewingInnovation.productivityAfter || 1)) + viewingInnovation.unitProductCost)}
+                                                  {formatCurrency((taxaInov / (viewingInnovation.productivityAfter || 1)) + viewingInnovation.unitProductCost)}
                                               </div>
                                           </div>
                                           <div className="col-span-2 pt-2 border-t border-gray-200 dark:border-slate-800 flex justify-between items-center">
                                               <span className="text-xs font-bold text-emerald-600 uppercase">{t('savingPerUnit')}</span>
                                               <span className="text-xl font-black text-emerald-600">
-                                                  {formatCurrency(((settings?.hourlyCost || 0) / (viewingInnovation.productivityBefore || 1)) - ((settings?.hourlyCost || 0) / (viewingInnovation.productivityAfter || 1)))}
+                                                  {formatCurrency((taxaInov / (viewingInnovation.productivityBefore || 1)) - (taxaInov / (viewingInnovation.productivityAfter || 1)))}
                                               </span>
                                           </div>
                                       </div>

@@ -5,6 +5,21 @@ import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
 import { recalculateAllInterruptionTimes, recalculateAllProjectTimes, getDatabaseStats, addAuditLog } from '../services/storageService';
 import { authHeaders } from '../services/authToken';
+import { podeVerReais, avisoSemSerie, taxaNaData, hojeJoinville, modoManual, CORTE_SERIE } from '../utils/custoHora';
+
+// 'AAAA-MM-DD' → 'dd/mm/aaaa' pelo texto (sem Date: nada de fuso trocar o dia).
+const diaBr = (dia: string): string => {
+  const [a, m, d] = String(dia || '').slice(0, 10).split('-');
+  return a && m && d ? `${d}/${m}/${a}` : String(dia || '');
+};
+// O dia anterior de um 'AAAA-MM-DD', em 'dd/mm/aaaa' (conta em UTC puro: só calendário).
+const diaAnteriorBr = (dia: string): string => {
+  const [a, m, d] = String(dia || '').slice(0, 10).split('-').map(Number);
+  if (!a || !m || !d) return '';
+  const t = new Date(Date.UTC(a, m - 1, d) - 86400000);
+  return `${String(t.getUTCDate()).padStart(2, '0')}/${String(t.getUTCMonth() + 1).padStart(2, '0')}/${t.getUTCFullYear()}`;
+};
+const brl = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 interface SettingsProps {
   settings: AppSettings;
@@ -77,10 +92,28 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
     fetchDbStats();
   }, []);
 
-  const calculatedRate = useMemo(() => {
-    // Taxa media vinda do servidor (C2): nao somamos salario no cliente.
-    return settings.hourlyCostCalculated ?? 0;
-  }, [settings.hourlyCostCalculated]);
+  // Custo/hora por período (decisão do Edson, 30/09/2026: "congelar cada mês"; R$ só para ele e
+  // para os CEOs). Antes: uma média só (o campo de média calculada, que saiu), mostrada aqui a todo GESTOR/CEO e
+  // gravada em settings.hourly_cost, que todo logado lê. Agora: quem vê R$ é o SERVIDOR que diz
+  // (settings.custoHora.podeVerReais); a taxa de hoje é a da série no dia de hoje em Joinville, e
+  // a série aparece só para leitura — ela muda sozinha quando o cadastro muda.
+  const veReais = podeVerReais(settings);
+  const semSerie = avisoSemSerie(settings);
+  const custoNaoCarregou = !!settings.custoHora && settings.custoHora.carregado !== true;
+  const hoje = hojeJoinville();
+  const taxaHoje = useMemo(() => (veReais ? taxaNaData(settings, hoje) : 0), [settings, veReais, hoje]);
+  const manualSalvo = modoManual(settings);
+  const periodos = useMemo(() => {
+    if (!veReais) return [];
+    return [...(settings.custoHora?.periodos || [])]
+      .filter(p => p && typeof p.desde === 'string' && Number.isFinite(Number(p.taxa)))
+      .sort((x, y) => (x.desde < y.desde ? -1 : x.desde > y.desde ? 1 : 0));
+  }, [settings, veReais]);
+  const indiceVigente = useMemo(() => {
+    let i = -1;
+    periodos.forEach((p, k) => { if (p.desde.slice(0, 10) <= hoje) i = k; });
+    return i < 0 && periodos.length > 0 ? 0 : i;
+  }, [periodos, hoje]);
 
   // Sync formData when settings prop changes (e.g. after initial load or save)
   useEffect(() => {
@@ -97,7 +130,10 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
 
       // Detailed audit log for settings change
       const changedProps: string[] = [];
-      if (settings.hourlyCost !== formData.hourlyCost) changedProps.push(`Custo Hora (ex: "${settings.hourlyCost}", novo: "${formData.hourlyCost}")`);
+      // O Log de Auditoria é lido por GESTOR, CEO e COORDENADOR (migração 011): ele diz QUE o custo/hora
+      // mudou, nunca os valores (decisão do Edson, 30/09/2026 — médias de datas diferentes deixavam
+      // deduzir o salário de quem entrou ou saiu).
+      if (settings.hourlyCost !== formData.hourlyCost) changedProps.push('Custo Hora (alterado)');
       if (settings.useAutomaticCost !== formData.useAutomaticCost) changedProps.push(`Custo Automático (ex: "${settings.useAutomaticCost ? 'Sim' : 'Não'}", novo: "${formData.useAutomaticCost ? 'Sim' : 'Não'}")`);
       if (settings.companyName !== formData.companyName) changedProps.push(`Nome Empresa (ex: "${settings.companyName || ''}", novo: "${formData.companyName || ''}")`);
       if (settings.emailTo !== formData.emailTo) changedProps.push(`Notificação Geral (ex: "${settings.emailTo || ''}", novo: "${formData.emailTo || ''}")`);
@@ -267,7 +303,22 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 <option value={30}>30 minutos</option>
               </select>
             </div>
+            {/* Custo/hora — R$ só para o Edson e os CEOs (decisão do Edson, 30/09/2026). Para os outros o
+                bloco inteiro vira um aviso, sem interruptor e sem campo: o servidor também ignora o
+                custo/hora vindo deles (/api/settings/save). */}
+            {!veReais ? (
             <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Custo Hora</label>
+              <div className="p-3 bg-gray-50 dark:bg-slate-800/40 rounded-lg border border-gray-200 dark:border-slate-700 text-xs text-gray-600 dark:text-slate-300">
+                {semSerie
+                  ? 'O custo/hora por período ainda não foi instalado (falta rodar a migração 022). Até lá, as telas mostram só horas.'
+                  : custoNaoCarregou
+                    ? 'Não consegui ler o custo/hora agora (sessão vencida ou sem conexão). Saia e entre de novo; até lá, as telas mostram só horas.'
+                    : 'Custo/hora: visível só para o Edson e os CEOs.'}
+              </div>
+            </div>
+            ) : (
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Custo Hora (R$)</label>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-4">
@@ -291,29 +342,72 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 </div>
 
                 {!formData.useAutomaticCost ? (
-                  <div className="relative">
-                    <DollarSign className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
-                    <input
-                      type="number"
-                      disabled={!isEditing}
-                      value={formData.hourlyCost}
-                      onChange={e => setFormData({ ...formData, hourlyCost: parseFloat(e.target.value) || 0 })}
-                      className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
-                      placeholder="150.00"
-                    />
+                  <div className="space-y-1">
+                    <div className="relative">
+                      <DollarSign className="absolute left-2 top-2.5 w-4 h-4 text-gray-400 dark:text-slate-500" />
+                      <input
+                        type="number"
+                        disabled={!isEditing}
+                        value={formData.hourlyCost}
+                        onChange={e => setFormData({ ...formData, hourlyCost: parseFloat(e.target.value) || 0 })}
+                        className="w-full pl-8 p-2 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:bg-gray-50 dark:disabled:bg-slate-900"
+                        placeholder="150.00"
+                      />
+                    </div>
+                    {/* Cético, 30/09: o valor manual nunca reescreve janeiro a agosto. */}
+                    <p className="text-[10px] text-gray-500 dark:text-slate-400">
+                      No modo manual, o valor digitado vale para todo registro de {diaBr(CORTE_SERIE)} em diante; janeiro a agosto seguem sempre a série abaixo.
+                      {manualSalvo && <> Valendo hoje: <strong>{brl(taxaHoje)}/h</strong>.</>}
+                    </p>
                   </div>
                 ) : (
                   <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
                     <p className="text-xs text-blue-700 dark:text-blue-300 font-bold mb-1">
-                      {t('hourlyCostCalculated')} {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calculatedRate)}
+                      Custo/hora de hoje ({diaBr(hoje)}): {brl(indiceVigente >= 0 ? periodos[indiceVigente].taxa : 0)}
                     </p>
                     <p className="text-[10px] text-blue-600 dark:text-blue-400">
-                      {t('automaticCostCalculationDesc')}
+                      Média dos salários da engenharia ÷ 220 h por mês (fora CEO, PROCESSOS, ADM Externo e salário zerado; de {diaBr(CORTE_SERIE)} em diante, sem o salário do Edson).
+                      A série muda sozinha quando o cadastro muda: um aumento vale do dia em que é salvo, e quem é desligado sai no dia seguinte ao último dia.
                     </p>
                   </div>
                 )}
+
+                {/* A série, só leitura (cada registro usa a taxa do dia dele). */}
+                <div className="rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
+                  <div className="px-3 py-2 bg-gray-50 dark:bg-slate-800/40 border-l-2 border-orange-500 font-mono text-[10px] tracking-[0.18em] uppercase text-gray-500 dark:text-slate-400">
+                    Custo/hora por período · só leitura
+                  </div>
+                  <ul className="divide-y divide-gray-100 dark:divide-slate-800">
+                    {periodos.map((p, i) => {
+                      const prox = periodos[i + 1];
+                      const quando = periodos.length === 1
+                        ? 'todo o período'
+                        : i === 0
+                          ? `até ${diaAnteriorBr(prox.desde)}`
+                          : prox
+                            ? `${diaBr(p.desde)} a ${diaAnteriorBr(prox.desde)}`
+                            : `desde ${diaBr(p.desde)}`;
+                      return (
+                        <li key={`${p.desde}-${i}`} className="px-3 py-1.5 flex items-center justify-between text-xs text-gray-700 dark:text-slate-300">
+                          <span className="font-mono">{quando}</span>
+                          <span className="flex items-center gap-2">
+                            <strong>{brl(Number(p.taxa))}/h</strong>
+                            {i === indiceVigente && (
+                              <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-blue-600 dark:text-blue-400">hoje</span>
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="px-3 py-2 text-[10px] text-gray-500 dark:text-slate-400 border-t border-gray-100 dark:border-slate-800">
+                    Mês fechado não muda: o recálculo só mexe do mês corrente em diante.
+                    {manualSalvo ? ` No modo manual, de ${diaBr(CORTE_SERIE)} em diante vale o valor digitado, não esta série.` : ''}
+                  </p>
+                </div>
               </div>
             </div>
+            )}
           </div>
         </div>
 
@@ -653,7 +747,9 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
             <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800 mb-3">
               <p className="text-[10px] text-blue-700 dark:text-blue-300 font-bold uppercase mb-1">{t('availableTags')}:</p>
               <div className="flex flex-wrap gap-2">
-                {['[NS]','[CLIENTE]','[CODIGO]','[DESIGNER]','[LIBERADO_POR]','[TEMPO_PLANEJADO]','[TEMPO_EXECUTADO]','[TEMPO_INTERRUPCAO]','[CUSTO_PRODUTIVO]','[CUSTO_INTERRUPCAO]','[CUSTO_TOTAL]','[QTD_INTERRUPCOES]','[DETALHE_INTERRUPCOES]','[OBSERVACOES]'].map(tag => (
+                {/* Sem as tags [CUSTO_*] (30/09/2026, decisão do Edson: "Tirar o R$ do e-mail (nos dois
+                    caminhos)"). Um modelo salvo antigo que ainda as tenha imprime '—' (notificationService). */}
+                {['[NS]','[CLIENTE]','[CODIGO]','[DESIGNER]','[LIBERADO_POR]','[TEMPO_PLANEJADO]','[TEMPO_EXECUTADO]','[TEMPO_INTERRUPCAO]','[QTD_INTERRUPCOES]','[DETALHE_INTERRUPCOES]','[OBSERVACOES]'].map(tag => (
                   <span key={tag} className="text-[10px] font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400">{tag}</span>
                 ))}
               </div>
@@ -663,7 +759,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
               value={formData.completionEmailTemplate || ''}
               onChange={e => setFormData({ ...formData, completionEmailTemplate: e.target.value })}
               className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 h-48 font-mono text-sm resize-none"
-              placeholder={"Deixe em branco para usar o formato padrão da engenharia (NS, cliente, código, designer, tempos, custos, interrupções e observações)."}
+              placeholder={"Deixe em branco para usar o formato padrão da engenharia (NS, cliente, código, designer, tempos, interrupções e observações)."}
             />
             <p className="mt-2 text-xs text-gray-500 dark:text-slate-400 italic">
               Enviado para engenharia@ e Coordenação quando um projetista conclui um projeto. Em branco = formato padrão.

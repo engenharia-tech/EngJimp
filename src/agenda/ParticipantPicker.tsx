@@ -2,6 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Search, X, Check, AlertTriangle, UserRoundX } from 'lucide-react';
 import { User } from '../types';
 import { emailRecebeAlerta, AGENDA_EMAIL_DOMINIOS, AgendaOcupado, resumoOcupado } from './agenda';
+import { ativoNaData, hojeJoinville, rotuloDesligado } from '../utils/custoHora';
 
 // Escolha dos PARTICIPANTES de um compromisso da agenda (29/09/2026).
 //
@@ -102,12 +103,19 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
 
   const ids = Array.isArray(value) ? value : [];
   const chosen = useMemo(() => new Set(ids), [ids]);
+  // Os escolhidos quando o formulário abriu (o mesmo momento do `base` do AgendaItemModal).
+  const [escolhidosAoAbrir] = useState(() => new Set(ids));
   const byId = useMemo(() => new Map((users || []).filter(u => u && u.id).map(u => [u.id, u] as const)), [users]);
+  const hoje = hojeJoinville();
 
   // Todos os cadastrados, menos o dono do compromisso (ele já recebe como dono).
+  // Desligado (decisão do Edson, 30/09/2026: "desligar, não excluir"): depois do último dia a
+  // pessoa não aparece para escolha NOVA. Quem já é participante continua na lista, com
+  // "(desligado)", para poder ser tirado — e quem era participante quando o formulário abriu
+  // fica até ele fechar (tirar sem querer tem volta). Nenhuma outra regra da Agenda muda.
   const pool = useMemo(() => (users || [])
-    .filter(u => u && u.id && u.id !== excludeId)
-    .sort((a, b) => nomeCompleto(a).localeCompare(nomeCompleto(b), 'pt-BR', { sensitivity: 'base' })), [users, excludeId]);
+    .filter(u => u && u.id && u.id !== excludeId && (ativoNaData(u, hoje) || chosen.has(u.id) || escolhidosAoAbrir.has(u.id)))
+    .sort((a, b) => nomeCompleto(a).localeCompare(nomeCompleto(b), 'pt-BR', { sensitivity: 'base' })), [users, excludeId, hoje, chosen, escolhidosAoAbrir]);
 
   // Busca por nome, sobrenome e setor, sem acento e sem maiúscula; cada palavra precisa bater.
   const shown = useMemo(() => {
@@ -184,7 +192,9 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
             const fora = emailForaDaEmpresa(u);
             const disp = u ? dispDe(id) : undefined;
             const nome = u ? nomeCompleto(u) : 'Usuário fora do cadastro';
+            const desligado = u ? rotuloDesligado(u) : '';
             const tip = !u ? 'Não está mais no cadastro — não recebe alerta.'
+              : desligado ? `${nome}${desligado} — já não está na empresa; não aparece para escolha nova.`
               : ok ? `${nome}${u.sector ? ` · ${u.sector}` : ''}`
               : fora ? `${nome} — e-mail fora da empresa, provavelmente não recebe alerta (a agenda só manda para ${dominiosEmpresaTexto()}).`
               : `${nome} — sem e-mail cadastrado, não recebe alerta.`;
@@ -199,6 +209,7 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
                     {u ? iniciais(u) : <UserRoundX size={11} />}
                   </span>
                   <span className="truncate">{nome}</span>
+                  {desligado && <span className="shrink-0 font-medium opacity-80">{desligado.trim()}</span>}
                   {u && !ok && <AlertTriangle size={11} className="shrink-0" aria-label={fora ? 'e-mail fora da empresa' : 'sem e-mail'} />}
                   {disp !== undefined && <SeloDisp r={disp} />}
                   {!disabled && (
@@ -275,6 +286,7 @@ export const ParticipantPicker: React.FC<Props> = ({ users, value, onChange, exc
                   </span>
                   <span className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className={`truncate ${on ? 'font-bold text-slate-800 dark:text-white' : 'font-medium text-slate-700 dark:text-slate-200'}`}>{nomeCompleto(u)}</span>
+                    {rotuloDesligado(u) && <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 shrink-0">{rotuloDesligado(u).trim()}</span>}
                     {u.sector && <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-full px-2 py-0.5 shrink-0">{u.sector}</span>}
                     {disp !== undefined && <SeloDisp r={disp} />}
                     {!ok && (

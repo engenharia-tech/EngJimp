@@ -91,6 +91,10 @@ export interface User {
   okrAdmin?: boolean;   // se true, vê/edita o OKR de TODOS (como o Edson), sem engenharia.
   okrViewer?: boolean;  // "admin de visualização": vê Indicadores e Linha do tempo de todos, sem editar nada nem ter OKR.
   sector?: string;      // setor do usuário (Comercial, PCP, RH, Fábrica, ...).
+  // Desligado (decisão do Edson, 30/09/2026: desligar, não excluir): 'AAAA-MM-DD' = ÚLTIMO dia
+  // trabalhado, inclusive. Nulo = ativo. Tudo o que a pessoa fez continua no nome dela; os seletores
+  // e divisores leem esta data por src/utils/custoHora.ts (ativoNaData, usuariosParaSeletor...).
+  desligadoEm?: string | null;
 }
 
 export interface PauseRecord {
@@ -234,8 +238,25 @@ export interface InterruptionRecord {
   lastActiveAt?: string; // ISO string for heartbeat/resume logic
 }
 
+// ─── Custo/hora por período (decisão do Edson, 30/09/2026: "congelar cada mês") ──────────────────
+// A taxa que vale A PARTIR de `desde` ('AAAA-MM-DD', dia de Joinville), até a próxima linha.
+export interface CustoHoraPeriodo {
+  desde: string;
+  taxa: number;
+}
+
+// O que GET /api/labor/hourly-cost devolveu, já higienizado pelo storageService.fetchCustoHora.
+// Quem vê R$ é decidido pelo SERVIDOR (Edson pelo id, cargo CEO lido do cadastro) — nunca pela tela.
+export interface CustoHoraInfo {
+  carregado: boolean;           // a rota respondeu 200 (false = erro/sem crachá → telas sem R$, nunca "R$ 0" como custo)
+  instalado: boolean;           // a 022 rodou (false → aviso só para quem vê R$)
+  podeVerReais: boolean;        // decidido pelo SERVIDOR
+  periodos: CustoHoraPeriodo[]; // só quando podeVerReais; ordenado por desde; vazio para os outros
+  taxaInovacoes: number | null; // taxa FIXA das inovações (a linha que cobre 2026-08-31); null para quem não vê Inovações
+}
+
 export interface AppSettings {
-  hourlyCost: number;
+  hourlyCost: number;           // SÓ o valor MANUAL (a série por período mora em custoHora)
   useAutomaticCost?: boolean;
   logoUrl?: string;
   companyName?: string;
@@ -251,7 +272,9 @@ export interface AppSettings {
   lunchStart?: string;   // "12:00"
   lunchEnd?: string;     // "13:00"
   language?: 'pt-BR' | 'en-US' | 'es-ES';
-  hourlyCostCalculated?: number; // New: calculated hourly rate
+  // hourlyCostCalculated saiu em 30/09/2026: era UMA média aplicada a todas as datas. A taxa de cada
+  // registro agora é taxaNaData(settings, startTime), de src/utils/custoHora.ts.
+  custoHora?: CustoHoraInfo;
   autoLockTimeout?: number; // Screen auto-lock timeout in minutes (0 = disabled)
   nexusHiddenUsers?: string[]; // Ids de usuário ocultos nas visualizações do Nexus (global)
 }

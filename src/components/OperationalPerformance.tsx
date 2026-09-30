@@ -54,6 +54,7 @@ import { format, startOfDay, endOfDay, isWithinInterval, parseISO, differenceInS
 import { addAuditLog } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { isExcludedFromEngineering, usersIndex } from '../utils/pndSplit';
+import { rotuloDesligado } from '../utils/custoHora';
 import { ptBR, es, enUS } from 'date-fns/locale';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useToast } from './Toast';
@@ -81,7 +82,6 @@ interface OperationalPerformanceProps {
   onDeleteActivityType: (id: string) => Promise<void>;
   onUpdateProject: (project: ProjectSession) => Promise<void>;
   onCreateProject?: (project: ProjectSession) => Promise<AppState | undefined>;
-  effectiveHourlyCost?: number;
   onDeleteProject?: (id: string) => Promise<void>;
   onUpdateInterruption: (interruption: InterruptionRecord) => Promise<void>;
   onDeleteInterruption?: (id: string) => Promise<void>;
@@ -106,7 +106,6 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   onDeleteActivityType,
   onUpdateProject,
   onCreateProject,
-  effectiveHourlyCost,
   onDeleteProject,
   onUpdateInterruption,
   onDeleteInterruption,
@@ -154,9 +153,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     if (start.getTime() > Date.now()) { addToast('A data de liberação não pode ser no futuro.', 'error'); return; }
     const end = new Date(start.getTime() + totalActiveSeconds * 1000);
 
-    const hourlyRate = (effectiveHourlyCost ?? settings.hourlyCost) || 0;
-    const productiveCost = (totalActiveSeconds / 3600) * hourlyRate;
-
+    // Custo por período — 30/09/2026. Antes: a liberação retroativa gravava o custo com a média do
+    // dia (prop effectiveHourlyCost), mesmo para uma data passada. Agora grava 0: nenhum R$
+    // calculado no navegador vai ao banco (a RLS deixa todo logado ler `projects`, e custo ÷ horas
+    // devolveria a taxa). O custo é calculado na hora, pela série do dia do registro, só para quem vê R$.
     const project: ProjectSession = {
       id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       name: ns,
@@ -171,9 +171,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       totalActiveSeconds,
       interruptionSeconds: 0,
       totalSeconds: totalActiveSeconds,
-      productiveCost,
+      productiveCost: 0,
       interruptionCost: 0,
-      totalCost: productiveCost,
+      totalCost: 0,
       pauses: [],
       variations: [],
       status: 'COMPLETED',
@@ -1346,7 +1346,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                     ? 'EQUIPE COMPLETA'
                     : (() => {
                         const u = filteredUsers.find(x => x.id === selectedUserId);
-                        return u ? `${u.name} (${t(u.role.toLowerCase() as any)})` : 'Selecione...';
+                        return u ? `${u.name}${rotuloDesligado(u)} (${t(u.role.toLowerCase() as any)})` : 'Selecione...';
                       })()}
                 </span>
                 <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${isUserSelectorOpen ? 'rotate-180' : ''}`} />
@@ -1397,7 +1397,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         >
                           <span className="flex items-center gap-2 truncate pr-2">
                             {isSelected && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
-                            <span className="truncate">{u.name}</span>
+                            {/* visualização: o desligado continua na lista (o histórico é dele), com o rótulo — Edson, 30/09 */}
+                            <span className="truncate">{u.name}{rotuloDesligado(u)}</span>
                           </span>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-bold shrink-0 ${
                             theme === 'dark' 

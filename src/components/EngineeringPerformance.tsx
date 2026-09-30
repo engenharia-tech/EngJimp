@@ -35,6 +35,7 @@ import {
   ProjectType
 } from '../types';
 import { isPndCarveoutUser } from '../utils/pndSplit';
+import { fracaoAteDesligar, ativoNaData, rotuloDesligado } from '../utils/custoHora';
 import {
   format,
   parseISO,
@@ -108,16 +109,23 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
   }, [startDate, endDate, selectedPeriod]);
 
   const designers = useMemo(() => {
+    // Desligado (decisão do Edson, 30/09/2026: desligar, não excluir): quem saiu ANTES do período
+    // não entra na conformidade; quem saiu no meio entra só até o último dia (ver dailyData).
+    // Dia de calendário local, como o eachDayOfInterval abaixo; data inválida = hoje.
+    const diaLocal = (d: Date) => (isNaN(d.getTime()) ? undefined : format(d, 'yyyy-MM-dd'));
+    const inicio = diaLocal(dateRange.start);
+    const fim = diaLocal(dateRange.end);
     return users.filter(u => {
       // Corte P&D: o Edson (P&D) tem painel próprio e sai da conformidade da engenharia.
       if (isPndCarveoutUser(u)) return false;
+      if (fracaoAteDesligar(u, inicio, fim) === 0) return false;
       // Only show GESTOR role if the current user viewing IS a GESTOR
       if (u.role === 'GESTOR') {
         return currentUser.role === 'GESTOR';
       }
       return ['PROJETISTA', 'COORDENADOR'].includes(u.role);
     });
-  }, [users, currentUser]);
+  }, [users, currentUser, dateRange]);
 
   const calculateComplianceData = useMemo(() => {
     const workdayStartStr = settings.workdayStart || "07:30";
@@ -143,6 +151,9 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
     // ele simplesmente sai da conta (não entra em esperado nem em reportado).
     const isAbsenceName = (n?: string) => !!n && /folga|falta|atestado|f[ée]rias|feriado/i.test(n);
 
+    // 'AAAA-MM-DD' de cada dia do período (calendário local), para conferir o último dia de quem saiu.
+    const periodDayKeys = periodDays.map(day => format(day, 'yyyy-MM-dd'));
+
     return designers.map(designer => {
       let totalExpectedSeconds = 0;
       let totalReportedSeconds = 0;
@@ -153,10 +164,16 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
       const userInterruptions = interruptions.filter(i => i.designerId === designer.id);
       const userAbsences = userActivities.filter(a => isAbsenceName(a.activityName));
 
-      const dailyData = periodDays.map(day => {
+      const dailyData = periodDays.map((day, dayIdx) => {
         const dayStart = startOfDay(day);
         const dayEnd = endOfDay(day);
         const now = new Date();
+
+        // Depois do último dia de quem foi desligado (decisão do Edson, 30/09/2026) → fora da conta,
+        // pelo mesmo caminho da ausência: não aparece "não cumprindo" por dias em que já não estava.
+        if (!ativoNaData(designer, periodDayKeys[dayIdx])) {
+          return { date: format(day, 'dd/MM'), compliance: 100, gapMinutes: 0, absence: true };
+        }
 
         // Dia com ausência declarada → fora da conta de conformidade.
         const isAbsenceDay = userAbsences.some(a => {
@@ -327,7 +344,7 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
 
       return {
         id: designer.id,
-        name: designer.name,
+        name: `${designer.name}${rotuloDesligado(designer)}`,
         avgCompliance: Math.min(100, Number(avgCompliance.toFixed(1))),
         totalGapHours: Number((totalGapSeconds / 3600).toFixed(1)),
         totalReportedHours: Number((totalReportedSeconds / 3600).toFixed(1)),
@@ -414,7 +431,7 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
             >
               <option value="ALL" className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{t('allDesigners')}</option>
               {designers.map(d => (
-                <option key={d.id} value={d.id} className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{d.name}</option>
+                <option key={d.id} value={d.id} className="bg-white dark:bg-slate-900 text-gray-800 dark:text-white">{d.name}{rotuloDesligado(d)}</option>
               ))}
             </select>
           )}

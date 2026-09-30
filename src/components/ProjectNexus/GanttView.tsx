@@ -58,6 +58,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog, fetchDeletedGanttTasks, restoreGanttTask, purgeGanttTask } from '../../services/storageService';
 import { useToast } from '../Toast';
 import { User } from '../../types';
+import { hojeJoinville, rotuloDesligado, usuariosParaSeletor } from '../../utils/custoHora';
 
 const generateId = () => {
   try {
@@ -1652,6 +1653,8 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [addingName, setAddingName] = useState(false);
+  // Quem estava atribuído quando a lista abriu (ver o comentário do desligado, abaixo).
+  const [atribuidosAoAbrir, setAtribuidosAoAbrir] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1662,13 +1665,19 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
+  // O nome de quem JÁ está atribuído sai da lista inteira (desligado inclusive).
   const assignedUsers = assignedTo.map(id => {
     const u = users.find(usr => usr.id === id);
-    if (u) return { id: u.id, name: u.name, type: 'user' };
+    if (u) return { id: u.id, name: `${u.name}${rotuloDesligado(u)}`, type: 'user' };
     return { id, name: id, type: 'custom' };
   });
 
-  const filteredUsers = users.filter(u => 
+  // Desligado (decisão do Edson, 30/09/2026: "desligar, não excluir"): para escolha NOVA só
+  // aparece quem está ativo hoje. Quem já está atribuído continua na lista, com "(desligado)",
+  // para poder ser tirado — e quem estava atribuído quando a lista abriu fica até ela fechar
+  // (tirar sem querer tem volta; a mudança grava na hora).
+  const escolhiveis = usuariosParaSeletor(users, hojeJoinville(), [...assignedTo, ...atribuidosAoAbrir]);
+  const filteredUsers = escolhiveis.filter(u =>
     u.name.toLowerCase().includes(search.toLowerCase()) || 
     u.email?.toLowerCase().includes(search.toLowerCase())
   );
@@ -1676,7 +1685,7 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
   return (
     <div className="relative mr-4 flex-shrink-0" ref={containerRef} style={{ zIndex: isOpen ? 100 : 1 }}>
       <button 
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => { if (!isOpen) setAtribuidosAoAbrir(assignedTo); setIsOpen(!isOpen); }}
         className="flex -space-x-2 items-center"
       >
         {assignedUsers.length > 0 ? (
@@ -1745,7 +1754,7 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
                     <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-[10px] font-bold text-indigo-600 dark:text-indigo-400 flex-shrink-0 overflow-hidden">
                        {u.name.charAt(0).toUpperCase()}
                     </div>
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{u.name}</span>
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{u.name}{rotuloDesligado(u)}</span>
                   </div>
                   {assignedTo.includes(u.id) && <CheckCircle2 size={14} className="text-blue-500" />}
                 </button>
@@ -1937,6 +1946,11 @@ const FieldTypeItem = ({ icon, label, active = false }: any) => (
 
 export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users, tasks }: any) => {
   const [formData, setFormData] = useState<GanttTask>(task);
+  // Desligado (decisão do Edson, 30/09/2026: "desligar, não excluir"): nos Responsáveis só
+  // aparece para escolha NOVA quem está ativo hoje. Quem a tarefa já tinha quando o modal abriu
+  // (e quem está marcado agora) continua, com "(desligado)" — desmarcar sem querer tem volta.
+  const [atribuidosAoAbrir] = useState<string[]>(() => (Array.isArray(task?.assignedTo) ? task.assignedTo : []));
+  const responsaveis = usuariosParaSeletor(users, hojeJoinville(), [...atribuidosAoAbrir, ...(formData?.assignedTo || [])]);
 
   // Fecha o modal com Escape.
   useEffect(() => {
@@ -2015,7 +2029,7 @@ export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users
           <div>
             <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">Responsáveis</label>
             <div className="flex flex-wrap gap-1">
-               {users.map((u:any) => (
+               {responsaveis.map((u:any) => (
                  <button 
                   key={u.id} onClick={() => {
                     const next = formData.assignedTo.includes(u.id) ? formData.assignedTo.filter(id => id !== u.id) : [...formData.assignedTo, u.id];
@@ -2023,7 +2037,7 @@ export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users
                   }}
                   className={`px-3 py-1 rounded text-[10px] font-bold transition-all border ${formData.assignedTo.includes(u.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'}`}
                  >
-                   {u.name}
+                   {u.name}{rotuloDesligado(u)}
                  </button>
                ))}
             </div>

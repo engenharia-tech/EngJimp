@@ -27,6 +27,7 @@ import { PeopleView } from './PeopleView';
 import { DashboardView } from './DashboardView';
 import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog, saveNexusHiddenUsers } from '../../services/storageService';
 import { User } from '../../types';
+import { ativoNaData, hojeJoinville, rotuloDesligado } from '../../utils/custoHora';
 
 interface ProjectNexusProps {
   state: AppState;
@@ -93,11 +94,30 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
 
   // Estado com as pessoas ocultas removidas — usado só nas visões que listam
   // pessoas (Carga de trabalho e Pessoas). As demais telas veem todos os
-  // usuários (ex.: para atribuir tarefas).
-  const visibleState = useMemo(
-    () => ({ ...state, users: state.users.filter(u => !hiddenUserIds.has(u.id)) }),
-    [state, hiddenUserIds]
-  );
+  // usuários (ex.: o nome de quem já está numa tarefa; o seletor de responsável
+  // filtra o desligado por conta própria, em GanttView).
+  //
+  // Desligado (decisão do Edson, 30/09/2026: "desligar, não excluir"): depois do
+  // último dia a pessoa sai da Carga de trabalho e de Pessoas — MAS continua ali
+  // enquanto tiver tarefa aberta (nem Feita nem Fechada) atribuída a ela, com
+  // "(desligado)" junto do nome, para a carga dela não sumir calada (correção do
+  // cético, 30/09). O nome com o rótulo vale só nestas duas visões.
+  const hoje = hojeJoinville();
+  const visibleState = useMemo(() => {
+    const comTarefaAberta = new Set<string>();
+    for (const t of state.ganttTasks || []) {
+      if (t.status === GanttTaskStatus.DONE || t.status === GanttTaskStatus.CLOSED) continue;
+      for (const id of t.assignedTo || []) comTarefaAberta.add(id);
+    }
+    const users = state.users
+      .filter(u => !hiddenUserIds.has(u.id))
+      .filter(u => ativoNaData(u, hoje) || comTarefaAberta.has(u.id))
+      .map(u => {
+        const rotulo = rotuloDesligado(u);
+        return rotulo ? { ...u, name: `${u.name || ''}${rotulo}` } : u;
+      });
+    return { ...state, users };
+  }, [state, hiddenUserIds, hoje]);
 
   const handleEditTask = (task: GanttTask) => {
     setEditingTask(task);
@@ -402,7 +422,7 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
                     >
                       <div className={`w-8 h-8 rounded-full grid place-items-center text-[11px] font-bold uppercase shrink-0 ${hidden ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'}`}>{(u.name || '?').charAt(0)}</div>
                       <div className="min-w-0 flex-1">
-                        <div className={`text-sm font-medium truncate ${hidden ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{u.name}{u.surname ? ` ${u.surname}` : ''}</div>
+                        <div className={`text-sm font-medium truncate ${hidden ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{u.name}{u.surname ? ` ${u.surname}` : ''}{rotuloDesligado(u)}</div>
                         <div className="text-[11px] text-slate-400 dark:text-slate-500">{ROLE_LABEL[u.role] || u.role}</div>
                       </div>
                       {hidden
