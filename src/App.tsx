@@ -19,6 +19,7 @@ import { SEOManager } from './components/SEOManager';
 import { UserProfileModal } from './components/UserProfileModal';
 import { Settings } from './components/Settings';
 import { OperationalPerformance } from './components/OperationalPerformance';
+import type { AtividadePrefill } from './components/OperationalPerformance';
 import { AuditHistory } from './components/AuditHistory';
 import { EngineeringPerformance } from './components/EngineeringPerformance';
 import { Login } from './components/Login';
@@ -720,6 +721,11 @@ const AppContent: React.FC = () => {
   // leitor só para o chip do desktop e o do celular; pausa com a tela bloqueada. Fica aqui, antes
   // dos return antecipados (links públicos / login), pela regra dos hooks.
   const usoInfra = useUsoInfra(isEdsonOwner, !isLocked);
+  // AGENDA → DESEMPENHO OPERACIONAL (30/09/2026): "Lançar como atividade" num compromisso guarda
+  // aqui o lançamento pré-preenchido e troca de aba; a tela do Desempenho Operacional o consome
+  // UMA vez (onPrefillConsumido) e abre a janela de lançamento — a pessoa escolhe o tipo e salva.
+  // Só é oferecido a quem tem essa aba (canUseTracker, a mesma regra do menu e do render).
+  const [prefillAtividade, setPrefillAtividade] = useState<AtividadePrefill | null>(null);
   // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou o username de outro.
   const [okrTarget, setOkrTarget] = useState<string>('self');
 
@@ -2071,12 +2077,16 @@ const AppContent: React.FC = () => {
           {/* Agenda (29/09): mesmo gate do menu desktop e do mobile (canUseAgenda). */}
           {activeTab === 'agenda' && canUseAgenda && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              <AgendaView currentUser={currentUser} users={data.users} isMaster={isEdsonOwner} />
+              <AgendaView currentUser={currentUser} users={data.users} isMaster={isEdsonOwner}
+                atividades={data.operationalActivities} tiposAtividade={data.activityTypes}
+                onLancarAtividade={canUseTracker ? (p: AtividadePrefill) => { setPrefillAtividade(p); setActiveTab('operational'); } : undefined} />
             </div>
           )}
 
           {activeTab === 'operational' && canUseTracker && (
-            <OperationalPerformance 
+            <OperationalPerformance
+              prefillAtividade={prefillAtividade}
+              onPrefillConsumido={() => setPrefillAtividade(null)}
               activities={data.operationalActivities}
               activityTypes={data.activityTypes}
               projects={data.projects}

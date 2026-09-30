@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { createPortal } from 'react-dom';
 import {
   Plane, Handshake, Users, ListTodo, Ticket, CircleDot, X, Save, Loader2, CheckCircle2, RotateCcw, Ban, Trash2, Send,
-  BellRing, CalendarClock, Mail, History, AlertTriangle, Eye, Check, MapPin, Clock, Info, Globe,
+  BellRing, CalendarClock, Mail, History, AlertTriangle, Eye, Check, MapPin, Clock, Info, Globe, Activity,
 } from 'lucide-react';
 import { User } from '../types';
 import { useDialog } from '../hooks/useDialog';
@@ -61,6 +61,10 @@ export interface AgendaItemModalProps {
   onClose: () => void;
   onSaved: (item: AgendaItem) => void;
   onDeleted: (id: string) => void;
+  // "Lançar como atividade" (30/09/2026): vem SÓ quando a pessoa tem o Desempenho Operacional.
+  // O botão aparece só para o DONO, em compromisso que já começou (hoje ou antes) e não está
+  // cancelado; usa o compromisso SALVO. Nada é gravado aqui: abre o lançamento preenchido.
+  onLancarAtividade?: (item: AgendaItem) => void;
 }
 
 // ---- Formulário -------------------------------------------------------------------------
@@ -269,7 +273,7 @@ const OCUPADO_PAUSA_MS = 400;
 const OCUPADO_ESPERA_MS = 10000;
 type Disp = { fase: 'conferindo' | 'erro'; chave: string } | { fase: 'ok'; chave: string; info: OcupacaoInfo };
 
-const ModalBody: React.FC<AgendaItemModalProps> = ({ mode, item, initial, users: usersProp, currentUser, alertas, service, onClose, onSaved, onDeleted }) => {
+const ModalBody: React.FC<AgendaItemModalProps> = ({ mode, item, initial, users: usersProp, currentUser, alertas, service, onClose, onSaved, onDeleted, onLancarAtividade }) => {
   const { addToast } = useToast();
   const uid = useId();
   const users = usersProp || [];
@@ -672,6 +676,15 @@ const ModalBody: React.FC<AgendaItemModalProps> = ({ mode, item, initial, users:
       addToast(`Alerta de teste enviado para ${para}`, 'success');
       if (mounted.current) setNotice({ tone: 'ok', msg: `Alerta de teste enviado para ${para}. Confira a caixa de entrada (e o spam).` });
     }, 'Não consegui enviar o teste.');
+  };
+
+  // "Lançar como atividade": o DONO, compromisso SALVO que já começou (hoje ou antes) e não está
+  // cancelado — e só se a tela recebeu onLancarAtividade (quem tem o Desempenho Operacional).
+  // Com alteração não salva na tela, fica desligado com o porquê (lança o que está salvo).
+  const podeLancar = !!onLancarAtividade && souDono && !!item && !!itemId && item.status !== 'cancelado' && !!parseDay(item.inicioDia) && item.inicioDia <= hoje;
+  const lancar = () => {
+    if (!podeLancar || !item || busyRef.current || dirty) return;
+    onLancarAtividade!(item);
   };
 
   const onPanelKey = (e: React.KeyboardEvent) => {
@@ -1188,6 +1201,15 @@ const ModalBody: React.FC<AgendaItemModalProps> = ({ mode, item, initial, users:
                     title={dirty ? 'Manda agora um alerta deste compromisso para o SEU e-mail cadastrado — com o que está SALVO (não com o que foi mudado aqui)' : 'Manda agora um alerta deste compromisso para o SEU e-mail cadastrado'}
                     className={`${btn} text-slate-700 dark:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-800`}>
                     {spin('test') ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Send size={14} aria-hidden="true" />}<span className="sm:hidden">Enviar teste</span><span className="hidden sm:inline">Enviar teste para mim</span>
+                  </button>
+                )}
+                {podeLancar && (
+                  <button type="button" onClick={lancar} disabled={isBusy || dirty}
+                    title={dirty
+                      ? 'Salve (ou desfaça) as alterações antes — o lançamento usa o compromisso salvo'
+                      : 'Abre o Desempenho Operacional com a data, as horas e a observação deste compromisso já preenchidas. Você escolhe o tipo de atividade, confere e salva — nada é gravado sozinho.'}
+                    className={`${btn} text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/30`}>
+                    <Activity size={14} aria-hidden="true" /><span className="sm:hidden">Lançar atividade</span><span className="hidden sm:inline">Lançar como atividade</span>
                   </button>
                 )}
               </div>

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, SlidersHorizontal, RefreshCw, User, Calendar, Info } from 'lucide-react';
 import { User as UserType } from '../types';
 import { useDialog } from '../hooks/useDialog';
+import { fracaoAteDesligar, rotuloDesligado, ultimoDiaTrabalhado } from '../utils/custoHora';
 
 interface PerCapitaConfigModalProps {
   perCapitaStats: {
@@ -10,7 +11,8 @@ interface PerCapitaConfigModalProps {
     monthsInPeriod: number;
     calculatedMonths: number;
     engineeringUsers: UserType[];
-    totalWeight: number;
+    totalWeight: number;            // Σ peso × fração do período (a conta do Dashboard)
+    temDesligadoNoPeriodo?: boolean;
     isCustomized: boolean;
   };
   totalHours: number;
@@ -20,7 +22,36 @@ interface PerCapitaConfigModalProps {
   onSave: (months: number | null, weights: Record<string, number>) => void;
   onReset: () => void;
   theme: 'light' | 'dark';
+  // O período do filtro ('AAAA-MM-DD'). Com ele, a fração de cada um é fracaoAteDesligar, a
+  // MESMA conta do Dashboard. Sem ele, a fração sai da conta que o Dashboard já fez (abaixo).
+  inicio?: string;
+  fim?: string;
 }
+
+// Fração do período em que cada um ainda estava (decisão do Edson, 30/09/2026: desligar, não
+// excluir — pesa pelos DIAS ÚTEIS em que a pessoa estava, como o Dashboard). Sem o período em
+// mãos: quem não tem desligamento pesa 1, e se UMA só pessoa tem data de desligamento, a fração
+// dela sai exata do que o Dashboard já somou (totalWeight = Σ peso × fração). Mais de uma com
+// data e sem o período: não dá para separar — fica 1 e a tela avisa (`aproximado`).
+const fracoesDoPeriodo = (
+  lista: UserType[], pesos: Record<string, number>, totalWeight: number, temDesligado: boolean | undefined,
+  inicio?: string, fim?: string,
+): { fr: Record<string, number>; aproximado: boolean } => {
+  const fr: Record<string, number> = {};
+  if (inicio && fim) { lista.forEach(u => { fr[u.id] = fracaoAteDesligar(u, inicio, fim); }); return { fr, aproximado: false }; }
+  lista.forEach(u => { fr[u.id] = 1; });
+  if (temDesligado === false) return { fr, aproximado: false };
+  const comData = lista.filter(u => ultimoDiaTrabalhado(u) !== null);
+  if (comData.length === 0) return { fr, aproximado: false };
+  const peso = (u: UserType) => (pesos[u.id] !== undefined ? pesos[u.id] : 1.0);
+  const alvo = comData[0];
+  if (comData.length > 1 || !(peso(alvo) > 0) || !Number.isFinite(totalWeight)) return { fr, aproximado: true };
+  const outros = lista.reduce((s, u) => (u.id === alvo.id ? s : s + peso(u)), 0);
+  const f = (totalWeight - outros) / peso(alvo);
+  if (!Number.isFinite(f)) return { fr, aproximado: true };
+  fr[alvo.id] = Math.max(0, Math.min(1, Number(f.toFixed(6))));
+  return { fr, aproximado: false };
+};
 
 export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
   perCapitaStats,
@@ -30,7 +61,9 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
   onClose,
   onSave,
   onReset,
-  theme
+  theme,
+  inicio,
+  fim
 }) => {
   const dialogRef = useDialog<HTMLDivElement>(onClose);
   // Local state for months divisor
@@ -48,14 +81,23 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
     return weights;
   });
 
+  // A fração do período de cada um (1 = o período todo; desligado no meio = os dias úteis em que estava).
+  const { fr: fracoes, aproximado } = useMemo(
+    () => fracoesDoPeriodo(perCapitaStats.engineeringUsers, designerWeights, perCapitaStats.totalWeight, perCapitaStats.temDesligadoNoPeriodo, inicio, fim),
+    [perCapitaStats, designerWeights, inicio, fim]
+  );
+  const fracaoDe = (id: string) => (fracoes[id] !== undefined ? fracoes[id] : 1);
+
   // Calculate stats in real-time for live preview inside modal
   const previewStats = useMemo(() => {
     const months = isMonthAuto ? perCapitaStats.calculatedMonths : localMonths;
     const finalMonths = months > 0 ? months : 1;
 
+    // Peso × fração do período — a mesma conta do Dashboard (quem saiu no meio pesa só os dias
+    // úteis em que estava). Sem desligado, a fração é 1 e o número é o de antes.
     let totalWeight = 0;
     perCapitaStats.engineeringUsers.forEach(u => {
-      totalWeight += localWeights[u.id] !== undefined ? localWeights[u.id] : 1.0;
+      totalWeight += (localWeights[u.id] !== undefined ? localWeights[u.id] : 1.0) * (fracoes[u.id] !== undefined ? fracoes[u.id] : 1);
     });
 
     const finalDesignerCount = totalWeight > 0 ? totalWeight : 1;
@@ -66,7 +108,7 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
       designerCount: totalWeight,
       avgPerDesignerMonth: Number(newPerCapita.toFixed(1))
     };
-  }, [isMonthAuto, localMonths, localWeights, perCapitaStats, totalHours]);
+  }, [isMonthAuto, localMonths, localWeights, perCapitaStats, totalHours, fracoes]);
 
   const handleWeightChange = (userId: string, value: number) => {
     // Ensure value is between 0 and 1
@@ -190,8 +232,10 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
                 const weight = localWeights[u.id] !== undefined ? localWeights[u.id] : 1.0;
                 const isIncluded = weight > 0;
 
-                // Calcs individual months equivalent
-                const individualMonths = (weight * currentMonthsToDisplay).toFixed(2);
+                // Calcs individual months equivalent (× a fração do período em que ainda estava)
+                const fracao = fracaoDe(u.id);
+                const individualMonths = (weight * fracao * currentMonthsToDisplay).toFixed(2);
+                const desligado = rotuloDesligado(u);
 
                 return (
                   <div 
@@ -206,8 +250,16 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <div>
-                        <span className="text-xs font-black text-gray-800 dark:text-white uppercase block leading-none">{u.name}</span>
+                        <span className="text-xs font-black text-gray-800 dark:text-white uppercase block leading-none">
+                          {u.name}{desligado && <span className="font-bold normal-case text-gray-400 dark:text-slate-500">{desligado}</span>}
+                        </span>
                         <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase italic">{u.role}</span>
+                        {fracao < 1 && (
+                          <span className="block text-[10px] font-bold text-amber-600 dark:text-amber-400 normal-case"
+                            title="Desligado no meio do período: conta só os dias úteis em que ainda estava (a mesma regra do painel)">
+                            estava em {(fracao * 100).toFixed(0)}% dos dias úteis do período
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -284,6 +336,11 @@ export const PerCapitaConfigModal: React.FC<PerCapitaConfigModalProps> = ({
                 ⚡ {previewStats.avgPerDesignerMonth}h/mês
               </span>
             </div>
+            {aproximado && (
+              <p className="pt-2 text-[10px] font-semibold text-amber-800 dark:text-yellow-300/80 normal-case">
+                Há mais de um desligado no período: esta prévia conta cada um pelo período inteiro. O valor que vale é o do painel, que conta os dias úteis em que cada um estava.
+              </p>
+            )}
           </div>
 
         </div>
