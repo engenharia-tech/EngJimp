@@ -6,6 +6,7 @@ import { User } from '../types';
 import { fetchAllOkrOrThrow, fetchOkrExecutors, mutateOkr, okrErrorMessage, addAuditLog } from '../services/storageService';
 import { OkrStore, OkrPeriod, OkrKeyResult, OkrExecutor, OkrPersonRef, krProgress, krExecutores, refName, normName, toIsoDate, parseIsoDay, localDayOf, isBadDate } from './okr';
 import { useToast } from '../components/Toast';
+import { aplicarKpis, krLigado, lerKpisDasLinhas, KpisMapa } from '../kpis/kpisNoOkr';
 
 const activePeriod = (s: OkrStore) => s.periods.find(p => p.id === s.activePeriodId) || s.periods[0];
 const barColor = (p: number, status: string) => status === 'Em risco' ? '#ef4444' : (p >= 1 || status === 'Concluído') ? '#10b981' : p >= 0.4 ? '#f59e0b' : '#3b82f6';
@@ -38,6 +39,7 @@ interface Bar {
   srcStart: string; srcDue: string;   // como estava gravado quando a tela leu
   srcUid: string; srcTitle: string;   // identidade: o KR que a tela mostrava (não outro com o mesmo rótulo)
   badDate: string;                    // "" ou a data gravada que não é data (ex.: ano 0026) — sem arraste
+  kpi: boolean;                       // KR ligado ao KPI dos setores (o % vem do valor lançado lá)
 }
 type Mode = 'move' | 'start' | 'end';
 interface Drag { key: string; pointerId: number; mode: Mode; x0: number; px: number; py: number; pxPerDay: number; dDays: number; started: boolean; minD: number; maxD: number; }
@@ -79,13 +81,21 @@ const OkrTimelineInner: React.FC<Props> = ({ currentUser, users, canEdit = false
   const axisRef = useRef<HTMLDivElement | null>(null);
   const [trackW, setTrackW] = useState(0);
   const scrolledOnce = useRef(false);
+  // O valor dos KRs ligados ao KPI lido na carga: reaplicado sobre o OKR cru que o arraste devolve
+  // (sem isso, o dono inteiro voltava ao número gravado até a próxima leitura).
+  const mapaKpi = useRef<KpisMapa>(null);
+  const comKpisGuardando = async (all: { ownerKey: string; store: OkrStore }[]) => {
+    const mapa = await lerKpisDasLinhas(all);
+    mapaKpi.current = mapa;
+    return all.map(r => { const s2 = aplicarKpis(r.store, r.ownerKey, mapa); return s2 && s2 !== r.store ? { ...r, store: s2 } : r; });
+  };
 
   // Leitura que falha NÃO troca o gráfico por "nada andou": fica o que estava na
   // tela, com o aviso de que não deu para atualizar.
   const load = async () => {
     setLoading(true);
     try {
-      const [all, ex] = await Promise.all([fetchAllOkrOrThrow().catch(() => null), fetchOkrExecutors().catch(() => null)]);
+      const [all, ex] = await Promise.all([fetchAllOkrOrThrow().then(comKpisGuardando).catch(() => null), fetchOkrExecutors().catch(() => null)]);
       if (all) { setRows(all); setLoadFailed(false); }
       else { if (!rows) setLoadFailed(true); addToast(rows ? 'Não consegui atualizar a linha do tempo (sem conexão?) — mostrando o que já estava na tela.' : 'Não consegui ler os OKRs (sem conexão?). Tente "Atualizar" em instantes.', 'error'); }
       if (ex) setRegistry(ex); else addToast('Não consegui ler o cadastro de executores — o filtro por executor fica incompleto.', 'warning');
@@ -124,7 +134,7 @@ const OkrTimelineInner: React.FC<Props> = ({ currentUser, users, canEdit = false
         if (e < s) { const t = s; s = e; e = t; swapped = true; }
         bars.push({ key: `${r.ownerKey}|${ap.id}|${oi}.${ki}|${o.id}|${k.id}`, ownerKey: r.ownerKey, periodId: ap.id, oi, ki, objId: String(o.id), krId: String(k.id),
           person, sector, title: raw(k.title), s, e, swapped, progress: p, status: raw(k.status), concl, executores: krExecutores(k, registry),
-          srcStart: raw(k.start), srcDue: raw(k.due), srcUid: raw(k.uid), srcTitle: raw(k.title), badDate });
+          srcStart: raw(k.start), srcDue: raw(k.due), srcUid: raw(k.uid), srcTitle: raw(k.title), badDate, kpi: krLigado(k) });
       }));
     });
     return { bars, waiting };
@@ -278,6 +288,19 @@ const OkrTimelineInner: React.FC<Props> = ({ currentUser, users, canEdit = false
     };
     setSavingKey(b.key);
     const before = (rows || []).find(r => r.ownerKey === b.ownerKey)?.store;   // para desfazer o otimista se não gravar
+    // O KR como a tela o mostrava antes do arraste (com o valor do KPI sobreposto).
+    const kAntes = (() => { const pi = before ? before.periods.findIndex(p => p.id === b.periodId) : -1; const loc = pi >= 0 ? locate(before!.periods[pi], b) : null;
+      return loc ? before!.periods[pi].objectives[loc.oi].keyResults[loc.ki] : null; })();
+    const comCurrent = (st: OkrStore, current: number): OkrStore => {
+      const pi = st.periods.findIndex(p => p.id === b.periodId); const loc = pi >= 0 ? locate(st.periods[pi], b) : null;
+      if (!loc) return st;
+      const p = st.periods[pi]; const o = p.objectives[loc.oi]; const k = o.keyResults[loc.ki];
+      if (k.current === current) return st;
+      const keyResults = o.keyResults.slice(); keyResults[loc.ki] = { ...k, current };
+      const objectives = p.objectives.slice(); objectives[loc.oi] = { ...o, keyResults };
+      const periods = st.periods.slice(); periods[pi] = { ...p, objectives };
+      return { ...st, periods };
+    };
     setRows(rs => (rs || []).map(r => { if (r.ownerKey !== b.ownerKey) return r; const n = apply(r.store); return n ? { ...r, store: n } : r; })); // otimista
     try {
       why.v = '' as typeof why.v; // o otimista acima pode ter escrito; vale o que o banco disser
@@ -287,7 +310,18 @@ const OkrTimelineInner: React.FC<Props> = ({ currentUser, users, canEdit = false
           ? `O prazo do ${b.krId} (${b.person}) foi mudado por outra pessoa enquanto a tela estava aberta — nada foi gravado. Atualizei; confira e arraste de novo.`
           : `O ${b.krId} não é mais o mesmo no OKR de ${b.person} (foi excluído, trocado, renomeado ou tem o id repetido) — nada foi gravado. Atualizei a tela.`);
       }
-      setRows(rs => (rs || []).map(r => r.ownerKey === b.ownerKey ? { ...r, store: res.store } : r));
+      // O banco devolve o OKR cru: reaplica o que já se sabia do KPI (os outros KRs não mudam) e relê
+      // o deste dono — o KR arrastado mudou de janela (a chave dele mudou com as datas). Até a releitura
+      // ele mantém o número que a tela mostrava; se a releitura falhar, volta ao gravado no KR.
+      const semCarry = aplicarKpis(res.store, b.ownerKey, mapaKpi.current) || res.store;
+      const comAntigo = kAntes && krLigado(kAntes) ? comCurrent(semCarry, kAntes.current) : semCarry;
+      setRows(rs => (rs || []).map(r => r.ownerKey === b.ownerKey ? { ...r, store: comAntigo } : r));
+      lerKpisDasLinhas([{ ownerKey: b.ownerKey, store: res.store }]).then(m => {
+        if (!m) return;                                                      // não deu para ler: fica o número que a tela já mostrava
+        const junto: NonNullable<KpisMapa> = new Map(mapaKpi.current || []); m.forEach((v, k) => junto.set(k, v)); mapaKpi.current = junto;
+        const s2 = aplicarKpis(res.store, b.ownerKey, junto) || res.store;
+        if (s2 !== comAntigo) setRows(rs => (rs || []).map(r => r.ownerKey === b.ownerKey && r.store === comAntigo ? { ...r, store: s2 } : r));
+      });
       try {
         addAuditLog({ userId: currentUser.id, userName: `${currentUser.name}${currentUser.surname ? ' ' + currentUser.surname : ''}`.trim(), action: 'UPDATE' as any, entityType: 'OKR', entityId: b.ownerKey, entityName: `${b.krId} — prazo`,
           details: `${currentUser.name} ajustou na linha do tempo o ${b.krId} do OKR de ${b.person}: ${fmtDay(b.s)} → ${fmtDay(b.e)} passou a ${fmtDay(s)} → ${fmtDay(e)}` });
@@ -389,7 +423,7 @@ const OkrTimelineInner: React.FC<Props> = ({ currentUser, users, canEdit = false
                     return (
                       <div key={b.key} className="flex items-stretch py-1">
                         <div className={`${labelCol} pr-2 min-w-0`}>
-                          <div className="truncate text-[11px] text-slate-600 dark:text-slate-300"><span className="font-bold text-blue-600 dark:text-blue-400 mr-1">{b.krId}</span>{b.badDate && <AlertTriangle size={11} className="inline -mt-0.5 mr-1 text-rose-500" aria-label="data inválida" />}{b.title}</div>
+                          <div className="truncate text-[11px] text-slate-600 dark:text-slate-300"><span className="font-bold text-blue-600 dark:text-blue-400 mr-1">{b.krId}</span>{b.kpi && <span className="font-mono text-[9px] font-bold tracking-[0.12em] text-orange-600 dark:text-orange-400 border border-orange-300 dark:border-orange-800 rounded px-1 mr-1 align-middle" title="O progresso vem do KPI dos setores">KPI</span>}{b.badDate && <AlertTriangle size={11} className="inline -mt-0.5 mr-1 text-rose-500" aria-label="data inválida" />}{b.title}</div>
                           {b.badDate && <div className="truncate text-[10px] font-semibold text-rose-500" title={`Data gravada inválida: ${b.badDate}. Corrija no OKR do dono.`}>data inválida: {b.badDate}</div>}
                           {ex.length > 0 && <div className="truncate text-[10px] text-slate-400" title={ex.join(', ')}>{ex.join(' · ')}</div>}
                         </div>
@@ -404,7 +438,7 @@ const OkrTimelineInner: React.FC<Props> = ({ currentUser, users, canEdit = false
                               onPointerDown={ev => onDown(ev, b, 'move')} onPointerMove={onMove} onPointerUp={ev => onUp(ev, b)} onPointerCancel={onCancel} onLostPointerCapture={onCancel}
                               className={`absolute inset-0 rounded-md flex items-center justify-between px-2 shadow-sm overflow-hidden select-none ${draggable ? (dragging ? 'cursor-grabbing ring-2 ring-white/70' : 'cursor-grab') : ''} ${b.badDate ? 'ring-2 ring-rose-500 ring-offset-1 ring-offset-white dark:ring-offset-slate-900' : ''} ${busy ? 'opacity-60 animate-pulse' : ''}`}
                               style={{ background: b.badDate ? `repeating-linear-gradient(45deg, ${col}, ${col} 6px, #f43f5e 6px, #f43f5e 9px)` : col, touchAction: 'manipulation' }}>
-                              <span className="text-[9px] font-bold text-white/95 tabular-nums truncate pointer-events-none">{Math.round(b.progress * 100)}%</span>
+                              <span className="text-[9px] font-bold text-white/95 tabular-nums truncate pointer-events-none">{b.kpi ? 'KPI · ' : ''}{Math.round(b.progress * 100)}%</span>
                               {!moved && !b.concl && width > 12 && <span className="text-[9px] font-semibold text-white/80 truncate hidden sm:inline pointer-events-none">em andamento</span>}
                             </div>
                             {handle('start', 'left')}{handle('end', 'right')}

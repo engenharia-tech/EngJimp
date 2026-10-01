@@ -1,18 +1,21 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { withOkrSafe } from './OkrSafe';
-import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown, Link2, ExternalLink, UserRound, Archive, ArchiveRestore, History } from 'lucide-react';
+import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown, Link2, ExternalLink, UserRound, Archive, ArchiveRestore, History, Gauge, Link2Off } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, CartesianGrid, Legend } from 'recharts';
 import { User, ProjectSession, OperationalActivity, ActivityType } from '../types';
-import { addAuditLog, enableOkrShare, fetchPublicOkr, fetchOkrExecutors, fetchOkrVersioned, mutateOkr, okrErrorMessage, OkrStaleError } from '../services/storageService';
+import { addAuditLog, enableOkrShare, fetchPublicOkrComKpi, fetchOkrExecutors, fetchOkrVersioned, mutateOkr, okrErrorMessage, OkrStaleError } from '../services/storageService';
 import {
   OkrStore, OkrPeriod, OkrKeyResult, OkrObjective, OkrCheckin, PortfolioItem, OkrTask,
   DEFAULT_STORE, EMPTY_STORE, clonePeriodStructure, emptyKr, nextObjectiveNum, nextKrId, nextKrNum,
   krProgress, objProgress, progressColor, fmtValue, OkrFormat, OkrExecutor, OkrPersonRef, krExecutores,
-  normName, parseIsoDay, isBadDate, rawText, newUid,
+  normName, parseIsoDay, isBadDate, rawText, newUid, parseRange,
 } from './okr';
 import { ExecutorMultiPicker, ExecutorSinglePicker } from './ExecutorPicker';
 import { useOkrWriter, OkrWriteStatus } from './useOkrWriter';
 import { useToast } from '../components/Toast';
+import { useKpisNoOkr, aplicarKpis, estadoKpi, krLigado, mapaDoServidor, KpisMapa, KpiEstado } from '../kpis/kpisNoOkr';
+import { fmtValor, fmtDia, rotuloPeriodo } from '../kpis/kpis';
+import { KpisLigarDialog, KpisDonoOkr, KpisLigacao } from './KpisLigarDialog';
 
 const STATUS_OPTIONS = ['Não iniciado', 'Em andamento', 'Em risco', 'Concluído'];
 const FORMAT_OPTIONS: { v: OkrFormat; l: string }[] = [{ v: 'bin', l: 'Sim/Não' }, { v: 'pct', l: 'Percentual' }, { v: 'num', l: 'Contagem' }];
@@ -62,11 +65,19 @@ interface OkrViewProps {
   seedEmpty?: boolean;        // ao não existir, cria VAZIO (dono preenche) em vez do padrão do Edson.
   ownerName?: string;         // nome do dono ao criar um store vazio. Padrão: o usuário atual.
   showActivity?: boolean;     // mostra métricas de atividade (liberações/horas). Só o Edson.
+  // ---- KPI dos setores (30/09) ----
+  podeLigarKpi?: boolean;     // a 023 está no banco: oferece "Ligar ao KPI" a quem edita
+  donoKpi?: KpisDonoOkr | null; // quem é o dono deste OKR (o seletor oferece só o que ELE enxerga)
+  kpiMapaExterno?: KpisMapa;  // link público: o valor dos KRs ligados já vem do servidor
+  kpiDonoExterno?: string;    // link público: a chave de dono que o servidor usou
 }
 
-const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external, ownerKey = 'edson', heading = 'Meu OKR', canShare, privacyNote = 'Só você vê', seedEmpty = false, ownerName, showActivity = false }) => {
+const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], activities = [], activityTypes = [], readOnly = false, external, ownerKey = 'edson', heading = 'Meu OKR', canShare, privacyNote = 'Só você vê', seedEmpty = false, ownerName, showActivity = false, podeLigarKpi = false, donoKpi = null, kpiMapaExterno = null, kpiDonoExterno = '' }) => {
   const { addToast } = useToast();
-  const [store, setStore] = useState<OkrStore | null>(external || null);
+  // `rawStore` = o OKR como está no banco (é nele que o useOkrWriter trabalha); `store`, logo
+  // abaixo, é o que a tela MOSTRA: o mesmo, com o "atual" dos KRs ligados ao KPI dos setores
+  // trocado pelo valor lido na hora — nunca volta para o banco.
+  const [rawStore, setStore] = useState<OkrStore | null>(external || null);
   const [loading, setLoading] = useState(!external);
   const [saving, setSaving] = useState<'idle' | OkrWriteStatus>('idle');
   const [shareLink, setShareLink] = useState('');
@@ -103,6 +114,14 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
     setStore, onError: msg => addToast(msg, 'error'),
     onStatus: st => { setSaving(st); if (st === 'saved') setTimeout(() => setSaving(s => s === 'saved' ? 'idle' : s), 1500); },
   });
+
+  // KPI dos setores: o valor dos KRs ligados (uma leitura por abertura; o link público já traz).
+  const kpiVivo = useKpisNoOkr(rawStore, ownerKey, !external, saving === 'saving' || saving === 'offline');
+  const kpiMapa: KpisMapa = external ? kpiMapaExterno : kpiVivo.mapa;
+  const kpiLendo = external ? false : kpiVivo.lendo;
+  const kpiDono = external ? kpiDonoExterno : ownerKey;
+  const store = useMemo(() => aplicarKpis(rawStore, kpiDono, kpiMapa), [rawStore, kpiDono, kpiMapa]);
+  const [ligando, setLigando] = useState<{ objId: string; kr: OkrKeyResult } | null>(null);
 
   useEffect(() => {
     if (external) { setStore(external); setLoading(false); return; }
@@ -160,10 +179,13 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
   const updateKr = (objId: string, kr: KrRef, patch: Partial<OkrKeyResult>) => updateKrWith(objId, kr, k => ({ ...k, ...patch }));
   // Muda o progresso E registra um ponto no histórico do KR (o histórico do KR
   // ATUAL do banco — não o da foto desta tela, que perderia pontos de outra pessoa).
+  const KR_DO_KPI = 'Este KR recebe o valor do KPI dos setores — o "atual" vem de lá. Para digitar à mão, desligue-o do KPI.';
   const setProgress = (objId: string, kr: OkrKeyResult, current: number, patch: Partial<OkrKeyResult> = {}) => {
+    if (krLigado(kr)) { addToast(KR_DO_KPI, 'warning'); return; }
     if (current === kr.current && Object.keys(patch).length === 0) return;
     const point = { date: new Date().toISOString(), value: current, by: currentUser.name };
     updateKrWith(objId, kr, k => {
+      if (krLigado(k)) throw new OkrStaleError(`${KR_DO_KPI} (Ele foi ligado por outra pessoa enquanto a tela estava aberta.)`);
       const hist = Array.isArray(k.history) ? k.history : [];
       if (hist.some(pt => pt.date === point.date && pt.value === point.value)) return k;   // já gravado (nova tentativa)
       if (current === k.current && Object.keys(patch).length === 0) return k;
@@ -226,6 +248,50 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
     const cur = krExecutores(k, registry); const next = cur.filter(r => !sameRef(r, ref));
     return next.length === cur.length && Array.isArray(k.executores) ? k : { ...k, executores: next };
   });
+  // KPI dos setores: LIGAR grava só o ponteiro (kpiId) e a partida/meta escolhidas, na
+  // unidade do indicador; DESLIGAR tira o ponteiro e guarda como "atual" o número que estava
+  // na tela (ele não pula), com um ponto no histórico. Os dois conferem que o KR do banco
+  // ainda está como a tela mostrava.
+  const logKpi = (k: OkrKeyResult, texto: string) => {
+    try {
+      addAuditLog({
+        userId: currentUser.id,
+        userName: `${currentUser.name}${currentUser.surname ? ' ' + currentUser.surname : ''}`.trim(),
+        action: 'UPDATE' as any, entityType: 'OKR', entityId: ownerKey, entityName: k.id,
+        details: `${currentUser.name} ${texto} o ${k.id} no OKR de ${store?.owner || ownerKey}`,
+      });
+    } catch { /* auditoria nunca trava a ação */ }
+  };
+  const ligarKpi = (objId: string, k: OkrKeyResult, l: KpisLigacao): Promise<boolean> => {
+    const antes = k.kpiId || '';
+    // Datas: só grava as que a pessoa mudou no diálogo — e só se o banco ainda tiver as que a tela
+    // mostrava (senão desfaria calado um prazo arrastado na linha do tempo no meio).
+    const sAntes = rawText(k.start), dAntes = rawText(k.due);
+    const novoIni = l.start && l.start !== sAntes ? l.start : undefined;
+    const novoFim = l.due && l.due !== dAntes ? l.due : undefined;
+    return updateKrWith(objId, k, kk => {
+      if ((kk.kpiId || '') === l.id) return kk;                                  // já gravado (nova tentativa)
+      if ((kk.kpiId || '') !== antes) throw new OkrStaleError(`O ${k.id} foi ligado/desligado do KPI por outra pessoa enquanto a tela estava aberta — nada foi gravado. A tela foi atualizada.`);
+      if ((novoIni || novoFim) && (rawText(kk.start) !== sAntes || rawText(kk.due) !== dAntes)) throw new OkrStaleError(`O início ou o prazo do ${k.id} foi mudado por outra pessoa (ou na linha do tempo) enquanto a tela estava aberta — nada foi gravado. A tela foi atualizada; confira e ligue de novo.`);
+      // O "atual" vira a partida: sem o valor do KPI, o progresso parte de 0% — nunca do número antigo,
+      // que estava em outra unidade.
+      return { ...kk, kpiId: l.id, format: 'num', baseline: l.baseline, target: l.target, current: l.baseline,
+        ...(novoIni ? { start: novoIni } : {}), ...(novoFim ? { due: novoFim } : {}) };
+    }).then(ok => { if (ok) { logKpi(k, `ligou ao indicador "${l.nome}" do KPI dos setores`); addToast(`${k.id} ligado ao KPI "${l.nome}".`, 'success'); } return ok; });
+  };
+  const desligarKpi = (objId: string, k: OkrKeyResult) => {
+    if (!window.confirm(`Desligar o ${k.id} do KPI dos setores? O número que está na tela (${fmtValue(k.current, k.format)}) fica gravado como o "atual", e daqui em diante ele volta a ser digitado à mão.`)) return;
+    const antes = k.kpiId; const valor = k.current;
+    const point = { date: new Date().toISOString(), value: valor, by: `${currentUser.name} · desligado do KPI` };
+    updateKrWith(objId, k, kk => {
+      if (!kk.kpiId) return kk;                                                  // já desligado (nova tentativa)
+      if (kk.kpiId !== antes) throw new OkrStaleError(`O ${k.id} foi ligado a outro indicador por outra pessoa enquanto a tela estava aberta — nada foi gravado. A tela foi atualizada.`);
+      const { kpiId: _fora, ...resto } = kk;
+      const hist = Array.isArray(kk.history) ? kk.history : [];
+      return { ...resto, current: valor, history: hist.some(pt => pt.date === point.date) ? hist : [...hist, point] };
+    }).then(ok => { if (ok) logKpi(k, 'desligou do KPI dos setores'); });
+  };
+
   // Datas do KR pelo campo: só grava se a data do banco ainda for a que a tela
   // mostrava (senão desfaria calado um prazo arrastado na linha do tempo), e só
   // data de verdade (2000–2100) — já há KR com ano "0026" digitado.
@@ -247,7 +313,15 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
     if (!store || !active) return;
     const label = window.prompt('Nome do novo período (ex.: Q1 2027):', 'Q1 2027');
     if (!label) return;
-    const range = window.prompt('Intervalo (ex.: 01/01/2027 a 31/03/2027):', '') || '';
+    let range = window.prompt('Intervalo (ex.: 01/01/2027 a 31/03/2027):', '') || '';
+    if (!parseRange(range) && active.objectives.some(o => o.keyResults.some(kk => kk.kpiId))) {
+      // Os KRs ligados ao KPI leem o indicador entre o início e o prazo — sem datas, mostrariam o
+      // último valor de todos (do período velho) para todo mundo.
+      const de2 = window.prompt('Não consegui ler o intervalo, e há KRs ligados ao KPI dos setores: eles precisam do início e do prazo do período. Escreva assim: 01/01/2027 a 31/03/2027', range);
+      if (de2 === null) return;
+      range = de2;
+      if (!parseRange(range) && !window.confirm('Criar o período sem intervalo? Os KRs ligados ao KPI ficam sem início e prazo e mostram o último valor do indicador (de qualquer período) até alguém pôr as datas deles.')) return;
+    }
     const srcId = active.id;
     // O período novo é montado UMA vez, aqui: a tela e o banco recebem o mesmo (ids e
     // identidades dos KRs iguais). Montar dentro da mudança sorteava identidades novas
@@ -259,6 +333,8 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
       return { ...s, periods: [...s.periods, np], activePeriodId: np.id };
     });
     addToast(`Período "${label}" criado (estrutura copiada, progresso zerado).`, 'success');
+    if (!parseRange(range) && np.objectives.some(o => o.keyResults.some(kk => kk.kpiId)))
+      addToast('Os KRs ligados ao KPI ficaram sem início e prazo (não consegui ler o intervalo "dd/mm/aaaa a dd/mm/aaaa"): defina as datas deles, senão mostram o último valor de todos.', 'warning');
   };
   const removePeriod = () => {
     if (!store || !active || store.periods.length <= 1) return;
@@ -505,6 +581,9 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
 
                     {/* Edição de progresso */}
                     <div className="mt-3 flex flex-wrap items-center gap-3">
+                      {krLigado(k) ? (
+                        <KpiNoKrChip k={k} est={estadoKpi(k, kpiDono, kpiMapa, kpiLendo)} readOnly={readOnly} externo={!!external} podeLigar={!readOnly && !external && podeLigarKpi && !donoKpi?.desligado} donoDesligado={!!donoKpi?.desligado} onDesligar={() => desligarKpi(o.id, k)} onTarget={v => updateKr(o.id, k, { target: v })} />
+                      ) : (<>
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Atual</span>
                         {k.format === 'bin' ? (
@@ -525,6 +604,10 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
                           {FORMAT_OPTIONS.map(f => <option key={f.v} value={f.v}>{f.l}</option>)}
                         </select>
                       )}
+                      {!readOnly && !external && podeLigarKpi && !donoKpi?.desligado && (
+                        <button onClick={() => setLigando({ objId: o.id, kr: k })} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/60 hover:bg-blue-50 dark:hover:bg-blue-900/20 no-print" title="O atual deste KR passa a vir de um indicador do KPI dos setores"><Gauge size={12} /> Ligar ao KPI</button>
+                      )}
+                      </>)}
                       <select value={k.status} disabled={readOnly} onChange={e => updateKr(o.id, k, { status: e.target.value })} className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]">
                         {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                         {!STATUS_OPTIONS.includes(k.status) && <option value={k.status}>{k.status}</option>}
@@ -562,9 +645,58 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
 
       {!readOnly && <button onClick={addObjective} className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"><Plus size={16} /> Adicionar objetivo</button>}
 
+      {ligando && (
+        <KpisLigarDialog kr={ligando.kr} dono={donoKpi} onClose={() => setLigando(null)}
+          // Não gravou (recusa ou falha): fecha — o diálogo guardava a foto do KR de antes e "ligue de novo"
+          // falharia sempre; reabrir pega o KR como está agora.
+          onConfirm={l => ligarKpi(ligando.objId, ligando.kr, l).then(ok => { if (!ok) setLigando(null); return ok; })} />
+      )}
+
       <PortfolioPanel portfolio={store.portfolio} onMutate={mutatePortfolio} readOnly={readOnly} onDeleteLog={name => logDelete('projeto do portfólio', name)} />
 
       {!readOnly && <CheckinsPanel period={active} allKrs={active.objectives.flatMap(o => o.keyResults)} onAdd={c => patchActive(p => (p.checkins || []).some(x => x.id === c.id) ? p : ({ ...p, checkins: [c, ...(p.checkins || [])] }))} currentUser={currentUser} />}
+    </div>
+  );
+};
+
+// O "atual" de um KR LIGADO ao KPI dos setores: o número vem do indicador (lido na hora),
+// não se digita. Mostra de onde veio (indicador e período) e quando não há número, por quê.
+const KpiNoKrChip: React.FC<{ k: OkrKeyResult; est: KpiEstado; readOnly?: boolean; externo?: boolean; podeLigar?: boolean; donoDesligado?: boolean; onDesligar: () => void; onTarget: (v: number) => void }> = ({ k, est, readOnly, externo, podeLigar, donoDesligado, onDesligar, onTarget }) => {
+  const i = est.info;
+  const uni = i?.unidade ?? ''; const casas = i?.casas ?? 2;
+  // Sem o que o banco disse (unidade/casas), o número sai em pt-BR (13,5), não "13.5".
+  const fmt = (v: number) => i?.unidade !== undefined ? fmtValor(v, uni, casas) : (Number.isFinite(v) ? v.toLocaleString('pt-BR', { maximumFractionDigits: 4 }) : '—');
+  const per = i?.periodo ? (i.frequencia ? rotuloPeriodo(i.frequencia, i.periodo) : fmtDia(i.periodo)) : '';
+  const semDatas = i?.consolidacao === 'soma' && (!parseIsoDay(k.start) || !parseIsoDay(k.due));
+  const tom = est.estado === 'valor' ? 'border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-900/15'
+    : est.estado === 'fora' || semDatas ? 'border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-900/15'
+    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900';
+  return (
+    <div className="flex flex-wrap items-center gap-2 w-full">
+      <div className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs ${tom} min-w-0`}>
+        <Gauge size={13} className="text-blue-600 dark:text-blue-400 shrink-0" />
+        <span className="font-mono text-[10px] font-bold tracking-[0.15em] uppercase text-slate-500 dark:text-slate-400 shrink-0">KPI</span>
+        {i?.nome && <span className="font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[220px]" title={i.nome}>{i.nome}</span>}
+        {est.estado === 'valor' && i && <>
+          {per && <span className="text-slate-400">· {i.consolidacao === 'soma' ? `soma até ${per}` : per}</span>}
+          <span className="font-black tabular-nums text-slate-800 dark:text-white">{fmt(i.valor as number)}</span>
+        </>}
+        {est.estado === 'aguardando' && <span className="text-slate-500 dark:text-slate-400">· {semDatas
+          ? (readOnly ? 'o KR não tem início e prazo — o indicador soma os períodos entre os dois' : 'defina o início e o prazo do KR (o indicador soma os períodos entre os dois)')
+          : 'aguardando lançamento'}</span>}
+        {est.estado === 'fora' && <span className="text-amber-700 dark:text-amber-300">· {externo
+          ? 'o valor do KPI não está disponível neste link'
+          : donoDesligado
+          ? 'o dono deste OKR foi desligado — o valor do KPI não é mais lido'
+          : `o dono deste OKR não enxerga mais o indicador (mudou de setor, ou o indicador foi excluído)${podeLigar ? ' — religue ou desligue' : ''}`}. O progresso usa o número gravado no KR: {fmt(k.current)}.</span>}
+        {est.estado === 'sem' && <span className="text-slate-500 dark:text-slate-400">· sem o valor do KPI agora — o progresso usa o número gravado no KR: {fmt(k.current)}</span>}
+        {est.estado === 'lendo' && <span className="text-slate-400">· lendo…</span>}
+        {i?.arquivado && <span className="text-[9px] font-bold uppercase text-amber-600 dark:text-amber-400">arquivado</span>}
+      </div>
+      <span className="text-[11px] text-slate-400">partida {fmt(k.baseline)} · meta{' '}
+        {readOnly ? fmt(k.target) : <input key={`t:${k.target}`} type="number" defaultValue={k.target} aria-label={`Meta do ${k.id}`} onBlur={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v !== k.target) onTarget(v); }} className="w-20 px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-[11px] outline-none" />}
+      </span>
+      {!readOnly && <button onClick={onDesligar} className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-rose-500 no-print" title="Volta a digitar o atual à mão"><Link2Off size={12} /> Desligar</button>}
     </div>
   );
 };
@@ -745,15 +877,15 @@ const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd
 
 // Página pública (sem login): abre o OKR pelo token do link, somente leitura.
 export const OkrPublicPage: React.FC<{ token: string }> = ({ token }) => {
-  const [data, setData] = useState<OkrStore | null>(null);
+  const [data, setData] = useState<{ store: OkrStore; kpi: KpisMapa } | null>(null);
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
-  useEffect(() => { (async () => { const d = await fetchPublicOkr(token); if (d && d.periods?.length) { setData(d); setState('ok'); } else setState('error'); })(); }, [token]);
+  useEffect(() => { (async () => { const d = await fetchPublicOkrComKpi(token); if (d && d.store.periods?.length) { setData({ store: d.store, kpi: mapaDoServidor(d.kpi) }); setState('ok'); } else setState('error'); })(); }, [token]);
   if (state === 'loading') return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-400"><RefreshCw className="animate-spin" size={20} /></div>;
   if (state === 'error' || !data) return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-500 p-6 text-center">Link inválido ou indisponível.</div>;
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-8">
       <div className="max-w-6xl mx-auto">
-        <OkrView external={data} readOnly currentUser={{ id: '', name: data.owner } as User} />
+        <OkrView external={data.store} readOnly currentUser={{ id: '', name: data.store.owner } as User} kpiMapaExterno={data.kpi} kpiDonoExterno="" />
         <p className="text-center text-[11px] text-slate-400 mt-6">Visualização somente leitura · JimpNexus</p>
       </div>
     </div>

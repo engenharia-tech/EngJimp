@@ -1129,26 +1129,31 @@ export const enableOkrPanelShare = async (rotate = false): Promise<string> => {
 // Lê o painel pelo token público (sem login). Os OKRs passam pelo MESMO
 // migrateToStore da tela interna (o servidor manda o valor cru), e o nome/setor
 // vira um "usuário" mínimo para a tela casar pela chave, como faz por dentro.
-export const fetchPublicOkrPanel = async (token: string): Promise<{ rows: { ownerKey: string; store: OkrStore }[]; users: User[] } | null> => {
+// `kpi` (30/09): o valor dos KRs ligados ao KPI dos setores, que o servidor leu na hora
+// ([{dono, k, de, ate, valor, periodo}], com a chave opaca `k` no lugar do indicador). null = o
+// servidor não mandou (pacote antigo, ou a leitura falhou) — o painel mostra o número gravado.
+export const fetchPublicOkrPanel = async (token: string): Promise<{ rows: { ownerKey: string; store: OkrStore }[]; users: User[]; kpi: unknown } | null> => {
   try {
     const res = await fetch(`/api/okr/panel/public?token=${encodeURIComponent(token)}`);
     const out = await res.json().catch(() => ({}));
     if (!res.ok || !out.success || !Array.isArray(out.rows)) return null;
     const rows = out.rows.map((r: any) => ({ ownerKey: String(r.ownerKey), store: migrateToStore(r.data) }));
     const users: User[] = out.rows.map((r: any) => ({ id: String(r.ownerKey), username: String(r.ownerKey), password: '', name: String(r.name || ''), role: 'PROJETISTA', sector: String(r.sector || '') } as User));
-    return { rows, users };
+    return { rows, users, kpi: Array.isArray(out.kpi) ? out.kpi : null };
   } catch { return null; }
 };
 
-// Lê o OKR pelo token público (sem login), via servidor.
-export const fetchPublicOkr = async (token: string): Promise<OkrStore | null> => {
+// Lê o OKR pelo token público (sem login), via servidor. `kpi` = o valor dos KRs ligados ao
+// KPI dos setores (mesmo formato do painel, com dono ''); null = o servidor não mandou.
+export const fetchPublicOkrComKpi = async (token: string): Promise<{ store: OkrStore; kpi: unknown } | null> => {
   try {
     const res = await fetch(`/api/okr/public?token=${encodeURIComponent(token)}`);
     const out = await res.json().catch(() => ({}));
     if (!res.ok || !out.success) return null;
-    return migrateToStore(out.data);
+    return { store: migrateToStore(out.data), kpi: Array.isArray(out.kpi) ? out.kpi : null };
   } catch { return null; }
 };
+export const fetchPublicOkr = async (token: string): Promise<OkrStore | null> => (await fetchPublicOkrComKpi(token))?.store ?? null;
 
 export const addProject = async (project: ProjectSession): Promise<AppState> => {
   try {
@@ -2075,7 +2080,7 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
   }
 };
 
-export const updateUser = async (user: User): Promise<{ success: boolean; message?: string }> => {
+export const updateUser = async (user: User): Promise<{ success: boolean; message?: string; setor?: { de: string; para: string } }> => {
   try {
     const res = await fetch('/api/users/save', {
       method: 'POST',
@@ -2083,7 +2088,7 @@ export const updateUser = async (user: User): Promise<{ success: boolean; messag
       body: JSON.stringify({ mode: 'update', user }),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data.success) return { success: true, message: data.message };
+    if (res.ok && data.success) return { success: true, message: data.message, ...(data.setor && typeof data.setor.para === 'string' ? { setor: { de: String(data.setor.de ?? ''), para: data.setor.para } } : {}) };
     return { success: false, message: data.message || data.error || 'Erro ao atualizar usuário.' };
   } catch (error: any) {
     console.error("FAILED TO UPDATE USER", error);

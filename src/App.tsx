@@ -54,13 +54,16 @@ import { getCleanupSegmentsForActivity } from './utils/operationalCleanup';
 import { notifyProjectCompletion } from './services/notificationService';
 import { isTokenExpired, getAuthToken, setAuthToken, getTokenSub } from './services/authToken';
 import { confirmOwnPassword } from './services/authService';
-import { Target, CalendarRange, Compass, CalendarClock } from 'lucide-react';
+import { Target, CalendarRange, Compass, CalendarClock, Gauge } from 'lucide-react';
 import { OkrView, OkrPublicPage } from './okr/OkrView';
 import { OkrIndicators, OkrPanelPublicPage } from './okr/OkrIndicators';
 import { OkrTimeline } from './okr/OkrTimeline';
 import { OkrGovernance } from './okr/OkrGovernance';
 import { OkrExecutors } from './okr/OkrExecutors';
 import { AgendaView } from './agenda/AgendaView';
+import { KpisView } from './kpis/KpisView';
+import { useKpisAcesso } from './kpis/useKpisAcesso';
+import { hojeSP } from './kpis/kpis';
 import { NovaVersaoAviso } from './components/NovaVersaoAviso';
 import { useUsoInfra, UsoInfraChip, UsoInfraPainel } from './components/UsoInfra';
 import { AppState, ProjectSession, IssueRecord, User, InnovationRecord, InterruptionStatus, InterruptionRecord, AppSettings } from './types';
@@ -721,6 +724,23 @@ const AppContent: React.FC = () => {
   // leitor só para o chip do desktop e o do celular; pausa com a tela bloqueada. Fica aqui, antes
   // dos return antecipados (links públicos / login), pela regra dos hooks.
   const usoInfra = useUsoInfra(isEdsonOwner, !isLocked);
+  // KPI DOS SETORES (30/09, migração 023): quem vê a aba é o que o BANCO diz (kpis_meu_acesso) —
+  // a pessoa com indicador no setor dela, quem vê todos (CEO) e o Edson/admins de OKR, que a veem
+  // mesmo sem indicador (e sem a 023: a tela diz "não instalado"). Uma leitura por login, antes
+  // dos return antecipados (regra dos hooks). O visualizador nunca.
+  const { acesso: kpisAcesso, lido: kpisLido, reler: relerKpisAcesso } = useKpisAcesso(currentUser?.id, !!currentUser && !isLocked && !isOkrViewer);
+  const canUseKpis = !!currentUser && !isOkrViewer && (isOkrMaster || (!!kpisAcesso && kpisAcesso.cadastrado && !kpisAcesso.visualizador && (kpisAcesso.veTodos || kpisAcesso.indicadores > 0)));
+  // No OKR, "Ligar ao KPI" só aparece com a 023 no banco, e o seletor oferece só os indicadores que
+  // o DONO daquele OKR enxerga (o setor dele; todos, se ele for o Edson, CEO ou admin de OKR). O
+  // cadastro dos outros não traz a marca de admin de OKR: sem ela, o seletor fica no setor (mais
+  // estreito que o banco, nunca mais largo) — o banco confere de novo.
+  const donoKpiDe = (u: User) => ({
+    nome: u.name || u.username,
+    setor: (u.sector || '').trim(),
+    veTodos: u.id === '1e570c78-7278-4e8d-a90e-a820c11bb07a' || u.role === 'CEO' || !!u.okrAdmin,
+    // A mesma régua do banco (kpis_dono_ve): desligado ANTES de hoje (Joinville) não enxerga mais.
+    desligado: !!u.desligadoEm && u.desligadoEm < hojeSP(),
+  });
   // AGENDA → DESEMPENHO OPERACIONAL (30/09/2026): "Lançar como atividade" num compromisso guarda
   // aqui o lançamento pré-preenchido e troca de aba; a tela do Desempenho Operacional o consome
   // UMA vez (onPrefillConsumido) e abre a janela de lançamento — a pessoa escolhe o tipo e salva.
@@ -738,9 +758,14 @@ const AppContent: React.FC = () => {
       if (!['okr_ind', 'okr_timeline'].includes(activeTab)) setActiveTab('okr_ind');
       return;
     }
-    const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov', 'okr_exec', 'agenda'];
+    const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov', 'okr_exec', 'agenda', 'kpi_setores'];
     if (isOkrOnly && !okrTabs.includes(activeTab)) setActiveTab('okr');
   }, [isOkrViewer, isOkrOnly, activeTab, setActiveTab]);
+  // KPI dos setores: a aba guardada abre em branco quando o acesso some (setor mudou, último indicador
+  // arquivado). Só depois da 1ª leitura do acesso — antes dela, tirar da aba tiraria quem tem acesso.
+  useEffect(() => {
+    if (activeTab === 'kpi_setores' && currentUser && kpisLido && !canUseKpis) setActiveTab(isOkrViewer ? 'okr_ind' : isOkrOnly ? 'okr' : 'dashboard');
+  }, [activeTab, currentUser, kpisLido, canUseKpis, isOkrOnly, isOkrViewer, setActiveTab]);
 
   // Who can manage Innovations? (CEO, Manager, Designer, Coordinator, Processos)
   const canSeeInnovations = useMemo(() => {
@@ -1686,6 +1711,7 @@ const AppContent: React.FC = () => {
           ))}
           {/* Agenda: só quem está no OKR (canUseAgenda) — recolhido e aberto usam o mesmo item. */}
           {canUseAgenda && <NavItem id="agenda" labelKey="agenda" icon={CalendarClock} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
+          {canUseKpis && <NavItem id="kpi_setores" labelKey="kpiSetores" icon={Gauge} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />}
 
           {canUseTracker && (
             <>
@@ -1811,6 +1837,7 @@ const AppContent: React.FC = () => {
               </div>
             )}
             {canUseAgenda && <NavItem id="agenda" labelKey="agenda" icon={CalendarClock} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
+            {canUseKpis && <NavItem id="kpi_setores" labelKey="kpiSetores" icon={Gauge} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />}
             {canUseTracker && (
               <>
                 <NavItem id="tracker" labelKey="tracker" icon={PenTool} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
@@ -2012,6 +2039,8 @@ const AppContent: React.FC = () => {
                           seedEmpty={!isEdsonOwner}
                           canShare
                           showActivity={isEdsonOwner}
+                          podeLigarKpi={!!kpisAcesso && kpisAcesso.indicadores > 0}
+                          donoKpi={donoKpiDe(currentUser)}
                         />
                       ) : (
                         <OkrView
@@ -2026,6 +2055,8 @@ const AppContent: React.FC = () => {
                           seedEmpty
                           canShare={isEdsonOwner}
                           privacyNote={`Você edita o de ${person?.name || target}`}
+                          podeLigarKpi={!!kpisAcesso && kpisAcesso.indicadores > 0}
+                          donoKpi={person ? donoKpiDe(person) : null}
                         />
                       )}
                     </>
@@ -2045,6 +2076,8 @@ const AppContent: React.FC = () => {
                   seedEmpty
                   canShare
                   privacyNote="Só o Edson e você"
+                  podeLigarKpi={!!kpisAcesso && kpisAcesso.indicadores > 0}
+                  donoKpi={donoKpiDe(currentUser)}
                 />
               )}
             </div>
@@ -2075,6 +2108,18 @@ const AppContent: React.FC = () => {
           )}
 
           {/* Agenda (29/09): mesmo gate do menu desktop e do mobile (canUseAgenda). */}
+          {/* KPI dos setores (30/09): o mesmo gate do menu desktop e do mobile (canUseKpis). Quem
+              barra de verdade é a RLS da 023; a tela relê o acesso ao abrir. */}
+          {activeTab === 'kpi_setores' && !canUseKpis && currentUser && !kpisLido && !isOkrViewer && (
+            <div className="p-6 text-center font-mono text-[11px] tracking-[0.18em] uppercase text-slate-400">Abrindo o KPI dos setores…</div>
+          )}
+          {activeTab === 'kpi_setores' && canUseKpis && currentUser && (
+            <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
+              <KpisView currentUser={currentUser} users={data.users} acesso={kpisAcesso} onAcessoMudou={relerKpisAcesso}
+                onUsuariosMudou={(id, setor) => setData(prev => ({ ...prev, users: prev.users.map(u => u.id === id ? { ...u, sector: setor } : u) }))} />
+            </div>
+          )}
+
           {activeTab === 'agenda' && canUseAgenda && currentUser && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
               <AgendaView currentUser={currentUser} users={data.users} isMaster={isEdsonOwner}
