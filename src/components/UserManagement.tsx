@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy, UserX } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { isEdsonUser } from '../utils/identity';
@@ -80,6 +80,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   const [okrOnly, setOkrOnly] = useState<boolean>(false);
   const [okrViewer, setOkrViewer] = useState<boolean>(false);
   const [sector, setSector] = useState<string>('');
+  const [setorTocado, setSetorTocado] = useState(false);
+  const [setorCarregado, setSetorCarregado] = useState('');
+  const editandoRef = useRef<string | null>(null);              // quem está no formulário AGORA (o 409 relê no fundo)   // o setor que o formulário mostrou ao abrir (vai como sectorAntes)
   const [isRegistering, setIsRegistering] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [deleteConfirmationUser, setDeleteConfirmationUser] = useState<User | null>(null);
@@ -100,13 +103,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     const sortedList = [...list].sort((a, b) => a.name.localeCompare(b.name));
     setUsers(sortedList);
     setLoadingList(false);
+    return sortedList;
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsRegistering(true);
 
-    const userPayload: User = {
+    const userPayload: User & { sectorAntes?: string } = {
       id: editingUserId || crypto.randomUUID(),
       name,
       surname,
@@ -122,7 +126,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       // Só quem pode mexer na marca a manda; o resto não manda (o servidor mantém a
       // do cadastro) — assim uma lista aberta há horas não desfaz nem esbarra na marca.
       okrViewer: canMarkOkrViewer ? (okrViewer || role === 'ADM_EXTERNO') : undefined,
-      sector
+      // O setor abre o KPI do setor: só o Edson e os admins de OKR o mandam (o servidor confere);
+      // os demais não mandam o campo e o servidor mantém o do cadastro.
+      // …e só se foi TOCADO: a lista aberta há horas não desfaz a troca que outro admin acabou de fazer.
+      sector: podeMudarSetor && setorTocado ? sector : undefined,
+      // …e diz qual setor a tela via: se outro admin o mudou no meio, o servidor recusa (409).
+      sectorAntes: podeMudarSetor && setorTocado && editingUserId ? setorCarregado : undefined,
     };
 
     let result;
@@ -148,6 +157,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
           if ((oldUser.phone || '') !== phone) changedProps.push(`Telefone (ex: "${oldUser.phone || ''}", novo: "${phone}")`);
           if (oldUser.username !== username) changedProps.push(`Login (ex: "${oldUser.username}", novo: "${username}")`);
           if (oldUser.role !== role) changedProps.push(`Cargo (ex: "${oldUser.role}", novo: "${role}")`);
+          const trocaSetor = (result as { setor?: { de: string; para: string } }).setor;
+          if (trocaSetor) changedProps.push(`Setor (ex: "${trocaSetor.de}", novo: "${trocaSetor.para}")`);
           // Salário é só do Edson, mas o Log de Auditoria é lido por GESTOR, CEO e COORDENADOR
           // (migração 011): o log diz QUE mudou, nunca os valores (decisão do Edson, 30/09).
           if ((oldUser.salary || 0) !== salary) changedProps.push('Salário (alterado)');
@@ -180,6 +191,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
           addToast('O banco bloqueou a ação (permissão). ' + AVISO_ERRO_DE_BANCO, 'error');
       } else {
           addToast(result.message || `Erro ao ${editingUserId ? 'atualizar' : 'criar'} usuário.`, 'error');
+      }
+      // O setor mudou por outro admin no meio: relê a lista (a linha mostra o de agora) e o próximo
+      // "Salvar" já compara com ele — a decisão de sobrescrever fica com quem leu o aviso.
+      if (editingUserId && result.message?.includes('mudou enquanto a tela estava aberta')) {
+        const lista = await loadList();
+        const fresco = lista.find(u => u.id === editingUserId);
+        if (fresco && editandoRef.current === editingUserId) setSetorCarregado((fresco.sector || '').trim());   // ainda é a mesma pessoa no formulário
+        onUsersChange?.();
       }
     }
     setIsRegistering(false);
@@ -317,7 +336,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setOkrEnabled(true);
     setOkrOnly(false);
     setOkrViewer(false);
-    setSector('');
+    setSector(''); setSetorTocado(false); setSetorCarregado(''); editandoRef.current = null;
     setEditingUserId(null);
   };
 
@@ -333,7 +352,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setOkrEnabled(!!user.okrEnabled);
     setOkrOnly(!!user.okrOnly);
     setOkrViewer(!!user.okrViewer);
-    setSector(user.sector || '');
+    setSector(user.sector || ''); setSetorTocado(false); setSetorCarregado((user.sector || '').trim()); editandoRef.current = user.id;
     setEditingUserId(user.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -357,6 +376,21 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   // o grupo ADM Externo — o servidor confere. Um CEO admin de OKR não (Edson, 30/09: "só um
   // GESTOR ou você muda quem é só visualização"). O próprio Edson nunca é marcado.
   const canMarkOkrViewer = isEdson || (!!currentUser.okrAdmin && isGestor);
+  // O SETOR é a porta do KPI dos setores (a pessoa vê e lança os indicadores do setor dela): só o
+  // Edson e os admins de OKR o mudam, inclusive na criação (decisão do Edson, 30/09). O servidor
+  // confere pelo cadastro.
+  const podeMudarSetor = isEdson || (!!currentUser.okrAdmin && currentUser.role !== 'CEO');   // o CEO não (01/10: visão macro)
+  // Os setores já usados na Equipe, com a grafia mais comum — sugere para não nascer "Suprimento"
+  // ao lado de "Suprimentos" (o KPI junta maiúsculas e acentos, mas não singular com plural).
+  const setoresUsados = React.useMemo(() => {
+    const cont = new Map<string, Map<string, number>>();
+    users.forEach(u => {
+      const g = (u.sector || '').trim(); if (!g) return;
+      const k = g.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const m = cont.get(k) || new Map<string, number>(); m.set(g, (m.get(g) || 0) + 1); cont.set(k, m);
+    });
+    return Array.from(cont.values()).map(m => Array.from(m.entries()).sort((a, b) => b[1] - a[1])[0][0]).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [users]);
   const EDSON_UUID = '1e570c78-7278-4e8d-a90e-a820c11bb07a';
   // O grupo ADM Externo É o visualizador — deduzido na hora, não gravado no estado: escolher
   // o cargo por engano e voltar não deixa a pessoa marcada nem com o OKR desligado.
@@ -503,11 +537,17 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             <input
               id="um-sector"
               type="text"
+              list="um-setores"
               value={sector}
-              onChange={e => setSector(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              onChange={e => { setSector(e.target.value); setSetorTocado(true); }}
+              disabled={!podeMudarSetor}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!podeMudarSetor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
               placeholder="Ex.: Comercial, PCP, RH, Fábrica"
             />
+            <datalist id="um-setores">{setoresUsados.map(g => <option key={g} value={g} />)}</datalist>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+              {podeMudarSetor ? 'O setor abre o KPI do setor: a pessoa vê e lança os indicadores dele. Prefira um setor da lista.' : 'Só o Edson e os admins de OKR mudam o setor (ele abre o KPI do setor).'}
+            </p>
           </div>
           {isGestor && (
           <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">

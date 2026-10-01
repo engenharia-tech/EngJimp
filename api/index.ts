@@ -858,9 +858,15 @@ app.post("/api/auth/confirm-password", async (req, res) => {
 // nao pode mais mudar o proprio cargo p/ CEO nem sobrescrever a senha de
 // ninguem falando direto com o banco.
 // ============================================================
-const ADMIN_ROLES = ["GESTOR", "CEO", "COORDENADOR"];
-// CEO e GESTOR — decisão do Edson, 25/09/2026: "qualquer GESTOR". Os três cargos de
-// admin continuam cadastrando e editando, mas só um GESTOR dá ou tira CEO/GESTOR, e só
+const ADMIN_ROLES = ["GESTOR", "CEO", "COORDENADOR"];   // Configurações e e-mail de teste (o CEO segue: custo/hora, 30/09)
+// PESSOAS (cadastrar, editar outra pessoa, excluir, mudar setor): o CEO NÃO. Decisão do Edson, 01/10/2026:
+// "ceo não pode dar cargo a ninguem e nem liberar acesso, o objetivo é visualização macro, se quiserem
+// algo que peçam". Vale também para o CEO admin de OKR (a marca dá o OKR de todos, não poder sobre
+// pessoas). O CEO continua editando o PRÓPRIO contato (cai no caminho do "isSelf").
+const PESSOAS_ADMIN_ROLES = ["GESTOR", "COORDENADOR"];
+const CEO_SO_VE = "O CEO acompanha tudo (visão macro), mas não dá cargo nem libera acesso — peça ao Edson.";
+// CEO e GESTOR — decisão do Edson, 25/09/2026: "qualquer GESTOR". GESTOR e COORDENADOR
+// cadastram e editam (o CEO não, desde 01/10 — PESSOAS_ADMIN_ROLES), mas só um GESTOR dá ou tira CEO/GESTOR, e só
 // ele troca login, e-mail ou senha — ou exclui — as contas que leem o OKR de todos
 // (CEO, GESTOR, admin de OKR, admin de visualização). Antes um COORDENADOR ou CEO se
 // punha como CEO pela API (okr_is_ceo() libera o OKR de todos), ou trocava o e-mail de
@@ -877,6 +883,35 @@ app.post("/api/users/save", async (req, res) => {
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
 
   const { mode, user } = req.body || {};
+  // SÓ O SETOR (KPI dos setores, 01/10). Decisão do Edson, 30/09: "Só o Edson e os admins de OKR mudam o
+  // SETOR de qualquer pessoa" — fora o CEO, mesmo admin de OKR (01/10: "ceo não pode dar cargo a ninguem
+  // e nem liberar acesso"). A tela do KPI ("Pessoas e setores") usa este caminho, que grava a coluna
+  // sector e mais nada (o 'update' regravaria cargo, marcas e login com o que viesse).
+  if (mode === "setor") {
+    const alvo = canonUuid(user && user.id);
+    if (!alvo) return res.status(400).json({ success: false, error: "id ausente ou invalido." });
+    if (alvo === EDSON_ID && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Só o próprio Edson altera a conta dele." });
+    try {
+      if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR mudam o setor de alguém." });
+      if (!claimsAreEdson(claims) && String(await currentRole(admin, claims.sub)) === "CEO") return res.status(403).json({ success: false, error: CEO_SO_VE });
+    }
+    catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+    const setor = String((user && user.sector) ?? "").trim();
+    if (setor.length > 60) return res.json({ success: false, message: "O nome do setor é longo demais (até 60 letras)." });
+    // O setor que a tela via (sectorAntes): se outro admin o mudou no meio, recusa em vez de desfazer calado.
+    const { data: atual, error: aErr } = await admin.from("users").select("sector").eq("id", alvo).limit(1);
+    if (aErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
+    if (!atual || !atual.length) return res.json({ success: false, message: "Usuário não encontrado." });
+    const setorAtual = String((atual[0] as any).sector || "").trim();
+    if (setor === setorAtual) return res.json({ success: true, semMudanca: true });   // já é esse: nada a gravar (a tela não registra troca)
+    if (user && user.sectorAntes !== undefined && user.sectorAntes !== null && String(user.sectorAntes).trim() !== setorAtual)
+      return res.status(409).json({ success: false, setorAtual, error: `O setor desta pessoa mudou enquanto a tela estava aberta (agora: "${setorAtual || "sem setor"}"). Nada foi gravado — confira e salve de novo.` });
+    const { data: mudou, error: sErr } = await admin.from("users").update({ sector: setor || null }).eq("id", alvo).select("id");
+    if (sErr) return res.json({ success: false, message: `Erro DB: ${sErr.message}` });
+    if (!mudou || !mudou.length) return res.json({ success: false, message: "Usuário não encontrado." });
+    console.log(`[users/save] setor de ${alvo} → "${setor || "—"}" por ${canonUuid(claims.sub)} (KPI dos setores)`);
+    return res.json({ success: true });
+  }
   if (!user || !user.username) return res.status(400).json({ success: false, error: "Dados incompletos." });
   let isAdmin = false;
   let isGestor = false; // só GESTOR mexe em CEO/GESTOR e nas contas que leem o OKR de todos
@@ -886,8 +921,9 @@ app.post("/api/users/save", async (req, res) => {
     const eu = meuId ? await lerUsuario(admin, meuId, "role, okr_viewer, okr_admin", "Nao consegui conferir o seu cargo. Tente de novo.") : null;
     if (meuId && desligadoPeloCadastro(eu, meuId)) return res.status(403).json({ success: false, error: "Este acesso foi encerrado." });
     const papel = meuId ? papelDoCadastro(eu, meuId) : null;
-    isAdmin = ADMIN_ROLES.includes(String(papel));
+    isAdmin = PESSOAS_ADMIN_ROLES.includes(String(papel)) || claimsAreEdson(claims);   // o CEO não (01/10); o Edson pelo id
     isGestor = papel === "GESTOR" || claimsAreEdson(claims);
+    if (papel === "CEO" && !claimsAreEdson(claims) && (mode === "create" || canonUuid(user.id) !== meuId)) return res.status(403).json({ success: false, error: CEO_SO_VE });
   }
   catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
 
@@ -956,6 +992,14 @@ app.post("/api/users/save", async (req, res) => {
       try { if (!isGestor || !(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson (ou um GESTOR admin de OKR) marca alguém como admin de visualização do OKR." }); }
       catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
     }
+    // O SETOR é a porta do KPI dos setores (a pessoa vê e lança os indicadores do setor dela):
+    // só o Edson e os admins de OKR o dão — inclusive na criação. Decisão do Edson, 30/09: "Só o
+    // Edson e os admins de OKR mudam o SETOR de qualquer pessoa (inclusive na criação)".
+    const setorNovo = String(user.sector || "").trim();
+    if (setorNovo) {
+      try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR definem o setor (o setor abre o KPI do setor). Crie sem setor e peça a eles." }); }
+      catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+    }
     // Salario so e gravado se quem cria for o Edson. Um admin comum nem
     // enxerga salario (cliente recebe 0), entao nunca escreve esse campo.
     const { error } = await admin.from("users").insert([{
@@ -966,9 +1010,10 @@ app.post("/api/users/save", async (req, res) => {
       okr_enabled: newViewer ? false : !!(user.okrEnabled || user.okrOnly), // "somente OKR" implica ter OKR
       okr_only: newViewer ? false : !!user.okrOnly,
       okr_viewer: newViewer,
-      sector: user.sector || null,
+      sector: setorNovo || null,
     }]);
     if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
+    if (setorNovo) console.log(`[users/save] setor "${setorNovo}" dado na criação de ${user.username} por ${canonUuid(claims.sub)}`);
     return res.json({ success: true });
   }
 
@@ -998,14 +1043,33 @@ app.post("/api/users/save", async (req, res) => {
   const patch: any = { name: user.name, surname: user.surname, email: user.email, phone: user.phone };
   let renameTo = "";
   let wantViewer = false;
+  let setorPedido = "";
+  let setorMudou = "";
+  let setorTroca: { de: string; para: string } | null = null;   // a troca de setor que foi GRAVADA (a tela registra no log só ela)
   if (isAdmin) {
     // Renomear para um username que já existe (mesmo mudando maiúsculas, ex.: "EDSON") é recusado.
     try {
       if (await inUse("username", user.username, user.id)) return res.json({ success: false, message: "Nome de usuário já existe." });
-      const { data: cur, error: curErr } = await admin.from("users").select("username, role, okr_viewer, okr_admin").eq("id", user.id).limit(1);
+      const { data: cur, error: curErr } = await admin.from("users").select("username, role, okr_viewer, okr_admin, sector").eq("id", user.id).limit(1);
       if (curErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
       if (!cur || !cur.length) return res.json({ success: false, message: "Usuário não encontrado." });
       const oldName = String((cur[0] as any).username || "").trim();
+      // SETOR (KPI dos setores, 30/09): sem o campo no pedido = fica como está; mudar só o Edson e os
+      // admins de OKR — senão um COORDENADOR se punha no Financeiro e lia os indicadores de lá.
+      const setorAtual = String((cur[0] as any).sector || "").trim();
+      setorPedido = user.sector === undefined || user.sector === null ? setorAtual : String(user.sector).trim();
+      // Mexeu no campo e voltou ao que via: não é troca — fica o do cadastro (que outro admin pode ter mudado).
+      if (user.sectorAntes !== undefined && user.sectorAntes !== null && setorPedido === String(user.sectorAntes).trim()) setorPedido = setorAtual;
+      if (setorPedido !== setorAtual) {
+        if (!(await isOkrMasterDb(admin, claims.sub))) {
+          return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR mudam o setor de alguém (o setor abre o KPI do setor)." });
+        }
+        // A tela diz o setor que via (sectorAntes): se outro admin o mudou no meio, recusa em vez de desfazer.
+        if (user.sectorAntes !== undefined && user.sectorAntes !== null && String(user.sectorAntes).trim() !== setorAtual)
+          return res.status(409).json({ success: false, setorAtual, error: `O setor de ${user.username} mudou enquanto a tela estava aberta (agora: "${setorAtual || "sem setor"}"). Nada foi gravado — a lista foi atualizada; confira e salve de novo.` });
+        setorMudou = `"${setorAtual || "—"}" → "${setorPedido || "—"}"`;
+        setorTroca = { de: setorAtual, para: setorPedido };
+      }
       // Admin de visualização: sem o campo no pedido (tela antiga) = fica como está;
       // mudar a marca é só do Edson ou do admin de OKR.
       const wasViewer = !!(cur[0] as any).okr_viewer;
@@ -1057,7 +1121,7 @@ app.post("/api/users/save", async (req, res) => {
     patch.okr_viewer = wantViewer;
     patch.okr_enabled = wantViewer ? false : !!(user.okrEnabled || user.okrOnly); // "somente OKR" implica ter OKR
     patch.okr_only = wantViewer ? false : !!user.okrOnly;
-    patch.sector = user.sector || null;
+    patch.sector = setorPedido || null;
   }
   // Salario: leitura E escrita restritas ao Edson. Sem esta guarda, um admin
   // comum editando um usuario ZERARIA o salario real (o cliente dele tem 0).
@@ -1082,10 +1146,11 @@ app.post("/api/users/save", async (req, res) => {
     if ((error as any).code === "23505") return res.json({ success: false, message: "E-mail ou nome de usuário já pertence a outra pessoa." });
     return res.json({ success: false, message: `Erro DB: ${error.message}${renameTo ? " (o login novo já foi gravado)" : ""}` });
   }
+  if (setorMudou) console.log(`[users/save] setor de ${user.id}: ${setorMudou} por ${canonUuid(claims.sub)}`);
   if (isSelf && user.password) {
-    return res.json({ success: true, message: "Os dados foram salvos, mas a SUA senha não muda por aqui: troque em Meu Perfil, que confere a senha atual." });
+    return res.json({ success: true, ...(setorTroca ? { setor: setorTroca } : {}), message: "Os dados foram salvos, mas a SUA senha não muda por aqui: troque em Meu Perfil, que confere a senha atual." });
   }
-  return res.json({ success: true });
+  return res.json({ success: true, ...(setorTroca ? { setor: setorTroca } : {}) });
 });
 
 // POST /api/settings/save { row } — grava as configuracoes. Escrita mediada
@@ -1209,6 +1274,33 @@ app.post("/api/okr/panel/share", async (req, res) => {
   return res.json({ success: true, token, rotated: rotate });
 });
 
+// ---- KPI DOS SETORES nos links públicos (30/09/2026, migração 023) ----------------------
+// O KR ligado guarda só o ponteiro (kpiId = uuid do indicador); o valor é lido na hora por
+// kpis_valores_ligados. Aqui o servidor (service_role) lê para o link público, que não tem
+// sessão. O banco confere que o kpiId está mesmo naquele OKR e que o DONO do OKR enxerga o
+// indicador (o servidor só pula a trava "quem pede lê aquele OKR" — quem abre o link já leu).
+// A resposta leva só número e período: nada de nome nem uuid do indicador no painel.
+// Falhou (023 não rodada, banco fora)? kpi = [] e o link mostra o número gravado no KR.
+const KPI_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type KpiPedido = { dono: string; id: string; de: string; ate: string };
+type KpiValor = { valor: number | null; periodo: string | null; frequencia: string | null; consolidacao: string | null };
+// null = não deu para ler (023 ausente, banco fora): a resposta leva kpi: null e a tela mostra o
+// número gravado com "sem o valor do KPI agora" — nunca "o dono não enxerga mais — religue".
+const lerKpisLigados = async (admin: any, pedidos: KpiPedido[]): Promise<Map<string, KpiValor> | null> => {
+  const out = new Map<string, KpiValor>();
+  const chave = (d: string, i: string, de: string, ate: string) => `${d}|${i}|${de}|${ate}`;
+  const unicos = Array.from(new Map(pedidos.map(p => [chave(p.dono, p.id, p.de, p.ate), p] as const)).values());
+  for (let i = 0; i < unicos.length; i += 400) {
+    const { data, error } = await admin.rpc("kpis_valores_ligados", { p_pedidos: unicos.slice(i, i + 400) });
+    if (error) { console.warn("[okr/public] KPI dos setores não lido:", error.code || "", String(error.message || "").slice(0, 120)); return null; }
+    (Array.isArray(data) ? data : []).forEach((r: any) => out.set(chave(String(r.dono || ""), String(r.indicador_id || ""), String(r.de ?? ""), String(r.ate ?? "")),
+      { valor: r.valor === null || r.valor === undefined ? null : Number(r.valor), periodo: r.periodo ? String(r.periodo).slice(0, 10) : null,
+        frequencia: typeof r.frequencia === "string" ? r.frequencia : null,
+        consolidacao: r.consolidacao === "soma" || r.consolidacao === "ultimo" ? r.consolidacao : null }));
+  }
+  return out;
+};
+
 // GET /api/okr/panel/public?token=... — leitura PÚBLICA (sem login) do painel de
 // Indicadores. Leva SÓ o que o painel mostra: nome, setor e, do período ativo de cada
 // OKR, os números dos KRs (atual/base/meta/status) — sem títulos, notas nem tarefas.
@@ -1234,12 +1326,27 @@ app.get("/api/okr/panel/public", async (req, res) => {
   const raw = (v: any) => (v === null || ["number", "string", "boolean"].includes(typeof v)) ? v : undefined;
   // Mesma regra do str() de src/okr/okr.ts (texto fica, nulo vira '', objeto vira JSON).
   const ids = (v: any): string => typeof v === "string" ? v : v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
-  const skelObjs = (os: any) => (Array.isArray(os) ? os : []).filter(isObj).map((o: any) => ({
+  // KR ligado ao KPI dos setores: o esqueleto leva a chave OPACA "k<n>" (nunca o uuid) e o
+  // início/prazo crus; o valor vai à parte, em `kpi`, com a mesma chave.
+  const kpiPedidos: KpiPedido[] = [];
+  const kpiOpacos: { dono: string; k: string; de: string; ate: string; real: string }[] = [];
+  const skelObjs = (os: any, dono: string, donoOpaco: string) => (Array.isArray(os) ? os : []).filter(isObj).map((o: any) => ({
     id: ids(o.id),
-    keyResults: (Array.isArray(o.keyResults) ? o.keyResults : []).filter(isObj).map((k: any) => ({
-      id: ids(k.id), baseline: raw(k.baseline), target: raw(k.target), current: raw(k.current),
-      status: typeof k.status === "string" ? k.status : undefined, archived: !!k.archived,
-    })),
+    keyResults: (Array.isArray(o.keyResults) ? o.keyResults : []).filter(isObj).map((k: any) => {
+      const base: any = {
+        id: ids(k.id), baseline: raw(k.baseline), target: raw(k.target), current: raw(k.current),
+        status: typeof k.status === "string" ? k.status : undefined, archived: !!k.archived,
+      };
+      const kid = typeof k.kpiId === "string" ? k.kpiId.trim().toLowerCase() : "";
+      if (dono && KPI_UUID_RE.test(kid)) {
+        const de = k.start == null ? "" : ids(k.start), ate = ids(k.due);
+        const opaco = `k${kpiOpacos.length + 1}`;
+        kpiPedidos.push({ dono, id: kid, de, ate });
+        kpiOpacos.push({ dono: donoOpaco, k: opaco, de, ate, real: `${dono}|${kid}|${de}|${ate}` });
+        Object.assign(base, { kpiId: opaco, start: de, due: ate });
+      }
+      return base;
+    }),
   }));
   const rows = (okrs || [])
     .filter((r: any) => typeof r.owner_key === "string" && r.owner_key.trim() && !r.owner_key.startsWith("excluido:"))
@@ -1247,18 +1354,24 @@ app.get("/api/okr/panel/public", async (req, res) => {
       const d = isObj(r.data) ? r.data : {};
       const owner = ids(d.owner);
       const periods = (Array.isArray(d.periods) ? d.periods : []).filter(isObj);
+      const dono = String(r.owner_key).trim().toLowerCase(), donoOpaco = `p${i + 1}`;
       let data: any = { owner };
       if (periods.length) {
         const act = periods.find((q: any) => ids(q.id) === ids(d.activePeriodId)) || periods[0];
-        data = { owner, activePeriodId: ids(act.id), periods: [{ id: ids(act.id), label: "", range: "", checkins: [], objectives: skelObjs(act.objectives) }] };
+        data = { owner, activePeriodId: ids(act.id), periods: [{ id: ids(act.id), label: "", range: "", checkins: [], objectives: skelObjs(act.objectives, dono, donoOpaco) }] };
       } else if (Array.isArray(d.objectives)) {
-        data = { owner, objectives: skelObjs(d.objectives) };
+        data = { owner, objectives: skelObjs(d.objectives, dono, donoOpaco) };
       }
       const pp = people[r.owner_key] || { name: "", sector: "" };
       // A chave do OKR é o LOGIN da pessoa: o link leva só um número de linha.
-      return { ownerKey: `p${i + 1}`, name: pp.name, sector: pp.sector, data };
+      return { ownerKey: donoOpaco, name: pp.name, sector: pp.sector, data };
     });
-  return res.json({ success: true, rows });
+  let kpi: any[] | null = [];
+  if (kpiPedidos.length) {
+    const vals = await lerKpisLigados(admin, kpiPedidos);
+    kpi = vals ? kpiOpacos.filter(o => vals.has(o.real)).map(o => ({ dono: o.dono, k: o.k, de: o.de, ate: o.ate, ...vals.get(o.real)! })) : null;
+  }
+  return res.json({ success: true, rows, kpi });
 });
 
 // GET /api/okr/public?token=... — leitura PUBLICA (sem login) do OKR. So leitura.
@@ -1267,10 +1380,29 @@ app.get("/api/okr/public", async (req, res) => {
   if (!token) return res.status(400).json({ success: false, error: "token ausente." });
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
-  const { data, error } = await admin.from("okr_state").select("data").eq("share_token", token).limit(1);
+  const { data, error } = await admin.from("okr_state").select("owner_key, data").eq("share_token", token).limit(1);
   if (error) return res.status(500).json({ success: false, error: "Erro ao ler." });
   if (!data || data.length === 0) return res.status(404).json({ success: false, error: "Link invalido." });
-  return res.json({ success: true, data: (data[0] as any).data });
+  const row = data[0] as any;
+  // KPI dos setores: o valor dos KRs ligados deste OKR (dono '' na resposta — quem abre o link
+  // não precisa do login do dono). Mesma regra do painel.
+  const txt = (v: any): string => typeof v === "string" ? v : v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+  const dono = String(row.owner_key || "").trim().toLowerCase();
+  const pedidos: KpiPedido[] = [];
+  const isObjP = (x: any) => !!x && typeof x === "object" && !Array.isArray(x);
+  const periodos = isObjP(row.data) && Array.isArray(row.data.periods) ? row.data.periods : [];
+  periodos.filter(isObjP).forEach((p: any) => (Array.isArray(p.objectives) ? p.objectives : []).filter(isObjP).forEach((o: any) =>
+    (Array.isArray(o.keyResults) ? o.keyResults : []).filter(isObjP).forEach((k: any) => {
+      const kid = typeof k.kpiId === "string" ? k.kpiId.trim().toLowerCase() : "";
+      if (dono && KPI_UUID_RE.test(kid)) pedidos.push({ dono, id: kid, de: k.start == null ? "" : txt(k.start), ate: txt(k.due) });
+    })));
+  let kpi: any[] | null = [];
+  if (pedidos.length) {
+    const vals = await lerKpisLigados(admin, pedidos);
+    kpi = vals ? pedidos.filter(p => vals.has(`${p.dono}|${p.id}|${p.de}|${p.ate}`))
+      .map(p => ({ dono: "", k: p.id, de: p.de, ate: p.ate, ...vals.get(`${p.dono}|${p.id}|${p.de}|${p.ate}`)! })) : null;
+  }
+  return res.json({ success: true, data: row.data, kpi });
 });
 
 // ========================= AGENDA =========================
@@ -1647,7 +1779,8 @@ app.post("/api/users/delete", async (req, res) => {
   let isGestor = false; // só GESTOR exclui CEO, GESTOR e as contas que leem o OKR de todos
   try {
     const papel = await currentRole(admin, claims.sub);
-    if (!ADMIN_ROLES.includes(String(papel))) return res.status(403).json({ success: false, error: "Sem permissao." });
+    if (papel === "CEO" && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: CEO_SO_VE });
+    if (!PESSOAS_ADMIN_ROLES.includes(String(papel)) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Sem permissao." });
     isGestor = papel === "GESTOR" || claimsAreEdson(claims);
   }
   catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
@@ -1681,10 +1814,22 @@ app.post("/api/users/delete", async (req, res) => {
     ["project_requests", "created_by", "pedido(s) criado(s)"],
     ["project_requests", "assigned_to", "pedido(s) atribuído(s)"],
     ["agenda_item", "owner_id", "compromisso(s) na agenda"],
+    // KPI dos setores (023): a autoria dos lançamentos e dos indicadores não pode sumir.
+    ["kpis_lancamento", "lancado_por", "lançamento(s) no KPI dos setores"],
+    ["kpis_lancamento_hist", "por", "correção(ões) no KPI dos setores"],
+    ["kpis_indicador", "criado_por", "indicador(es) do KPI dos setores"],
+    ["kpis_meta", "por", "meta(s) no KPI dos setores"],
   ];
   const achados: string[] = [];
   for (const [tabela, coluna, rotulo] of REGISTROS_DO_USUARIO) {
-    const { count, error: cErr } = await admin.from(tabela).select("id", { count: "exact", head: true }).eq(coluna, id);
+    // Nas tabelas do KPI dos setores a contagem vai por GET, não HEAD: sem a 023, o 404 do HEAD vem SEM
+    // corpo (não diz que a tabela não existe) e a exclusão parava em "não consegui conferir".
+    const kpis = tabela.startsWith("kpis_");
+    const { count, error: cErr }: any = kpis
+      ? await admin.from(tabela).select(tabela === "kpis_meta" ? "indicador_id" : "id", { count: "exact" }).eq(coluna, id).limit(1)
+      : await admin.from(tabela).select("id", { count: "exact", head: true }).eq(coluna, id);
+    // A 023 ainda não rodou: as tabelas do KPI dos setores não existem, e ninguém tem registro nelas.
+    if (cErr && kpis && (cErr.code === "PGRST205" || cErr.code === "42P01")) continue;
     // NaN (Content-Range "*") também é "number": só vale inteiro >= 0.
     if (cErr || !Number.isInteger(count) || (count as number) < 0) {
       console.error("[users/delete] não consegui contar", tabela, coluna, cErr?.code || "");

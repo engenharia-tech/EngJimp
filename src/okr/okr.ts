@@ -37,6 +37,11 @@ export interface OkrKeyResult {
   // id E o nome da época (o nome mostra mesmo sem acesso ao cadastro, ex.: link
   // público). `[]` = "sem executor" de propósito; ausente = nunca definido.
   executores?: OkrPersonRef[];
+  // ---- KPI dos setores (30/09) ----
+  // KR LIGADO a um indicador do KPI dos setores: só o ponteiro (uuid do indicador) fica
+  // gravado; o "atual" é lido na hora do KPI (src/kpis/kpisNoOkr.ts) e nunca volta para cá.
+  // No link público do painel o servidor troca o uuid por uma chave opaca "k<n>".
+  kpiId?: string;
 }
 
 // Referência a alguém do cadastro de executores: id (para acompanhar renomeação)
@@ -159,8 +164,13 @@ const num = (v: any, def = 0): number => { const n = typeof v === 'number' ? v :
 const objs = (v: any): any[] => (Array.isArray(v) ? v : []).filter(isObj);
 const FORMATS = new Set(['bin', 'pct', 'num']);
 const saneRef = (r: any) => isObj(r) ? { ...r, name: str(r.name), ...(r.id != null ? { id: str(r.id) } : {}) } : r;
-const saneKr = (k: any): OkrKeyResult => ({
+// O ponteiro do KR ligado ao KPI: uuid (minúsculo) ou a chave opaca do link público; o resto sai.
+const KPI_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const saneKpiId = (v: any): string | undefined =>
+  typeof v !== 'string' ? undefined : KPI_UUID.test(v.trim()) ? v.trim().toLowerCase() : /^k\d{1,5}$/.test(v) ? v : undefined;
+const saneKr = ({ kpiId, ...k }: any): OkrKeyResult => ({
   ...k,
+  ...(saneKpiId(kpiId) ? { kpiId: saneKpiId(kpiId) } : {}),
   id: str(k.id), title: str(k.title), metric: str(k.metric), initiatives: str(k.initiatives), status: str(k.status, 'Não iniciado'),
   notes: optStr(k.notes), uid: optStr(k.uid),
   format: FORMATS.has(k.format) ? k.format : 'num',
@@ -234,17 +244,36 @@ export const EMPTY_STORE = (owner: string): OkrStore => ({
   activePeriodId: 'q4-2026',
 });
 
+// O intervalo digitado do período ("01/10/2026 a 31/12/2026") → as duas datas ISO, ou
+// null se não der para ler (anos 2000–2100).
+export const parseRange = (range?: unknown): { ini: string; fim: string } | null => {
+  const m = (typeof range === 'string' ? range : '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4}).*?(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return null;
+  const p2 = (x: string) => x.padStart(2, '0');
+  const ini = `${m[3]}-${p2(m[2])}-${p2(m[1])}`, fim = `${m[6]}-${p2(m[5])}-${p2(m[4])}`;
+  return parseIsoDay(ini) && parseIsoDay(fim) && ini <= fim ? { ini, fim } : null;
+};
+
 // Cria um período novo copiando a ESTRUTURA do atual (KRs), zerando o progresso.
-export const clonePeriodStructure = (src: OkrPeriod, label: string, range: string): OkrPeriod => ({
-  id: `p${Date.now().toString(36)}`,
-  label,
-  range,
-  checkins: [],
-  objectives: src.objectives.map(o => ({
-    ...o,
-    keyResults: o.keyResults.map(k => ({ ...k, uid: newUid(), current: k.baseline, status: 'Não iniciado', tasks: (k.tasks || []).map(t => ({ ...t, done: false })) })),
-  })),
-});
+// KR LIGADO ao KPI: o início e o prazo passam a ser os do período novo (lidos do
+// intervalo digitado; sem intervalo legível, ficam vazios) — senão o trimestre novo
+// mostraria o valor do velho.
+export const clonePeriodStructure = (src: OkrPeriod, label: string, range: string): OkrPeriod => {
+  const r = parseRange(range);
+  return {
+    id: `p${Date.now().toString(36)}`,
+    label,
+    range,
+    checkins: [],
+    objectives: src.objectives.map(o => ({
+      ...o,
+      keyResults: o.keyResults.map(k => ({
+        ...k, uid: newUid(), current: k.baseline, status: 'Não iniciado', tasks: (k.tasks || []).map(t => ({ ...t, done: false })),
+        ...(k.kpiId ? { start: r ? r.ini : '', due: r ? r.fim : '' } : {}),
+      })),
+    })),
+  };
+};
 
 // Identidade interna e única do KR (o "KR1.3" é só o rótulo que a pessoa lê).
 export const newUid = (): string => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;

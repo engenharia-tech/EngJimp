@@ -6,6 +6,7 @@ import { User } from '../types';
 import { fetchAllOkr, enableOkrPanelShare, fetchPublicOkrPanel } from '../services/storageService';
 import { OkrStore, OkrPeriod, krProgress } from './okr';
 import { useToast } from '../components/Toast';
+import { aplicarKpis, comKpis, mapaDoServidor } from '../kpis/kpisNoOkr';
 
 // Progresso do período ativo de um OKR (média dos KRs).
 const periodProgress = (p?: OkrPeriod) => {
@@ -40,7 +41,8 @@ const OkrIndicatorsInner: React.FC<Props> = ({ users, canShare, canRotate, exter
   const [shareLink, setShareLink] = useState('');
   const [sharing, setSharing] = useState(false);
 
-  const load = async () => { if (external) return; setLoading(true); try { setRows(await fetchAllOkr()); } finally { setLoading(false); } };
+  // O "atual" dos KRs ligados ao KPI dos setores vem do valor lançado lá (uma chamada só).
+  const load = async () => { if (external) return; setLoading(true); try { setRows(await comKpis(await fetchAllOkr())); } finally { setLoading(false); } };
   useEffect(() => { load(); }, []);
 
   // Link público do painel (só leitura). Sem `rotate` reusa o link que existe; com
@@ -213,7 +215,15 @@ export const OkrIndicators = withOkrSafe<Props>(OkrIndicatorsInner, 'os indicado
 export const OkrPanelPublicPage: React.FC<{ token: string }> = ({ token }) => {
   const [res, setRes] = useState<{ rows: OkrRow[]; users: User[] } | null>(null);
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
-  useEffect(() => { (async () => { const r = await fetchPublicOkrPanel(token); if (r) { setRes(r); setState('ok'); } else setState('error'); })(); }, [token]);
+  // O servidor manda também o valor dos KRs ligados ao KPI (chave opaca): aplicado pela MESMA
+  // regra da tela interna, para o link e a tela darem o mesmo número.
+  useEffect(() => { (async () => {
+    const r = await fetchPublicOkrPanel(token);
+    if (!r) { setState('error'); return; }
+    const mapa = mapaDoServidor(r.kpi);
+    setRes({ users: r.users, rows: r.rows.map(x => { const s2 = aplicarKpis(x.store, x.ownerKey, mapa); return s2 && s2 !== x.store ? { ...x, store: s2 } : x; }) });
+    setState('ok');
+  })(); }, [token]);
   if (state === 'loading') return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-400"><RefreshCw className="animate-spin" size={20} /></div>;
   if (state === 'error' || !res) return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-500 p-6 text-center">Link inválido ou indisponível.</div>;
   return (
