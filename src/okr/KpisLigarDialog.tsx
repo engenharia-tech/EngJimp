@@ -122,7 +122,7 @@ export const KpisLigarDialog: React.FC<{
           ) : erro ? (
             <p className="text-sm text-rose-600 dark:text-rose-400">{erro}</p>
           ) : !visiveis.length ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">Não há indicador que o dono deste OKR enxergue. Os indicadores são cadastrados pelo Edson e pelos admins de OKR, na aba KPI dos setores.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Não há indicador que o dono deste OKR enxergue. Os indicadores são cadastrados pelas pessoas de cada setor (e pelo Edson e os admins de OKR), na aba KPI dos setores.</p>
           ) : (
             <>
               <div>

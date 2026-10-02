@@ -41,6 +41,9 @@ export interface KpisService {
   editarIndicador(id: string, input: KpisIndicadorInput, version: string): Promise<KpisIndicador>;
   arquivarIndicador(id: string, ativo: boolean, version: string): Promise<KpisIndicador>;
   apagarIndicador(id: string): Promise<void>;
+  excluirIndicador(id: string, lancamentos: number): Promise<void>;   // 028: com os lançamentos (o número confirmado na tela)
+  apagarLancamentosDoIndicador(id: string, esperado: number): Promise<number>;   // 028: libera a mudança de frequência/tipo
+  contarLancamentos(id: string): Promise<number>;                    // 028: no banco (a tela só lê 36 meses)
   salvarMeta(indicadorId: string, valeDesde: string, meta: number, limite: number | null): Promise<KpisMeta>;
   apagarMeta(indicadorId: string, valeDesde: string): Promise<void>;
   lancar(indicadorId: string, periodo: string, valor: number, comentario: string): Promise<KpisLancamento>;
@@ -109,8 +112,9 @@ const todas = async (monta: (de: number, ate: number) => PromiseLike<{ data: any
 let tem025: boolean | null = null;
 let tem026: boolean | null = null;
 let tem027: boolean | null = null;
-// a tela se identifica em toda alteração de indicador (026: o banco recusa a tela antiga; 027: a que não conhece o cronograma)
-const KPIS_VERSAO_TELA = 27;
+// a tela se identifica em toda alteração de indicador (026: o banco recusa a tela antiga; 027: a que não conhece o
+// cronograma; 028: a que forçava "do setor" para quem não administra, num indicador que o Edson / admin criou)
+const KPIS_VERSAO_TELA = 28;
 const sonda = async (col: string): Promise<boolean | null> => {
   const { error } = await supabase.from('kpis_indicador').select(col).limit(1);
   if (!error) return true;
@@ -185,7 +189,7 @@ const porQueIndicador = async (id: string, version?: string): Promise<Error> => 
   if (error) return erro(error);
   if (!data || !data.length) return new KpisStaleError('Este indicador foi excluído (ou você não tem mais acesso a ele) — atualizei a tela.');
   if (version && (data[0] as any).atualizado_em !== version) return new KpisStaleError(`"${(data[0] as any).nome}" foi alterado em outra tela enquanto esta estava aberta — atualizei; confira e faça de novo.`);
-  return new Error('Sem permissão: este indicador é do Edson ou de um admin de OKR — o setor lança nele, mas não altera o cadastro.');
+  return new Error('Sem permissão: o cadastro deste indicador é das pessoas do setor dele, do Edson e dos admins de OKR — o seu acesso mudou?');
 };
 const porQueLancamento = async (id: string, version?: string): Promise<Error> => {
   const { data, error } = await supabase.from('kpis_lancamento').select('id, atualizado_em').eq('id', id).limit(1);
@@ -232,8 +236,34 @@ const apagarIndicador = async (id: string): Promise<void> => {
   }
 };
 
-// A meta é de quem GERENCIA o indicador (025): o Edson e os admins de OKR, ou o setor quando foi ele que o criou.
-const SEM_GERIR_META = 'Sem permissão: a meta é de quem gerencia o indicador (o Edson, um admin de OKR, ou o setor quando foi ele que o criou).';
+// 028: excluir de vez, COM os lançamentos — o banco confere que o número confirmado na tela é o de agora, apaga
+// junto o histórico e deixa um registro na auditoria. Banco sem a 028: o excluir de antes (só sem lançamento).
+const excluirIndicador = async (id: string, lancamentos: number): Promise<void> => {
+  const { error } = await supabase.rpc('kpis_excluir_indicador', { p_indicador: id, p_lancamentos: lancamentos });
+  if (!error) return;
+  if (/KPIS_JA_EXCLUIDO/.test(String((error as any).message || ''))) return;   // outra tela excluiu antes: o resultado é o mesmo
+  const code = String((error as any).code || '');
+  if (code === 'PGRST202' || code === '42883' || /could not find the function/i.test(String((error as any).message || ''))) return apagarIndicador(id);
+  throw erro(error);
+};
+// 028: o setor apaga os lançamentos de um indicador seu (o histórico guarda cada um) — para mudar frequência ou tipo.
+const apagarLancamentosDoIndicador = async (id: string, esperado: number): Promise<number> => {
+  const { data, error } = await supabase.from('kpis_lancamento').delete().eq('indicador_id', id).select('id');
+  if (error) throw erro(error);
+  const n = (data || []).length;
+  // nada saiu mas havia o que apagar: a RLS não deixou (o acesso mudou, ou o banco ainda sem a 028)
+  if (n === 0 && esperado > 0 && (await contarLancamentos(id)) > 0) throw new Error('Sem permissão: apagar lançamento é de quem cuida do indicador (as pessoas do setor, o Edson ou um admin de OKR).');
+  return n;
+};
+// 028: quantos lançamentos o indicador tem NO BANCO (a tela só lê 36 meses) — o número que o excluir confirma.
+const contarLancamentos = async (id: string): Promise<number> => {
+  const { count, error } = await supabase.from('kpis_lancamento').select('id', { count: 'exact', head: true }).eq('indicador_id', id);
+  if (error) throw erro(error);
+  return count || 0;
+};
+
+// A meta é de quem GERENCIA o indicador (028): quem é do setor, o Edson e os admins de OKR.
+const SEM_GERIR_META = 'Sem permissão: a meta é de quem cuida do indicador (as pessoas do setor, o Edson ou um admin de OKR).';
 const possoGerir = async (indicadorId: string): Promise<boolean> => {
   await colsIndicador();
   if (tem025 === false) { const a = await acesso(); return !!a?.administra; }   // sem a 025: só quem administra
@@ -300,7 +330,7 @@ const apagarLancamento = async (id: string): Promise<void> => {
   if (!data || !data.length) {
     const why = await porQueLancamento(id);
     if (why instanceof KpisStaleError) return;
-    throw new Error('Sem permissão: só o Edson e os admins de OKR apagam um lançamento (quem lança corrige, com o motivo).');
+    throw new Error('Sem permissão: apagar lançamento é de quem cuida do indicador (as pessoas do setor, o Edson ou um admin de OKR).');
   }
 };
 
@@ -363,7 +393,7 @@ const mudarSetor = async (userId: string, setor: string, setorAntes?: string): P
 
 export const kpisService: KpisService = {
   acesso, setores, tiposAtividade, listIndicadores, listMetas, listLancamentos, listHist, serieCalculada, fontesNovas, cronograma,
-  criarIndicador, editarIndicador, arquivarIndicador, apagarIndicador, salvarMeta, apagarMeta,
+  criarIndicador, editarIndicador, arquivarIndicador, apagarIndicador, excluirIndicador, apagarLancamentosDoIndicador, contarLancamentos, salvarMeta, apagarMeta,
   lancar, corrigir, apagarLancamento, valoresLigados, ultimoAntes, contarLigados, mudarSetor,
 };
 
@@ -385,15 +415,16 @@ export const kpisErrorMessage = (e: any, fallback: string, leitura = false): str
   if (/KPIS_MOTIVO_LONGO/.test(m)) return 'O motivo vai até 300 letras. Nada foi salvo.';
   if (/KPIS_MOTIVO/.test(m)) return 'Diga o motivo da correção (pelo menos 3 letras). Nada foi salvo.';
   if (/KPIS_CALCULADO/.test(m)) return 'Este indicador é calculado sozinho pela base — não se lança à mão.';
-  if (/KPIS_ESCOPO_SETOR/.test(m)) return 'O indicador calculado criado pelo setor conta só as pessoas do setor. Nada foi salvo.';
+  if (/KPIS_ESCOPO_SETOR/.test(m)) return 'Contar horas, projetos ou paradas de "todo mundo" é só do Edson e dos admins de OKR (inclui o P&D, que é reservado) — use as pessoas do setor ou a régua da engenharia. Nada foi salvo.';
+  if (/KPIS_EXCLUIR_CONFIRMA/.test(m)) return 'O número de lançamentos mudou enquanto a tela estava aberta — atualizei; confira e confirme de novo. Nada foi apagado.';
   if (/KPIS_ARQUIVADO/.test(m)) return 'Este indicador está arquivado — não recebe lançamentos.';
-  if (/KPIS_FREQUENCIA_TRAVADA/.test(m)) return 'Este indicador já tem lançamentos: a frequência e o tipo não mudam mais. Para mudar, crie outro e arquive este.';
+  if (/KPIS_FREQUENCIA_TRAVADA/.test(m)) return 'Este indicador tem lançamentos: para mudar a frequência ou o tipo, apague os lançamentos antes (no Editar) — ou crie outro e arquive este. Nada foi salvo.';
   if (/KPIS_INICIO_DEPOIS_DE_LANCAMENTO/.test(m)) return 'Há lançamento antes do novo início — escolha um início anterior (ou apague o lançamento antes).';
-  if (/KPIS_LIGADO_AO_OKR/.test(m)) return 'Há resultado-chave de OKR ligado a este indicador: desligue no OKR antes (ou arquive o indicador).';
+  if (/KPIS_LIGADO_AO_OKR/.test(m)) return 'Há resultado-chave de OKR ligado a este indicador: o dono do OKR desliga antes (ou arquive o indicador). Nada foi apagado.';
   if (/KPIS_LIMITE_DO_LADO_ERRADO/.test(m)) return '"Fica amarelo até" tem de ficar do lado de fora da meta (abaixo dela se quanto maior, melhor; acima se quanto menor, melhor).';
   if (/KPIS_SEM_ACESSO/.test(m) || code === '42501' || /row-level security|permission denied/i.test(m) || /^sem permiss/i.test(m))
     return /^sem permiss/i.test(m) ? m : 'Sem permissão para isto — o seu acesso mudou (de setor, por exemplo). Atualize a tela; se a permissão foi dada agora, saia e entre de novo.';
-  if (code === '23503') return 'Este indicador tem lançamentos (ou histórico de lançamentos): não dá para excluir — arquive.';
+  if (code === '23503') return 'Este indicador tem lançamentos (ou histórico de lançamentos): o banco ainda não aceita excluir junto — arquive, ou avise o Edson.';
   if (code === '23505') return 'Já existe um indicador ativo com este nome neste setor.';
   if (code === '23514' || /check constraint/i.test(m)) return 'O banco recusou os dados (texto longo demais ou número fora do permitido). Nada foi salvo.';
   return m ? `${fallback} (${m})` : fallback;

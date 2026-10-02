@@ -39,8 +39,8 @@ export interface KpisIndicador {
   atualizadoPor: string | null;
   atualizadoEm: string;           // versão da linha (trava contra gravar por cima)
   podeLancar: boolean;            // kpis_pode_lancar — o banco diz
-  doSetor: boolean;               // 025: criado pelo próprio setor (o setor gerencia)
-  podeGerir: boolean | null;      // 025: kpis_pode_gerir — editar/meta/arquivar; null = banco sem a 025 (vale o "administra")
+  doSetor: boolean;               // 025: criado pelo próprio setor (só registro: desde a 028 o setor cuida de todos os seus)
+  podeGerir: boolean | null;      // kpis_pode_gerir — editar/meta/arquivar/excluir (028: o setor em todos os seus); null = banco sem a 025
 }
 
 export interface KpisMeta {

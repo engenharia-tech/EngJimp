@@ -181,7 +181,7 @@ export const KpisDetalhe: React.FC<{
                             ) : (
                               <button onClick={() => { setEditando(l.id); setValor(numeroExatoParaCampo(l.valor)); setMotivo(''); }} className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400"><PencilLine size={12} /> Corrigir</button>
                             ))}
-                            {l && administra && editando !== l.id && <button onClick={() => apagar(l)} disabled={gravando} className="ml-2 text-slate-300 hover:text-rose-500" title="Apagar este lançamento (fica no histórico)"><Trash2 size={13} /></button>}
+                            {l && (podeEditar ?? administra) && editando !== l.id && <button onClick={() => apagar(l)} disabled={gravando} className="ml-2 text-slate-300 hover:text-rose-500" title="Apagar este lançamento (fica no histórico)"><Trash2 size={13} /></button>}
                           </td>
                         </tr>
                         {abrirHist === p.periodo && hs.length > 0 && (
