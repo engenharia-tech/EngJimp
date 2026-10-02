@@ -110,6 +110,7 @@ export const KpisDetalhe: React.FC<{
                 : r.erroCalculo ? <span className="text-rose-600 dark:text-rose-400">não consegui calcular agora — tente Atualizar</span> : 'sem valor ainda'}
               {r.meta && <> · meta {fmtValor(r.meta.meta, i.unidade, i.casas)} (vale desde {rotuloPeriodo(i.frequencia, r.meta.valeDesde)})</>}
             </div>
+            {r.noAno && <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-full px-2.5 py-0.5" title="Soma dos períodos deste ano até agora (com o período em curso)">em {r.noAno.ano}: {fmtValor(r.noAno.valor, i.unidade, i.casas)}</span>}
             {!r.erroCalculo && <FarolChip f={r.farol} />}
             <TendenciaIcon t={r.tendencia} />
             <AtrasoSelo i={i} r={r} />

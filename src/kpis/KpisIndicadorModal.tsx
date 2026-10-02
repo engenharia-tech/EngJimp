@@ -58,15 +58,19 @@ export const KpisIndicadorModal: React.FC<{
   const [filtroProj, setFiltroProj] = useState<string[]>(ind?.calcFonte === 'projetos' ? ind.calcFiltro : PROJETO_TIPOS.map(t => t.v));
   const [filtroInov, setFiltroInov] = useState<string[]>(ind?.calcFonte === 'inovacoes' ? ind.calcFiltro : []);
   const [com026, setCom026] = useState<boolean | null>(null);
+  const [com027, setCom027] = useState<boolean | null>(null);   // 027: o banco conhece o cronograma (Nexus Flow)?
   useEffect(() => {
     let vivo = true;
     service.fontesNovas().then(v => { if (vivo) setCom026(v); }).catch(() => { if (vivo) setCom026(null); });   // null: não força nada
+    service.cronograma().then(v => { if (vivo) setCom027(v); }).catch(() => { if (vivo) setCom027(null); });
     return () => { vivo = false; };
   }, [service]);
   const fonteEf: KpisFonte = com026 === false ? 'atividades' : calcFonte;
   const medidaEf: KpisMedida = MEDIDAS_DA_FONTE[fonteEf].includes(calcMedida) ? calcMedida : MEDIDAS_DA_FONTE[fonteEf][0];
   const soSetor = !!setorFixo || !!ind?.doSetor;   // 025: o calculado criado pelo setor conta só o setor
-  const escopoEf: KpisEscopo = soSetor ? 'setor' : calcEscopo;
+  // o cronograma não tem a régua da engenharia: conta os projetos de todos ou os do setor
+  const escopoEf: KpisEscopo = soSetor ? 'setor' : fonteEf === 'cronograma' && calcEscopo === 'engenharia' ? 'todos' : calcEscopo;
+  const fonteVisivel = (f: KpisFonte) => f === 'cronograma' ? com027 === true || calcFonte === 'cronograma' : com026 !== false || f === 'atividades';
   const naoSoma = tipo === 'calculado' && (medidaEf === 'media' || medidaEf === 'pct_estimado');   // média e % não se somam
 
   // Meta: na criação vale desde o início; na edição, desde o período atual (pode escolher).
@@ -227,7 +231,7 @@ export const KpisIndicadorModal: React.FC<{
                   <label className="flex flex-col gap-1">
                     <span className={rotulo}>De onde</span>
                     <select value={fonteEf} onChange={e => setCalcFonte(e.target.value as KpisFonte)} disabled={com026 === false || temLanc} className={campo}>
-                      {(Object.keys(FONTE_ROTULO) as KpisFonte[]).filter(f => com026 !== false || f === 'atividades').map(f => <option key={f} value={f}>{FONTE_ROTULO[f]}</option>)}
+                      {(Object.keys(FONTE_ROTULO) as KpisFonte[]).filter(fonteVisivel).map(f => <option key={f} value={f}>{FONTE_ROTULO[f]}</option>)}
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
@@ -240,7 +244,7 @@ export const KpisIndicadorModal: React.FC<{
                     <span className={rotulo}>De quem</span>
                     <select value={escopoEf} onChange={e => setCalcEscopo(e.target.value as KpisEscopo)} className={campo}>
                       <option value="setor">{ESCOPO_ROTULO.setor}</option>
-                      {!soSetor && (com026 !== false || escopoEf === 'engenharia') && <option value="engenharia">{ESCOPO_ROTULO.engenharia}</option>}
+                      {!soSetor && fonteEf !== 'cronograma' && (com026 !== false || escopoEf === 'engenharia') && <option value="engenharia">{ESCOPO_ROTULO.engenharia}</option>}
                       {!soSetor && <option value="todos">{ESCOPO_ROTULO.todos}</option>}
                     </select>
                   </label>

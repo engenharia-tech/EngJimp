@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   KpisIndicador, KpisLancamento, KpisMeta, KpisPontoCalculado, KpisFarol, KpisPendencias, KpisTendencia,
-  farol, hojeSP, inicioPeriodo, metaVigente, pendencias, periodoAnterior, periodosEntre, proximoPeriodo, tendencia,
+  farol, hojeSP, inicioPeriodo, metaVigente, pendencias, periodoAnterior, periodosEntre, proximoPeriodo, semanaIso, tendencia,
 } from './kpis';
 import { KpisService } from './kpisService';
 
@@ -82,6 +82,7 @@ export interface KpisResumo {
   parcial: KpisPonto | null;         // CALCULADO: o período em curso, ainda incompleto ("out/2026 até agora")
   erroCalculo: boolean;              // CALCULADO: a série não deu para ler (não é "sem valor")
   comecaEm: string | null;           // o 1º período ainda não começou (início no futuro)
+  noAno: { ano: string; valor: number } | null; // SOMA: o total do ano de hoje até agora (com o período em curso); null = não soma ou nada no ano
 }
 
 export const resumoDo = (i: KpisIndicador, d: KpisDados, hoje: string = hojeSP()): KpisResumo => {
@@ -126,5 +127,14 @@ export const resumoDo = (i: KpisIndicador, d: KpisDados, hoje: string = hojeSP()
     parcial,
     erroCalculo: i.tipo === 'calculado' && d.calcErro.has(i.id),
     comecaEm: i.inicio > atual ? i.inicio : null,
+    // O que se acumula (entregas, horas, faturamento): o último mês sozinho esconde o ano — "em 2026: 12".
+    noAno: (() => {
+      if (i.consolidacao !== 'soma') return null;
+      // a semana é do ano ISO (o mesmo do rótulo "Sem 1/2027"); mês e trimestre, do ano em que começam
+      const anoDe = (per: string) => i.frequencia === 'semanal' ? String(semanaIso(per).ano) : per.slice(0, 4);
+      const ano = anoDe(atual);
+      const vs = serie.filter(p => anoDe(p.periodo) === ano && p.valor !== null).map(p => p.valor as number);
+      return vs.length ? { ano, valor: vs.reduce((s, v) => s + v, 0) } : null;
+    })(),
   };
 };

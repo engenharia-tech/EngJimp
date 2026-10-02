@@ -102,6 +102,7 @@ export const KpisCartao: React.FC<{ i: KpisIndicador; r: KpisResumo; ligados?: n
             {r.meta ? <> · meta {fmtValor(r.meta.meta, i.unidade, i.casas)}</> : r.semMeta ? <> · <span className="text-amber-600 dark:text-amber-400">sem meta — defina</span></> : null}
           </div>
           {r.parcial && r.parcial.valor !== null && <div className="text-[11px] text-slate-400 dark:text-slate-500">{rotuloPeriodo(i.frequencia, r.parcial.periodo)} até agora: {fmtValor(r.parcial.valor, i.unidade, i.casas)}</div>}
+          {r.noAno && <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">em {r.noAno.ano}: {fmtValor(r.noAno.valor, i.unidade, i.casas)}</div>}
         </div>
         <div className="w-24 h-8 shrink-0" style={{ color: cor.hex }}>
           <MiniGrafico v={r.spark} className="w-full h-full" />
