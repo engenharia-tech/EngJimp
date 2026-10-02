@@ -11,8 +11,9 @@ export type KpisFrequencia = 'semanal' | 'mensal' | 'trimestral';
 export type KpisSentido = 'maior' | 'menor';
 export type KpisConsolidacao = 'ultimo' | 'soma';
 export type KpisTipo = 'manual' | 'calculado';
-export type KpisMedida = 'horas' | 'quantidade';
-export type KpisEscopo = 'setor' | 'todos';
+export type KpisMedida = 'horas' | 'quantidade' | 'media' | 'pct_estimado';  // media e pct_estimado: só projetos (026)
+export type KpisEscopo = 'setor' | 'todos' | 'engenharia';                   // engenharia: a régua do Dashboard (026)
+export type KpisFonte = 'atividades' | 'projetos' | 'paradas' | 'inovacoes'; // de onde sai o calculado (026)
 
 export interface KpisIndicador {
   id: string;
@@ -31,11 +32,15 @@ export interface KpisIndicador {
   calcTipos: string[];            // tipos de atividade do Desempenho Operacional (calculado)
   calcMedida: KpisMedida | null;
   calcEscopo: KpisEscopo | null;
+  calcFonte: KpisFonte | null;    // 026: null = manual (banco sem a 026: atividades)
+  calcFiltro: string[];           // 026: tipos de projeto (LIBERACAO…) ou situações de inovação (vazio = todas)
   criadoPor: string | null;
   criadoEm: string;
   atualizadoPor: string | null;
   atualizadoEm: string;           // versão da linha (trava contra gravar por cima)
   podeLancar: boolean;            // kpis_pode_lancar — o banco diz
+  doSetor: boolean;               // 025: criado pelo próprio setor (o setor gerencia)
+  podeGerir: boolean | null;      // 025: kpis_pode_gerir — editar/meta/arquivar; null = banco sem a 025 (vale o "administra")
 }
 
 export interface KpisMeta {
@@ -74,8 +79,9 @@ export interface KpisHist {
   em: string;
 }
 
-// Um período de indicador CALCULADO (kpis_serie_calculada): o valor e quantas atividades.
-export interface KpisPontoCalculado { periodo: string; valor: number; atividades: number; }
+// Um período de indicador CALCULADO (kpis_serie_calculada): o valor e quantos registros entraram.
+// valor null = sem base (média ou % num período sem projeto concluído) — nunca vira 0.
+export interface KpisPontoCalculado { periodo: string; valor: number | null; atividades: number; }
 
 export interface KpisAcesso {
   cadastrado: boolean;
@@ -86,10 +92,57 @@ export interface KpisAcesso {
   setorNome: string | null;
   indicadores: number;            // quantos ativos ela enxerga
   possoLancar: number;            // em quantos ela lança
+  cria: boolean;                  // 025: cria indicador do próprio setor (quem tem setor; o Edson e os admins em qualquer um)
 }
 
 export interface KpisSetor { chave: string; nome: string; pessoas: number; grafias: string[]; }
 export interface KpisTipoAtividade { id: string; nome: string; ativo: boolean; }
+
+// ---- 026: de onde o calculado sai, o que conta e de quem ---------------------
+export const MEDIDAS_DA_FONTE: Record<KpisFonte, KpisMedida[]> = {
+  atividades: ['horas', 'quantidade'], projetos: ['quantidade', 'horas', 'media', 'pct_estimado'],
+  paradas: ['horas', 'quantidade'], inovacoes: ['quantidade'],
+};
+export const FONTE_ROTULO: Record<KpisFonte, string> = {
+  atividades: 'atividades do Desempenho Operacional', projetos: 'sessões de projeto (Liberação, Variação, Desenvolvimento)',
+  paradas: 'paradas registradas (interrupções)', inovacoes: 'inovações cadastradas',
+};
+export const MEDIDA_ROTULO: Record<KpisFonte, Partial<Record<KpisMedida, string>>> = {
+  atividades: { horas: 'as horas das atividades', quantidade: 'quantas atividades' },
+  projetos: { quantidade: 'quantas sessões de projeto', horas: 'as horas de projeto (tempo ativo)', media: 'as horas médias por projeto concluído', pct_estimado: '% dos concluídos dentro do estimado' },
+  paradas: { horas: 'as horas paradas', quantidade: 'quantas paradas' },
+  inovacoes: { quantidade: 'quantas inovações' },
+};
+export const AJUDA_FONTE: Record<KpisFonte, string> = {
+  atividades: 'Atividades concluídas, no dia em que começaram. Na soma de horas, sessão de mais de 16 h (esquecida aberta) fica fora — a régua do P&D Gerencial.',
+  projetos: 'Sessões de projeto de qualquer situação, no dia em que começaram — o mesmo "Total Ano" do Dashboard. Média e % olham os projetos concluídos, no mês em que terminaram (o mês fechado não muda mais); mês sem projeto concluído fica sem valor.',
+  paradas: 'Paradas registradas, no dia em que começaram; as horas são as horas úteis paradas (a régua do Dashboard).',
+  inovacoes: 'Inovações cadastradas, no dia do cadastro. Só a contagem — nunca valores em R$.',
+};
+export const PROJETO_TIPOS = [{ v: 'LIBERACAO', rotulo: 'Liberação' }, { v: 'VARIACAO', rotulo: 'Variação' }, { v: 'DESENVOLVIMENTO', rotulo: 'Desenvolvimento' }];
+export const INOVACAO_STATUS = [{ v: 'PENDING', rotulo: 'Pendente' }, { v: 'APPROVED', rotulo: 'Aprovada' }, { v: 'IMPLEMENTED', rotulo: 'Implementada' }, { v: 'REJECTED', rotulo: 'Rejeitada' }];
+export const ESCOPO_ROTULO: Record<KpisEscopo, string> = {
+  setor: 'das pessoas do setor do indicador',
+  engenharia: 'da engenharia, como no Dashboard (sem PROCESSOS; o P&D sai desde 01/09/2026)',
+  todos: 'de todo mundo',
+};
+const ESCOPO_CURTO: Record<KpisEscopo, string> = { setor: 'do setor', engenharia: 'da engenharia (régua do Dashboard)', todos: 'de todos' };
+// O cabeçalho do indicador calculado ("calculado: as horas das atividades · da engenharia…").
+export const rotuloCalculo = (i: Pick<KpisIndicador, 'calcFonte' | 'calcMedida' | 'calcEscopo'>): string => {
+  const f = i.calcFonte || 'atividades';
+  const m = (i.calcMedida && MEDIDA_ROTULO[f][i.calcMedida]) || FONTE_ROTULO[f];
+  return `calculado: ${m}${i.calcEscopo ? ` · ${ESCOPO_CURTO[i.calcEscopo]}` : ''}`;
+};
+// A base de cada período ("12 sessões", "3 concluídos com estimativa").
+export const rotuloBase = (i: Pick<KpisIndicador, 'calcFonte' | 'calcMedida'>, k: number): string => {
+  const pl = (um: string, varios: string) => `${k} ${k === 1 ? um : varios}`;
+  const f = i.calcFonte || 'atividades';
+  if (f === 'projetos') return i.calcMedida === 'media' ? pl('concluído', 'concluídos')
+    : i.calcMedida === 'pct_estimado' ? pl('concluído com estimativa', 'concluídos com estimativa') : pl('sessão', 'sessões');
+  if (f === 'paradas') return pl('parada', 'paradas');
+  if (f === 'inovacoes') return pl('inovação', 'inovações');
+  return pl('atividade', 'atividades');
+};
 
 // O que se escreve ao criar/editar um indicador (as colunas que o GRANT da 023 deixa).
 export interface KpisIndicadorInput {
@@ -107,10 +160,14 @@ export interface KpisIndicadorInput {
   calcTipos: string[];
   calcMedida: KpisMedida | null;
   calcEscopo: KpisEscopo | null;
+  calcFonte: KpisFonte;           // 026 (sem a 026 no banco, só 'atividades')
+  calcFiltro: string[];
 }
 
 // ---- Colunas (nunca select('*')) ------------------------------------------
-export const KPIS_IND_COLS = 'id, setor, nome, descricao, unidade, casas, sentido, frequencia, consolidacao, prazo_dias, inicio, ativo, tipo, calc_tipos, calc_medida, calc_escopo, criado_por, criado_em, atualizado_por, atualizado_em, kpis_pode_lancar';
+export const KPIS_IND_COLS_023 = 'id, setor, nome, descricao, unidade, casas, sentido, frequencia, consolidacao, prazo_dias, inicio, ativo, tipo, calc_tipos, calc_medida, calc_escopo, criado_por, criado_em, atualizado_por, atualizado_em, kpis_pode_lancar';
+export const KPIS_IND_COLS_025 = KPIS_IND_COLS_023 + ', do_setor, kpis_pode_gerir';   // 025
+export const KPIS_IND_COLS = KPIS_IND_COLS_025 + ', calc_fonte, calc_filtro';          // 026
 export const KPIS_META_COLS = 'indicador_id, vale_desde, meta, limite_alerta, por, em';
 export const KPIS_LANC_COLS = 'id, indicador_id, periodo, valor, comentario, lancado_por, lancado_em, alterado_por, alterado_em, atualizado_em';
 export const KPIS_HIST_COLS = 'id, lancamento_id, indicador_id, periodo, acao, valor_antes, valor_depois, comentario_antes, motivo, por, em';
@@ -129,12 +186,19 @@ export const mapIndicador = (r: any): KpisIndicador => ({
   prazoDias: nn(r.prazo_dias), inicio: dia(r.inicio), ativo: r.ativo !== false,
   tipo: r.tipo === 'calculado' ? 'calculado' : 'manual',
   calcTipos: Array.isArray(r.calc_tipos) ? r.calc_tipos.map(s) : [],
-  calcMedida: r.calc_medida === 'horas' || r.calc_medida === 'quantidade' ? r.calc_medida : null,
-  calcEscopo: r.calc_escopo === 'setor' || r.calc_escopo === 'todos' ? r.calc_escopo : null,
+  calcMedida: (['horas', 'quantidade', 'media', 'pct_estimado'] as const).find(x => x === r.calc_medida) ?? null,
+  calcEscopo: (['setor', 'todos', 'engenharia'] as const).find(x => x === r.calc_escopo) ?? null,
+  calcFonte: r.tipo !== 'calculado' ? null : (['projetos', 'paradas', 'inovacoes'] as const).find(x => x === r.calc_fonte) ?? 'atividades',
+  calcFiltro: Array.isArray(r.calc_filtro) ? r.calc_filtro.map(s) : [],
   criadoPor: r.criado_por ? s(r.criado_por) : null, criadoEm: s(r.criado_em),
   atualizadoPor: r.atualizado_por ? s(r.atualizado_por) : null, atualizadoEm: s(r.atualizado_em),
   podeLancar: r.kpis_pode_lancar === true,
+  doSetor: r.do_setor === true,
+  podeGerir: typeof r.kpis_pode_gerir === 'boolean' ? r.kpis_pode_gerir : null,
 });
+// Editar, pôr meta, arquivar e excluir: o banco diz (025); sem a 025, só quem administra.
+export const gerencia = (i: Pick<KpisIndicador, 'podeGerir'>, acesso: Pick<KpisAcesso, 'administra'> | null | undefined): boolean =>
+  i.podeGerir ?? !!acesso?.administra;
 export const mapMeta = (r: any): KpisMeta => ({
   indicadorId: s(r.indicador_id), valeDesde: dia(r.vale_desde), meta: n(r.meta), limiteAlerta: nn(r.limite_alerta),
   por: r.por ? s(r.por) : null, em: s(r.em),
@@ -154,16 +218,26 @@ export const mapAcesso = (r: any): KpisAcesso => ({
   cadastrado: r?.cadastrado === true, visualizador: r?.visualizador !== false, veTodos: r?.ve_todos === true,
   administra: r?.administra === true, setorChave: r?.setor_chave ? s(r.setor_chave) : null,
   setorNome: r?.setor_nome ? s(r.setor_nome) : null, indicadores: n(r?.indicadores), possoLancar: n(r?.posso_lancar),
+  cria: r?.cria === true || (r?.cria === undefined && r?.administra === true),   // sem a 025: só quem administra
 });
 
-export const toIndicadorRow = (i: KpisIndicadorInput): Record<string, unknown> => ({
-  setor: i.setor.trim(), nome: i.nome.trim(), descricao: i.descricao.trim() || null, unidade: i.unidade.trim(),
-  casas: i.casas, sentido: i.sentido, frequencia: i.frequencia, consolidacao: i.consolidacao,
-  prazo_dias: i.prazoDias, inicio: i.inicio, tipo: i.tipo,
-  calc_tipos: i.tipo === 'calculado' ? i.calcTipos : null,
-  calc_medida: i.tipo === 'calculado' ? i.calcMedida : null,
-  calc_escopo: i.tipo === 'calculado' ? i.calcEscopo : null,
-});
+// com026 = o banco tem calc_fonte/calc_filtro (sem a 026, mandar essas colunas daria erro — e só 'atividades' existe).
+export const toIndicadorRow = (i: KpisIndicadorInput, com026 = true): Record<string, unknown> => {
+  const fonte: KpisFonte | null = i.tipo === 'calculado' ? (i.calcFonte || 'atividades') : null;
+  return {
+    setor: i.setor.trim(), nome: i.nome.trim(), descricao: i.descricao.trim() || null, unidade: i.unidade.trim(),
+    casas: i.casas, sentido: i.sentido, frequencia: i.frequencia, consolidacao: i.consolidacao,
+    prazo_dias: i.prazoDias, inicio: i.inicio, tipo: i.tipo,
+    calc_tipos: fonte === 'atividades' ? i.calcTipos : null,
+    calc_medida: fonte ? i.calcMedida : null,
+    calc_escopo: fonte ? i.calcEscopo : null,
+    ...(com026 ? { calc_fonte: fonte, calc_filtro: fonte && fonte !== 'atividades' && i.calcFiltro.length ? i.calcFiltro : null } : {}),
+  };
+};
+// O cálculo pede a 026 (fonte nova, escopo engenharia, média ou %)?
+export const precisa026 = (i: KpisIndicadorInput): boolean =>
+  i.tipo === 'calculado' && ((i.calcFonte || 'atividades') !== 'atividades' || i.calcEscopo === 'engenharia'
+    || i.calcMedida === 'media' || i.calcMedida === 'pct_estimado');
 
 // O que o formulário confere antes de mandar (o banco confere de novo).
 export const validarIndicador = (i: KpisIndicadorInput): string => {
@@ -176,10 +250,15 @@ export const validarIndicador = (i: KpisIndicadorInput): string => {
   if (!parseDia(i.inicio)) return 'Escolha a data de início.';
   if (i.prazoDias !== null && (i.prazoDias < 0 || i.prazoDias > 60)) return 'O prazo para lançar vai de 0 a 60 dias.';
   if (i.tipo === 'calculado') {
-    if (!i.calcTipos.length) return 'Escolha pelo menos um tipo de atividade para o cálculo.';
-    if (i.calcTipos.length > 40) return 'No máximo 40 tipos de atividade.';
-    if (!i.calcMedida) return 'Escolha se conta horas ou quantidade de atividades.';
-    if (!i.calcEscopo) return 'Escolha de quem são as atividades (o setor ou todos).';
+    const fonte = i.calcFonte || 'atividades';
+    if (fonte === 'atividades') {
+      if (!i.calcTipos.length) return 'Escolha pelo menos um tipo de atividade para o cálculo.';
+      if (i.calcTipos.length > 40) return 'No máximo 40 tipos de atividade.';
+    }
+    if (fonte === 'projetos' && !i.calcFiltro.length) return 'Escolha pelo menos um tipo de projeto (Liberação, Variação, Desenvolvimento).';
+    if (!i.calcMedida || !MEDIDAS_DA_FONTE[fonte].includes(i.calcMedida)) return 'Escolha o que o cálculo conta.';
+    if ((i.calcMedida === 'media' || i.calcMedida === 'pct_estimado') && i.consolidacao === 'soma') return 'Média e "% no estimado" não se somam ao longo do tempo — desmarque "os valores se somam".';
+    if (!i.calcEscopo) return 'Escolha de quem são os registros (o setor, a engenharia ou todo mundo).';
   }
   return '';
 };

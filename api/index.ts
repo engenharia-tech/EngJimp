@@ -865,6 +865,14 @@ const ADMIN_ROLES = ["GESTOR", "CEO", "COORDENADOR"];   // Configurações e e-m
 // pessoas). O CEO continua editando o PRÓPRIO contato (cai no caminho do "isSelf").
 const PESSOAS_ADMIN_ROLES = ["GESTOR", "COORDENADOR"];
 const CEO_SO_VE = "O CEO acompanha tudo (visão macro), mas não dá cargo nem libera acesso — peça ao Edson.";
+// Setor RESERVADO (KPI dos setores, 026 — decisão do Edson, 01/10: "P&D: só eu e os CEOs"): quem entra no
+// setor passa a ver os indicadores dele, então pôr ou tirar alguém de lá é só do Edson. Espelho de
+// kpis_setor_reservado (SQL) e da chave kpis_setor_chave ('P&D' → 'p d').
+const SETORES_RESERVADOS = ["p d"];
+const setorChaveSrv = (v: unknown): string =>
+  String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const setorReservado = (v: unknown): boolean => SETORES_RESERVADOS.includes(setorChaveSrv(v));
+const SETOR_RESERVADO_MSG = "O setor P&D é reservado: só o Edson põe ou tira alguém dele.";
 // CEO e GESTOR — decisão do Edson, 25/09/2026: "qualquer GESTOR". GESTOR e COORDENADOR
 // cadastram e editam (o CEO não, desde 01/10 — PESSOAS_ADMIN_ROLES), mas só um GESTOR dá ou tira CEO/GESTOR, e só
 // ele troca login, e-mail ou senha — ou exclui — as contas que leem o OKR de todos
@@ -904,6 +912,7 @@ app.post("/api/users/save", async (req, res) => {
     if (!atual || !atual.length) return res.json({ success: false, message: "Usuário não encontrado." });
     const setorAtual = String((atual[0] as any).sector || "").trim();
     if (setor === setorAtual) return res.json({ success: true, semMudanca: true });   // já é esse: nada a gravar (a tela não registra troca)
+    if ((setorReservado(setor) || setorReservado(setorAtual)) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
     if (user && user.sectorAntes !== undefined && user.sectorAntes !== null && String(user.sectorAntes).trim() !== setorAtual)
       return res.status(409).json({ success: false, setorAtual, error: `O setor desta pessoa mudou enquanto a tela estava aberta (agora: "${setorAtual || "sem setor"}"). Nada foi gravado — confira e salve de novo.` });
     const { data: mudou, error: sErr } = await admin.from("users").update({ sector: setor || null }).eq("id", alvo).select("id");
@@ -999,6 +1008,7 @@ app.post("/api/users/save", async (req, res) => {
     if (setorNovo) {
       try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR definem o setor (o setor abre o KPI do setor). Crie sem setor e peça a eles." }); }
       catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+      if (setorReservado(setorNovo) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
     }
     // Salario so e gravado se quem cria for o Edson. Um admin comum nem
     // enxerga salario (cliente recebe 0), entao nunca escreve esse campo.
@@ -1063,6 +1073,9 @@ app.post("/api/users/save", async (req, res) => {
       if (setorPedido !== setorAtual) {
         if (!(await isOkrMasterDb(admin, claims.sub))) {
           return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR mudam o setor de alguém (o setor abre o KPI do setor)." });
+        }
+        if ((setorReservado(setorPedido) || setorReservado(setorAtual)) && !claimsAreEdson(claims)) {
+          return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
         }
         // A tela diz o setor que via (sectorAntes): se outro admin o mudou no meio, recusa em vez de desfazer.
         if (user.sectorAntes !== undefined && user.sectorAntes !== null && String(user.sectorAntes).trim() !== setorAtual)

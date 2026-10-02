@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, Save, Loader2, AlertTriangle, Trash2, Calculator, PencilLine } from 'lucide-react';
 import { Dialog } from '../components/Dialog';
 import { useToast } from '../components/Toast';
 import {
-  KpisFrequencia, KpisIndicador, KpisIndicadorInput, KpisMedida, KpisEscopo, KpisSentido, KpisSetor, KpisTipoAtividade,
+  KpisFrequencia, KpisIndicador, KpisIndicadorInput, KpisMedida, KpisEscopo, KpisFonte, KpisSentido, KpisSetor, KpisTipoAtividade,
+  AJUDA_FONTE, ESCOPO_ROTULO, FONTE_ROTULO, INOVACAO_STATUS, MEDIDA_ROTULO, MEDIDAS_DA_FONTE, PROJETO_TIPOS,
   FREQ_ROTULO, PRAZO_PADRAO, UNIDADES, fmtValor, hojeSP, inicioPeriodo, metaVigente, numeroExatoParaCampo, numeroParaCampo, parseNumero,
   periodosEntre, proximoPeriodo, rotuloPeriodoLongo, setorChave, validarIndicador, rotuloPeriodo,
 } from './kpis';
@@ -27,7 +28,8 @@ export const KpisIndicadorModal: React.FC<{
   onFechar: () => void;
   onGravou: () => void;
   ceoSoVe?: boolean;                  // CEO (visão macro, 01/10): o setor das pessoas ele pede ao Edson
-}> = ({ indicador: ind, dados, service, setores, tipos, onFechar, onGravou, ceoSoVe }) => {
+  setorFixo?: string | null;          // 025: quem não administra cria só no próprio setor (e o calculado conta só o setor)
+}> = ({ indicador: ind, dados, service, setores, tipos, onFechar, onGravou, ceoSoVe, setorFixo }) => {
   const { addToast } = useToast();
   const hoje = hojeSP();
   const temLanc = !!ind && (dados.lancs.get(ind.id)?.length || 0) > 0;
@@ -51,6 +53,21 @@ export const KpisIndicadorModal: React.FC<{
   const [calcTipos, setCalcTipos] = useState<string[]>(ind?.calcTipos || []);
   const [calcMedida, setCalcMedida] = useState<KpisMedida>(ind?.calcMedida || 'horas');
   const [calcEscopo, setCalcEscopo] = useState<KpisEscopo>(ind?.calcEscopo || 'setor');
+  // 026: de onde sai o número. Sem a 026 no banco, só as atividades.
+  const [calcFonte, setCalcFonte] = useState<KpisFonte>(ind?.calcFonte || 'atividades');
+  const [filtroProj, setFiltroProj] = useState<string[]>(ind?.calcFonte === 'projetos' ? ind.calcFiltro : PROJETO_TIPOS.map(t => t.v));
+  const [filtroInov, setFiltroInov] = useState<string[]>(ind?.calcFonte === 'inovacoes' ? ind.calcFiltro : []);
+  const [com026, setCom026] = useState<boolean | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    service.fontesNovas().then(v => { if (vivo) setCom026(v); }).catch(() => { if (vivo) setCom026(null); });   // null: não força nada
+    return () => { vivo = false; };
+  }, [service]);
+  const fonteEf: KpisFonte = com026 === false ? 'atividades' : calcFonte;
+  const medidaEf: KpisMedida = MEDIDAS_DA_FONTE[fonteEf].includes(calcMedida) ? calcMedida : MEDIDAS_DA_FONTE[fonteEf][0];
+  const soSetor = !!setorFixo || !!ind?.doSetor;   // 025: o calculado criado pelo setor conta só o setor
+  const escopoEf: KpisEscopo = soSetor ? 'setor' : calcEscopo;
+  const naoSoma = tipo === 'calculado' && (medidaEf === 'media' || medidaEf === 'pct_estimado');   // média e % não se somam
 
   // Meta: na criação vale desde o início; na edição, desde o período atual (pode escolher).
   const perAtual = inicioPeriodo(frequencia, hoje);
@@ -74,13 +91,15 @@ export const KpisIndicadorModal: React.FC<{
   const [limTxt, setLimTxt] = useState(metaAtual && metaAtual.limiteAlerta !== null ? numeroExatoParaCampo(metaAtual.limiteAlerta) : '');
   const [gravando, setGravando] = useState(false);
 
-  const setor = setorSel === OUTRO ? setorTxt.trim() : (setorLista.find(s => s.chave === setorSel)?.nome || '');
-  const setorSemNinguem = !!setor && !setorLista.some(s => s.chave === setorChave(setor));
+  const setor = setorFixo ? setorFixo : setorSel === OUTRO ? setorTxt.trim() : (setorLista.find(s => s.chave === setorSel)?.nome || '');
+  const setorSemNinguem = !setorFixo && !!setor && !setorLista.some(s => s.chave === setorChave(setor));
   const unidade = unidadeSel === OUTRO ? unidadeTxt.trim() : unidadeSel;
   const input: KpisIndicadorInput = {
-    setor, nome, descricao, unidade, casas, sentido, frequencia, consolidacao: soma ? 'soma' : 'ultimo',
+    setor, nome, descricao, unidade, casas, sentido, frequencia, consolidacao: soma && !naoSoma ? 'soma' : 'ultimo',
     prazoDias: prazo.trim() === '' ? null : Math.round(Number(prazo)), inicio: inicioAlinhado, tipo,
-    calcTipos: tipo === 'calculado' ? calcTipos : [], calcMedida: tipo === 'calculado' ? calcMedida : null, calcEscopo: tipo === 'calculado' ? calcEscopo : null,
+    calcTipos: tipo === 'calculado' && fonteEf === 'atividades' ? calcTipos : [],
+    calcMedida: tipo === 'calculado' ? medidaEf : null, calcEscopo: tipo === 'calculado' ? escopoEf : null,
+    calcFonte: fonteEf, calcFiltro: fonteEf === 'projetos' ? filtroProj : fonteEf === 'inovacoes' ? filtroInov : [],
   };
   const nMeta = parseNumero(metaTxt), nLim = limTxt.trim() ? parseNumero(limTxt) : null;
   const erroMeta = metaTxt.trim() && nMeta === null ? 'A meta não é um número.'
@@ -113,6 +132,7 @@ export const KpisIndicadorModal: React.FC<{
     catch (e) { addToast(kpisErrorMessage(e, 'Não consegui tirar a meta.'), 'error'); onGravou(); }   // relê: a lista mostra o que está no banco
   };
   const alternaTipo = (id: string) => setCalcTipos(ts => ts.includes(id) ? ts.filter(x => x !== id) : [...ts, id]);
+  const alterna = (xs: string[], v: string) => xs.includes(v) ? xs.filter(x => x !== v) : [...xs, v];
 
   return (
     <Dialog onClose={() => { if (!gravando) onFechar(); }} label={ind ? `Editar ${ind.nome}` : 'Novo indicador'} panelClassName="w-full max-w-3xl outline-none">
@@ -128,13 +148,17 @@ export const KpisIndicadorModal: React.FC<{
         <div className="p-5 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="flex flex-col gap-1">
             <span className={rotulo}>Setor</span>
+            {setorFixo ? (
+              <span className={`${campo} bg-slate-50 dark:bg-slate-800/60`}>{setorFixo} <span className="text-[11px] text-slate-400">— o seu setor</span></span>
+            ) : <>
             <select value={setorSel} onChange={e => setSetorSel(e.target.value)} className={campo}>
               {setorLista.map(s => <option key={s.chave} value={s.chave}>{s.nome} · {s.pessoas} pessoa(s){s.grafias.length > 1 ? ` · também escrito ${s.grafias.slice(1).map(g => `"${g}"`).join(', ')}` : ''}</option>)}
               <option value={OUTRO}>outro (digitar)</option>
             </select>
             {setorSel === OUTRO && <input value={setorTxt} onChange={e => setSetorTxt(e.target.value)} maxLength={60} placeholder="nome do setor" className={campo} />}
+            </>}
             {setorSemNinguem && <span className="text-[11px] text-amber-600 dark:text-amber-400 flex items-start gap-1"><AlertTriangle size={12} className="mt-0.5 shrink-0" /> Ninguém do cadastro está neste setor — ninguém vai conseguir lançar (só o Edson e os admins de OKR). {ceoSoVe ? 'Peça ao Edson para dar o setor às pessoas.' : 'Dê o setor às pessoas em "Pessoas e setores", no Cadastro.'}</span>}
-            {!setores && <span className="text-[11px] text-slate-400">Não consegui ler a lista de setores — digite.</span>}
+            {!setores && !setorFixo && <span className="text-[11px] text-slate-400">Não consegui ler a lista de setores — digite.</span>}
           </label>
           <label className="flex flex-col gap-1">
             <span className={rotulo}>Nome do indicador</span>
@@ -185,36 +209,67 @@ export const KpisIndicadorModal: React.FC<{
           </label>
 
           <label className="flex items-start gap-2 sm:col-span-2 text-sm text-slate-700 dark:text-slate-200">
-            <input type="checkbox" checked={soma} onChange={e => setSoma(e.target.checked)} className="mt-1 w-4 h-4 accent-blue-600" />
-            <span>Os valores se <b>somam</b> ao longo do tempo? <span className="text-slate-400">(faturamento, economia, horas — o KR ligado mostra a soma dos períodos, e não o último)</span></span>
+            <input type="checkbox" checked={soma && !naoSoma} disabled={naoSoma} onChange={e => setSoma(e.target.checked)} className="mt-1 w-4 h-4 accent-blue-600 disabled:opacity-50" />
+            <span>Os valores se <b>somam</b> ao longo do tempo? <span className="text-slate-400">(faturamento, economia, horas — o KR ligado mostra a soma dos períodos, e não o último)</span>
+              {naoSoma && <span className="block text-[11px] text-slate-400">Média e % não se somam: o KR ligado mostra o último período com valor.</span>}</span>
           </label>
 
           <div className="sm:col-span-2 rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-3">
             <div className="flex gap-2 flex-wrap">
               <button type="button" disabled={temLanc && tipo === 'manual'} onClick={() => setTipo('manual')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tipo === 'manual' ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}><PencilLine size={12} className="inline -mt-0.5 mr-1" />Lançado pelo setor</button>
-              <button type="button" disabled={temLanc} onClick={() => setTipo('calculado')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border disabled:opacity-50 ${tipo === 'calculado' ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}><Calculator size={12} className="inline -mt-0.5 mr-1" />Calculado pelas atividades</button>
+              <button type="button" disabled={temLanc} onClick={() => setTipo('calculado')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border disabled:opacity-50 ${tipo === 'calculado' ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}><Calculator size={12} className="inline -mt-0.5 mr-1" />Calculado pela base</button>
               {temLanc && <span className="text-[11px] text-slate-400 self-center">tipo travado: já há lançamentos</span>}
             </div>
             {tipo === 'calculado' && (
               <div className="space-y-2">
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">O número sai sozinho das atividades lançadas no Desempenho Operacional (só as concluídas, contadas no dia em que começaram). Ninguém lança à mão.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">O número sai sozinho do que já está registrado no sistema — ninguém lança à mão. {AJUDA_FONTE[fonteEf]}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <label className="flex flex-col gap-1">
+                    <span className={rotulo}>De onde</span>
+                    <select value={fonteEf} onChange={e => setCalcFonte(e.target.value as KpisFonte)} disabled={com026 === false || temLanc} className={campo}>
+                      {(Object.keys(FONTE_ROTULO) as KpisFonte[]).filter(f => com026 !== false || f === 'atividades').map(f => <option key={f} value={f}>{FONTE_ROTULO[f]}</option>)}
+                    </select>
+                  </label>
                   <label className="flex flex-col gap-1">
                     <span className={rotulo}>Conta</span>
-                    <select value={calcMedida} onChange={e => setCalcMedida(e.target.value as KpisMedida)} className={campo}>
-                      <option value="horas">as horas das atividades</option>
-                      <option value="quantidade">quantas atividades</option>
+                    <select value={medidaEf} onChange={e => setCalcMedida(e.target.value as KpisMedida)} className={campo}>
+                      {MEDIDAS_DA_FONTE[fonteEf].map(m => <option key={m} value={m}>{MEDIDA_ROTULO[fonteEf][m]}</option>)}
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className={rotulo}>De quem</span>
-                    <select value={calcEscopo} onChange={e => setCalcEscopo(e.target.value as KpisEscopo)} className={campo}>
-                      <option value="setor">das pessoas do setor do indicador</option>
-                      <option value="todos">de todo mundo</option>
+                    <select value={escopoEf} onChange={e => setCalcEscopo(e.target.value as KpisEscopo)} className={campo}>
+                      <option value="setor">{ESCOPO_ROTULO.setor}</option>
+                      {!soSetor && (com026 !== false || escopoEf === 'engenharia') && <option value="engenharia">{ESCOPO_ROTULO.engenharia}</option>}
+                      {!soSetor && <option value="todos">{ESCOPO_ROTULO.todos}</option>}
                     </select>
                   </label>
                 </div>
-                <div>
+                {fonteEf === 'projetos' && (
+                  <div>
+                    <span className={rotulo}>Tipos de projeto</span>
+                    <div className="mt-1 flex gap-4 flex-wrap">
+                      {PROJETO_TIPOS.map(t => (
+                        <label key={t.v} className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
+                          <input type="checkbox" checked={filtroProj.includes(t.v)} onChange={() => setFiltroProj(fs => alterna(fs, t.v))} className="w-3.5 h-3.5 accent-blue-600" />{t.rotulo}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {fonteEf === 'inovacoes' && (
+                  <div>
+                    <span className={rotulo}>Situação (nenhuma marcada = todas)</span>
+                    <div className="mt-1 flex gap-4 flex-wrap">
+                      {INOVACAO_STATUS.map(t => (
+                        <label key={t.v} className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
+                          <input type="checkbox" checked={filtroInov.includes(t.v)} onChange={() => setFiltroInov(fs => alterna(fs, t.v))} className="w-3.5 h-3.5 accent-blue-600" />{t.rotulo}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {fonteEf === 'atividades' && <div>
                   <span className={rotulo}>Tipos de atividade</span>
                   {tipos === undefined ? <p className="text-[11px] text-slate-400 mt-1">Lendo os tipos de atividade…</p> : !tipos ? <p className="text-[11px] text-rose-500 mt-1">Não consegui ler os tipos de atividade.</p> : (
                     <div className="mt-1 max-h-40 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1 rounded-lg border border-slate-200 dark:border-slate-700 p-2">
@@ -225,7 +280,7 @@ export const KpisIndicadorModal: React.FC<{
                       ))}
                     </div>
                   )}
-                </div>
+                </div>}
               </div>
             )}
           </div>

@@ -5,7 +5,7 @@ import { Dialog } from '../components/Dialog';
 import { useToast } from '../components/Toast';
 import {
   KpisHist, KpisIndicador, KpisLancamento, FREQ_ROTULO, SENTIDO_ROTULO, farol, fmtCarimbo, fmtValor, limiteEfetivo, metaVigente,
-  numeroExatoParaCampo, parseNumero, prazoDias, rotuloPeriodo, rotuloPeriodoLongo,
+  numeroExatoParaCampo, parseNumero, prazoDias, rotuloPeriodo, rotuloPeriodoLongo, rotuloBase, rotuloCalculo,
 } from './kpis';
 import { KpisDados, resumoDo } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
@@ -21,9 +21,9 @@ const quando = (ts?: string | null) => ts ? fmtCarimbo(ts, true) : '';
 
 export const KpisDetalhe: React.FC<{
   i: KpisIndicador; dados: KpisDados; service: KpisService; nomes: Map<string, string>;
-  administra: boolean; mostrarSetor: boolean;
+  administra: boolean; podeEditar?: boolean; mostrarSetor: boolean;
   onFechar: () => void; onEditar: () => void; onGravou: () => void;
-}> = ({ i, dados, service, nomes, administra, mostrarSetor, onFechar, onEditar, onGravou }) => {
+}> = ({ i, dados, service, nomes, administra, podeEditar, mostrarSetor, onFechar, onEditar, onGravou }) => {
   const { addToast } = useToast();
   const r = useMemo(() => resumoDo(i, dados), [i, dados]);
   const metas = dados.metas.get(i.id) || [];
@@ -54,7 +54,8 @@ export const KpisDetalhe: React.FC<{
     };
   });
   const temMeta = grafico.some(g => g.meta !== null);
-  const linhas = [...r.serie].reverse().filter(p => p.valor !== null || i.tipo === 'manual');
+  // Calculado: período sem valor só some quando o cálculo falhou; média/% sem base aparece ("0 concluídos…").
+  const linhas = [...r.serie].reverse().filter(p => p.valor !== null || i.tipo === 'manual' || !r.erroCalculo);
 
   const corrigir = async (l: KpisLancamento) => {
     const n = parseNumero(valor);
@@ -91,13 +92,13 @@ export const KpisDetalhe: React.FC<{
               <span>{SENTIDO_ROTULO[i.sentido]}</span><span>·</span><span>{FREQ_ROTULO[i.frequencia].toLowerCase()}</span>
               {i.unidade && <><span>·</span><span>em {i.unidade}</span></>}
               {i.consolidacao === 'soma' && <><span>·</span><span>soma ao longo do tempo</span></>}
-              {i.tipo === 'calculado' ? <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400"><Calculator size={11} /> calculado pelas atividades</span>
+              {i.tipo === 'calculado' ? <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400"><Calculator size={11} /> {rotuloCalculo(i)}</span>
                 : <><span>·</span><span>lançar até {prazoDias(i)} dia(s) depois do fim do período</span></>}
               {!i.ativo && <span className="font-bold uppercase text-amber-600 dark:text-amber-400">arquivado</span>}
             </div>
             {i.descricao && <p className="text-xs text-slate-600 dark:text-slate-300 mt-2 whitespace-pre-wrap"><b>Como medir:</b> {i.descricao}</p>}
           </div>
-          {administra && <button onClick={onEditar} className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-900/60 hover:bg-blue-50 dark:hover:bg-blue-900/20"><Pencil size={13} /> Editar indicador</button>}
+          {(podeEditar ?? administra) && <button onClick={onEditar} className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-900/60 hover:bg-blue-50 dark:hover:bg-blue-900/20"><Pencil size={13} /> Editar indicador</button>}
           <button onClick={onFechar} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" aria-label="Fechar"><X size={18} /></button>
         </div>
 
@@ -141,7 +142,7 @@ export const KpisDetalhe: React.FC<{
                     <th className="text-right font-semibold px-4 py-2">Valor</th>
                     <th className="text-right font-semibold px-4 py-2">Meta</th>
                     <th className="text-left font-semibold px-4 py-2">Farol</th>
-                    <th className="text-left font-semibold px-4 py-2">{i.tipo === 'calculado' ? 'Atividades' : 'Quem lançou'}</th>
+                    <th className="text-left font-semibold px-4 py-2">{i.tipo === 'calculado' ? 'Base' : 'Quem lançou'}</th>
                     <th className="px-4 py-2" />
                   </tr>
                 </thead>
@@ -162,7 +163,7 @@ export const KpisDetalhe: React.FC<{
                           <td className="px-4 py-2">{emCurso(p.periodo) ? <span className="text-[11px] font-semibold text-slate-400" title="O período ainda não fechou: o farol sai quando ele terminar">em curso</span>
                             : p.valor !== null ? <FarolChip f={farol(i.sentido, p.valor, m)} /> : <span className="text-[11px] text-slate-400">—</span>}</td>
                           <td className="px-4 py-2 text-[11px] text-slate-500 dark:text-slate-400">
-                            {i.tipo === 'calculado' ? `${p.atividades ?? 0} atividade(s)` : l ? (
+                            {i.tipo === 'calculado' ? rotuloBase(i, p.atividades ?? 0) : l ? (
                               <span className="inline-flex items-center gap-1.5 flex-wrap">
                                 {nomes.get(l.lancadoPor || '') || '—'}, {quando(l.lancadoEm)}
                                 {(l.alteradoEm || hs.length > 0) && <button type="button" onClick={() => setAbrirHist(a => a === p.periodo ? null : p.periodo)} className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-full px-1.5 py-0.5">corrigido</button>}

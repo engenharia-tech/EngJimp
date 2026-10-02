@@ -8,8 +8,8 @@ import { supabase, fetchAllOkr } from '../services/storageService';
 import { authHeaders } from '../services/authToken';
 import {
   KpisAcesso, KpisFrequencia, KpisHist, KpisIndicador, KpisIndicadorInput, KpisLancamento, KpisMeta, KpisPontoCalculado, KpisSetor, KpisTipoAtividade,
-  KPIS_HIST_COLS, KPIS_IND_COLS, KPIS_LANC_COLS, KPIS_META_COLS,
-  mapAcesso, mapHist, mapIndicador, mapLancamento, mapMeta, toIndicadorRow, validarIndicador,
+  KPIS_HIST_COLS, KPIS_IND_COLS, KPIS_IND_COLS_023, KPIS_IND_COLS_025, KPIS_LANC_COLS, KPIS_META_COLS,
+  mapAcesso, mapHist, mapIndicador, mapLancamento, mapMeta, precisa026, toIndicadorRow, validarIndicador,
 } from './kpis';
 
 // A mudança não se aplica mais (sumiu, mudou por outra pessoa). A mensagem é para a pessoa.
@@ -35,6 +35,7 @@ export interface KpisService {
   listLancamentos(desde: string): Promise<KpisLancamento[]>;
   listHist(indicadorId: string): Promise<KpisHist[]>;
   serieCalculada(indicadorId: string, de: string | null, ate: string | null): Promise<KpisPontoCalculado[]>;
+  fontesNovas(): Promise<boolean | null>;                 // 026 no banco (projetos, paradas, inovações, engenharia); null = não deu para saber
   criarIndicador(input: KpisIndicadorInput): Promise<KpisIndicador>;
   editarIndicador(id: string, input: KpisIndicadorInput, version: string): Promise<KpisIndicador>;
   arquivarIndicador(id: string, ativo: boolean, version: string): Promise<KpisIndicador>;
@@ -52,9 +53,12 @@ export interface KpisService {
 
 // A 023 não está no banco (ou faltou o reload do PostgREST): PGRST202 (função) /
 // PGRST205 (tabela) / 42883 / 42P01.
+// Coluna que ainda não aparece (42703 / PGRST204: a 025/026 acabou de rodar, ou o esquema do PostgREST não
+// recarregou) NÃO é "023 ausente" — a frase certa é "recarregue".
 export const kpisAusente = (e: any): boolean =>
-  ['PGRST202', 'PGRST205', '42883', '42P01'].includes(String(e?.code || ''))
-  || (/kpis_/i.test(String(e?.message || '')) && /could not find|does not exist|schema cache/i.test(String(e?.message || '')));
+  !['42703', 'PGRST204'].includes(String(e?.code || '')) && (
+    ['PGRST202', 'PGRST205', '42883', '42P01'].includes(String(e?.code || ''))
+    || (/kpis_/i.test(String(e?.message || '')) && /could not find|does not exist|schema cache/i.test(String(e?.message || ''))));
 
 // Erro do PostgREST vira Error com o código junto (a mensagem de tela é do kpisErrorMessage).
 const erro = (e: any): Error => Object.assign(new Error(String(e?.message || 'erro')), { code: e?.code, details: e?.details });
@@ -98,8 +102,43 @@ const todas = async (monta: (de: number, ate: number) => PromiseLike<{ data: any
   return out;
 };
 
-const listIndicadores = async (): Promise<KpisIndicador[]> =>
-  (await todas((a, b) => supabase.from('kpis_indicador').select(KPIS_IND_COLS).order('setor').order('nome').order('id').range(a, b))).map(mapIndicador);
+// O banco já tem a 025 (do_setor, kpis_pode_gerir) e a 026 (calc_fonte, calc_filtro)? Pergunta uma vez; só
+// conclui "não" quando o banco diz que a coluna não existe — erro de rede não vira "banco antigo" para o resto
+// da sessão (fica null e pergunta de novo na próxima).
+let tem025: boolean | null = null;
+let tem026: boolean | null = null;
+const KPIS_VERSAO_TELA = 26;   // a tela se identifica em toda alteração de indicador (026: o banco recusa a tela antiga)
+const sonda = async (col: string): Promise<boolean | null> => {
+  const { error } = await supabase.from('kpis_indicador').select(col).limit(1);
+  if (!error) return true;
+  if ((error as any).code === '42703' || new RegExp(col).test(String((error as any).message || ''))) return false;
+  return null;
+};
+// reprobe: o "não tem" de antes é perguntado de novo (a migração pode ter rodado com a aba aberta) — no Atualizar.
+const colsIndicador = async (reprobe = false): Promise<string> => {
+  if (reprobe) { if (tem025 === false) tem025 = null; if (tem026 === false) tem026 = null; }
+  if (tem025 === null) tem025 = await sonda('do_setor');
+  if (tem025 === false) return KPIS_IND_COLS_023;
+  if (tem026 === null) tem026 = await sonda('calc_fonte');
+  return tem026 === false ? KPIS_IND_COLS_025 : KPIS_IND_COLS;
+};
+const fontesNovas = async (): Promise<boolean | null> => {
+  await colsIndicador();
+  if (tem025 === false || tem026 === false) return false;
+  return tem026 === true ? true : null;   // null = a sonda não respondeu (rede): a tela não força nada
+};
+// O que vai ao banco: sem a 026, as colunas novas não vão — e um cálculo que precisa dela é recusado aqui.
+const linhaIndicador = async (input: KpisIndicadorInput): Promise<Record<string, unknown>> => {
+  await colsIndicador();
+  const com026 = tem026 !== false && tem025 !== false;
+  if (!com026 && precisa026(input)) throw new KpisStaleError('Este cálculo (projetos, paradas, inovações, a engenharia, média ou %) precisa da migração 026 no banco — avise o Edson. Nada foi salvo.');
+  return toIndicadorRow(input, com026);
+};
+
+const listIndicadores = async (): Promise<KpisIndicador[]> => {
+  const cols = await colsIndicador(true);
+  return (await todas((a, b) => supabase.from('kpis_indicador').select(cols).order('setor').order('nome').order('id').range(a, b))).map(mapIndicador);
+};
 
 const listMetas = async (): Promise<KpisMeta[]> =>
   (await todas((a, b) => supabase.from('kpis_meta').select(KPIS_META_COLS).order('indicador_id').order('vale_desde').range(a, b))).map(mapMeta);
@@ -117,7 +156,12 @@ const listHist = async (indicadorId: string): Promise<KpisHist[]> => {
 const serieCalculada = async (indicadorId: string, de: string | null, ate: string | null): Promise<KpisPontoCalculado[]> => {
   const { data, error } = await supabase.rpc('kpis_serie_calculada', { p_indicador: indicadorId, p_de: de, p_ate: ate });
   if (error) throw erro(error);
-  return (Array.isArray(data) ? data : []).map((r: any) => ({ periodo: String(r.periodo || '').slice(0, 10), valor: Number(r.valor) || 0, atividades: Number(r.atividades) || 0 }));
+  // valor nulo = sem base (média/% num período sem projeto concluído): continua nulo, nunca vira 0.
+  return (Array.isArray(data) ? data : []).map((r: any) => ({
+    periodo: String(r.periodo || '').slice(0, 10),
+    valor: r.valor === null || r.valor === undefined || !Number.isFinite(Number(r.valor)) ? null : Number(r.valor),
+    atividades: Number(r.atividades) || 0,
+  }));
 };
 
 // Por que a gravação não pegou (0 linhas): sumiu, mudou por outra pessoa, ou sem permissão.
@@ -126,7 +170,7 @@ const porQueIndicador = async (id: string, version?: string): Promise<Error> => 
   if (error) return erro(error);
   if (!data || !data.length) return new KpisStaleError('Este indicador foi excluído (ou você não tem mais acesso a ele) — atualizei a tela.');
   if (version && (data[0] as any).atualizado_em !== version) return new KpisStaleError(`"${(data[0] as any).nome}" foi alterado em outra tela enquanto esta estava aberta — atualizei; confira e faça de novo.`);
-  return new Error('Sem permissão: só o Edson e os admins de OKR alteram o cadastro dos indicadores.');
+  return new Error('Sem permissão: este indicador é do Edson ou de um admin de OKR — o setor lança nele, mas não altera o cadastro.');
 };
 const porQueLancamento = async (id: string, version?: string): Promise<Error> => {
   const { data, error } = await supabase.from('kpis_lancamento').select('id, atualizado_em').eq('id', id).limit(1);
@@ -138,16 +182,19 @@ const porQueLancamento = async (id: string, version?: string): Promise<Error> =>
 
 const criarIndicador = async (input: KpisIndicadorInput): Promise<KpisIndicador> => {
   const e = validarIndicador(input); if (e) throw new KpisStaleError(e);
-  const { data, error } = await supabase.from('kpis_indicador').insert(toIndicadorRow(input)).select(KPIS_IND_COLS);
+  const row = await linhaIndicador(input);
+  const { data, error } = await supabase.from('kpis_indicador').insert(row).select(await colsIndicador());
   if (error) throw erro(error);
-  if (!data || !data.length) throw new Error('Sem permissão para criar indicador.');
+  if (!data || !data.length) throw new Error('Sem permissão para criar indicador neste setor (cada um cria só no próprio setor).');
   return mapIndicador(data[0]);
 };
 
 const atualizaIndicador = async (id: string, row: Record<string, unknown>, version: string): Promise<KpisIndicador> => {
-  let q = supabase.from('kpis_indicador').update(row).eq('id', id);
+  await colsIndicador();
+  const linha = tem026 === true ? { ...row, versao_tela: KPIS_VERSAO_TELA } : row;
+  let q = supabase.from('kpis_indicador').update(linha).eq('id', id);
   if (version) q = q.eq('atualizado_em', version);
-  const { data, error } = await q.select(KPIS_IND_COLS);
+  const { data, error } = await q.select(await colsIndicador());
   if (error) throw erro(error);
   if (!data || !data.length) throw await porQueIndicador(id, version);
   return mapIndicador(data[0]);
@@ -155,7 +202,7 @@ const atualizaIndicador = async (id: string, row: Record<string, unknown>, versi
 
 const editarIndicador = async (id: string, input: KpisIndicadorInput, version: string): Promise<KpisIndicador> => {
   const e = validarIndicador(input); if (e) throw new KpisStaleError(e);
-  return atualizaIndicador(id, toIndicadorRow(input), version);
+  return atualizaIndicador(id, await linhaIndicador(input), version);
 };
 
 const arquivarIndicador = (id: string, ativo: boolean, version: string) => atualizaIndicador(id, { ativo }, version);
@@ -170,6 +217,16 @@ const apagarIndicador = async (id: string): Promise<void> => {
   }
 };
 
+// A meta é de quem GERENCIA o indicador (025): o Edson e os admins de OKR, ou o setor quando foi ele que o criou.
+const SEM_GERIR_META = 'Sem permissão: a meta é de quem gerencia o indicador (o Edson, um admin de OKR, ou o setor quando foi ele que o criou).';
+const possoGerir = async (indicadorId: string): Promise<boolean> => {
+  await colsIndicador();
+  if (tem025 === false) { const a = await acesso(); return !!a?.administra; }   // sem a 025: só quem administra
+  const { data, error } = await supabase.from('kpis_indicador').select('id, kpis_pode_gerir').eq('id', indicadorId).limit(1);
+  if (error) throw erro(error);
+  return !!(data && data.length && (data[0] as any).kpis_pode_gerir === true);
+};
+
 // Meta por vigência: uma linha por (indicador, "vale desde"). Já existe = troca o valor.
 const salvarMeta = async (indicadorId: string, valeDesde: string, meta: number, limite: number | null): Promise<KpisMeta> => {
   const { data, error } = await supabase.from('kpis_meta')
@@ -179,7 +236,7 @@ const salvarMeta = async (indicadorId: string, valeDesde: string, meta: number, 
   const up = await supabase.from('kpis_meta').update({ meta, limite_alerta: limite })
     .eq('indicador_id', indicadorId).eq('vale_desde', valeDesde).select(KPIS_META_COLS);
   if (up.error) throw erro(up.error);
-  if (!up.data || !up.data.length) throw new Error('Sem permissão: só o Edson e os admins de OKR definem a meta.');
+  if (!up.data || !up.data.length) throw new Error(SEM_GERIR_META);
   return mapMeta(up.data[0]);
 };
 
@@ -189,13 +246,12 @@ const apagarMeta = async (indicadorId: string, valeDesde: string): Promise<void>
   // 0 linhas: ou outro admin já a tirou (o resultado é o mesmo — não é erro), ou a RLS não deixou
   // (a vigência continua lá). Relê para saber qual dos dois; nunca dizer "retirada" à toa.
   if (!data || !data.length) {
-    // Quem perdeu a marca de admin com a tela aberta nem enxerga a vigência: o "não está mais lá" dele
-    // não prova nada. Primeiro: ainda administra?
-    const a = await acesso();
-    if (!a || !a.administra) throw new Error('Sem permissão: só o Edson e os admins de OKR tiram uma meta.');
+    // Quem perdeu o direito com a tela aberta nem enxerga a vigência: o "não está mais lá" dele não prova
+    // nada. Primeiro: ainda gerencia este indicador?
+    if (!(await possoGerir(indicadorId))) throw new Error(SEM_GERIR_META);
     const { data: ainda, error: e2 } = await supabase.from('kpis_meta').select('vale_desde').eq('indicador_id', indicadorId).eq('vale_desde', valeDesde).limit(1);
     if (e2) throw erro(e2);
-    if (ainda && ainda.length) throw new Error('Sem permissão: só o Edson e os admins de OKR tiram uma meta.');
+    if (ainda && ainda.length) throw new Error(SEM_GERIR_META);
   }
 };
 
@@ -291,7 +347,7 @@ const mudarSetor = async (userId: string, setor: string, setorAntes?: string): P
 };
 
 export const kpisService: KpisService = {
-  acesso, setores, tiposAtividade, listIndicadores, listMetas, listLancamentos, listHist, serieCalculada,
+  acesso, setores, tiposAtividade, listIndicadores, listMetas, listLancamentos, listHist, serieCalculada, fontesNovas,
   criarIndicador, editarIndicador, arquivarIndicador, apagarIndicador, salvarMeta, apagarMeta,
   lancar, corrigir, apagarLancamento, valoresLigados, ultimoAntes, contarLigados, mudarSetor,
 };
@@ -306,12 +362,15 @@ export const kpisErrorMessage = (e: any, fallback: string, leitura = false): str
   if (e instanceof KpisStaleError || e instanceof KpisJaLancadoError) return m;
   if (NET_RE.test(m)) return leitura ? 'Sem conexão com o servidor — não consegui ler os indicadores. Confira a rede e tente de novo.' : 'Sem conexão com o servidor — nada foi salvo. Confira a rede e tente de novo.';
   if (/jwt expired|invalid jwt|jwserror|pgrst30[0-3]/i.test(m) || /^PGRST30[0-3]$/.test(code)) return leitura ? 'Sua sessão venceu — saia e entre de novo.' : 'Sua sessão venceu — saia e entre de novo. Nada foi salvo.';
+  if (/KPIS_TELA_ANTIGA/.test(m)) return 'Esta tela é de antes dos cálculos novos — recarregue a página (Ctrl+Shift+R) e faça de novo. Nada foi salvo.';
+  if (code === '42703' || code === 'PGRST204') return leitura ? 'O banco acabou de ser atualizado e esta tela ainda não o enxerga — recarregue a página em um minuto.' : 'O banco acabou de ser atualizado e esta tela ainda não o enxerga — recarregue a página em um minuto. Nada foi salvo.';
   if (kpisAusente(e)) return KPIS_NAO_INSTALADO;
   if (/KPIS_PERIODO_FUTURO/.test(m)) return 'Este período ainda não começou — escolha um período até o atual.';
   if (/KPIS_ANTES_DO_INICIO/.test(m)) return 'Este período é anterior ao início do indicador.';
   if (/KPIS_MOTIVO_LONGO/.test(m)) return 'O motivo vai até 300 letras. Nada foi salvo.';
   if (/KPIS_MOTIVO/.test(m)) return 'Diga o motivo da correção (pelo menos 3 letras). Nada foi salvo.';
-  if (/KPIS_CALCULADO/.test(m)) return 'Este indicador é calculado pelas atividades do Desempenho Operacional — não se lança à mão.';
+  if (/KPIS_CALCULADO/.test(m)) return 'Este indicador é calculado sozinho pela base — não se lança à mão.';
+  if (/KPIS_ESCOPO_SETOR/.test(m)) return 'O indicador calculado criado pelo setor conta só as pessoas do setor. Nada foi salvo.';
   if (/KPIS_ARQUIVADO/.test(m)) return 'Este indicador está arquivado — não recebe lançamentos.';
   if (/KPIS_FREQUENCIA_TRAVADA/.test(m)) return 'Este indicador já tem lançamentos: a frequência e o tipo não mudam mais. Para mudar, crie outro e arquive este.';
   if (/KPIS_INICIO_DEPOIS_DE_LANCAMENTO/.test(m)) return 'Há lançamento antes do novo início — escolha um início anterior (ou apague o lançamento antes).';

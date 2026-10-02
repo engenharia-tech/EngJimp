@@ -729,7 +729,7 @@ const AppContent: React.FC = () => {
   // mesmo sem indicador (e sem a 023: a tela diz "não instalado"). Uma leitura por login, antes
   // dos return antecipados (regra dos hooks). O visualizador nunca.
   const { acesso: kpisAcesso, lido: kpisLido, reler: relerKpisAcesso } = useKpisAcesso(currentUser?.id, !!currentUser && !isLocked && !isOkrViewer);
-  const canUseKpis = !!currentUser && !isOkrViewer && (isOkrMaster || (!!kpisAcesso && kpisAcesso.cadastrado && !kpisAcesso.visualizador && (kpisAcesso.veTodos || kpisAcesso.indicadores > 0)));
+  const canUseKpis = !!currentUser && !isOkrViewer && (isOkrMaster || (!!kpisAcesso && kpisAcesso.cadastrado && !kpisAcesso.visualizador && (kpisAcesso.veTodos || kpisAcesso.indicadores > 0 || kpisAcesso.cria)));
   // No OKR, "Ligar ao KPI" só aparece com a 023 no banco, e o seletor oferece só os indicadores que
   // o DONO daquele OKR enxerga (o setor dele; todos, se ele for o Edson, CEO ou admin de OKR). O
   // cadastro dos outros não traz a marca de admin de OKR: sem ela, o seletor fica no setor (mais
