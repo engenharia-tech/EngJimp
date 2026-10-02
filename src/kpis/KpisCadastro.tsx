@@ -8,14 +8,14 @@ import { KpisDados } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
 import { KpisIndicadorModal } from './KpisIndicadorModal';
 
-// CADASTRO (só o Edson e os admins de OKR): a tabela por setor, ativos e arquivados, o botão
-// "Novo indicador" e dois avisos — setores escritos de jeitos diferentes, e indicador de um
-// setor em que não há ninguém (ninguém lançaria).
+// CADASTRO: a tabela por setor, ativos e arquivados, o botão "Novo indicador" e dois avisos — setores
+// escritos de jeitos diferentes, e indicador de um setor em que não há ninguém (ninguém lançaria).
+// Quem é do setor cuida de TODOS os indicadores do setor (028); o Edson e os admins de OKR, de onde veem.
 
 export const KpisCadastro: React.FC<{
   dados: KpisDados; service: KpisService; onGravou: () => void;
   users: User[]; currentUser: User; onUsuariosMudou?: (id: string, setor: string) => void;
-  acesso: KpisAcesso;                 // 025: quem não administra cria e gerencia só os do próprio setor
+  acesso: KpisAcesso;                 // quem não administra cria e cuida só dos do próprio setor (028: de todos eles)
 }> = ({ dados, service, onGravou, users, currentUser, onUsuariosMudou, acesso }) => {
   const admin = !!acesso.administra;
   const setorFixo = admin ? null : acesso.setorNome;
@@ -50,11 +50,21 @@ export const KpisCadastro: React.FC<{
     catch (e) { addToast(kpisErrorMessage(e, 'Não consegui arquivar.'), 'error'); onGravou(); }
     finally { setOcupado(null); }
   };
+  // 028: exclui COM os lançamentos — a pessoa confirma o número, o banco confere que é o de agora e deixa um
+  // registro na auditoria. KR de OKR ligado continua travando (desliga no OKR antes).
   const excluir = async (i: KpisIndicador) => {
-    if (!window.confirm(`Excluir "${i.nome}" de vez? Só dá quando ele não tem lançamento nenhum nem KR de OKR ligado. Senão, arquive.`)) return;
+    let n: number;
+    try { n = await service.contarLancamentos(i.id); }   // no banco: a tela só lê 36 meses
+    catch (e) { addToast(kpisErrorMessage(e, 'Não consegui contar os lançamentos.'), 'error'); return; }
+    const msg = n > 0
+      ? `Excluir "${i.nome}" de vez, junto com os ${n} lançamento(s) e o histórico de correções?
+
+Não dá para desfazer (fica só um registro na auditoria). Para guardar os números, arquive em vez de excluir.`
+      : `Excluir "${i.nome}" de vez? Não dá para desfazer.`;
+    if (!window.confirm(msg)) return;
     setOcupado(i.id);
-    try { await service.apagarIndicador(i.id); addToast(`"${i.nome}" excluído.`, 'success'); onGravou(); }
-    catch (e) { addToast(kpisErrorMessage(e, 'Não consegui excluir.'), 'error'); }
+    try { await service.excluirIndicador(i.id, n); addToast(n > 0 ? `"${i.nome}" excluído, com ${n} lançamento(s).` : `"${i.nome}" excluído.`, 'success'); onGravou(); }
+    catch (e) { addToast(kpisErrorMessage(e, 'Não consegui excluir.'), 'error'); onGravou(); }
     finally { setOcupado(null); }
   };
 
@@ -63,8 +73,8 @@ export const KpisCadastro: React.FC<{
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <p className="text-xs text-slate-500 dark:text-slate-400 flex-1 min-w-[200px]">{admin
-          ? 'O Edson e os admins de OKR cadastram em qualquer setor; cada setor também cria e gerencia os seus. As pessoas do setor lançam e veem só o seu setor.'
-          : `Você cria os indicadores do seu setor (${acesso.setorNome || '—'}) e cuida dos que o setor criou — meta, edição, arquivar. Os criados pelo Edson ou por um admin de OKR o setor só lança.`}</p>
+          ? 'O Edson e os admins de OKR cadastram em qualquer setor; cada setor cuida de todos os seus indicadores (cria, muda a forma de medir, meta, arquiva, exclui). As pessoas do setor lançam e veem só o seu setor.'
+          : `Você cuida de todos os indicadores do seu setor (${acesso.setorNome || '—'}): cria, muda a forma de medir, a meta, arquiva e exclui — inclusive os que o Edson criou. As pessoas do setor lançam.`}</p>
         <button onClick={() => setModal({})} disabled={setores === undefined} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg"><Plus size={15} /> Novo indicador</button>
       </div>
 
@@ -110,9 +120,9 @@ export const KpisCadastro: React.FC<{
                         {gerencia(i, acesso) ? <>
                         <button onClick={() => setModal({ ind: i })} disabled={ocupado === i.id} className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Editar"><Pencil size={14} /></button>
                         <button onClick={() => arquivar(i)} disabled={ocupado === i.id} className="p-1.5 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" title={i.ativo ? 'Arquivar' : 'Reativar'}>{i.ativo ? <Archive size={14} /> : <ArchiveRestore size={14} />}</button>
-                        <button onClick={() => excluir(i)} disabled={ocupado === i.id} className="p-1.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20" title="Excluir (só sem lançamento e sem KR ligado)"><Trash2 size={14} /></button>
+                        <button onClick={() => excluir(i)} disabled={ocupado === i.id} className="p-1.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20" title="Excluir (com os lançamentos, se houver; KR de OKR ligado trava)"><Trash2 size={14} /></button>
                         </> : i.podeLancar
-                          ? <span className="text-[11px] text-slate-400" title="Criado pelo Edson ou por um admin de OKR: o setor lança, mas não altera o cadastro">só lança</span>
+                          ? <span className="text-[11px] text-slate-400" title="Você lança neste indicador; o cadastro é de quem cuida do setor dele">só lança</span>
                           : <span className="text-[11px] text-slate-400" title={i.tipo === 'calculado' ? 'Calculado pela base: ninguém lança' : 'Você acompanha este indicador, mas não lança nem altera'}>só vê</span>}
                       </td>
                     </tr>

@@ -11,7 +11,8 @@ import {
 import { KpisDados } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
 
-// CADASTRAR / EDITAR um indicador — só o Edson e os admins de OKR (o banco confere).
+// CADASTRAR / EDITAR um indicador — as pessoas do setor (todos os indicadores do setor, 028), o Edson e os
+// admins de OKR (o banco confere).
 // A meta é por VIGÊNCIA: "esta meta vale a partir de [período]" — mudar a meta não reescreve
 // o farol dos períodos passados. A frequência (e o tipo) travam depois do 1º lançamento.
 
@@ -28,11 +29,19 @@ export const KpisIndicadorModal: React.FC<{
   onFechar: () => void;
   onGravou: () => void;
   ceoSoVe?: boolean;                  // CEO (visão macro, 01/10): o setor das pessoas ele pede ao Edson
-  setorFixo?: string | null;          // 025: quem não administra cria só no próprio setor (e o calculado conta só o setor)
+  setorFixo?: string | null;          // quem não administra cria só no próprio setor (028: e não conta horas/projetos/paradas de "todo mundo")
 }> = ({ indicador: ind, dados, service, setores, tipos, onFechar, onGravou, ceoSoVe, setorFixo }) => {
   const { addToast } = useToast();
   const hoje = hojeSP();
-  const temLanc = !!ind && (dados.lancs.get(ind.id)?.length || 0) > 0;
+  // 028: quantos lançamentos o indicador tem NO BANCO (a tela só lê 36 meses); até a resposta, o que a tela tem
+  const [nLancBanco, setNLancBanco] = useState<number | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    if (ind) service.contarLancamentos(ind.id).then(n => { if (vivo) setNLancBanco(n); }).catch(() => { /* fica o da tela */ });
+    return () => { vivo = false; };
+  }, [service, ind?.id, dados.lidoEm]);
+  const nLanc = ind ? (nLancBanco ?? (dados.lancs.get(ind.id)?.length || 0)) : 0;
+  const temLanc = nLanc > 0;
   const metas = ind ? dados.metas.get(ind.id) || [] : [];
 
   const setorLista = setores || [];
@@ -67,9 +76,15 @@ export const KpisIndicadorModal: React.FC<{
   }, [service]);
   const fonteEf: KpisFonte = com026 === false ? 'atividades' : calcFonte;
   const medidaEf: KpisMedida = MEDIDAS_DA_FONTE[fonteEf].includes(calcMedida) ? calcMedida : MEDIDAS_DA_FONTE[fonteEf][0];
-  const soSetor = !!setorFixo || !!ind?.doSetor;   // 025: o calculado criado pelo setor conta só o setor
+  // 028: o setor escolhe como medir; só "todo mundo" em horas, projetos e paradas (inclui o P&D, reservado) é do
+  // Edson / admin de OKR — quem não administra pode deixar como estava, mas não criar nem mudar o cálculo para isso.
+  const restrito = !!setorFixo;
+  const semPessoas = (f: KpisFonte) => f === 'inovacoes' || f === 'cronograma';   // contagem sem horas de ninguém
   // o cronograma não tem a régua da engenharia: conta os projetos de todos ou os do setor
-  const escopoEf: KpisEscopo = soSetor ? 'setor' : fonteEf === 'cronograma' && calcEscopo === 'engenharia' ? 'todos' : calcEscopo;
+  const mostraTodos = !restrito || semPessoas(fonteEf) || ind?.calcEscopo === 'todos';
+  // o que o seletor mostra é o que se grava: "todos" escondido vira "do setor"
+  const escopoEf: KpisEscopo = fonteEf === 'cronograma' && calcEscopo === 'engenharia' ? 'todos'
+    : !mostraTodos && calcEscopo === 'todos' ? 'setor' : calcEscopo;
   const fonteVisivel = (f: KpisFonte) => f === 'cronograma' ? com027 === true || calcFonte === 'cronograma' : com026 !== false || f === 'atividades';
   const naoSoma = tipo === 'calculado' && (medidaEf === 'media' || medidaEf === 'pct_estimado');   // média e % não se somam
 
@@ -110,7 +125,24 @@ export const KpisIndicadorModal: React.FC<{
     : limTxt.trim() && nLim === null ? '"Fica amarelo até" não é um número.'
     : nMeta !== null && nLim !== null && (sentido === 'maior' ? nLim > nMeta : nLim < nMeta) ? `"Fica amarelo até" tem de ficar ${sentido === 'maior' ? 'abaixo' : 'acima'} da meta.`
     : !metaTxt.trim() && limTxt.trim() ? 'Diga a meta antes do "fica amarelo até".' : '';
-  const erro = validarIndicador(input) || (Number.isNaN(input.prazoDias as number) ? 'O prazo para lançar é um número de dias.' : '') || erroMeta;
+  const mesmos = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
+  const calcMudou = !ind || ind.tipo !== input.tipo || (input.tipo === 'calculado' && ((ind.calcFonte || 'atividades') !== input.calcFonte
+    || ind.calcMedida !== input.calcMedida || ind.calcEscopo !== input.calcEscopo || !mesmos(ind.calcTipos, input.calcTipos) || !mesmos(ind.calcFiltro, input.calcFiltro)));
+  const erroTodos = restrito && input.tipo === 'calculado' && input.calcEscopo === 'todos' && !semPessoas(input.calcFonte) && calcMudou
+    ? 'Contar horas, projetos ou paradas de "todo mundo" é só do Edson e dos admins de OKR (inclui o P&D, reservado) — escolha as pessoas do setor ou a régua da engenharia.' : '';
+  const erro = validarIndicador(input) || (Number.isNaN(input.prazoDias as number) ? 'O prazo para lançar é um número de dias.' : '') || erroTodos || erroMeta;
+  // 028: com lançamentos, frequência e tipo travam (os períodos baralhariam) — quem cuida do indicador pode apagá-los
+  // (o histórico guarda cada um) e então mudar.
+  const podeLimpar = !!ind && !!ind.podeGerir && nLanc > 0;
+  const [limpando, setLimpando] = useState(false);
+  const limparLancamentos = async () => {
+    if (!ind || limpando || !window.confirm(`Apagar os ${nLanc} lançamento(s) de "${ind.nome}" para poder mudar a frequência ou o tipo? Os números saem do gráfico; o histórico guarda cada um (quem apagou e quando).`)) return;
+    setLimpando(true);
+    try { const n = await service.apagarLancamentosDoIndicador(ind.id, nLanc); setNLancBanco(0); addToast(`${n} lançamento(s) apagado(s) — agora dá para mudar a frequência e o tipo.`, 'success'); onGravou(); }
+    catch (e) { addToast(kpisErrorMessage(e, 'Não consegui apagar os lançamentos.'), 'error'); onGravou(); }
+    finally { setLimpando(false); }
+  };
+  const BotaoLimpar = podeLimpar ? <button type="button" onClick={limparLancamentos} disabled={limpando || gravando} className="ml-1 font-semibold text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-50">{limpando ? 'apagando…' : `apagar os ${nLanc} lançamento(s) para mudar`}</button> : null;
   // Grava meta só se o número mudou em relação ao que valia no período escolhido (editar o
   // nome não pode criar uma vigência repetida a cada vez).
   const metaMudou = metaTocada && nMeta !== null && (!metaAtual || metaAtual.meta !== nMeta || (metaAtual.limiteAlerta ?? null) !== nLim);
@@ -204,7 +236,7 @@ export const KpisIndicadorModal: React.FC<{
             <select value={frequencia} onChange={e => setFrequencia(e.target.value as KpisFrequencia)} disabled={temLanc} className={campo}>
               {(Object.keys(FREQ_ROTULO) as KpisFrequencia[]).map(f => <option key={f} value={f}>{FREQ_ROTULO[f]}</option>)}
             </select>
-            {temLanc && <span className="text-[11px] text-slate-400">Travada: já há lançamentos (mudar a frequência baralharia os períodos). Para mudar, crie outro e arquive este.</span>}
+            {temLanc && <span className="text-[11px] text-slate-400">Travada: já há lançamentos (mudar a frequência baralharia os períodos).{BotaoLimpar ? <> Para mudar,{BotaoLimpar} — ou crie outro e arquive este.</> : ' Para mudar, crie outro e arquive este.'}</span>}
           </label>
           <label className="flex flex-col gap-1">
             <span className={rotulo}>A partir de</span>
@@ -222,7 +254,7 @@ export const KpisIndicadorModal: React.FC<{
             <div className="flex gap-2 flex-wrap">
               <button type="button" disabled={temLanc && tipo === 'manual'} onClick={() => setTipo('manual')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tipo === 'manual' ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}><PencilLine size={12} className="inline -mt-0.5 mr-1" />Lançado pelo setor</button>
               <button type="button" disabled={temLanc} onClick={() => setTipo('calculado')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border disabled:opacity-50 ${tipo === 'calculado' ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}><Calculator size={12} className="inline -mt-0.5 mr-1" />Calculado pela base</button>
-              {temLanc && <span className="text-[11px] text-slate-400 self-center">tipo travado: já há lançamentos</span>}
+              {temLanc && <span className="text-[11px] text-slate-400 self-center">tipo travado: já há lançamentos{BotaoLimpar ? <> —{BotaoLimpar}</> : null}</span>}
             </div>
             {tipo === 'calculado' && (
               <div className="space-y-2">
@@ -244,8 +276,8 @@ export const KpisIndicadorModal: React.FC<{
                     <span className={rotulo}>De quem</span>
                     <select value={escopoEf} onChange={e => setCalcEscopo(e.target.value as KpisEscopo)} className={campo}>
                       <option value="setor">{ESCOPO_ROTULO.setor}</option>
-                      {!soSetor && fonteEf !== 'cronograma' && (com026 !== false || escopoEf === 'engenharia') && <option value="engenharia">{ESCOPO_ROTULO.engenharia}</option>}
-                      {!soSetor && <option value="todos">{ESCOPO_ROTULO.todos}</option>}
+                      {fonteEf !== 'cronograma' && (com026 !== false || escopoEf === 'engenharia') && <option value="engenharia">{ESCOPO_ROTULO.engenharia}</option>}
+                      {mostraTodos && <option value="todos">{ESCOPO_ROTULO.todos}</option>}
                     </select>
                   </label>
                 </div>
