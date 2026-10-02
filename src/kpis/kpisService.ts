@@ -9,7 +9,7 @@ import { authHeaders } from '../services/authToken';
 import {
   KpisAcesso, KpisFrequencia, KpisHist, KpisIndicador, KpisIndicadorInput, KpisLancamento, KpisMeta, KpisPontoCalculado, KpisSetor, KpisTipoAtividade,
   KPIS_HIST_COLS, KPIS_IND_COLS, KPIS_IND_COLS_023, KPIS_IND_COLS_025, KPIS_LANC_COLS, KPIS_META_COLS,
-  mapAcesso, mapHist, mapIndicador, mapLancamento, mapMeta, precisa026, toIndicadorRow, validarIndicador,
+  mapAcesso, mapHist, mapIndicador, mapLancamento, mapMeta, precisa026, precisa027, toIndicadorRow, validarIndicador,
 } from './kpis';
 
 // A mudança não se aplica mais (sumiu, mudou por outra pessoa). A mensagem é para a pessoa.
@@ -36,6 +36,7 @@ export interface KpisService {
   listHist(indicadorId: string): Promise<KpisHist[]>;
   serieCalculada(indicadorId: string, de: string | null, ate: string | null): Promise<KpisPontoCalculado[]>;
   fontesNovas(): Promise<boolean | null>;                 // 026 no banco (projetos, paradas, inovações, engenharia); null = não deu para saber
+  cronograma(): Promise<boolean | null>;                  // 027 no banco (o cronograma do Nexus Flow); null = não deu para saber
   criarIndicador(input: KpisIndicadorInput): Promise<KpisIndicador>;
   editarIndicador(id: string, input: KpisIndicadorInput, version: string): Promise<KpisIndicador>;
   arquivarIndicador(id: string, ativo: boolean, version: string): Promise<KpisIndicador>;
@@ -107,7 +108,9 @@ const todas = async (monta: (de: number, ate: number) => PromiseLike<{ data: any
 // da sessão (fica null e pergunta de novo na próxima).
 let tem025: boolean | null = null;
 let tem026: boolean | null = null;
-const KPIS_VERSAO_TELA = 26;   // a tela se identifica em toda alteração de indicador (026: o banco recusa a tela antiga)
+let tem027: boolean | null = null;
+// a tela se identifica em toda alteração de indicador (026: o banco recusa a tela antiga; 027: a que não conhece o cronograma)
+const KPIS_VERSAO_TELA = 27;
 const sonda = async (col: string): Promise<boolean | null> => {
   const { error } = await supabase.from('kpis_indicador').select(col).limit(1);
   if (!error) return true;
@@ -116,7 +119,7 @@ const sonda = async (col: string): Promise<boolean | null> => {
 };
 // reprobe: o "não tem" de antes é perguntado de novo (a migração pode ter rodado com a aba aberta) — no Atualizar.
 const colsIndicador = async (reprobe = false): Promise<string> => {
-  if (reprobe) { if (tem025 === false) tem025 = null; if (tem026 === false) tem026 = null; }
+  if (reprobe) { if (tem025 === false) tem025 = null; if (tem026 === false) tem026 = null; if (tem027 === false) tem027 = null; }
   if (tem025 === null) tem025 = await sonda('do_setor');
   if (tem025 === false) return KPIS_IND_COLS_023;
   if (tem026 === null) tem026 = await sonda('calc_fonte');
@@ -127,11 +130,23 @@ const fontesNovas = async (): Promise<boolean | null> => {
   if (tem025 === false || tem026 === false) return false;
   return tem026 === true ? true : null;   // null = a sonda não respondeu (rede): a tela não força nada
 };
+// 027: o banco diz quais fontes de cálculo conhece (kpis_fontes_calculo); função que não existe = banco sem a 027.
+const cronograma = async (): Promise<boolean | null> => {
+  if (tem027 !== null) return tem027;
+  if ((await fontesNovas()) === false) return (tem027 = false);
+  const { data, error } = await supabase.rpc('kpis_fontes_calculo');
+  if (!error) return (tem027 = Array.isArray(data) && data.includes('cronograma'));
+  // só "a função não existe" quer dizer banco sem a 027; sessão vencida, permissão e rede = não deu para saber
+  const code = String((error as any).code || '');
+  if (code === 'PGRST202' || code === '42883' || /could not find the function/i.test(String((error as any).message || ''))) return (tem027 = false);
+  return null;
+};
 // O que vai ao banco: sem a 026, as colunas novas não vão — e um cálculo que precisa dela é recusado aqui.
 const linhaIndicador = async (input: KpisIndicadorInput): Promise<Record<string, unknown>> => {
   await colsIndicador();
   const com026 = tem026 !== false && tem025 !== false;
   if (!com026 && precisa026(input)) throw new KpisStaleError('Este cálculo (projetos, paradas, inovações, a engenharia, média ou %) precisa da migração 026 no banco — avise o Edson. Nada foi salvo.');
+  if (precisa027(input) && (await cronograma()) === false) throw new KpisStaleError('O cálculo pelo cronograma (Nexus Flow) precisa da migração 027 no banco — avise o Edson. Nada foi salvo.');
   return toIndicadorRow(input, com026);
 };
 
@@ -347,7 +362,7 @@ const mudarSetor = async (userId: string, setor: string, setorAntes?: string): P
 };
 
 export const kpisService: KpisService = {
-  acesso, setores, tiposAtividade, listIndicadores, listMetas, listLancamentos, listHist, serieCalculada, fontesNovas,
+  acesso, setores, tiposAtividade, listIndicadores, listMetas, listLancamentos, listHist, serieCalculada, fontesNovas, cronograma,
   criarIndicador, editarIndicador, arquivarIndicador, apagarIndicador, salvarMeta, apagarMeta,
   lancar, corrigir, apagarLancamento, valoresLigados, ultimoAntes, contarLigados, mudarSetor,
 };

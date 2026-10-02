@@ -13,7 +13,7 @@ export type KpisConsolidacao = 'ultimo' | 'soma';
 export type KpisTipo = 'manual' | 'calculado';
 export type KpisMedida = 'horas' | 'quantidade' | 'media' | 'pct_estimado';  // media e pct_estimado: só projetos (026)
 export type KpisEscopo = 'setor' | 'todos' | 'engenharia';                   // engenharia: a régua do Dashboard (026)
-export type KpisFonte = 'atividades' | 'projetos' | 'paradas' | 'inovacoes'; // de onde sai o calculado (026)
+export type KpisFonte = 'atividades' | 'projetos' | 'paradas' | 'inovacoes' | 'cronograma'; // de onde sai o calculado (026; cronograma: 027)
 
 export interface KpisIndicador {
   id: string;
@@ -101,23 +101,26 @@ export interface KpisTipoAtividade { id: string; nome: string; ativo: boolean; }
 // ---- 026: de onde o calculado sai, o que conta e de quem ---------------------
 export const MEDIDAS_DA_FONTE: Record<KpisFonte, KpisMedida[]> = {
   atividades: ['horas', 'quantidade'], projetos: ['quantidade', 'horas', 'media', 'pct_estimado'],
-  paradas: ['horas', 'quantidade'], inovacoes: ['quantidade'],
+  paradas: ['horas', 'quantidade'], inovacoes: ['quantidade'], cronograma: ['quantidade'],
 };
 export const FONTE_ROTULO: Record<KpisFonte, string> = {
   atividades: 'atividades do Desempenho Operacional', projetos: 'sessões de projeto (Liberação, Variação, Desenvolvimento)',
   paradas: 'paradas registradas (interrupções)', inovacoes: 'inovações cadastradas',
+  cronograma: 'projetos do cronograma (Nexus Flow)',
 };
 export const MEDIDA_ROTULO: Record<KpisFonte, Partial<Record<KpisMedida, string>>> = {
   atividades: { horas: 'as horas das atividades', quantidade: 'quantas atividades' },
   projetos: { quantidade: 'quantas sessões de projeto', horas: 'as horas de projeto (tempo ativo)', media: 'as horas médias por projeto concluído', pct_estimado: '% dos concluídos dentro do estimado' },
   paradas: { horas: 'as horas paradas', quantidade: 'quantas paradas' },
   inovacoes: { quantidade: 'quantas inovações' },
+  cronograma: { quantidade: 'quantos projetos concluídos' },
 };
 export const AJUDA_FONTE: Record<KpisFonte, string> = {
   atividades: 'Atividades concluídas, no dia em que começaram. Na soma de horas, sessão de mais de 16 h (esquecida aberta) fica fora — a régua do P&D Gerencial.',
   projetos: 'Sessões de projeto de qualquer situação, no dia em que começaram — o mesmo "Total Ano" do Dashboard. Média e % olham os projetos concluídos, no mês em que terminaram (o mês fechado não muda mais); mês sem projeto concluído fica sem valor.',
   paradas: 'Paradas registradas, no dia em que começaram; as horas são as horas úteis paradas (a régua do Dashboard).',
   inovacoes: 'Inovações cadastradas, no dia do cadastro. Só a contagem — nunca valores em R$.',
+  cronograma: 'Projetos do cronograma (Nexus Flow) concluídos, no mês em que foram marcados como Feito (os concluídos até 02/10/2026, no mês da data final do cronograma). Só a tarefa principal (subtarefa não conta); encerrado sem concluir e excluído ficam fora. "Do setor" = projetos com alguém do setor entre os responsáveis.',
 };
 export const PROJETO_TIPOS = [{ v: 'LIBERACAO', rotulo: 'Liberação' }, { v: 'VARIACAO', rotulo: 'Variação' }, { v: 'DESENVOLVIMENTO', rotulo: 'Desenvolvimento' }];
 export const INOVACAO_STATUS = [{ v: 'PENDING', rotulo: 'Pendente' }, { v: 'APPROVED', rotulo: 'Aprovada' }, { v: 'IMPLEMENTED', rotulo: 'Implementada' }, { v: 'REJECTED', rotulo: 'Rejeitada' }];
@@ -141,6 +144,7 @@ export const rotuloBase = (i: Pick<KpisIndicador, 'calcFonte' | 'calcMedida'>, k
     : i.calcMedida === 'pct_estimado' ? pl('concluído com estimativa', 'concluídos com estimativa') : pl('sessão', 'sessões');
   if (f === 'paradas') return pl('parada', 'paradas');
   if (f === 'inovacoes') return pl('inovação', 'inovações');
+  if (f === 'cronograma') return pl('projeto concluído', 'projetos concluídos');
   return pl('atividade', 'atividades');
 };
 
@@ -188,7 +192,7 @@ export const mapIndicador = (r: any): KpisIndicador => ({
   calcTipos: Array.isArray(r.calc_tipos) ? r.calc_tipos.map(s) : [],
   calcMedida: (['horas', 'quantidade', 'media', 'pct_estimado'] as const).find(x => x === r.calc_medida) ?? null,
   calcEscopo: (['setor', 'todos', 'engenharia'] as const).find(x => x === r.calc_escopo) ?? null,
-  calcFonte: r.tipo !== 'calculado' ? null : (['projetos', 'paradas', 'inovacoes'] as const).find(x => x === r.calc_fonte) ?? 'atividades',
+  calcFonte: r.tipo !== 'calculado' ? null : (['projetos', 'paradas', 'inovacoes', 'cronograma'] as const).find(x => x === r.calc_fonte) ?? 'atividades',
   calcFiltro: Array.isArray(r.calc_filtro) ? r.calc_filtro.map(s) : [],
   criadoPor: r.criado_por ? s(r.criado_por) : null, criadoEm: s(r.criado_em),
   atualizadoPor: r.atualizado_por ? s(r.atualizado_por) : null, atualizadoEm: s(r.atualizado_em),
@@ -238,6 +242,8 @@ export const toIndicadorRow = (i: KpisIndicadorInput, com026 = true): Record<str
 export const precisa026 = (i: KpisIndicadorInput): boolean =>
   i.tipo === 'calculado' && ((i.calcFonte || 'atividades') !== 'atividades' || i.calcEscopo === 'engenharia'
     || i.calcMedida === 'media' || i.calcMedida === 'pct_estimado');
+// O cálculo pede a 027 (o cronograma)?
+export const precisa027 = (i: KpisIndicadorInput): boolean => i.tipo === 'calculado' && i.calcFonte === 'cronograma';
 
 // O que o formulário confere antes de mandar (o banco confere de novo).
 export const validarIndicador = (i: KpisIndicadorInput): string => {
@@ -259,6 +265,7 @@ export const validarIndicador = (i: KpisIndicadorInput): string => {
     if (!i.calcMedida || !MEDIDAS_DA_FONTE[fonte].includes(i.calcMedida)) return 'Escolha o que o cálculo conta.';
     if ((i.calcMedida === 'media' || i.calcMedida === 'pct_estimado') && i.consolidacao === 'soma') return 'Média e "% no estimado" não se somam ao longo do tempo — desmarque "os valores se somam".';
     if (!i.calcEscopo) return 'Escolha de quem são os registros (o setor, a engenharia ou todo mundo).';
+    if (fonte === 'cronograma' && i.calcEscopo === 'engenharia') return 'O cronograma conta os projetos de todos ou os do setor.';
   }
   return '';
 };
