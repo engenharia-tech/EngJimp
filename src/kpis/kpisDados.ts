@@ -94,7 +94,9 @@ export const resumoDo = (i: KpisIndicador, d: KpisDados, hoje: string = hojeSP()
   let serie: KpisPonto[];
   if (i.tipo === 'calculado') {
     const porPer = new Map((d.calc.get(i.id) || []).map(p => [p.periodo, p] as const));
-    serie = periodos.map(p => { const c = porPer.get(p); return { periodo: p, valor: c ? c.valor : (d.calcErro.has(i.id) ? null : 0), atividades: c?.atividades }; });
+    // Período que o banco não devolveu: horas/quantidade = 0; média e % = sem valor (sem base nunca vira 0).
+    const semBase = d.calcErro.has(i.id) || i.calcMedida === 'media' || i.calcMedida === 'pct_estimado';
+    serie = periodos.map(p => { const c = porPer.get(p); return { periodo: p, valor: c ? c.valor : (semBase ? null : 0), atividades: c?.atividades }; });
   } else {
     const porPer = new Map((d.lancs.get(i.id) || []).map(l => [l.periodo, l] as const));
     serie = periodos.map(p => { const l = porPer.get(p); return { periodo: p, valor: l ? l.valor : null, lanc: l }; });

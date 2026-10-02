@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Gauge, RefreshCw, Lock, AlertTriangle, LayoutGrid, PencilLine, Settings2 } from 'lucide-react';
 import { withOkrSafe } from '../okr/OkrSafe';
 import { User } from '../types';
-import { KpisAcesso, KpisIndicador, setorChave } from './kpis';
+import { KpisAcesso, KpisIndicador, gerencia, setorChave } from './kpis';
 import { useKpisDados, resumoDo } from './kpisDados';
 import { KpisService, kpisService as servicoPadrao, kpisErrorMessage, KPIS_NAO_INSTALADO } from './kpisService';
 import { KpisPainel } from './KpisPainel';
@@ -80,7 +80,7 @@ const KpisViewInner: React.FC<{
     const meus = dados.indicadores.filter(i => i.ativo && i.tipo === 'manual' && i.podeLancar && setorChave(i.setor) === (acesso.setorChave || ''));
     setSub(meus.some(i => resumoDo(i, dados).pend.situacao !== 'em_dia') ? 'lancar' : 'painel');
   }, [dados, acesso, sub]);
-  const subAtual: Sub = sub === 'lancar' && !podeLancarAlgum ? 'painel' : sub === 'cadastro' && !acesso?.administra ? 'painel' : (sub || 'painel');
+  const subAtual: Sub = sub === 'lancar' && !podeLancarAlgum ? 'painel' : sub === 'cadastro' && !acesso?.administra && !acesso?.cria ? 'painel' : (sub || 'painel');
 
   // O indicador aberto no detalhe acompanha a releitura (ou fecha, se sumiu).
   useEffect(() => {
@@ -136,7 +136,7 @@ const KpisViewInner: React.FC<{
         <div className="mt-4 inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800" role="group" aria-label="Seções">
           <SubBtn ativo={subAtual === 'painel'} onClick={() => setSub('painel')} icon={<LayoutGrid size={13} />} label="Painel" />
           {podeLancarAlgum && <SubBtn ativo={subAtual === 'lancar'} onClick={() => setSub('lancar')} icon={<PencilLine size={13} />} label="Lançar" />}
-          {acesso!.administra && <SubBtn ativo={subAtual === 'cadastro'} onClick={() => setSub('cadastro')} icon={<Settings2 size={13} />} label="Cadastro" />}
+          {(acesso!.administra || acesso!.cria) && <SubBtn ativo={subAtual === 'cadastro'} onClick={() => setSub('cadastro')} icon={<Settings2 size={13} />} label="Cadastro" />}
         </div>
       </div>
 
@@ -148,19 +148,26 @@ const KpisViewInner: React.FC<{
       ) : (
         <>
           {erro && <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5"><AlertTriangle size={13} /> Não consegui atualizar agora ({kpisErrorMessage(erro, 'erro', true)}) — mostrando o que já estava na tela.</p>}
-          {dados.calcErro.size > 0 && <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5"><AlertTriangle size={13} /> Não consegui calcular {dados.calcErro.size === 1 ? '1 indicador calculado' : `${dados.calcErro.size} indicadores calculados`} pelas atividades agora — tente Atualizar.</p>}
+          {dados.calcErro.size > 0 && <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5"><AlertTriangle size={13} /> Não consegui calcular {dados.calcErro.size === 1 ? '1 indicador calculado' : `${dados.calcErro.size} indicadores calculados`} agora — tente Atualizar.</p>}
+          {subAtual === 'painel' && !acesso!.veTodos && acesso!.cria && inds.filter(i => i.ativo).length === 0 && (
+            <div className="rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-900/15 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 flex items-center gap-3 flex-wrap">
+              <span>O seu setor ainda não tem indicador. Você mesmo cria os do seu setor — com meta, frequência e unidade.</span>
+              <button onClick={() => setSub('cadastro')} className="ml-auto inline-flex items-center gap-1 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg px-3 py-1.5"><Settings2 size={13} /> Criar o primeiro</button>
+            </div>
+          )}
           {subAtual === 'painel' && (
             <KpisPainel dados={dados} inds={filtrados} visaoPorSetor={!!acesso!.veTodos && setor === 'todos'} mostrarSetor={!!acesso!.veTodos}
               onAbrir={setAberto} onFiltrarSetor={setSetor} />
           )}
           {subAtual === 'lancar' && <KpisLancar dados={dados} inds={filtrados} service={service} nomes={nomes} mostrarSetor={!!acesso!.veTodos || !!acesso!.administra || filtrados.some(i => setorChave(i.setor) !== (acesso!.setorChave || ''))} onGravou={gravou} />}
-          {subAtual === 'cadastro' && <KpisCadastro dados={dados} service={service} onGravou={gravou} users={users} currentUser={currentUser} onUsuariosMudou={onUsuariosMudou} />}
+          {subAtual === 'cadastro' && <KpisCadastro dados={dados} service={service} onGravou={gravou} users={users} currentUser={currentUser} onUsuariosMudou={onUsuariosMudou} acesso={acesso!} />}
           {aberto && (
-            <KpisDetalhe i={aberto} dados={dados} service={service} nomes={nomes} administra={!!acesso!.administra} mostrarSetor={!!acesso!.veTodos}
+            <KpisDetalhe i={aberto} dados={dados} service={service} nomes={nomes} administra={!!acesso!.administra} podeEditar={gerencia(aberto, acesso)} mostrarSetor={!!acesso!.veTodos}
               onFechar={() => setAberto(null)} onEditar={() => { setEditando(aberto); setAberto(null); }} onGravou={gravou} />
           )}
           {editando && (
             <EditarDoDetalhe ind={editando} dados={dados} service={service} onFechar={() => setEditando(null)} onGravou={gravou}
+              setorFixo={acesso!.administra ? null : acesso!.setorNome}
               ceoSoVe={currentUser.role === 'CEO' && currentUser.id !== '1e570c78-7278-4e8d-a90e-a820c11bb07a'} />
           )}
         </>
@@ -170,7 +177,7 @@ const KpisViewInner: React.FC<{
 };
 
 // "Editar indicador" a partir do detalhe: o mesmo formulário do Cadastro, com a lista de setores lida na hora.
-const EditarDoDetalhe: React.FC<{ ind: KpisIndicador; dados: NonNullable<ReturnType<typeof useKpisDados>['dados']>; service: KpisService; onFechar: () => void; onGravou: () => void; ceoSoVe?: boolean }> = ({ ind, dados, service, onFechar, onGravou, ceoSoVe }) => {
+const EditarDoDetalhe: React.FC<{ ind: KpisIndicador; dados: NonNullable<ReturnType<typeof useKpisDados>['dados']>; service: KpisService; onFechar: () => void; onGravou: () => void; ceoSoVe?: boolean; setorFixo?: string | null }> = ({ ind, dados, service, onFechar, onGravou, ceoSoVe, setorFixo }) => {
   const [setores, setSetores] = useState<Awaited<ReturnType<KpisService['setores']>> | null | undefined>(undefined);
   const [tipos, setTipos] = useState<Awaited<ReturnType<KpisService['tiposAtividade']>> | null | undefined>(undefined);
   useEffect(() => {
@@ -178,7 +185,7 @@ const EditarDoDetalhe: React.FC<{ ind: KpisIndicador; dados: NonNullable<ReturnT
     service.tiposAtividade().then(setTipos).catch(() => setTipos(null));
   }, [service]);
   if (setores === undefined) return null;
-  return <KpisIndicadorModal indicador={ind} dados={dados} service={service} setores={setores} tipos={tipos} ceoSoVe={ceoSoVe} onFechar={onFechar} onGravou={onGravou} />;
+  return <KpisIndicadorModal indicador={ind} dados={dados} service={service} setores={setores} tipos={tipos} ceoSoVe={ceoSoVe} setorFixo={setorFixo} onFechar={onFechar} onGravou={onGravou} />;
 };
 
 export const KpisView = withOkrSafe(KpisViewInner, 'o KPI dos setores', 'Algum dado dos indicadores veio num formato inesperado.');

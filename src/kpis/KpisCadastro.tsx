@@ -3,7 +3,7 @@ import { User } from '../types';
 import { addAuditLog } from '../services/storageService';
 import { Plus, Pencil, Archive, ArchiveRestore, Trash2, AlertTriangle, Calculator, Link2, Users, Search, Save, Loader2 } from 'lucide-react';
 import { useToast } from '../components/Toast';
-import { KpisIndicador, KpisSetor, KpisTipoAtividade, FREQ_ROTULO, fmtValor, hojeSP, inicioPeriodo, metaVigente, setorChave } from './kpis';
+import { KpisAcesso, KpisIndicador, KpisSetor, KpisTipoAtividade, FREQ_ROTULO, fmtValor, gerencia, hojeSP, inicioPeriodo, metaVigente, setorChave } from './kpis';
 import { KpisDados } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
 import { KpisIndicadorModal } from './KpisIndicadorModal';
@@ -15,7 +15,10 @@ import { KpisIndicadorModal } from './KpisIndicadorModal';
 export const KpisCadastro: React.FC<{
   dados: KpisDados; service: KpisService; onGravou: () => void;
   users: User[]; currentUser: User; onUsuariosMudou?: (id: string, setor: string) => void;
-}> = ({ dados, service, onGravou, users, currentUser, onUsuariosMudou }) => {
+  acesso: KpisAcesso;                 // 025: quem não administra cria e gerencia só os do próprio setor
+}> = ({ dados, service, onGravou, users, currentUser, onUsuariosMudou, acesso }) => {
+  const admin = !!acesso.administra;
+  const setorFixo = admin ? null : acesso.setorNome;
   const { addToast } = useToast();
   // Decisão do Edson, 01/10: o CEO é visão macro — mexer no setor das pessoas, ele pede.
   const ceoSoVe = currentUser.role === 'CEO' && currentUser.id !== EDSON_ID;
@@ -30,8 +33,9 @@ export const KpisCadastro: React.FC<{
   }, [service, dados.lidoEm]);
 
   const chavesComGente = useMemo(() => new Set((setores || []).map(s => s.chave)), [setores]);
-  const grafias = (setores || []).filter(s => s.grafias.length > 1);
-  const semNinguem = setores ? dados.indicadores.filter(i => i.ativo && !chavesComGente.has(setorChave(i.setor))) : [];
+  // Os avisos de cadastro de pessoas são de quem administra (a lista de setores só vem para quem vê todos).
+  const grafias = admin ? (setores || []).filter(s => s.grafias.length > 1) : [];
+  const semNinguem = admin && setores ? dados.indicadores.filter(i => i.ativo && !chavesComGente.has(setorChave(i.setor))) : [];
   const grupos = useMemo(() => {
     const g = new Map<string, { nome: string; itens: KpisIndicador[] }>();
     dados.indicadores.forEach(i => { const k = setorChave(i.setor); const x = g.get(k) || { nome: i.setor, itens: [] }; x.itens.push(i); g.set(k, x); });
@@ -58,7 +62,9 @@ export const KpisCadastro: React.FC<{
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <p className="text-xs text-slate-500 dark:text-slate-400 flex-1 min-w-[200px]">Só o Edson e os admins de OKR cadastram indicadores e metas. As pessoas do setor lançam e veem só o seu setor.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 flex-1 min-w-[200px]">{admin
+          ? 'O Edson e os admins de OKR cadastram em qualquer setor; cada setor também cria e gerencia os seus. As pessoas do setor lançam e veem só o seu setor.'
+          : `Você cria os indicadores do seu setor (${acesso.setorNome || '—'}) e cuida dos que o setor criou — meta, edição, arquivar. Os criados pelo Edson ou por um admin de OKR o setor só lança.`}</p>
         <button onClick={() => setModal({})} disabled={setores === undefined} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg"><Plus size={15} /> Novo indicador</button>
       </div>
 
@@ -101,9 +107,13 @@ export const KpisCadastro: React.FC<{
                       <td className="px-3 py-2.5 text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{i.sentido === 'maior' ? '↑ maior melhor' : '↓ menor melhor'}</td>
                       <td className="px-3 py-2.5 text-[11px] whitespace-nowrap">{m ? <span className="text-slate-600 dark:text-slate-300">meta {fmtValor(m.meta, i.unidade, i.casas)}</span> : <span className="text-amber-600 dark:text-amber-400">sem meta — defina</span>}</td>
                       <td className="px-5 py-2.5 text-right whitespace-nowrap">
+                        {gerencia(i, acesso) ? <>
                         <button onClick={() => setModal({ ind: i })} disabled={ocupado === i.id} className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Editar"><Pencil size={14} /></button>
                         <button onClick={() => arquivar(i)} disabled={ocupado === i.id} className="p-1.5 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" title={i.ativo ? 'Arquivar' : 'Reativar'}>{i.ativo ? <Archive size={14} /> : <ArchiveRestore size={14} />}</button>
                         <button onClick={() => excluir(i)} disabled={ocupado === i.id} className="p-1.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20" title="Excluir (só sem lançamento e sem KR ligado)"><Trash2 size={14} /></button>
+                        </> : i.podeLancar
+                          ? <span className="text-[11px] text-slate-400" title="Criado pelo Edson ou por um admin de OKR: o setor lança, mas não altera o cadastro">só lança</span>
+                          : <span className="text-[11px] text-slate-400" title={i.tipo === 'calculado' ? 'Calculado pela base: ninguém lança' : 'Você acompanha este indicador, mas não lança nem altera'}>só vê</span>}
                       </td>
                     </tr>
                   );
@@ -114,10 +124,10 @@ export const KpisCadastro: React.FC<{
         </div>
       ))}
 
-      <PessoasESetores users={users} currentUser={currentUser} setores={setores || []} service={service}
-        onMudou={(id, setor) => { onUsuariosMudou?.(id, setor); onGravou(); }} />
+      {admin && <PessoasESetores users={users} currentUser={currentUser} setores={setores || []} service={service}
+        onMudou={(id, setor) => { onUsuariosMudou?.(id, setor); onGravou(); }} />}
 
-      {modal && <KpisIndicadorModal indicador={modal.ind} dados={dados} service={service} setores={setores ?? null} tipos={tipos} ceoSoVe={ceoSoVe} onFechar={() => setModal(null)} onGravou={onGravou} />}
+      {modal && <KpisIndicadorModal indicador={modal.ind} dados={dados} service={service} setores={setores ?? null} tipos={tipos} ceoSoVe={ceoSoVe} setorFixo={setorFixo} onFechar={() => setModal(null)} onGravou={onGravou} />}
     </div>
   );
 };
