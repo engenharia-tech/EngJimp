@@ -6,6 +6,7 @@ import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser } from '../utils/userUtils';
 import { getTokenSub } from './authToken';
 import { getAuthToken, authHeaders } from './authToken';
+import { lerTudo } from './lerTudo';
 import { OkrData, OkrStore, OkrExecutor, OkrExecutorKind, migrateToStore } from '../okr/okr';
 
 // Supabase Configuration
@@ -385,17 +386,19 @@ export const fetchAppState = async (): Promise<AppState> => {
   try {
     const start = Date.now();
     // Fetch all data in parallel for speed
+    // lerTudo (01/10/2026): o PostgREST corta em 1.000 linhas por pedido — lê em páginas até acabar,
+    // e tabela que cabe numa página volta igual a antes (ver lerTudo.ts).
     const fetches = [
-      supabase.from('projects').select('*').order('start_time', { ascending: false }),
-      supabase.from('issues').select('*').order('date', { ascending: false }),
-      supabase.from('innovations').select('*').order('created_at', { ascending: false }),
-      supabase.from('interruptions').select('*').order('start_time', { ascending: false }),
-      supabase.from('interruption_types').select('*').order('name', { ascending: true }),
-      supabase.from('activity_types').select('*').order('name', { ascending: true }),
-      supabase.from('operational_activities').select('*').order('start_time', { ascending: false }),
-      supabase.from('project_requests').select('*').order('created_at', { ascending: false }),
+      lerTudo('projects', 'start_time', () => supabase.from('projects').select('*').order('start_time', { ascending: false })),
+      lerTudo('issues', 'date', () => supabase.from('issues').select('*').order('date', { ascending: false })),
+      lerTudo('innovations', 'created_at', () => supabase.from('innovations').select('*').order('created_at', { ascending: false })),
+      lerTudo('interruptions', 'start_time', () => supabase.from('interruptions').select('*').order('start_time', { ascending: false })),
+      lerTudo('interruption_types', 'name', () => supabase.from('interruption_types').select('*').order('name', { ascending: true })),
+      lerTudo('activity_types', 'name', () => supabase.from('activity_types').select('*').order('name', { ascending: true })),
+      lerTudo('operational_activities', 'start_time', () => supabase.from('operational_activities').select('*').order('start_time', { ascending: false })),
+      lerTudo('project_requests', 'created_at', () => supabase.from('project_requests').select('*').order('created_at', { ascending: false })),
       selecionarUsuarios(),    // [8] colunas seguras + desligado_em (relê sem ela a qualquer erro)
-      supabase.from('gantt_tasks').select('*').is('deleted_at', null).order('order', { ascending: true }),
+      lerTudo('gantt_tasks', 'order', () => supabase.from('gantt_tasks').select('*').is('deleted_at', null).order('order', { ascending: true })),
       supabase.from('audit_logs').select('*').order('timestamp', { ascending: false }).limit(500),
       fetchSettings(),
       fetchCustoHora(),        // [12] custo/hora por período (servidor decide quem vê R$; sem salário individual)
