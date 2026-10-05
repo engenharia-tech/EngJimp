@@ -1053,6 +1053,8 @@ app.post("/api/users/save", async (req, res) => {
   const patch: any = { name: user.name, surname: user.surname, email: user.email, phone: user.phone };
   let renameTo = "";
   let wantViewer = false;
+  let wasOnly = false;
+  let wantOnly = false;
   let setorPedido = "";
   let setorMudou = "";
   let setorTroca: { de: string; para: string } | null = null;   // a troca de setor que foi GRAVADA (a tela registra no log só ela)
@@ -1060,7 +1062,7 @@ app.post("/api/users/save", async (req, res) => {
     // Renomear para um username que já existe (mesmo mudando maiúsculas, ex.: "EDSON") é recusado.
     try {
       if (await inUse("username", user.username, user.id)) return res.json({ success: false, message: "Nome de usuário já existe." });
-      const { data: cur, error: curErr } = await admin.from("users").select("username, role, okr_viewer, okr_admin, sector").eq("id", user.id).limit(1);
+      const { data: cur, error: curErr } = await admin.from("users").select("username, role, okr_viewer, okr_admin, okr_only, sector").eq("id", user.id).limit(1);
       if (curErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
       if (!cur || !cur.length) return res.json({ success: false, message: "Usuário não encontrado." });
       const oldName = String((cur[0] as any).username || "").trim();
@@ -1087,6 +1089,10 @@ app.post("/api/users/save", async (req, res) => {
       // mudar a marca é só do Edson ou do admin de OKR.
       const wasViewer = !!(cur[0] as any).okr_viewer;
       wantViewer = user.okrViewer === undefined || user.okrViewer === null ? wasViewer : !!user.okrViewer;
+      // "Somente OKR" (029, 05/10/2026): a marca agora tranca a engenharia NO BANCO — sem o campo no pedido (tela
+      // antiga, script) fica como está, como o visualizador; antes, faltar o campo a desligava calada.
+      wasOnly = !!(cur[0] as any).okr_only;
+      wantOnly = user.okrOnly === undefined || user.okrOnly === null ? wasOnly : !!user.okrOnly;
       // O grupo ADM Externo É o visualizador: quem fica nele fica com a marca.
       const wasExterno = (cur[0] as any).role === ADM_EXTERNO;
       const wantExterno = (user.role === undefined || user.role === null ? (cur[0] as any).role : user.role) === ADM_EXTERNO;
@@ -1120,6 +1126,12 @@ app.post("/api/users/save", async (req, res) => {
       if (String(cargoNovo) !== String(a.role || "") && (ehCargoDeTopo(cargoNovo) || ehCargoDeTopo(a.role))) {
         return res.status(403).json({ success: false, error: "Só um GESTOR dá ou tira o cargo CEO ou GESTOR." });
       }
+      // "Somente OKR" (029, 05/10/2026) tranca a engenharia no banco e tira o R$ de quem a tem: nas contas que leem
+      // o OKR de todos (CEO, GESTOR, admins do OKR, visualizador), pôr ou tirar a marca é de GESTOR — a mesma régua
+      // de login/e-mail/senha delas (decisão do Edson, 25/09: "qualquer GESTOR").
+      if (wantOnly !== wasOnly && contaQueLeTudo(a)) {
+        return res.status(403).json({ success: false, error: "\"Somente OKR\" de CEO, GESTOR e dos admins do OKR só um GESTOR muda." });
+      }
       if (!isSelf && contaQueLeTudo(a)) {
         const mudaEmail = String(user.email || "").trim().toLowerCase() !== String(a.email || "").trim().toLowerCase();
         const mudaLogin = user.username !== String(a.username || "").trim();
@@ -1132,8 +1144,9 @@ app.post("/api/users/save", async (req, res) => {
     // A PRÓPRIA senha só muda por /api/auth/change-password, que confere a atual.
     if (user.password && !isSelf) patch.password = user.password;
     patch.okr_viewer = wantViewer;
-    patch.okr_enabled = wantViewer ? false : !!(user.okrEnabled || user.okrOnly); // "somente OKR" implica ter OKR
-    patch.okr_only = wantViewer ? false : !!user.okrOnly;
+    patch.okr_enabled = wantViewer ? false : !!(user.okrEnabled || wantOnly); // "somente OKR" implica ter OKR
+    patch.okr_only = wantViewer ? false : wantOnly;
+    if ((wantViewer ? false : wantOnly) !== wasOnly) console.log(`[users/save] "Somente OKR" de ${user.id}: ${wasOnly} → ${!wasOnly} por ${canonUuid(claims.sub)}`);
     patch.sector = setorPedido || null;
   }
   // Salario: leitura E escrita restritas ao Edson. Sem esta guarda, um admin
@@ -1196,7 +1209,15 @@ app.post("/api/settings/save", async (req, res) => {
   for (const k of Object.keys(incoming)) if (SETTINGS_WRITABLE.has(k)) row[k] = incoming[k];
   // CUSTO/HORA (022, 30/09/2026). R$ só para o Edson (pelo id) e os CEOs (cargo do cadastro) — decisão
   // do Edson, 30/09: de qualquer outro admin, o valor e o modo são ignorados (o resto grava).
-  if (!(claimsAreEdson(claims) || papel === "CEO")) {
+  // 029 (05/10/2026): a mesma régua de quem VÊ o R$ (/api/labor/hourly-cost) — CEO marcado "Somente OKR" não grava.
+  let ceoQueVeReais = false;
+  if (papel === "CEO" && ("hourly_cost" in row || "use_automatic_cost" in row)) {
+    try {
+      const eu = await lerUsuario(admin, canonUuid(claims.sub) || "", "okr_only", "Nao consegui conferir o seu acesso. Tente de novo.");
+      ceoQueVeReais = !!eu && !eu.okr_only;
+    } catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+  }
+  if (!(claimsAreEdson(claims) || ceoQueVeReais)) {
     delete row.hourly_cost;
     delete row.use_automatic_cost;
   }
@@ -1922,7 +1943,8 @@ app.get("/api/labor/hourly-cost", async (req, res) => {
   // Custo/hora sai dos salários: não é do painel de OKR, nem de quem saiu, nem de quem não está no cadastro.
   if (!r || ehVisualizador(r, id) || desligadoPeloCadastro(r, id)) return res.status(403).json({ success: false, error: "Sem permissao." });
   const ehEdson = claimsAreEdson(hcClaims);
-  const podeVerReais = ehEdson || r.role === "CEO";
+  // 029 (05/10/2026): "Somente OKR" não vê nada da engenharia — nem R$, mesmo com cargo CEO (o Edson, sempre).
+  const podeVerReais = ehEdson || (r.role === "CEO" && !r.okr_only);
   const veInovacoes = ehEdson || (CUSTO_CARGOS_QUE_VEEM_INOVACOES.includes(String(r.role || "")) && !r.okr_only);
   const hoje = hojeJoinville();
   const transicao = hoje <= CUSTO_HOURLY_RATE_ANTIGO_ATE;
@@ -1957,7 +1979,70 @@ app.get("/api/labor/hourly-cost", async (req, res) => {
   if (!podeVerReais) {
     return res.json({ success: true, instalado: true, podeVerReais: false, semReais: true, hoje, taxaInovacoes, ...antigo(taxaInovacoes) });
   }
-  return res.json({ success: true, instalado: true, podeVerReais: true, hoje, periodos, taxaHoje: vigente(hoje), taxaInovacoes, ...antigo(taxaInovacoes) });
+  // 029 (05/10/2026): o navegador não lê mais settings.hourly_cost (o banco só lhe dá as outras colunas). O valor
+  // MANUAL do custo/hora sai daqui, junto com o MODO, lidos na MESMA linha (os dois nunca descasam), só para quem
+  // vê R$. Falhou a leitura = 500: a tela fica sem R$ (nunca com R$ errado calado). Nunca imprimir o valor.
+  const { data: s, error: sErr } = await admin.from("settings").select("hourly_cost, use_automatic_cost").limit(1);
+  if (sErr) {
+    // Sem o modo não dá para saber se vale a série ou o valor manual: a resposta sai SEM R$ (como para quem não vê),
+    // com a marca da falha — mas a taxa das Inovações continua (senão salvar inovação travaria por isso).
+    console.error("[labor/hourly-cost] valor manual:", sErr.code || "(sem código)");
+    return res.json({ success: true, instalado: true, podeVerReais: false, semReais: true, falhaLeitura: true, hoje, taxaInovacoes, ...antigo(taxaInovacoes) });
+  }
+  const linha: any = s && s[0] ? s[0] : {};
+  const bruto = linha.hourly_cost;
+  const manual = bruto === null || bruto === undefined ? null : Number(bruto);
+  const auto = linha.use_automatic_cost;
+  return res.json({
+    success: true, instalado: true, podeVerReais: true, hoje, periodos, taxaHoje: vigente(hoje), taxaInovacoes, ...antigo(taxaInovacoes),
+    custoManual: manual !== null && Number.isFinite(manual) ? manual : null,
+    ...(auto === true || auto === false ? { custoAutomatico: auto } : auto === "true" || auto === "false" ? { custoAutomatico: auto === "true" } : {}),
+  });
+});
+
+// GET /api/projects/custo-gravado — o custo GRAVADO de cada projeto (projects.total_cost > 0), que só a exportação
+// de jan–ago usa (decisão do Edson, 30/09: "jan–ago com o custo gravado na época"). 029 (05/10/2026): o navegador
+// não lê mais as colunas de custo; quem vê R$ (Edson pelo id; CEO pelo cadastro, fora "Somente OKR", visualizador
+// e desligado) pede aqui, na hora de exportar. Rota à parte da série: se falhar, só a exportação avisa — o resto do
+// R$ continua. Páginas por CHAVE (id > o último), não por deslocamento: apagar um projeto no meio da leitura não
+// pula outro; e lê até vir uma página VAZIA (não "menos de 1.000"): se o teto do PostgREST for menor que 1.000,
+// nada fica de fora calado. Falhou qualquer página = 500 (nada pela metade). Nunca imprimir o resultado.
+app.get("/api/projects/custo-gravado", async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  const id = canonUuid(claims.sub);
+  if (!id) return res.status(403).json({ success: false, error: "Sem permissao." });
+  let r: any = null;
+  try { r = await lerUsuario(admin, id, "role, okr_viewer, okr_admin, okr_only", "Nao consegui conferir o seu acesso. Tente de novo."); }
+  catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+  if (!r || ehVisualizador(r, id) || desligadoPeloCadastro(r, id)) return res.status(403).json({ success: false, error: "Sem permissao." });
+  if (!(claimsAreEdson(claims) || (r.role === "CEO" && !r.okr_only))) return res.status(403).json({ success: false, error: "Sem permissao." });
+  const custoGravado: Record<string, number> = {};
+  let depoisDe = "";
+  for (let pagina = 0; ; pagina++) {
+    let q = admin.from("projects").select("id, total_cost").gt("total_cost", 0).order("id", { ascending: true }).limit(1000);
+    if (depoisDe) q = q.gt("id", depoisDe);
+    const { data, error } = await q;
+    if (error) {
+      console.error("[projects/custo-gravado]", error.code || "(sem código)");
+      return res.status(500).json({ success: false, error: "Erro ao ler o custo gravado." });
+    }
+    const linhas = Array.isArray(data) ? data : [];
+    if (linhas.length === 0) break;
+    for (const p of linhas) {
+      const v = Number((p as any).total_cost);
+      if ((p as any).id && Number.isFinite(v) && v > 0) custoGravado[String((p as any).id)] = v;
+    }
+    depoisDe = String((linhas[linhas.length - 1] as any).id);
+    if (pagina >= 100) {
+      console.error("[projects/custo-gravado] mais de 100.000 linhas");
+      return res.status(500).json({ success: false, error: "Erro ao ler o custo gravado." });
+    }
+  }
+  return res.json({ success: true, custoGravado });
 });
 
 // POST /api/users/desligar { id, ultimoDia: 'AAAA-MM-DD' } — DESLIGAR SEM EXCLUIR (022, 30/09/2026).

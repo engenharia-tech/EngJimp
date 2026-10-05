@@ -57,7 +57,7 @@ const defaultState: AppState = {
   users: [],
   ganttTasks: [],
   settings: { 
-    hourlyCost: 150,
+    hourlyCost: 0,   // 029: nunca um valor inventado — 0 não liga o modo manual (modoManual exige > 0)
     workdayStart: "07:30",
     workdayEnd: "17:30",
     workdays: [1, 2, 3, 4, 5],
@@ -182,8 +182,11 @@ const parseSafeJson = (val: any, fallback: any = []) => {
 };
 
 export const fetchSettings = async (): Promise<AppSettings> => {
-  let settings: AppSettings = { 
-    hourlyCost: parseSafeNumber(localStorage.getItem('hourly_cost')) || 150,
+  // O valor MANUAL do custo/hora não fica mais no navegador (029, 05/10/2026): vem do servidor, só para
+  // quem vê R$ (fetchAppState). Some com a cópia que todo navegador guardava de settings.hourly_cost.
+  try { localStorage.removeItem('hourly_cost'); } catch { /* sem localStorage */ }
+  let settings: AppSettings = {
+    hourlyCost: 0,   // 029: nunca um valor inventado — 0 não liga o modo manual (modoManual exige > 0)
     useAutomaticCost: localStorage.getItem('use_automatic_cost') === 'true',
     logoUrl: localStorage.getItem('logo_url') || undefined,
     companyName: localStorage.getItem('company_name') || 'JIMP NEXUS',
@@ -205,17 +208,17 @@ export const fetchSettings = async (): Promise<AppSettings> => {
   try {
     const { data: settingsData, error: settingsError } = await supabase
       .from('settings')
-      .select('*');
-    
+      .select(SETTINGS_COLS);
+
     if (settingsError) throw settingsError;
 
     if (settingsData && settingsData.length > 0) {
       gotSettingsRow = true;
+      settings.carregadoDoBanco = true;   // 029: só com a linha lida agora a limpeza de atividades grava
       // A tabela settings e de UMA LINHA LARGA: cada config e uma coluna.
       const row: any = settingsData[0];
       const clean = (v: any, def = ''): string => (v === null || v === undefined || v === 'null') ? def : String(v);
 
-      if (row.hourly_cost !== undefined && row.hourly_cost !== null) settings.hourlyCost = parseSafeNumber(row.hourly_cost);
       if (row.use_automatic_cost !== undefined && row.use_automatic_cost !== null) settings.useAutomaticCost = row.use_automatic_cost === true || row.use_automatic_cost === 'true';
       // Campos de texto: aplicar so quando NAO for null/undefined, para uma
       // linha parcial nunca sobrescrever o que ja veio do localStorage.
@@ -247,8 +250,7 @@ export const fetchSettings = async (): Promise<AppSettings> => {
           : parseSafeJson(typeof row.nexus_hidden_users === 'string' ? row.nexus_hidden_users : '[]', [] as string[]);
       }
 
-      // Sync to localStorage for offline fallback
-      localStorage.setItem('hourly_cost', settings.hourlyCost.toString());
+      // Sync to localStorage for offline fallback (o custo/hora não: 029)
       if (settings.logoUrl) localStorage.setItem('logo_url', settings.logoUrl);
       if (settings.companyName) localStorage.setItem('company_name', settings.companyName);
       if (settings.emailTo) localStorage.setItem('email_to', settings.emailTo);
@@ -293,6 +295,15 @@ export const fetchSettings = async (): Promise<AppSettings> => {
 // que so o servidor (service_role) le. Trocar select('*') por esta lista fecha
 // o vazamento do C2 (o salario/senha vinham crus para todo cliente).
 const USER_SAFE_COLUMNS = 'id, username, name, surname, email, phone, role, okr_enabled, okr_only, okr_viewer, sector, created_at';
+
+// Colunas de `projects` e `settings` que o navegador lê (migração 029, 05/10/2026). Antes: select('*'),
+// e todo logado lia projects.total_cost/productive_cost/interruption_cost e settings.hourly_cost — custo ÷
+// horas devolve a taxa (decisão do Edson, 30/09: R$ só para ele e os CEOs). Com a 029 o banco só entrega
+// estas colunas ao navegador (select('*') passa a dar 42501); os R$ que a tela ainda usa — o custo gravado
+// de jan–ago (exportação) e o valor manual do custo/hora — vêm de /api/labor/hourly-cost, só para quem vê R$.
+// Coluna nova nessas tabelas: grant de coluna no banco ANTES de pôr aqui.
+const PROJECT_COLS = 'id, ns, project_code, type, implement_type, start_time, end_time, total_active_seconds, pauses, status, notes, user_id, created_at, client_name, flooring_type, variations, estimated_seconds, is_overtime, interruption_seconds, total_seconds, updated_at, chassis_number';
+const SETTINGS_COLS = 'id, use_automatic_cost, company_name, email_to, email_from, interruption_email_to, interruption_email_template, completion_email_template, workday_start, workday_end, workdays, lunch_start, lunch_end, language, auto_lock_timeout, logo_url, nexus_hidden_users';
 
 // Desligado (decisão do Edson, 30/09/2026: "desligar, não excluir"). A 022 cria
 // `users.desligado_em` (o último dia trabalhado) com grant de coluna para o
@@ -346,15 +357,45 @@ export const fetchCustoHora = async (): Promise<CustoHoraInfo> => {
       periodos.sort((a, b) => (a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0));
     }
     const ti = Number(data.taxaInovacoes);
+    // 029 (05/10/2026): o navegador não lê mais settings.hourly_cost — quem vê R$ recebe daqui o valor
+    // MANUAL e o MODO (lidos juntos, na mesma linha: os dois nunca descasam). Campo ausente (servidor de
+    // antes) = undefined, que é diferente de "o banco tem vazio" (null): sem o campo, nada de valor manual.
+    const temManual = podeVerReais && Object.prototype.hasOwnProperty.call(data, 'custoManual');
+    const cm = data.custoManual === null || data.custoManual === undefined ? NaN : Number(data.custoManual);
     return {
       carregado: true,
       instalado: data.instalado === true,
       podeVerReais,
       periodos,
       taxaInovacoes: data.taxaInovacoes !== null && data.taxaInovacoes !== undefined && Number.isFinite(ti) && ti > 0 ? ti : null,
+      custoManual: !temManual ? undefined : (Number.isFinite(cm) && cm >= 0 ? cm : null),
+      custoAutomatico: podeVerReais && typeof data.custoAutomatico === 'boolean' ? data.custoAutomatico : undefined,
+      // o servidor não conseguiu ler o modo/valor manual: veio sem R$ (a taxa das Inovações vem igual)
+      falhaLeitura: data.falhaLeitura === true,
     };
   } catch {
     return { ...CUSTO_HORA_VAZIO, periodos: [] };
+  }
+};
+
+// O custo GRAVADO de cada projeto (projects.total_cost > 0), pedido na hora de exportar (029, 05/10/2026: o
+// navegador não lê mais a coluna). Só quem vê R$ recebe (o servidor decide); null = não veio (sem crachá, 403,
+// erro) — quem exporta NÃO pode cair na série calado para jan–ago: avisa e não exporta. Nunca imprimir.
+export const fetchCustoGravado = async (): Promise<Record<string, number> | null> => {
+  try {
+    if (!getAuthToken()) return null;
+    const res = await fetch('/api/projects/custo-gravado', { headers: { ...authHeaders() }, cache: 'no-store' });
+    if (!res.ok) return null;
+    const data: any = await res.json().catch(() => null);
+    if (!data || data.success !== true || !data.custoGravado || typeof data.custoGravado !== 'object') return null;
+    const out: Record<string, number> = {};
+    for (const [id, v] of Object.entries(data.custoGravado as Record<string, unknown>)) {
+      const n = Number(v);
+      if (id && Number.isFinite(n) && n > 0) out[id] = n;
+    }
+    return out;
+  } catch {
+    return null;
   }
 };
 
@@ -368,6 +409,10 @@ export const fetchEdsonSalaries = async (): Promise<Record<string, number>> => {
     return (data && data.salaries) || {};
   } catch { return {}; }
 };
+
+// A última lista de projetos que o banco ENTREGOU a esta pessoa (029): se uma carga seguinte for recusada, a tela
+// fica com ela em vez de uma lista vazia. Guardada pelo id do crachá — trocou de pessoa, não vale.
+let ultimosProjetos: { sub: string; lista: ProjectSession[] } | null = null;
 
 export const fetchAppState = async (): Promise<AppState> => {
   let projects: ProjectSession[] = [];
@@ -389,7 +434,7 @@ export const fetchAppState = async (): Promise<AppState> => {
     // lerTudo (01/10/2026): o PostgREST corta em 1.000 linhas por pedido — lê em páginas até acabar,
     // e tabela que cabe numa página volta igual a antes (ver lerTudo.ts).
     const fetches = [
-      lerTudo('projects', 'start_time', () => supabase.from('projects').select('*').order('start_time', { ascending: false })),
+      lerTudo('projects', 'start_time', () => supabase.from('projects').select(PROJECT_COLS).order('start_time', { ascending: false })),
       lerTudo('issues', 'date', () => supabase.from('issues').select('*').order('date', { ascending: false })),
       lerTudo('innovations', 'created_at', () => supabase.from('innovations').select('*').order('created_at', { ascending: false })),
       lerTudo('interruptions', 'start_time', () => supabase.from('interruptions').select('*').order('start_time', { ascending: false })),
@@ -426,12 +471,22 @@ export const fetchAppState = async (): Promise<AppState> => {
     // continua sendo SÓ o valor manual (antes: a média única entrava num campo à parte
     // e o App a injetava em hourlyCost).
     settings = { ...settings, custoHora };
+    // O valor MANUAL do custo/hora e o MODO vêm do servidor, lidos juntos, só para quem vê R$ (029). Vazio no
+    // banco = 0, que não liga o modo manual (modoManual exige > 0) — nunca o 150 inventado. Os outros ficam
+    // com o padrão, que nenhuma tela mostra nem usa para R$ (taxaNaData devolve 0 sem podeVerReais).
+    if (custoHora.carregado && custoHora.podeVerReais && custoHora.custoManual !== undefined) {
+      settings = { ...settings, hourlyCost: custoHora.custoManual ?? 0 };
+      if (custoHora.custoAutomatico !== undefined) settings = { ...settings, useAutomaticCost: custoHora.custoAutomatico };
+    }
 
     // Sessão do "admin de visualização" do OKR (marca ou grupo ADM Externo): o banco só
     // devolve a própria linha de `users` e nada da engenharia. Ele nunca semeia nada.
     const mySub = getTokenSub();
     const myRow = (usersRes.data || []).find((u: any) => u.id === mySub);
     const viewerSession = !!myRow && (!!myRow.okr_viewer || myRow.role === 'ADM_EXTERNO') && (usersRes.data || []).length === 1;
+    // "Somente OKR" (029, 05/10/2026): o banco não lhe entrega nada da engenharia — a lista de tarefas volta
+    // vazia e isso não é "tabela nova para semear" (o banco também recusaria a gravação). O Edson nunca.
+    const somenteOkrSession = !!myRow && !!myRow.okr_only && myRow.id !== '1e570c78-7278-4e8d-a90e-a820c11bb07a';
 
     activityTypes = (activityTypesRes.data || []).map((t: any) => ({
       id: t.id,
@@ -519,9 +574,11 @@ export const fetchAppState = async (): Promise<AppState> => {
           totalActiveSeconds: p.total_active_seconds || 0,
           interruptionSeconds: p.interruption_seconds || 0,
           totalSeconds: p.total_seconds || 0,
-          productiveCost: p.productive_cost || 0,
-          interruptionCost: p.interruption_cost || 0,
-          totalCost: p.total_cost || 0,
+          // 029: as colunas de custo não vêm mais do banco ao navegador. O custo GRAVADO (exportação de
+          // jan–ago) a tela de Histórico pede ao servidor na hora de exportar (fetchCustoGravado).
+          productiveCost: 0,
+          interruptionCost: 0,
+          totalCost: 0,
           pauses: parseSafeJson(p.pauses),
           variations: parseSafeJson(p.variations),
           status: p.status as 'COMPLETED' | 'IN_PROGRESS',
@@ -533,6 +590,18 @@ export const fetchAppState = async (): Promise<AppState> => {
         };
       });
     } catch (e) { console.error("Projects mapping error:", e); }
+
+    // 029 (05/10/2026): o banco RECUSAR projects (erro, ex.: 42501 de uma coluna sem permissão) não é "não há
+    // projetos". Antes a lista voltava vazia calada — o Dashboard zerava e o cronômetro soltava o projeto em
+    // andamento. Agora ficam os projetos da última carga boa desta pessoa, e a carga diz o que faltou.
+    const cargaIncompleta: string[] = [];
+    if (projectsRes && projectsRes.error) {
+      console.error('[carga] o banco recusou projects:', (projectsRes.error as any)?.code || '(sem código)');
+      cargaIncompleta.push('projetos');
+      if (ultimosProjetos && ultimosProjetos.sub === mySub) projects = ultimosProjetos.lista;
+    } else if (mySub) {
+      ultimosProjetos = { sub: mySub, lista: projects };
+    }
 
     try {
       issues = (issuesRes.data || []).map((i: any) => ({
@@ -622,8 +691,8 @@ export const fetchAppState = async (): Promise<AppState> => {
     } catch (e) { console.error("GanttTasks mapping error:", e); }
 
     // Seed default gantt tasks if empty
-    // O visualizador do OKR não recebe tarefas (o banco não entrega) — e não semeia nada.
-    if (ganttTasks.length === 0 && !viewerSession) {
+    // O visualizador do OKR não recebe tarefas (o banco não entrega) — e não semeia nada. Nem o "Somente OKR" (029).
+    if (ganttTasks.length === 0 && !viewerSession && !somenteOkrSession) {
         console.log("SEEDING DEFAULT GANTT TASKS...");
         const parentId = crypto.randomUUID();
         const subId = crypto.randomUUID();
@@ -760,7 +829,8 @@ export const fetchAppState = async (): Promise<AppState> => {
     }
 
     const seoData = await fetchSEOData();
-    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, auditLogs, settings, seoData };
+    return { projects, issues, innovations, interruptions, interruptionTypes, activityTypes, operationalActivities, projectRequests, users, ganttTasks, auditLogs, settings, seoData,
+             ...(cargaIncompleta.length ? { cargaIncompleta } : {}) };
   } catch (error) {
     console.error("FAILED TO LOAD DATA FROM SUPABASE - RETURNING PARTIAL STATE", error);
     let seoData = { keywords: [], metrics: [], tasks: [] };
@@ -798,7 +868,7 @@ export const getDatabaseStats = async () => {
         
         // Use count(*) feature of Supabase/Postgrest
         const countPromises = tables.map(table => 
-            supabase.from(table).select('*', { count: 'exact', head: true })
+            supabase.from(table).select('id', { count: 'exact', head: true }) // 029: '*' pediria colunas que o navegador não lê
         );
         
         const results = await Promise.all(countPromises);
@@ -830,8 +900,7 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
   try {
     // (30/09/2026) Sem console.log do objeto: ele leva settings.custoHora (a série do
     // custo/hora, no navegador do Edson e dos CEOs) — taxa não aparece em log (cético, 30/09).
-    // Update LocalStorage first for immediate feedback
-    localStorage.setItem('hourly_cost', (settings.hourlyCost || 150).toString());
+    // Update LocalStorage first for immediate feedback (o custo/hora não fica no navegador: 029)
     if (settings.logoUrl !== undefined) localStorage.setItem('logo_url', settings.logoUrl || '');
     if (settings.companyName !== undefined) localStorage.setItem('company_name', settings.companyName || 'JIMP NEXUS');
     if (settings.emailTo !== undefined) localStorage.setItem('email_to', settings.emailTo || '');
@@ -855,7 +924,12 @@ export const updateSettings = async (settings: AppSettings): Promise<AppState> =
     // logado lê. Agora só vai junto do modo manual (use_automatic_cost = false), a mesma régua
     // do /api/settings/save (que também só aceita de Edson/CEO). Decisão do Edson, 30/09: o
     // valor antigo NÃO é zerado — só se para de gravar a média nele. `custoHora` nunca vai.
-    if (settings.hourlyCost !== undefined && settings.useAutomaticCost === false) row.hourly_cost = settings.hourlyCost;
+    // 029 (05/10/2026): e só quando o valor de partida VEIO do servidor (quem vê R$, campo presente) e a pessoa
+    // o MUDOU — senão o campo teria um padrão, e salvar outra configuração gravaria esse padrão por cima.
+    const ch = settings.custoHora;
+    const partida = ch && ch.carregado === true && ch.podeVerReais === true && ch.custoManual !== undefined ? Number(ch.custoManual ?? 0) : null;
+    if (partida !== null && settings.hourlyCost !== undefined && settings.useAutomaticCost === false
+        && Number(settings.hourlyCost) !== partida) row.hourly_cost = settings.hourlyCost;
     if (settings.logoUrl !== undefined) row.logo_url = settings.logoUrl || '';
     if (settings.companyName !== undefined) row.company_name = settings.companyName || '';
     if (settings.emailTo !== undefined) row.email_to = settings.emailTo || '';
@@ -1174,12 +1248,8 @@ export const addProject = async (project: ProjectSession): Promise<AppState> => 
       total_active_seconds: project.totalActiveSeconds,
       interruption_seconds: project.interruptionSeconds || 0,
       total_seconds: project.totalSeconds || 0,
-      // Custo por período (30/09/2026): nenhum R$ calculado no navegador vai ao banco — a RLS
-      // deixa todo logado ler `projects`, e total_cost ÷ horas devolveria a taxa. Projeto novo
-      // grava 0 nas três; a tela calcula na hora, só para quem vê R$ (custoHora.ts).
-      productive_cost: 0,
-      interruption_cost: 0,
-      total_cost: 0,
+      // Custo por período (30/09/2026): nenhum R$ calculado no navegador vai ao banco. Desde a 029
+      // (05/10/2026) o navegador nem pode gravar as três colunas de custo — o banco põe 0 sozinho.
       pauses: project.pauses,
       variations: project.variations,
       status: project.status,
@@ -1215,10 +1285,7 @@ export const addProjectsBatch = async (projects: ProjectSession[]): Promise<AppS
       total_active_seconds: project.totalActiveSeconds,
       interruption_seconds: project.interruptionSeconds || 0,
       total_seconds: project.totalSeconds || 0,
-      // 30/09/2026: 0 nas três colunas de custo, como no addProject (nenhum R$ do navegador vai ao banco).
-      productive_cost: 0,
-      interruption_cost: 0,
-      total_cost: 0,
+      // As três colunas de custo ficam com o 0 do banco, como no addProject (029: o navegador não as grava).
       pauses: project.pauses,
       variations: project.variations,
       status: project.status,
@@ -1318,7 +1385,7 @@ export const deleteProject = async (id: string, ns?: string): Promise<AppState> 
       .from('projects')
       .delete()
       .eq('id', id)
-      .select();
+      .select('id'); // 029: select() pediria as colunas de custo, que o navegador não lê
 
     if (error) {
       throw new Error(`Erro Supabase: ${error.message}`);
@@ -2356,7 +2423,7 @@ export const findDuplicateProjects = async (): Promise<{ success: boolean; dupli
     // Fetch ALL projects (up to 5000)
     const { data: projectsData, error: projectsError } = await supabase
       .from('projects')
-      .select('*')
+      .select(PROJECT_COLS)
       .order('start_time', { ascending: false })
       .range(0, 4999);
 
@@ -2474,6 +2541,9 @@ export const recalculateAllProjectCosts = async (): Promise<{ success: boolean; 
 export const recalculateAllInterruptionTimes = async (): Promise<{ success: boolean; message: string }> => {
   try {
     const settings = await fetchSettings();
+    // 029 (05/10/2026): a conta usa o horário de trabalho de Configurações — sem a linha lida do banco agora
+    // (cópia do navegador ou padrão 07:30–17:30), recalcular em massa gravaria tempos errados.
+    if (!settings.carregadoDoBanco) return { success: false, message: 'Não consegui ler as Configurações agora (horário de trabalho). Nada foi recalculado — tente de novo.' };
     const { data: interruptions, error: fetchError } = await supabase
       .from('interruptions')
       .select('*')
@@ -2505,9 +2575,12 @@ export const recalculateAllInterruptionTimes = async (): Promise<{ success: bool
 export const recalculateAllProjectTimes = async (): Promise<{ success: boolean; message: string }> => {
   try {
     const settings = await fetchSettings();
+    // 029 (05/10/2026): a conta usa o horário de trabalho de Configurações — sem a linha lida do banco agora
+    // (cópia do navegador ou padrão 07:30–17:30), recalcular em massa gravaria tempos errados.
+    if (!settings.carregadoDoBanco) return { success: false, message: 'Não consegui ler as Configurações agora (horário de trabalho). Nada foi recalculado — tente de novo.' };
     const { data: projects, error: fetchError } = await supabase
       .from('projects')
-      .select('*')
+      .select(PROJECT_COLS)
       .eq('status', 'COMPLETED');
     
     if (fetchError) throw fetchError;

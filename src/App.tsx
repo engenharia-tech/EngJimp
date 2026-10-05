@@ -525,6 +525,13 @@ const AppContent: React.FC = () => {
     };
   }, [currentUser, t, addToast]); 
 
+  // 029 (05/10/2026): o banco RECUSOU os projetos (não é "não há projetos") — avisa em QUALQUER carga (a inicial, a
+  // que segue cada gravação), uma vez por mudança, em vez de a tela parecer verdade. A carga mantém os da última leitura boa.
+  const cargaFalhou = (data.cargaIncompleta || []).join(', ');
+  useEffect(() => {
+    if (cargaFalhou) addToast(`Não consegui ler ${cargaFalhou} agora — a tela mostra a última leitura. Atualize a página (Ctrl+Shift+R); se continuar, avise o Edson.`, 'error');
+  }, [cargaFalhou, addToast]);
+
   // Automatic Alerts for Open Interruptions (Module 10)
   useEffect(() => {
     if (!currentUser || data.interruptions.length === 0) return;
@@ -567,6 +574,9 @@ const AppContent: React.FC = () => {
     // atividades esquecidas fica com o navegador de quem pode gravar.
     const meV = (data.users || []).find(u => u.id === currentUser.id);
     if ((meV?.okrViewer ?? currentUser.okrViewer) || (meV?.role ?? currentUser.role) === 'ADM_EXTERNO') return;
+    // 029 (05/10/2026): a divisão usa o horário de trabalho de Configurações — só com a linha LIDA do banco
+    // nesta carga (senão seria o padrão 07:30–17:30 ou uma cópia velha do navegador, gravando cortes errados).
+    if (!data.settings.carregadoDoBanco) return;
 
     const runCleanup = async () => {
       // Find any running activity for any user that needs correction

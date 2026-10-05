@@ -99,7 +99,8 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
   // a série aparece só para leitura — ela muda sozinha quando o cadastro muda.
   const veReais = podeVerReais(settings);
   const semSerie = avisoSemSerie(settings);
-  const custoNaoCarregou = !!settings.custoHora && settings.custoHora.carregado !== true;
+  // 029: falhaLeitura = o servidor não leu o modo/valor manual e respondeu sem R$ — o aviso é o de "não consegui ler".
+  const custoNaoCarregou = !!settings.custoHora && (settings.custoHora.carregado !== true || settings.custoHora.falhaLeitura === true);
   const hoje = hojeJoinville();
   const taxaHoje = useMemo(() => (veReais ? taxaNaData(settings, hoje) : 0), [settings, veReais, hoje]);
   const manualSalvo = modoManual(settings);

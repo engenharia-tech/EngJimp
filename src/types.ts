@@ -253,6 +253,11 @@ export interface CustoHoraInfo {
   podeVerReais: boolean;        // decidido pelo SERVIDOR
   periodos: CustoHoraPeriodo[]; // só quando podeVerReais; ordenado por desde; vazio para os outros
   taxaInovacoes: number | null; // taxa FIXA das inovações (a linha que cobre 2026-08-31); null para quem não vê Inovações
+  // 029 (05/10/2026): o navegador não lê mais settings.hourly_cost; quem vê R$ recebe do servidor, lidos juntos:
+  custoManual?: number | null;   // o valor MANUAL (null = vazio no banco; undefined = o servidor não mandou)
+  custoAutomatico?: boolean;     // o MODO (use_automatic_cost) da mesma leitura; undefined = não veio
+  falhaLeitura?: boolean;        // o servidor não leu o modo/valor manual: resposta SEM R$ (não é "você não vê R$")
+  // (o custo GRAVADO de cada projeto, que só a exportação de jan–ago usa, vem à parte: fetchCustoGravado)
 }
 
 export interface AppSettings {
@@ -277,6 +282,7 @@ export interface AppSettings {
   custoHora?: CustoHoraInfo;
   autoLockTimeout?: number; // Screen auto-lock timeout in minutes (0 = disabled)
   nexusHiddenUsers?: string[]; // Ids de usuário ocultos nas visualizações do Nexus (global)
+  carregadoDoBanco?: boolean;  // 029: a linha de settings foi lida agora (false = cópia do navegador/padrões)
 }
 
 export interface SEOKeyword {
@@ -415,4 +421,7 @@ export interface AppState {
   users: User[];
   settings: AppSettings;
   seoData?: SEOData;
+  // 029 (05/10/2026): tabela que o banco RECUSOU nesta carga (erro, não "vazia") — a tela avisa em vez de
+  // mostrar a lista vazia como se fosse verdade (ex.: 'projetos', com os da carga anterior mantidos).
+  cargaIncompleta?: string[];
 }

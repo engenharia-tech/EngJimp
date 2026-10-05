@@ -1,16 +1,16 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Filter, Calendar, Search, Clock, Hash, User as UserIcon, Truck, Trash2, Layers, Box, Eye, X, FileCheck, FileX, AlertTriangle, Edit, Timer, RefreshCw, AlertCircle, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, Plus, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { AppState, ProjectType, User, VariationRecord, ProjectSession, ImplementType, PauseRecord, InterruptionRecord, InterruptionStatus, InterruptionArea } from '../types';
 import { PROJECT_TYPES, IMPLEMENT_TYPES, FLOORING_TYPES } from '../constants';
-import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, DuplicateGroup, addAuditLog } from '../services/storageService';
+import { fetchUsers, supabase, findDuplicateProjects, deleteProjectById, DuplicateGroup, addAuditLog, fetchCustoGravado } from '../services/storageService';
 import { useToast } from './Toast';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { useLanguage } from '../i18n/LanguageContext';
 import { resolveUser, buildUsersMap, resolveProjectUser } from '../utils/userUtils';
-import { podeVerReais, custoEmReaisOrdemHistorico, taxaNaData, custoParaExportar, usuariosParaSeletor, rotuloDesligado } from '../utils/custoHora';
+import { podeVerReais, custoEmReaisOrdemHistorico, taxaNaData, custoParaExportar, usuariosParaSeletor, rotuloDesligado, CORTE_SERIE, diaJoinvilleOuNulo } from '../utils/custoHora';
 
 interface ProjectHistoryProps {
   data: AppState;
@@ -670,14 +670,37 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     };
   }, [filteredProjects, veReais, data.settings]);
 
-  const handleExportExcel = () => {
+  // 029 (05/10/2026): o custo GRAVADO de jan–ago não mora mais na memória da tela (o navegador não lê a coluna):
+  // quem vê R$ pede ao servidor na hora de exportar. Não veio = não exporta — senão jan–ago sairia pela série,
+  // calado (decisão do Edson, 30/09: "jan–ago com o custo gravado na época"). Quem não vê R$ não pede nada.
+  // Só pede quando o filtro tem projeto de antes de 01/09 (ou com data ruim, que conta como "antes") — de 01/09 em
+  // diante a exportação usa a série e não precisa do gravado. Um clique por vez (a busca leva um instante).
+  const exportandoRef = useRef(false);
+  const projetosParaExportar = async (): Promise<typeof filteredProjects | null> => {
+    if (!veReais) return filteredProjects;
+    const precisa = filteredProjects.some(p => { const dia = diaJoinvilleOuNulo(p.startTime); return dia === null || dia < CORTE_SERIE; });
+    if (!precisa) return filteredProjects;
+    const gravado = await fetchCustoGravado();
+    if (!gravado) {
+      addToast('Não consegui ler o custo gravado de janeiro a agosto agora. Tente exportar de novo; se continuar, saia e entre.', 'error');
+      return null;
+    }
+    return filteredProjects.map(p => ({ ...p, totalCost: gravado[p.id] || 0 }));
+  };
+
+  const handleExportExcel = async () => {
     if (filteredProjects.length === 0) {
       addToast(t('noDataToExport') || 'Nenhum registro para exportar', 'error');
       return;
     }
+    if (exportandoRef.current) return;
+    exportandoRef.current = true;
+    let projetos: typeof filteredProjects | null;
+    try { projetos = await projetosParaExportar(); } finally { exportandoRef.current = false; }
+    if (!projetos) return;
 
     try {
-      const exportData = filteredProjects.map((p, idx) => {
+      const exportData = projetos.map((p, idx) => {
         const designerName = resolveUser(p.userId, data.users)?.name || p.userId || 'Não atribuído';
         const activeHours = (p.totalActiveSeconds || 0) / 3600;
         const estHours = (p.estimatedSeconds || 0) / 3600;
@@ -739,11 +762,16 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
     }
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (filteredProjects.length === 0) {
       addToast(t('noDataToExport') || 'Nenhum registro para exportar', 'error');
       return;
     }
+    if (exportandoRef.current) return;
+    exportandoRef.current = true;
+    let projetos: typeof filteredProjects | null;
+    try { projetos = await projetosParaExportar(); } finally { exportandoRef.current = false; }
+    if (!projetos) return;
 
     try {
       const doc = new jsPDF('landscape', 'pt', 'a4');
@@ -766,7 +794,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       doc.setLineWidth(1);
       doc.line(40, 80, 802, 80);
 
-      const tableRows = filteredProjects.map((p, idx) => {
+      const tableRows = projetos.map((p, idx) => {
         const designerName = resolveUser(p.userId, data.users)?.name || p.userId || '-';
         const hoursReal = ((p.totalActiveSeconds || 0) / 3600).toFixed(1) + 'h';
         const hoursEst = p.estimatedSeconds ? ((p.estimatedSeconds || 0) / 3600).toFixed(1) + 'h' : '-';

@@ -18,7 +18,7 @@ interface StateContextType {
 }
 
 const defaultSettings = { 
-  hourlyCost: 150,
+  hourlyCost: 0,   // 029: o valor manual só vem do servidor (quem vê R$); 0 nunca liga o modo manual
   emailTo: '',
   interruptionEmailTo: '',
   interruptionEmailTemplate: '',
