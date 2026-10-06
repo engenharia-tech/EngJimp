@@ -814,8 +814,12 @@ export const fetchAppState = async (): Promise<AppState> => {
         mergedLogs.push(l);
       });
 
-      // Adiciona do localStorage se ainda não existirem no banco
+      // Adiciona do localStorage se ainda não existirem no banco — SÓ os de quem está logado. A cópia é uma por
+      // navegador: sem este corte, o que outra pessoa fez neste navegador (ex.: o usuário teste da 031, que o banco
+      // esconde de todos menos do Edson) aparecia na Auditoria de quem entrasse depois (achado A3, 06/10).
+      const eu = String(getTokenSub() || '').toLowerCase();
       fallbackLogs.forEach((l: AuditLog) => {
+        if (!eu || String(l?.userId || '').toLowerCase() !== eu) return;
         const key = `${l.timestamp}_${l.action}_${l.entityId}_${l.userId}`;
         if (!seenLogKeys.has(key)) {
           seenLogKeys.add(key);

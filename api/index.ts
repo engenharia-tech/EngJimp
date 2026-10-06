@@ -914,6 +914,62 @@ const setorChaveSrv = (v: unknown): string =>
   String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const setorReservado = (v: unknown): boolean => SETORES_RESERVADOS.includes(setorChaveSrv(v));
 const SETOR_RESERVADO_MSG = "O setor P&D é reservado: só o Edson põe ou tira alguém dele.";
+// ---- USUÁRIO TESTE (031, 06/10/2026) — pedido do Edson, 06/10: um usuário TESTE para o treinamento, e tudo dele
+// (cadastro, OKR, indicadores do setor dele, agenda, Log de Auditoria) visível SÓ para o Edson e para o próprio teste —
+// nem admin de OKR, nem CEO/Diretor Industrial, nem visualizador, nem GESTOR/COORDENADOR. O banco esconde pela RLS (031:
+// users.usuario_teste + políticas RESTRICTIVE); o servidor escreve e lê com a service_role, que passa POR CIMA da RLS,
+// então cada rota que lê ou mexe em usuário alheio confere a marca aqui:
+//  · o painel público do OKR não leva o OKR do teste; o teste não gera link público (o link é permanente);
+//  · a conta do teste (editar, setor, excluir, desligar) só o Edson mexe — a própria pessoa segue no Meu Perfil;
+//  · o setor do teste (chave 'teste', espelho de kpis_setor_so_edson da 031) só o Edson põe ou tira alguém.
+// As frases de recusa não dizem nada do teste além do necessário (nem nome, nem setor, nem registros).
+const SETORES_SO_EDSON = ["teste"];
+const setorSoEdson = (v: unknown): boolean => SETORES_SO_EDSON.includes(setorChaveSrv(v));
+const SETOR_SO_EDSON_MSG = "Este setor é reservado: só o Edson põe ou tira alguém dele.";
+const USUARIO_TESTE_SO_EDSON_MSG = "Esta conta só o Edson altera.";
+// Antes da 031 a coluna não existe: 42703 (o Postgres: coluna inexistente no select) ou PGRST204 (o cache do PostgREST).
+const semColunaUsuarioTeste = (e: any): boolean => !!e && (e.code === "42703" || e.code === "PGRST204");
+const avisosSemUsuarioTeste = new Set<string>();
+// Leitura de users COM usuario_teste. Ao contrário de lerComDesligado (que relê sem a coluna em QUALQUER erro, porque
+// "desligado" só tira acesso), aqui só a coluna INEXISTENTE (a 031 não rodou = não há usuário teste) relê sem ela e dá
+// usuario_teste = false. Qualquer outro erro volta como erro (quem chama responde 5xx): "não consegui conferir" nunca
+// vira "não é teste" — senão o teste apareceria a todos numa falha passageira.
+async function lerComUsuarioTeste(consulta: (cols: string) => PromiseLike<any>, cols: string): Promise<{ data: any[] | null; error: any }> {
+  const r1: any = await consulta(`${cols}, usuario_teste`);
+  if (!r1.error) return { data: (r1.data || []).map((x: any) => ({ ...x, usuario_teste: x.usuario_teste === true })), error: null };
+  if (!semColunaUsuarioTeste(r1.error)) return { data: null, error: r1.error };
+  const code = String(r1.error.code);
+  if (!avisosSemUsuarioTeste.has(code)) {
+    avisosSemUsuarioTeste.add(code);
+    console.warn("[users] sem a coluna usuario_teste (a 031 rodou?); relida sem ela:", code);
+  }
+  const r2: any = await consulta(cols);
+  if (r2.error) return { data: null, error: r2.error };
+  return { data: (r2.data || []).map((x: any) => ({ ...x, usuario_teste: false })), error: null };
+}
+// O id é de um usuário teste? Falha LANÇA (a rota responde 503).
+async function ehUsuarioTeste(admin: any, id: string): Promise<boolean> {
+  const { data, error } = await lerComUsuarioTeste((c) => admin.from("users").select(c).eq("id", id).limit(1), "id");
+  if (error) throw new Error("Não consegui conferir o usuário. Nada foi gravado; tente de novo.");
+  return !!(data && data[0] && data[0].usuario_teste);
+}
+// O e-mail do usuário teste é para onde vai o código de "Criar / redefinir senha": trocado pelo Meu Perfil (sem senha),
+// quem estivesse logado como teste tomava a conta (achado A6, 06/10). A própria pessoa segue mudando nome e telefone;
+// o e-mail dele só o Edson troca (pela Equipe). E-mail ausente no pedido = não muda. Falha ao ler LANÇA (503).
+const EMAIL_TESTE_SO_EDSON_MSG = "O e-mail desta conta só o Edson altera.";
+async function testeTrocaOEmail(admin: any, id: string, email: unknown): Promise<boolean> {
+  if (email === undefined) return false;
+  const { data, error } = await lerComUsuarioTeste((c) => admin.from("users").select(c).eq("id", id).limit(1), "email");
+  if (error) throw new Error("Não consegui conferir o usuário. Nada foi gravado; tente de novo.");
+  const u = data && data[0];
+  return !!(u && u.usuario_teste && String(u.email ?? "").trim().toLowerCase() !== String(email ?? "").trim().toLowerCase());
+}
+// As chaves de OKR (login minúsculo) dos usuários teste. Antes da 031: vazio. Falha LANÇA.
+async function chavesDeUsuarioTeste(admin: any): Promise<Set<string>> {
+  const { data, error } = await lerComUsuarioTeste((c) => admin.from("users").select(c), "username");
+  if (error) throw new Error("Não consegui conferir o usuário. Tente de novo.");
+  return new Set((data || []).filter((u: any) => u.usuario_teste).map((u: any) => String(u.username || "").trim().toLowerCase()).filter(Boolean));
+}
 // Setor de REPRESENTANTE (030, 06/10/2026): é só do representante dono dele — "cada representante vê só os seus
 // indicadores", e quem acompanha todos é quem já vê tudo, "mais ninguém (o Vinicius NÃO)" (Edson, 06/10). O banco só
 // confere quando o ALVO é representante: pôr OUTRA pessoa num setor desses abriria os indicadores do vendedor a ela.
@@ -985,9 +1041,11 @@ app.post("/api/users/save", async (req, res) => {
     const setor = String((user && user.sector) ?? "").trim();
     if (setor.length > 60) return res.json({ success: false, message: "O nome do setor é longo demais (até 60 letras)." });
     // O setor que a tela via (sectorAntes): se outro admin o mudou no meio, recusa em vez de desfazer calado.
-    const { data: atual, error: aErr } = await admin.from("users").select("sector, role").eq("id", alvo).limit(1);
+    const { data: atual, error: aErr } = await lerComUsuarioTeste((c) => admin.from("users").select(c).eq("id", alvo).limit(1), "sector, role");
     if (aErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
     if (!atual || !atual.length) return res.json({ success: false, message: "Usuário não encontrado." });
+    // O usuário teste (031): só o Edson mexe na conta dele, o setor incluído.
+    if ((atual[0] as any).usuario_teste && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: USUARIO_TESTE_SO_EDSON_MSG });
     const setorAtual = String((atual[0] as any).sector || "").trim();
     if (setor === setorAtual) return res.json({ success: true, semMudanca: true });   // já é esse: nada a gravar (a tela não registra troca)
     // O setor do REPRESENTANTE (06/10/2026) é só dele e quem o põe é o banco (030): gravar outro seria desfeito calado.
@@ -995,6 +1053,8 @@ app.post("/api/users/save", async (req, res) => {
     // …e o setor de um representante não serve para outra pessoa (06/10/2026).
     if (setorDeRepresentante(setor)) return res.json({ success: false, message: SETOR_DE_REPRESENTANTE_MSG });
     if ((setorReservado(setor) || setorReservado(setorAtual)) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
+    // O setor do teste (031): quem entra nele passa a ver os indicadores do teste — só o Edson põe ou tira alguém.
+    if ((setorSoEdson(setor) || setorSoEdson(setorAtual)) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_SO_EDSON_MSG });
     if (user && user.sectorAntes !== undefined && user.sectorAntes !== null && String(user.sectorAntes).trim() !== setorAtual)
       return res.status(409).json({ success: false, setorAtual, error: `O setor desta pessoa mudou enquanto a tela estava aberta (agora: "${setorAtual || "sem setor"}"). Nada foi gravado — confira e salve de novo.` });
     const { data: mudou, error: sErr } = await admin.from("users").update({ sector: setor || null }).eq("id", alvo).select("id");
@@ -1099,6 +1159,7 @@ app.post("/api/users/save", async (req, res) => {
       try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR definem o setor (o setor abre o KPI do setor). Crie sem setor e peça a eles." }); }
       catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
       if (setorReservado(setorNovo) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
+      if (setorSoEdson(setorNovo) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_SO_EDSON_MSG });
     }
     // Salario so e gravado se quem cria for o Edson. Um admin comum nem
     // enxerga salario (cliente recebe 0), entao nunca escreve esse campo.
@@ -1126,6 +1187,11 @@ app.post("/api/users/save", async (req, res) => {
     if (!isSelf) return res.status(403).json({ success: false, error: "O perfil só altera o próprio usuário." });
     const nome = String(user.name || "").trim();
     if (!nome) return res.json({ success: false, message: "Informe o seu nome." });
+    // O usuário teste (031): o e-mail dele só o Edson troca (é por onde se recupera a senha).
+    if (!claimsAreEdson(claims)) {
+      try { if (await testeTrocaOEmail(admin, user.id, user.email)) return res.status(403).json({ success: false, error: EMAIL_TESTE_SO_EDSON_MSG }); }
+      catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+    }
     const { error: pErr } = await admin.from("users")
       .update({ name: nome, surname: String(user.surname || "").trim(), email: user.email, phone: user.phone || null })
       .eq("id", user.id);
@@ -1140,6 +1206,18 @@ app.post("/api/users/save", async (req, res) => {
   if (!user.id) return res.status(400).json({ success: false, error: "id ausente." });
   if (!String(user.name || "").trim()) return res.json({ success: false, message: "Informe o nome." });
   if (!isAdmin && !isSelf) return res.status(403).json({ success: false, error: "Sem permissao." });
+  // O usuário teste (031): a conta dele só o Edson altera — nenhum GESTOR/COORDENADOR (senão trocava a senha e entrava
+  // como ele). Conferido depois do "Sem permissao." (quem não é admin não distingue a conta dele de outra qualquer) e
+  // antes de qualquer leitura ou gravação do alvo. A própria pessoa segue (o contato, como no Meu Perfil).
+  if (!isSelf && !claimsAreEdson(claims)) {
+    try { if (await ehUsuarioTeste(admin, user.id)) return res.status(403).json({ success: false, error: USUARIO_TESTE_SO_EDSON_MSG }); }
+    catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+  }
+  // …e o próprio teste não troca o e-mail dele por aqui (o mesmo do Meu Perfil, acima).
+  if (isSelf && !claimsAreEdson(claims)) {
+    try { if (await testeTrocaOEmail(admin, user.id, user.email)) return res.status(403).json({ success: false, error: EMAIL_TESTE_SO_EDSON_MSG }); }
+    catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+  }
   // Todos podem editar dados de contato; SO admin muda username/role/salary/senha.
   const patch: any = { name: user.name, surname: user.surname, email: user.email, phone: user.phone };
   let renameTo = "";
@@ -1188,6 +1266,9 @@ app.post("/api/users/save", async (req, res) => {
       if (viraRepresentante && setorReservado(setorAtual) && !claimsAreEdson(claims)) {
         return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
       }
+      if (viraRepresentante && setorSoEdson(setorAtual) && !claimsAreEdson(claims)) {
+        return res.status(403).json({ success: false, error: SETOR_SO_EDSON_MSG });
+      }
       // …e tirar alguém do setor dele (ida e volta pelo cargo) é mudar o setor: só o Edson e os admins de OKR (30/09).
       if (viraRepresentante && setorAtual && !(await isOkrMasterDb(admin, claims.sub))) {
         return res.status(403).json({ success: false, error: "Esta pessoa tem setor, e virar representante troca o setor dela (o representante tem um só dele): só o Edson e os admins de OKR mudam o setor de alguém." });
@@ -1200,6 +1281,10 @@ app.post("/api/users/save", async (req, res) => {
         }
         if ((setorReservado(setorPedido) || setorReservado(setorAtual)) && !claimsAreEdson(claims)) {
           return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
+        }
+        // O setor do teste (031): só o Edson põe ou tira alguém dele.
+        if ((setorSoEdson(setorPedido) || setorSoEdson(setorAtual)) && !claimsAreEdson(claims)) {
+          return res.status(403).json({ success: false, error: SETOR_SO_EDSON_MSG });
         }
         // A tela diz o setor que via (sectorAntes): se outro admin o mudou no meio, recusa em vez de desfazer.
         if (user.sectorAntes !== undefined && user.sectorAntes !== null && String(user.sectorAntes).trim() !== setorAtual)
@@ -1424,6 +1509,13 @@ app.post("/api/okr/share", async (req, res) => {
   if (ownerKey !== self && !claimsAreEdson(claims)) {
     return res.status(403).json({ success: false, error: "Sem permissao para compartilhar este OKR." });
   }
+  // O usuário teste (031): o OKR dele só o Edson e ele veem, e este link é PÚBLICO e permanente (não há como revogar o
+  // de OKR pessoal) — o teste não gera link, e nem o Edson gera o link do OKR do teste.
+  try {
+    const testes = await chavesDeUsuarioTeste(admin);
+    if (testes.has(self)) return res.status(403).json({ success: false, error: "O usuário de teste não gera link público." });
+    if (testes.has(ownerKey)) return res.status(403).json({ success: false, error: "O OKR do usuário de teste não tem link público." });
+  } catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
 
   const { data: row } = await admin.from("okr_state").select("share_token").eq("owner_key", ownerKey).limit(1);
   if (!row || !row[0]) return res.json({ success: false, message: "OKR ainda nao criado." });
@@ -1502,13 +1594,20 @@ app.get("/api/okr/panel/public", async (req, res) => {
   const { data: sh, error: shErr } = await admin.from("okr_panel_share").select("token").eq("id", 1).limit(1);
   if (shErr) return res.status(500).json({ success: false, error: "Erro ao ler." });
   if (!sh || !sh[0] || (sh[0] as any).token !== token) return res.status(404).json({ success: false, error: "Link invalido." });
+  // O usuário teste (031) não entra no painel: o OKR dele só o Edson e ele veem, e a service_role daqui passa por cima
+  // da RLS. Antes da 031 a coluna não existe e não há teste (lerComUsuarioTeste relê sem ela); outro erro = 500.
   const [{ data: okrs, error: e1 }, { data: us, error: e2 }] = await Promise.all([
     admin.from("okr_state").select("owner_key, data"),
-    admin.from("users").select("username, name, sector"),
+    lerComUsuarioTeste((c) => admin.from("users").select(c), "username, name, sector"),
   ]);
   if (e1 || e2) return res.status(500).json({ success: false, error: "Erro ao ler." });
   const people: Record<string, { name: string; sector: string }> = {};
-  (us || []).forEach((u: any) => { people[String(u.username || "").trim().toLowerCase()] = { name: String(u.name || ""), sector: String(u.sector || "") }; });
+  const chavesTeste = new Set<string>();
+  (us || []).forEach((u: any) => {
+    const k = String(u.username || "").trim().toLowerCase();
+    if (u.usuario_teste) { chavesTeste.add(k); return; }
+    people[k] = { name: String(u.name || ""), sector: String(u.sector || "") };
+  });
   // Esqueleto: a MESMA árvore que a tela lê (ids e os números do KR, sem texto), com o
   // valor cru — quem normaliza é o migrateToStore do navegador, igual à tela interna,
   // para o link público e a tela darem o mesmo número. Só o período ativo viaja.
@@ -1539,7 +1638,8 @@ app.get("/api/okr/panel/public", async (req, res) => {
     }),
   }));
   const rows = (okrs || [])
-    .filter((r: any) => typeof r.owner_key === "string" && r.owner_key.trim() && !r.owner_key.startsWith("excluido:"))
+    .filter((r: any) => typeof r.owner_key === "string" && r.owner_key.trim() && !r.owner_key.startsWith("excluido:")
+      && !chavesTeste.has(r.owner_key.trim().toLowerCase()))
     .map((r: any, i: number) => {
       const d = isObj(r.data) ? r.data : {};
       const owner = ids(d.owner);
@@ -1983,8 +2083,16 @@ app.post("/api/users/delete", async (req, res) => {
 
   // Sem saber o login não dá para arquivar o OKR dele: não exclui (antes excluía e
   // o OKR ficava sem dono, calado).
-  const { data: cur, error: curErr } = await admin.from("users").select("username, role, okr_admin, okr_viewer").eq("id", id).limit(1);
+  const { data: cur, error: curErr } = await lerComUsuarioTeste((c) => admin.from("users").select(c).eq("id", id).limit(1), "username, role, okr_admin, okr_viewer");
   if (curErr) return res.json({ success: false, message: "Nao consegui ler o usuario. Nada foi excluido; tente de novo." });
+  // O usuário teste (031): só o Edson mexe na conta dele — e nem o Edson o exclui por aqui: excluir arquiva o OKR como
+  // 'excluido:<id>:<login>' e apaga a linha de users, e daí em diante o banco não sabe mais que aquele OKR e aquele log
+  // eram do teste (a RLS da 031 lê a marca em users) — os admins de OKR passariam a ver o OKR, e GESTOR/COORDENADOR/CEO
+  // o log. Para encerrar: Desligar (a linha fica, a marca fica) ou a limpeza completa pelo banco, decisão do Edson.
+  if (cur && cur[0] && (cur[0] as any).usuario_teste) {
+    if (!claimsAreEdson(claims)) return res.status(403).json({ success: false, error: USUARIO_TESTE_SO_EDSON_MSG });
+    return res.status(409).json({ success: false, message: "O usuário de teste não é excluído pela Equipe: o OKR e o log dele ficariam à vista de outras pessoas. Use Desligar, ou peça a limpeza completa pelo banco." });
+  }
   if (!isGestor && contaSoDoGestor(cur && cur[0])) {
     return res.status(403).json({ success: false, error: "Só um GESTOR exclui CEO, Diretor Industrial, GESTOR, os admins do OKR e os representantes." });
   }
@@ -2232,6 +2340,11 @@ app.post("/api/users/desligar", async (req, res) => {
   if (!alvo) return res.status(400).json({ success: false, error: "id ausente ou invalido." });
   if (alvo === meuId) return res.status(400).json({ success: false, error: "Não dá para desligar a si mesmo." });
   if (alvo === EDSON_ID) return res.status(403).json({ success: false, error: "A conta do Edson não pode ser desligada." });
+  // O usuário teste (031): só o Edson mexe na conta dele.
+  if (!claimsAreEdson(claims)) {
+    try { if (await ehUsuarioTeste(admin, alvo)) return res.status(403).json({ success: false, error: USUARIO_TESTE_SO_EDSON_MSG }); }
+    catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+  }
   const ultimoDia = String((req.body || {}).ultimoDia ?? "").trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ultimoDia);
   const real = !!m && (() => {
