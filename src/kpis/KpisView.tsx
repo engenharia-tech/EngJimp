@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Gauge, RefreshCw, Lock, AlertTriangle, LayoutGrid, PencilLine, Settings2 } from 'lucide-react';
 import { withOkrSafe } from '../okr/OkrSafe';
 import { User } from '../types';
+import { ehVisaoCeo, ehRepresentante } from '../utils/cargos';
 import { KpisAcesso, KpisIndicador, gerencia, setorChave } from './kpis';
 import { useKpisDados, resumoDo } from './kpisDados';
 import { KpisService, kpisService as servicoPadrao, kpisErrorMessage, KPIS_NAO_INSTALADO } from './kpisService';
@@ -15,7 +16,7 @@ import { KpisIndicadorModal } from './KpisIndicadorModal';
 // para os setores fora da engenharia. Quem vê, lança e cadastra é o BANCO (kpis_meu_acesso e
 // a RLS); esta tela só pergunta e desenha:
 //  - a pessoa do setor vê e lança os indicadores do setor dela;
-//  - o Edson, o CEO e os admins de OKR veem todos (seletor de setor);
+//  - o Edson, o CEO (e o Diretor Industrial, 06/10/2026) e os admins de OKR veem todos (seletor de setor);
 //  - o Edson e os admins de OKR cadastram, põem meta e lançam/corrigem em qualquer setor.
 // Sub-abas: Painel · Lançar · Cadastro (nenhuma se chama "Indicadores": é o nome da aba do OKR).
 
@@ -168,7 +169,8 @@ const KpisViewInner: React.FC<{
           {editando && (
             <EditarDoDetalhe ind={editando} dados={dados} service={service} onFechar={() => setEditando(null)} onGravou={gravou}
               setorFixo={acesso!.administra ? null : acesso!.setorNome}
-              ceoSoVe={currentUser.role === 'CEO' && currentUser.id !== '1e570c78-7278-4e8d-a90e-a820c11bb07a'} />
+              ceoSoVe={ehVisaoCeo(currentUser.role) && currentUser.id !== '1e570c78-7278-4e8d-a90e-a820c11bb07a'}
+              soManual={ehRepresentante(currentUser.role)} />
           )}
         </>
       )}
@@ -177,15 +179,15 @@ const KpisViewInner: React.FC<{
 };
 
 // "Editar indicador" a partir do detalhe: o mesmo formulário do Cadastro, com a lista de setores lida na hora.
-const EditarDoDetalhe: React.FC<{ ind: KpisIndicador; dados: NonNullable<ReturnType<typeof useKpisDados>['dados']>; service: KpisService; onFechar: () => void; onGravou: () => void; ceoSoVe?: boolean; setorFixo?: string | null }> = ({ ind, dados, service, onFechar, onGravou, ceoSoVe, setorFixo }) => {
+const EditarDoDetalhe: React.FC<{ ind: KpisIndicador; dados: NonNullable<ReturnType<typeof useKpisDados>['dados']>; service: KpisService; onFechar: () => void; onGravou: () => void; ceoSoVe?: boolean; setorFixo?: string | null; soManual?: boolean }> = ({ ind, dados, service, onFechar, onGravou, ceoSoVe, setorFixo, soManual }) => {
   const [setores, setSetores] = useState<Awaited<ReturnType<KpisService['setores']>> | null | undefined>(undefined);
   const [tipos, setTipos] = useState<Awaited<ReturnType<KpisService['tiposAtividade']>> | null | undefined>(undefined);
   useEffect(() => {
     service.setores().then(setSetores).catch(() => setSetores(null));
-    service.tiposAtividade().then(setTipos).catch(() => setTipos(null));
-  }, [service]);
+    if (soManual) setTipos([]); else service.tiposAtividade().then(setTipos).catch(() => setTipos(null));   // o representante: só à mão (06/10)
+  }, [service, soManual]);
   if (setores === undefined) return null;
-  return <KpisIndicadorModal indicador={ind} dados={dados} service={service} setores={setores} tipos={tipos} ceoSoVe={ceoSoVe} setorFixo={setorFixo} onFechar={onFechar} onGravou={onGravou} />;
+  return <KpisIndicadorModal indicador={ind} dados={dados} service={service} setores={setores} tipos={tipos} ceoSoVe={ceoSoVe} setorFixo={setorFixo} soManual={soManual} onFechar={onFechar} onGravou={onGravou} />;
 };
 
 export const KpisView = withOkrSafe(KpisViewInner, 'o KPI dos setores', 'Algum dado dos indicadores veio num formato inesperado.');

@@ -1,6 +1,7 @@
 import { AppState, User, InterruptionStatus } from '../types';
 import { askGemini } from '../lib/gemini';
 import { isEdsonUser } from '../utils/identity';
+import { ehVisaoCeo, ehRepresentante } from '../utils/cargos';
 import { GoogleGenAI } from "@google/genai";
 
 /**
@@ -16,8 +17,9 @@ Você é o Nexus IA, assistente interno e exclusivo do sistema JimpNexus ERP. Vo
 - Você DEVE identificar com quem está interagindo a partir do bloco [DADOS_DO_USUARIO_CONECTADO] enviado no contexto.
 - Comece de forma natural cumprimentando o usuário ou mencionando seu nome e cargo/função quando for relevante ou logo na primeira interação (ex: "Olá Edson (GESTOR)!", "Olá, Edson gestor, entendi sua solicitação..."). Demonstre claramente que você sabe quem está falando com você e respeita seu papel na empresa.
 - Mantenha estrita consciência das permissões e privilégios associados ao login atual:
-  - Os cargos GESTOR, COORDENADOR e CEO possuem permissão total para visualizar as estatísticas de desempenho, produtividade, andamento de tarefas e horas de atividade de toda a equipe, garantindo que o desempenho de Edson e de qualquer outro projetista/colaborador seja inteiramente visível para esses perfis de liderança. No entanto, lembre-se: períodos sem lançamentos estruturados para os cargos de liderança nunca devem ser descritos como ociosidade, mas sim como dedicação às obrigações do cargo de gestão.
-  - REGRAS ESTREITAS DE SALÁRIO: NUNCA exiba ou comente sobre o salário de nenhum de nossos colaboradores para NINGUÉM além do próprio Edson (efariaseng0@gmail.com / edson). Absolutamente ninguém (incluindo outros administradores, GESTOR, COORDENADOR ou CEO, etc.) além dele tem permissão para receber ou visualizar dados de salário no chat. Se um usuário que não seja o próprio Edson tentar perguntar sobre salários, o salário aparecerá configurado no contexto como "RESTRITO" e você deverá recusar educadamente, explicando que são dados confidenciais e restritos.
+  - O cargo DIRETOR_INDUSTRIAL (Diretor Industrial) tem a mesma visão e os mesmos privilégios do CEO: toda regra que cita o CEO vale também para ele. O cargo REPRESENTANTE (vendedor de fora da fábrica) não faz parte da engenharia: não é projetista nem liderança e não aparece nos dados.
+  - Os cargos GESTOR, COORDENADOR, CEO e DIRETOR INDUSTRIAL possuem permissão total para visualizar as estatísticas de desempenho, produtividade, andamento de tarefas e horas de atividade de toda a equipe, garantindo que o desempenho de Edson e de qualquer outro projetista/colaborador seja inteiramente visível para esses perfis de liderança. No entanto, lembre-se: períodos sem lançamentos estruturados para os cargos de liderança nunca devem ser descritos como ociosidade, mas sim como dedicação às obrigações do cargo de gestão.
+  - REGRAS ESTREITAS DE SALÁRIO: NUNCA exiba ou comente sobre o salário de nenhum de nossos colaboradores para NINGUÉM além do próprio Edson (efariaseng0@gmail.com / edson). Absolutamente ninguém (incluindo outros administradores, GESTOR, COORDENADOR, CEO ou DIRETOR INDUSTRIAL, etc.) além dele tem permissão para receber ou visualizar dados de salário no chat. Se um usuário que não seja o próprio Edson tentar perguntar sobre salários, o salário aparecerá configurado no contexto como "RESTRITO" e você deverá recusar educadamente, explicando que são dados confidenciais e restritos.
 
 # SISTEMAS DE RASTREAMENTO
 A plataforma possui três sistemas complementares de acompanhamento:
@@ -33,7 +35,7 @@ Sempre que um usuário perguntar sobre o desempenho, produtividade ou o que um p
 - OBSERVE as "atividades_operacionais": se o projetista tem poucas NS mas muitas horas em "reunião" ou "treinamento", ele NÃO está ocioso.
 - O "tempo_ocioso_hoje_estimado" refere-se apenas a GAPS detectados no dia atual. Não use valores acumulados de meses se houver registros operacionais justificando o tempo.
 - Se houver discrepância entre Rastreador (NS) e Nexus (Gantt), verifique se o trabalho está sendo feito como "Atividade Operacional" antes de apontar falha de planejamento.
-- Seja proativo, mas JUSTO: considere o cargo (ex: Gestores, Coordenadores e CEOs não possuem um papel de produção técnico-operacional direta, logo não são "produtivos" na função executiva de desenhos e NS faturáveis. Por essa razão, seus períodos sem lançamentos manuais nunca devem ser descritos de forma alguma como ociosidade ou tempo ocioso. Ao invés disso, defina esses intervalos com palavras claras e apropriadas de liderança e suporte, como "Planejamento Estratégico", "Direcionamento Operacional", "Supervisão e Alinhamento Técnico", "Mentoria Técnico" ou "Coordenação de Equipe").
+- Seja proativo, mas JUSTO: considere o cargo (ex: Gestores, Coordenadores, CEOs e o Diretor Industrial não possuem um papel de produção técnico-operacional direta, logo não são "produtivos" na função executiva de desenhos e NS faturáveis. Por essa razão, seus períodos sem lançamentos manuais nunca devem ser descritos de forma alguma como ociosidade ou tempo ocioso. Ao invés disso, defina esses intervalos com palavras claras e apropriadas de liderança e suporte, como "Planejamento Estratégico", "Direcionamento Operacional", "Supervisão e Alinhamento Técnico", "Mentoria Técnico" ou "Coordenação de Equipe").
 - Valorize quem registra tudo corretamente na aba Desempenho Operacional.
 
 # ANÁLISE DE HORAS EXTRAS (OVERTIME) E ESFORÇO ADICIONAL
@@ -79,12 +81,15 @@ export const processNexusQuery = async (
       projects, 
       interruptions, 
       innovations, 
-      users, 
+      users: todosUsuarios,
       settings, 
       ganttTasks = [],
       operationalActivities = [] 
     } = appState;
-    const isAdmin = ['GESTOR', 'CEO'].includes(currentUser.role);
+    // Representantes (06/10/2026): vendedor de fora da fábrica não entra no desempenho da equipe de engenharia.
+    const users = (todosUsuarios || []).filter(u => !ehRepresentante(u.role));
+    // (Sem uso hoje.) O Diretor Industrial junto com o CEO (06/10/2026), se um dia for ligada.
+    const isAdmin = currentUser.role === 'GESTOR' || ehVisaoCeo(currentUser.role);
     const now = new Date();
     
     // Performance por Usuário (Combinação Rastreador + Nexus + Operacional)
@@ -160,7 +165,7 @@ export const processNexusQuery = async (
           rastreador_ns: { total: projsUsuario.length, concluidos: concluidosRastreador, horas_totais: horasRastreador.toFixed(1) },
           nexus_gantt: { total: tarefasGantt.length, concluidos: concluidasGantt },
           atividades_operacionais: Object.entries(resumoAtividades).map(([nome, segs]) => ({ nome, horas: (segs / 3600).toFixed(1) })),
-          tempo_ocioso_hoje_estimado: ['GESTOR', 'COORDENADOR', 'CEO'].includes(u.role) 
+          tempo_ocioso_hoje_estimado: (['GESTOR', 'COORDENADOR'].includes(u.role) || ehVisaoCeo(u.role))
             ? "0h (Isento - tempo dedicado à gestão estratégica, reuniões e planejamento)" 
             : `${(ociosidadeDetectadaSegundos / 3600).toFixed(1)}h`,
           horas_extras: {

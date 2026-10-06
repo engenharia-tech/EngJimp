@@ -18,6 +18,7 @@ import {
 import { AppState, GanttTask, GanttTaskStatus, TaskPriority } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useToast } from '../Toast';
+import { ehVisaoCeo, ehRepresentante, ROTULO_CARGO } from '../../utils/cargos';
 import { GanttView, TaskEditorModal } from './GanttView';
 import { KanbanView } from './KanbanView';
 import { ListView } from './ListView';
@@ -39,15 +40,9 @@ interface ProjectNexusProps {
 
 const generateId = () => crypto.randomUUID();
 
-const ROLE_LABEL: Record<string, string> = {
-  GESTOR: 'Gestor',
-  PROJETISTA: 'Projetista',
-  CEO: 'CEO',
-  COORDENADOR: 'Coordenador',
-  PROCESSOS: 'Processos',
-  ADM_EXTERNO: 'ADM Externo',
-  QUALIDADE: 'Qualidade',
-};
+// O rótulo de cada cargo vem do mapa único (src/utils/cargos.ts) — os mesmos textos de antes, mais o Diretor Industrial
+// e o Representante (06/10/2026).
+const ROLE_LABEL: Record<string, string> = ROTULO_CARGO;
 
 export type NexusTab = 'gantt' | 'kanban' | 'list' | 'calendar' | 'workload' | 'people' | 'dashboard';
 
@@ -69,9 +64,10 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
     [state.settings]
   );
 
-  // Mesma regra do servidor: só admin (GESTOR/CEO/COORDENADOR) ou o Edson editam.
+  // Mesma regra do servidor: só admin (GESTOR/CEO/COORDENADOR) ou o Edson editam — e o Diretor Industrial, junto com o
+  // CEO (06/10/2026; o servidor tem de aceitar o mesmo).
   const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
-  const canEditNexusSettings = isEdson || ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser?.role as string);
+  const canEditNexusSettings = isEdson || ['GESTOR', 'COORDENADOR'].includes(currentUser?.role as string) || ehVisaoCeo(currentUser?.role);
 
   // Aplica a nova lista: otimista no estado + persiste no servidor; reverte se
   // falhar (ex.: 403 para quem não é admin).
@@ -102,6 +98,10 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
   // enquanto tiver tarefa aberta (nem Feita nem Fechada) atribuída a ela, com
   // "(desligado)" junto do nome, para a carga dela não sumir calada (correção do
   // cético, 30/09). O nome com o rótulo vale só nestas duas visões.
+  //
+  // O representante (06/10/2026) é vendedor, não é pessoa da engenharia: fica fora
+  // destas duas visões, salvo se tiver tarefa aberta (a carga não some calada). Na
+  // engrenagem a lista continua completa.
   const hoje = hojeJoinville();
   const visibleState = useMemo(() => {
     const comTarefaAberta = new Set<string>();
@@ -112,6 +112,7 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
     const users = state.users
       .filter(u => !hiddenUserIds.has(u.id))
       .filter(u => ativoNaData(u, hoje) || comTarefaAberta.has(u.id))
+      .filter(u => !ehRepresentante(u.role) || comTarefaAberta.has(u.id))
       .map(u => {
         const rotulo = rotuloDesligado(u);
         return rotulo ? { ...u, name: `${u.name || ''}${rotulo}` } : u;

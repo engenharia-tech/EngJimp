@@ -8,6 +8,7 @@ import { AppState, InterruptionRecord, InterruptionStatus, User } from '../types
 import { useLanguage } from '../i18n/LanguageContext';
 import { resolveUser, getUserDisplayName } from '../utils/userUtils';
 import { podeVerReais, novaSomaPorTaxa, rotuloDesligado } from '../utils/custoHora';
+import { ehRepresentante, foraDaEngenharia } from '../utils/cargos';
 
 interface InterruptionDashboardProps {
   data: AppState;
@@ -17,8 +18,10 @@ interface InterruptionDashboardProps {
 
 export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ data, theme, filteredInterruptions }) => {
   const { t, language } = useLanguage();
+  // Fora das paradas da engenharia: o PROCESSOS e, desde 06/10/2026, o REPRESENTANTE (o mesmo conjunto do Dashboard).
+  // A exceção do Edson pelo nome não vale para representante (06/10/2026), como no Dashboard.
   const processUserIds = useMemo(() => {
-    return new Set(data.users.filter(u => u.role === 'PROCESSOS').map(u => u.id));
+    return new Set(data.users.filter(u => foraDaEngenharia(u.role)).map(u => u.id));
   }, [data.users]);
 
   const interruptions = useMemo(() => {
@@ -28,7 +31,7 @@ export const InterruptionDashboard: React.FC<InterruptionDashboardProps> = ({ da
     return data.interruptions.filter(i => {
       const isSomeEdson = i.designerId ? (() => {
         const u = data.users.find(x => x.id === i.designerId);
-        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role))) : false;
       })() : false;
       return !processUserIds.has(i.designerId) || isSomeEdson;
     });

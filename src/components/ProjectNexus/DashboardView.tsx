@@ -28,6 +28,7 @@ import {
   Area
 } from 'recharts';
 import { AppState, GanttTaskStatus, TaskPriority } from '../../types';
+import { ehRepresentante } from '../../utils/cargos';
 
 interface DashboardViewProps {
   state: AppState;
@@ -70,10 +71,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ state }) => {
   }, [tasks]);
 
   const workloadData = useMemo(() => {
-    return state.users.map(u => ({
-      name: u.name,
-      tasks: tasks.filter(t => t.assignedTo.includes(u.id)).length,
-    }));
+    // O representante (06/10/2026) não entra na carga da engenharia, salvo se tiver tarefa atribuída.
+    return state.users
+      .filter(u => !ehRepresentante(u.role) || tasks.some(t => t.assignedTo.includes(u.id)))
+      .map(u => ({
+        name: u.name,
+        tasks: tasks.filter(t => t.assignedTo.includes(u.id)).length,
+      }));
   }, [state.users, tasks]);
 
   return (

@@ -74,7 +74,9 @@ export enum CalculationType {
 
 // ADM_EXTERNO = grupo "ADM Externo": gente de fora da engenharia que só VÊ o OKR
 // (Indicadores e Linha do tempo), sem editar nada. É o admin de visualização.
-export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'COORDENADOR' | 'PROCESSOS' | 'QUALIDADE' | 'ADM_EXTERNO';
+// DIRETOR_INDUSTRIAL e REPRESENTANTE (06/10/2026): ver src/utils/cargos.ts.
+export type UserRole = 'GESTOR' | 'PROJETISTA' | 'CEO' | 'COORDENADOR' | 'PROCESSOS' | 'QUALIDADE' | 'ADM_EXTERNO'
+  | 'DIRETOR_INDUSTRIAL' | 'REPRESENTANTE';
 
 export interface User {
   id: string;

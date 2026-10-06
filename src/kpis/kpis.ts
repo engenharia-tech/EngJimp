@@ -7,6 +7,8 @@
 // o banco alinha de novo tudo o que recebe, então uma diferença aqui aparece como "o
 // período gravado não é o que a tela mostrou", nunca como dado torto no banco.
 
+import { PREFIXO_SETOR_REPRESENTANTE } from '../utils/cargos';
+
 export type KpisFrequencia = 'semanal' | 'mensal' | 'trimestral';
 export type KpisSentido = 'maior' | 'menor';
 export type KpisConsolidacao = 'ultimo' | 'soma';
@@ -126,7 +128,7 @@ export const PROJETO_TIPOS = [{ v: 'LIBERACAO', rotulo: 'Liberação' }, { v: 'V
 export const INOVACAO_STATUS = [{ v: 'PENDING', rotulo: 'Pendente' }, { v: 'APPROVED', rotulo: 'Aprovada' }, { v: 'IMPLEMENTED', rotulo: 'Implementada' }, { v: 'REJECTED', rotulo: 'Rejeitada' }];
 export const ESCOPO_ROTULO: Record<KpisEscopo, string> = {
   setor: 'das pessoas do setor do indicador',
-  engenharia: 'da engenharia, como no Dashboard (sem PROCESSOS; o P&D sai desde 01/09/2026)',
+  engenharia: 'da engenharia, como no Dashboard (sem PROCESSOS nem representantes; o P&D sai desde 01/09/2026)',   // representante fora da régua (06/10/2026)
   todos: 'de todo mundo',
 };
 const ESCOPO_CURTO: Record<KpisEscopo, string> = { setor: 'do setor', engenharia: 'da engenharia (régua do Dashboard)', todos: 'de todos' };
@@ -275,6 +277,17 @@ export const validarIndicador = (i: KpisIndicadorInput): string => {
 // Serve para AGRUPAR na tela; quem casa pessoa com setor é o banco.
 export const setorChave = (v?: string | null): string =>
   (v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+// O setor de um REPRESENTANTE (06/10/2026, decisão do Edson: "cada um só os seus") é 'Representante — Nome Sobrenome',
+// posto pelo banco (030). Comparado pela CHAVE, como o banco casa pessoa com setor: com hífen, sem acento ou em
+// maiúsculas é o mesmo setor. Ninguém de outro cargo recebe um setor assim — senão vê, edita e exclui os indicadores
+// do representante (028). A mesma regra do servidor (setorDeRepresentante em api/index.ts).
+const CHAVE_SETOR_REPRESENTANTE = setorChave(PREFIXO_SETOR_REPRESENTANTE);   // 'representante'
+export const ehSetorDeRepresentante = (v?: string | null): boolean => {
+  const k = setorChave(v);
+  return !!k && (k === CHAVE_SETOR_REPRESENTANTE || k.startsWith(CHAVE_SETOR_REPRESENTANTE + ' '));
+};
+export const SETOR_DE_REPRESENTANTE_MSG = 'Os setores "Representante — …" são só dos representantes (o banco põe sozinho): escolha outro setor.';
 
 // ---- Datas (dia LOCAL, "yyyy-mm-dd"; nunca toISOString) ----------------------
 const pad = (x: number) => String(x).padStart(2, '0');

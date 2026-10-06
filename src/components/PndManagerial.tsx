@@ -175,7 +175,8 @@ export const PndManagerial: React.FC<Props> = ({ activities, projects, users, se
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">P&amp;D — Painel Gerencial</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {subject.name}{subject.surname ? ` ${subject.surname}` : ''} · P&amp;D aplicado e esforço além da jornada
-              {!viewerIsSubject && <span className="ml-1 italic">(visão do CEO)</span>}
+              {/* "da diretoria": quem lê pode ser o CEO ou o Diretor Industrial (06/10/2026) */}
+              {!viewerIsSubject && <span className="ml-1 italic">(visão da diretoria)</span>}
             </p>
           </div>
         </div>

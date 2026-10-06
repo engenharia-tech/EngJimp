@@ -6,7 +6,7 @@ import {
   KpisFrequencia, KpisIndicador, KpisIndicadorInput, KpisMedida, KpisEscopo, KpisFonte, KpisSentido, KpisSetor, KpisTipoAtividade,
   AJUDA_FONTE, ESCOPO_ROTULO, FONTE_ROTULO, INOVACAO_STATUS, MEDIDA_ROTULO, MEDIDAS_DA_FONTE, PROJETO_TIPOS,
   FREQ_ROTULO, PRAZO_PADRAO, UNIDADES, fmtValor, hojeSP, inicioPeriodo, metaVigente, numeroExatoParaCampo, numeroParaCampo, parseNumero,
-  periodosEntre, proximoPeriodo, rotuloPeriodoLongo, setorChave, validarIndicador, rotuloPeriodo,
+  periodosEntre, proximoPeriodo, rotuloPeriodoLongo, setorChave, validarIndicador, rotuloPeriodo, ehSetorDeRepresentante,
 } from './kpis';
 import { KpisDados } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
@@ -28,9 +28,10 @@ export const KpisIndicadorModal: React.FC<{
   tipos: KpisTipoAtividade[] | null | undefined; // undefined = lendo
   onFechar: () => void;
   onGravou: () => void;
-  ceoSoVe?: boolean;                  // CEO (visão macro, 01/10): o setor das pessoas ele pede ao Edson
+  ceoSoVe?: boolean;                  // CEO ou Diretor Industrial (visão macro, 01/10 e 06/10): o setor das pessoas ele pede ao Edson
   setorFixo?: string | null;          // quem não administra cria só no próprio setor (028: e não conta horas/projetos/paradas de "todo mundo")
-}> = ({ indicador: ind, dados, service, setores, tipos, onFechar, onGravou, ceoSoVe, setorFixo }) => {
+  soManual?: boolean;                 // REPRESENTANTE (06/10/2026): só indicador lançado à mão — o "calculado" lê a engenharia (o banco recusa também)
+}> = ({ indicador: ind, dados, service, setores, tipos, onFechar, onGravou, ceoSoVe, setorFixo, soManual }) => {
   const { addToast } = useToast();
   const hoje = hojeSP();
   // 028: quantos lançamentos o indicador tem NO BANCO (a tela só lê 36 meses); até a resposta, o que a tela tem
@@ -130,7 +131,13 @@ export const KpisIndicadorModal: React.FC<{
     || ind.calcMedida !== input.calcMedida || ind.calcEscopo !== input.calcEscopo || !mesmos(ind.calcTipos, input.calcTipos) || !mesmos(ind.calcFiltro, input.calcFiltro)));
   const erroTodos = restrito && input.tipo === 'calculado' && input.calcEscopo === 'todos' && !semPessoas(input.calcFonte) && calcMudou
     ? 'Contar horas, projetos ou paradas de "todo mundo" é só do Edson e dos admins de OKR (inclui o P&D, reservado) — escolha as pessoas do setor ou a régua da engenharia.' : '';
-  const erro = validarIndicador(input) || (Number.isNaN(input.prazoDias as number) ? 'O prazo para lançar é um número de dias.' : '') || erroTodos || erroMeta;
+  // O representante não cria nem muda para "Calculado pela base" (06/10/2026) — e, no setor de um representante, ninguém
+  // põe calculado (quem é do setor veria a série da engenharia; o banco, 030, recusa o mesmo).
+  const setorDeRep = ehSetorDeRepresentante(setor);
+  const soManualAqui = !!soManual || setorDeRep;
+  const erroManual = soManualAqui && input.tipo === 'calculado' && (calcMudou || (!!ind && setorChave(setor) !== setorChave(ind.setor)))
+    ? (soManual ? 'O representante só cadastra indicador lançado à mão.' : 'No setor de um representante só entra indicador lançado à mão (o calculado lê a base da engenharia).') : '';
+  const erro = validarIndicador(input) || (Number.isNaN(input.prazoDias as number) ? 'O prazo para lançar é um número de dias.' : '') || erroTodos || erroManual || erroMeta;
   // 028: com lançamentos, frequência e tipo travam (os períodos baralhariam) — quem cuida do indicador pode apagá-los
   // (o histórico guarda cada um) e então mudar.
   const podeLimpar = !!ind && !!ind.podeGerir && nLanc > 0;
@@ -253,8 +260,9 @@ export const KpisIndicadorModal: React.FC<{
           <div className="sm:col-span-2 rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-3">
             <div className="flex gap-2 flex-wrap">
               <button type="button" disabled={temLanc && tipo === 'manual'} onClick={() => setTipo('manual')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${tipo === 'manual' ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}><PencilLine size={12} className="inline -mt-0.5 mr-1" />Lançado pelo setor</button>
-              <button type="button" disabled={temLanc} onClick={() => setTipo('calculado')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border disabled:opacity-50 ${tipo === 'calculado' ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}><Calculator size={12} className="inline -mt-0.5 mr-1" />Calculado pela base</button>
+              {(!soManualAqui || ind?.tipo === 'calculado') && <button type="button" disabled={temLanc} onClick={() => setTipo('calculado')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border disabled:opacity-50 ${tipo === 'calculado' ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}><Calculator size={12} className="inline -mt-0.5 mr-1" />Calculado pela base</button>}
               {temLanc && <span className="text-[11px] text-slate-400 self-center">tipo travado: já há lançamentos{BotaoLimpar ? <> —{BotaoLimpar}</> : null}</span>}
+              {soManualAqui && ind?.tipo !== 'calculado' && <span className="text-[11px] text-slate-400 self-center">{soManual ? 'o representante cadastra só indicador lançado à mão' : 'no setor de um representante, só indicador lançado à mão'}</span>}
             </div>
             {tipo === 'calculado' && (
               <div className="space-y-2">

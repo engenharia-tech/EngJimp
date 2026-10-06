@@ -21,6 +21,7 @@ import { calcActiveSeconds } from '../utils/workdayCalc';
 import { resolveUser, getUserDisplayName } from '../utils/userUtils';
 import { isExcludedFromEngineering, usersIndex, isPndCarveoutUser } from '../utils/pndSplit';
 import { podeVerReais, avisoSemSerie, custoEmReais, novaSomaPorTaxa, fracaoAteDesligar, limitesDoMes, rotuloDesligado } from '../utils/custoHora';
+import { ehVisaoCeo, ehRepresentante, foraDaEngenharia, rotuloCargo } from '../utils/cargos';
 
 interface DashboardProps {
   data: AppState;
@@ -164,7 +165,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
   const [availableDesigners, setAvailableDesigners] = useState<User[]>([]);
 
-  // Deletion States
+  // Deletion States — o botão Excluir NS é de GESTOR, COORDENADOR e CEO; o Diretor Industrial entra junto com o CEO
+  // ("o mesmo privilégio e visualização do CEO", Edson, 06/10/2026).
   const [deleteConfirmationNs, setDeleteConfirmationNs] = useState<string | null>(null);
   const [isDeletingNs, setIsDeletingNs] = useState(false);
 
@@ -265,22 +267,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const [projectTimeSearchQuery, setProjectTimeSearchQuery] = useState<string>('');
   const [projectTimePage, setProjectTimePage] = useState<number>(0);
 
-  // Painel P&D (Gerencial): o tempo/esforço do Edson. Só ele (setor P&D) e o CEO.
-  const canSeePdSection = isPndCarveoutUser(currentUser) || currentUser.role === 'CEO';
+  // Painel P&D (Gerencial): o tempo/esforço do Edson. Só ele (setor P&D) e o CEO — e o Diretor Industrial, que tem a
+  // mesma visão do CEO (decisão do Edson, 06/10/2026).
+  const canSeePdSection = isPndCarveoutUser(currentUser) || ehVisaoCeo(currentUser.role);
 
+  // Cargos (06/10/2026): o Diretor Industrial entra onde o CEO entra (ehVisaoCeo); o representante (vendedor, de fora
+  // da fábrica) sai junto com o PROCESSOS das listas negativas (foraDaEngenharia) — mas NÃO herda o que o PROCESSOS vê
+  // da engenharia (a conformidade por pessoa continua só para quem já via).
   const hasPermissionForSection = (section: string): boolean => {
     const role = currentUser.role;
     switch (section) {
       case 'pd_managerial':
         return canSeePdSection;
       case 'kpi':
-        return role !== 'PROCESSOS';
+        return !foraDaEngenharia(role);
       case 'ranking':
-        return (role === 'CEO' || role === 'GESTOR' || role === 'COORDENADOR') && role !== 'PROCESSOS';
+        return (ehVisaoCeo(role) || role === 'GESTOR' || role === 'COORDENADOR') && !foraDaEngenharia(role);
       case 'innovation':
         return true;
       case 'releases':
-        return role !== 'PROCESSOS';
+        return !foraDaEngenharia(role);
       case 'ns_analysis':
         return true;
       case 'detailed_report':
@@ -290,9 +296,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       case 'advanced_charts':
         return true;
       case 'interruption_report':
-        return ['GESTOR', 'CEO', 'COORDENADOR'].includes(role);
+        return ['GESTOR', 'COORDENADOR'].includes(role) || ehVisaoCeo(role);
       case 'engineering_compliance':
-        return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(role);
+        return ['GESTOR', 'COORDENADOR', 'PROCESSOS'].includes(role) || ehVisaoCeo(role);
       case 'activities':
         return role === 'GESTOR';
       case 'stops':
@@ -370,8 +376,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
   useEffect(() => {
     // Load users for the manager chart from the data prop to avoid extra API calls and ensure consistency
-    // Exclude 'PROCESSOS' role as they don't belong to product engineering
-    const filteredUsers = data.users.filter(u => u.role !== 'PROCESSOS');
+    // Exclude 'PROCESSOS' role as they don't belong to product engineering — nem o REPRESENTANTE (06/10/2026: vendedor
+    // não aparece como 'projetista' nos filtros da engenharia).
+    const filteredUsers = data.users.filter(u => !foraDaEngenharia(u.role));
     const sortedUsers = [...filteredUsers].sort((a, b) => a.name.localeCompare(b.name));
     const map: Record<string, string> = {};
     sortedUsers.forEach(u => {
@@ -391,11 +398,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       }
     });
     setUsersMap(map);
-    setAvailableDesigners(sortedUsers.filter(u => u.role !== 'CEO' || u.id === currentUser.id));
+    // O CEO e o Diretor Industrial (06/10/2026) só aparecem para si mesmos.
+    setAvailableDesigners(sortedUsers.filter(u => !ehVisaoCeo(u.role) || u.id === currentUser.id));
   }, [data.users, currentUser.id]);
 
+  // Quem fica fora dos agregados da engenharia: o PROCESSOS e, desde 06/10/2026, o REPRESENTANTE (uma "visita a
+  // cliente" de um vendedor não pode somar no Total de horas nem no Desenvolvimento).
+  // A exceção do Edson PELO NOME (isSomeEdson, isUserEdson, isRowEdson) nunca vale para representante (06/10/2026):
+  // um vendedor "Gledson" ou "Cledson" voltaria a somar na engenharia e entraria no mapa de calor.
   const processUserIds = useMemo(() => {
-    return new Set(data.users.filter(u => u.role === 'PROCESSOS').map(u => u.id));
+    return new Set(data.users.filter(u => foraDaEngenharia(u.role)).map(u => u.id));
   }, [data.users]);
 
   const months = useMemo(() => [
@@ -461,7 +473,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       // Exclude data from 'PROCESSOS' users
       const isSomeEdson = p.userId ? (() => {
         const u = data.users.find(x => x.id === p.userId);
-        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role))) : false;
       })() : false;
 
       if (p.userId && processUserIds.has(p.userId) && !isSomeEdson) {
@@ -591,7 +603,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       const isSomeEdson = a.userId ? (() => {
         const u = data.users.find(x => x.id === a.userId);
-        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role))) : false;
       })() : false;
 
       if (a.userId && processUserIds.has(a.userId) && !isSomeEdson) {
@@ -658,7 +670,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       // Exclude data from 'PROCESSOS' users
       const isSomeEdson = i.designerId ? (() => {
         const u = data.users.find(x => x.id === i.designerId);
-        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role))) : false;
       })() : false;
 
       if (i.designerId && processUserIds.has(i.designerId) && !isSomeEdson) {
@@ -774,7 +786,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
        // Apply same logic as filteredProjects but for the whole year
        const isSomeEdson = p.userId ? (() => {
          const u = data.users.find(x => x.id === p.userId);
-         return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+         return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role))) : false;
        })() : false;
 
        if (p.userId && processUserIds.has(p.userId) && !isSomeEdson) return false;
@@ -1067,7 +1079,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         // Exclude data from 'PROCESSOS' users
         const isSomeEdson = a.userId ? (() => {
             const u = data.users.find(x => x.id === a.userId);
-            return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+            return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role))) : false;
         })() : false;
 
         if (a.userId && processUserIds.has(a.userId) && !isSomeEdson) {
@@ -1337,7 +1349,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
       // Exclude data from 'PROCESSOS' users
       const isSomeEdson = (() => {
-        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'))) : false;
+        return u ? (u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role))) : false;
       })();
 
       if (processUserIds.has(p.userId) && !isSomeEdson) {
@@ -1363,7 +1375,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       const u = data.users.find(x => x.id === a.userId);
       if (!u) return false;
 
-      const isSomeEdson = u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'));
+      const isSomeEdson = u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role));
       if (processUserIds.has(a.userId) && !isSomeEdson) return false;
 
       if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) return false;
@@ -1872,7 +1884,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
   const advancedWeeklyHeatmap = useMemo(() => {
     const daysName = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
     const designers = (data.users || []).filter(u => {
-      const isUserEdson = u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson'));
+      const isUserEdson = u.email === 'efariaseng0@gmail.com' || u.username === 'edson' || (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role));
       return ['PROJETISTA', 'COORDENADOR'].includes(u.role) || isUserEdson;
     });
     
@@ -1933,7 +1945,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     const edsonUser = usersList.find(u => 
       u.email === 'efariaseng0@gmail.com' || 
       u.username === 'edson' || 
-      (u.name && u.name.toLowerCase().includes('edson'))
+      (u.name && u.name.toLowerCase().includes('edson') && !ehRepresentante(u.role))
     );
 
     let filteredTargetProjects = data.projects;
@@ -2358,7 +2370,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             t={t}
           />
 
-          {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) ? (
+          {(['GESTOR', 'COORDENADOR'].includes(currentUser.role) || ehVisaoCeo(currentUser.role)) ? (
             <div className="flex flex-col gap-1 col-span-2 sm:col-span-1">
               <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider px-1">{t('designer')}</span>
               <div className="relative">
@@ -2553,7 +2565,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         </div>
       </div>
 
-      {/* Painel P&D (Gerencial) — só Edson (setor P&D) e CEO */}
+      {/* Painel P&D (Gerencial) — só Edson (setor P&D), o CEO e o Diretor Industrial */}
       {canSeePdSection && visibleSections.includes('pd_managerial') && (
         <PndManagerial
           activities={data.operationalActivities}
@@ -2569,7 +2581,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       )}
 
       {/* Engineering Performance Compliance Section */}
-      {['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(currentUser.role) && visibleSections.includes('engineering_compliance') && (
+      {(['GESTOR', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) || ehVisaoCeo(currentUser.role)) && visibleSections.includes('engineering_compliance') && (
         <EngineeringPerformance
           projects={data.projects}
           activities={data.operationalActivities}
@@ -2588,7 +2600,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       {visibleSections.includes('kpi') && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Unified Development Card */}
-          {currentUser.role !== 'PROCESSOS' && (
+          {!foraDaEngenharia(currentUser.role) && (
              <div className="relative overflow-hidden bg-white dark:bg-slate-900 p-3 sm:p-4 pl-4 sm:pl-5 rounded-xl border border-blue-200 dark:border-blue-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-blue-500/5">
                <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></span>
                <div className="w-full">
@@ -2619,7 +2631,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           )}
 
           {/* Releases Total Card */}
-          {currentUser.role !== 'PROCESSOS' && (
+          {!foraDaEngenharia(currentUser.role) && (
              <div className="relative overflow-hidden bg-white dark:bg-slate-900 p-3 sm:p-4 pl-4 sm:pl-5 rounded-xl border border-emerald-200 dark:border-emerald-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-emerald-500/5">
                <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500"></span>
                <div className="w-full">
@@ -2650,7 +2662,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           )}
 
           {/* Total de Variações Card */}
-          {currentUser.role !== 'PROCESSOS' && (
+          {!foraDaEngenharia(currentUser.role) && (
              <div className="relative overflow-hidden bg-white dark:bg-slate-900 p-3 sm:p-4 pl-4 sm:pl-5 rounded-xl border border-amber-200 dark:border-amber-900/50 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 ring-2 ring-amber-500/5">
                 <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></span>
                 <div className="w-full">
@@ -2681,7 +2693,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           )}
 
           {/* Real Average Per Capita / Month */}
-          {currentUser.role !== 'PROCESSOS' && (
+          {!foraDaEngenharia(currentUser.role) && (
              <div className="relative overflow-hidden bg-white dark:bg-slate-900 p-3 sm:p-4 pl-4 sm:pl-5 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500"></span>
                <div className="w-full">
@@ -2723,7 +2735,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
              </div>
           )}
 
-          {currentUser.role !== 'PROCESSOS' && averageTimes.length > 0 && averageTimes
+          {!foraDaEngenharia(currentUser.role) && averageTimes.length > 0 && averageTimes
             .filter(stat => stat.type !== 'DESENVOLVIMENTO')
             .map((stat) => (
             <div key={stat.type} className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
@@ -2737,7 +2749,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
             </div>
           ))}
           
-          {currentUser.role !== 'PROCESSOS' && (
+          {!foraDaEngenharia(currentUser.role) && (
             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
               <div className="w-full">
                 <p className="text-[10px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-0.5 sm:mb-1">{t('totalHours')}</p>
@@ -2813,7 +2825,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       )}
 
       {/* AI Insights Section */}
-        {currentUser.role !== 'PROCESSOS' && (
+        {!foraDaEngenharia(currentUser.role) && (
           <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:bg-slate-900 p-6 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
             <div className="flex flex-col sm:flex-row items-center justify-between mb-4 gap-4">
               <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-300 flex items-center">
@@ -2843,8 +2855,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
 
 
-      {/* NOVO: Ranking do Mês (CEO/GESTOR/COORDENADOR) */}
-      {(currentUser.role === 'CEO' || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR') && currentUser.role !== 'PROCESSOS' && visibleSections.includes('ranking') && (
+      {/* NOVO: Ranking do Mês (CEO e Diretor Industrial/GESTOR/COORDENADOR) */}
+      {(ehVisaoCeo(currentUser.role) || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR') && !foraDaEngenharia(currentUser.role) && visibleSections.includes('ranking') && (
         <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
             <div className="flex flex-col md:flex-row items-center justify-between mb-4 gap-4">
                     <h3 className="text-lg font-bold text-black dark:text-white flex items-center uppercase">
@@ -3183,7 +3195,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       }`}>
                         {item.status}
                       </span>
-                      {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                      {(['GESTOR', 'COORDENADOR'].includes(currentUser.role) || ehVisaoCeo(currentUser.role)) && (
                         <button
                           onClick={() => setDeleteConfirmationNs(item.ns)}
                           className="p-1 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
@@ -3228,7 +3240,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('dimension')}</th>
                   <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('status')}</th>
                   <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider">{t('releasedMonth')}</th>
-                  {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                  {(['GESTOR', 'COORDENADOR'].includes(currentUser.role) || ehVisaoCeo(currentUser.role)) && (
                     <th className="py-3 px-4 text-[10px] font-black text-gray-500 dark:text-slate-400 uppercase tracking-wider text-right">{t('actions') || 'AÇÕES'}</th>
                   )}
                 </tr>
@@ -3259,7 +3271,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                         </span>
                       )}
                     </td>
-                    {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                    {(['GESTOR', 'COORDENADOR'].includes(currentUser.role) || ehVisaoCeo(currentUser.role)) && (
                       <td className="py-3 px-4 text-right">
                         <button
                           onClick={() => setDeleteConfirmationNs(item.ns)}
@@ -3358,7 +3370,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       {/* Interruption Report Section */}
       {visibleSections.includes('interruption_report') && (
         <div className="space-y-8 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) && (
+          {(['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) || ehVisaoCeo(currentUser.role)) && (
             <div className="mt-6 bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
               <div className="mb-4">
                 <h2 className={`text-2xl font-bold uppercase ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('interruptionReports')}</h2>
@@ -3465,10 +3477,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         {/* Removed: Issue Distribution (Pie Chart) */}
 
         {/* Releases and Hours Analysis Section */}
-            {currentUser.role !== 'PROCESSOS' && visibleSections.includes('releases') && (
+            {!foraDaEngenharia(currentUser.role) && visibleSections.includes('releases') && (
               <>
                 {/* Dedicated Selector for individual designer right above the charts */}
-                {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+                {(['GESTOR', 'COORDENADOR'].includes(currentUser.role) || ehVisaoCeo(currentUser.role)) && (
                   <div className="col-span-1 md:col-span-2 bg-gray-50/80 dark:bg-stone-900/50 p-4 rounded-xl border border-gray-100 dark:border-slate-800/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-xs">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-amber-500/10 dark:bg-amber-500/20 rounded-lg text-amber-500">
@@ -3508,7 +3520,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       <div className="flex flex-col">
                           <h3 className="text-sm font-bold text-black dark:text-white flex items-center uppercase tracking-wide">
                               <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
-                              {currentUser.role === 'GESTOR' || currentUser.role === 'CEO' ? t('teamReleases') : t('yourPerformance')}
+                              {currentUser.role === 'GESTOR' || ehVisaoCeo(currentUser.role) ? t('teamReleases') : t('yourPerformance')}
                           </h3>
                           {selectedDesignerForReleases !== 'ALL' && (
                               <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold ml-7 uppercase">{t('filteredBy')}: {usersMap[selectedDesignerForReleases] || selectedDesignerForReleases}</span>
@@ -4060,7 +4072,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                       ))}
                       {(() => {
                         const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
-                        const isGestorOrEdson = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser?.role) || isEdson;
+                        const isGestorOrEdson = ['GESTOR', 'COORDENADOR'].includes(currentUser?.role) || ehVisaoCeo(currentUser?.role) || isEdson;
                         return isGestorOrEdson && (
                           <th className="py-2.5 px-4 text-center text-[11px] font-black text-amber-600 dark:text-amber-400 tracking-wide uppercase border-r border-slate-100 dark:border-slate-800 bg-amber-50/20 dark:bg-amber-950/10">H. Extra</th>
                         );
@@ -4071,10 +4083,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                   <tbody>
                     {(() => {
                       const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
-                      const isGestorOrEdson = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser?.role) || isEdson;
+                      const isGestorOrEdson = ['GESTOR', 'COORDENADOR'].includes(currentUser?.role) || ehVisaoCeo(currentUser?.role) || isEdson;
                       
                       const visibleRows = advancedWeeklyHeatmap.matrix.filter(row => {
-                        const isRowEdson = row.id === 'edson' || row.id === currentUser.id || row.name.toLowerCase().includes('edson');
+                        const isRowEdson = row.id === 'edson' || row.id === currentUser.id || (row.name.toLowerCase().includes('edson') && !ehRepresentante(row.role));
                         return ['PROJETISTA', 'COORDENADOR'].includes(row.role) || isRowEdson;
                       });
 
@@ -4177,7 +4189,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
                         <option value="ALL">🌟 Todos os Colaboradores</option>
                         {data.users.map(u => (
                           <option key={u.id} value={u.id}>
-                            👤 {u.name} {u.surname || ''} ({u.role}){rotuloDesligado(u)}
+                            👤 {u.name} {u.surname || ''} ({rotuloCargo(u.role)}){rotuloDesligado(u)}
                           </option>
                         ))}
                       </select>

@@ -11,6 +11,7 @@ import {
 import { useLanguage } from '../i18n/LanguageContext';
 import { useToast } from './Toast';
 import { taxaInovacoes, taxaInovacoesDisponivel, usuariosParaSeletor, hojeJoinville, rotuloDesligado } from '../utils/custoHora';
+import { ehVisaoCeo, rotuloCargo } from '../utils/cargos';
 
 interface InnovationManagerProps {
   innovations: InnovationRecord[];
@@ -124,9 +125,11 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
     return email === 'efariaseng0@gmail.com' || username === 'edson' || (name && name.includes('edson')) || false;
   }, [currentUser]);
 
-  const canRegister = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'PROJETISTA', 'CEO'].includes(currentUser.role) || isEdson;
-  const canManage = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'CEO'].includes(currentUser.role) || isEdson;
-  const canDelete = ['GESTOR', 'COORDENADOR', 'CEO'].includes(currentUser.role) || isEdson;
+  // Cargos (06/10/2026): o Diretor Industrial pode o mesmo que o CEO. O REPRESENTANTE fica FORA das três (não copia o
+  // PROCESSOS: a tela mostra R$ de economia, investimento, máquina e material).
+  const canRegister = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'PROJETISTA'].includes(currentUser.role) || ehVisaoCeo(currentUser.role) || isEdson;
+  const canManage = ['GESTOR', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) || ehVisaoCeo(currentUser.role) || isEdson;
+  const canDelete = ['GESTOR', 'COORDENADOR'].includes(currentUser.role) || ehVisaoCeo(currentUser.role) || isEdson;
 
   useEffect(() => {
     if (editingInnovation) {
@@ -714,7 +717,7 @@ export const InnovationManager: React.FC<InnovationManagerProps> = ({ innovation
                   {/* Quem foi desligado some da lista; o autor já escolhido fica (decisão do Edson, 30/09/2026). */}
                   {usuariosParaSeletor<User>(allUsers, hojeJoinville(), authorId).map(u => (
                     <option key={u.id} value={u.id}>
-                      {u.name} {u.surname ? ` ${u.surname}` : ''} ({u.role}){rotuloDesligado(u)}
+                      {u.name} {u.surname ? ` ${u.surname}` : ''} ({rotuloCargo(u.role)}){rotuloDesligado(u)}
                     </option>
                   ))}
                 </select>

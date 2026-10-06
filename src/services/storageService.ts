@@ -7,6 +7,7 @@ import { resolveUser } from '../utils/userUtils';
 import { getTokenSub } from './authToken';
 import { getAuthToken, authHeaders } from './authToken';
 import { lerTudo } from './lerTudo';
+import { ehRepresentante } from '../utils/cargos';
 import { OkrData, OkrStore, OkrExecutor, OkrExecutorKind, migrateToStore } from '../okr/okr';
 
 // Supabase Configuration
@@ -486,7 +487,8 @@ export const fetchAppState = async (): Promise<AppState> => {
     const viewerSession = !!myRow && (!!myRow.okr_viewer || myRow.role === 'ADM_EXTERNO') && (usersRes.data || []).length === 1;
     // "Somente OKR" (029, 05/10/2026): o banco não lhe entrega nada da engenharia — a lista de tarefas volta
     // vazia e isso não é "tabela nova para semear" (o banco também recusaria a gravação). O Edson nunca.
-    const somenteOkrSession = !!myRow && !!myRow.okr_only && myRow.id !== '1e570c78-7278-4e8d-a90e-a820c11bb07a';
+    // O REPRESENTANTE (06/10/2026) é "Somente OKR" pelo cargo, mesmo sem a marca (a mesma régua do App).
+    const somenteOkrSession = !!myRow && (!!myRow.okr_only || ehRepresentante(myRow.role)) && myRow.id !== '1e570c78-7278-4e8d-a90e-a820c11bb07a';
 
     activityTypes = (activityTypesRes.data || []).map((t: any) => ({
       id: t.id,
@@ -496,8 +498,9 @@ export const fetchAppState = async (): Promise<AppState> => {
 
     // Só semeia se a leitura DEU CERTO e veio vazia. Se deu ERRO (sessão velha,
     // rede, troca de deploy), "vazio" é mentira — semear aqui criaria tipos
-    // duplicados por cima dos 22 que existem.
-    if (activityTypes.length === 0 && !activityTypesRes.error && !viewerSession) {
+    // duplicados por cima dos 22 que existem. O "Somente OKR" (06/10/2026, inclui o representante) também não semeia
+    // nada da engenharia.
+    if (activityTypes.length === 0 && !activityTypesRes.error && !viewerSession && !somenteOkrSession) {
       console.log("SEEDING DEFAULT ACTIVITY TYPES...");
       const defaultTypes = DEFAULT_ACTIVITY_TYPES.map(name => ({ name, is_active: true }));
       const { data: seededData, error: seedError } = await supabase.from('activity_types').insert(defaultTypes).select();
@@ -523,6 +526,8 @@ export const fetchAppState = async (): Promise<AppState> => {
     // da lista que as telas de engenharia recebem — seletores de projetista/responsável,
     // rankings, contagens, assistente de IA e o casamento de projeto pelo nome na nota.
     // Só a própria linha fica, na sessão dele. A tela Equipe busca à parte (fetchUsers).
+    // O REPRESENTANTE (06/10/2026) NÃO sai daqui: o "Ver OKR de", os Indicadores e a Linha do tempo do OKR, os nomes do
+    // KPI e a Agenda leem esta lista. Quem o tira das contas da engenharia é cada tela (foraDaEngenharia).
     users = users.filter(u => u.role !== 'ADM_EXTERNO' || u.id === mySub);
 
     // Visualizador: nome e setor de QUEM TEM OKR vêm de okr_pessoas() — sem e-mail,
@@ -2096,7 +2101,8 @@ export const deleteProjectRequest = async (id: string): Promise<AppState> => {
 // --- USER MANAGEMENT ---
 
 // `incluirExternos`: só a tela Equipe pede o grupo ADM Externo; as telas de engenharia
-// nunca o recebem (não é da engenharia — ver fetchAppState).
+// nunca o recebem (não é da engenharia — ver fetchAppState). Nem o REPRESENTANTE (06/10/2026: vendedor de
+// fora; os chamadores do modo padrão são todos da engenharia).
 export const fetchUsers = async (opts: { incluirExternos?: boolean } = {}): Promise<User[]> => {
   try {
     // Colunas seguras (sem salary/senha/hash) + desligado_em (30/09/2026: a tela Equipe
@@ -2107,7 +2113,7 @@ export const fetchUsers = async (opts: { incluirExternos?: boolean } = {}): Prom
       fetchEdsonSalaries(),
     ]);
     if (error) throw error;
-    return (data || []).filter((u: any) => opts.incluirExternos || u.role !== 'ADM_EXTERNO').map((u: any) => ({
+    return (data || []).filter((u: any) => opts.incluirExternos || (u.role !== 'ADM_EXTERNO' && !ehRepresentante(u.role))).map((u: any) => ({
       id: u.id,
       username: u.username,
       password: '',

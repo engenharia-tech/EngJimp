@@ -60,20 +60,32 @@ app.post("/api/send-email", async (req, res) => {
   // nunca do pedido. O admin de visualização do OKR só olha: não envia e-mail.
   const adm = getSupabaseAdmin();
   if (!adm) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
-  let sender: { name: string; role: string; isEdson: boolean };
+  let sender: { name: string; role: string; isEdson: boolean; somenteOkr: boolean };
   try {
     const sid = canonUuid(mailClaims.sub);
     if (!sid) return res.status(401).json({ success: false, error: "Nao autorizado." });
     if (await isViewerDb(adm, sid)) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao envia e-mail." });
-    const { data: me, error: meErr } = await adm.from("users").select("name, surname, role").eq("id", sid).limit(1);
+    const { data: me, error: meErr } = await adm.from("users").select("name, surname, role, okr_only").eq("id", sid).limit(1);
     if (meErr) throw new Error("Nao consegui conferir o seu cadastro. Tente de novo.");
     const r = me && (me[0] as any);
     if (!r) return res.status(401).json({ success: false, error: "Nao autorizado." });
-    sender = { name: `${r.name || ""} ${r.surname || ""}`.trim(), role: String(r.role || ""), isEdson: sid === EDSON_ID };
+    sender = {
+      name: `${r.name || ""} ${r.surname || ""}`.trim(), role: String(r.role || ""), isEdson: sid === EDSON_ID,
+      somenteOkr: sid !== EDSON_ID && (!!r.okr_only || ehRepresentante(r.role)),
+    };
   } catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
   try {
     const { subject, body, to: bodyTo, kind } = req.body || {};
     console.log(`[Email API] Request: sub=${mailClaims.sub}, kind=${kind || "-"}, Subject="${subject}", BodyLength=${body?.length}, To=${bodyTo}`);
+
+    // "Somente OKR" (inclui o REPRESENTANTE, 06/10/2026) não registra parada nem conclui projeto: não manda o aviso
+    // de parada/conclusão — o assunto e o corpo são livres e iriam pela conta oficial ao Edson, ao Matheus e ao
+    // Comercial com o nome dele (decisão do Edson, 06/10: o representante é "Somente OKR"). Vale também para o envio
+    // SEM tipo (o aviso de conclusão antigo do rastreador, que ele não abre): ali o `to` aceita as mesmas listas de
+    // confiança, e a trava só por tipo deixava a porta aberta. Fica só o 'test' (Configurações, pelo ADMIN_ROLES).
+    if (sender.somenteOkr && kind !== "test") {
+      return res.status(403).json({ success: false, error: "Quem é \"Somente OKR\" não envia aviso de parada nem de conclusão." });
+    }
 
     if (!subject || !body) {
       return res.status(400).json({ success: false, error: "Assunto ou corpo do e-mail ausente." });
@@ -199,7 +211,11 @@ app.post("/api/gemini/generate", async (req, res) => {
   {
     const adm = getSupabaseAdmin();
     if (!adm) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
-    try { if (await isViewerDb(adm, claims.sub)) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao usa o assistente." }); }
+    try {
+      if (await isViewerDb(adm, claims.sub)) return res.status(403).json({ success: false, error: "Usuario de visualizacao nao usa o assistente." });
+      // O REPRESENTANTE (06/10/2026) também não: é de fora da fábrica, e a tela dele não tem o assistente.
+      if (ehRepresentante(await currentRole(adm, claims.sub))) return res.status(403).json({ success: false, error: "O representante nao usa o assistente." });
+    }
     catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
   }
   // Anti abuso de cota: por usuario e por IP (janela de 1 min).
@@ -509,6 +525,26 @@ async function lerUsuario(admin: any, id: string, cols: string, msgErro = "Nao c
 // O grupo "ADM Externo" (cargo ADM_EXTERNO) É o admin de visualização: o cargo sozinho
 // já basta, mesmo que a marca okr_viewer se perca (o banco também exige as duas juntas).
 const ADM_EXTERNO = "ADM_EXTERNO";
+// CARGOS NOVOS (06/10/2026) — espelho de src/utils/cargos.ts (o servidor não importa de src/). Pedido do Edson:
+//  · DIRETOR_INDUSTRIAL: "tem o mesmo privilégio e visualização do CEO. Mas o cargo é diferente." Toda regra do CEO
+//    passa por ehVisaoCeo — as permissões (R$, Inovações, Configurações) E as restrições ("só visão macro", 01/10).
+//  · REPRESENTANTE: "os vendedores… precisam escrever seus OKRs assim como os seus KPIs" — gente de fora da fábrica:
+//    sempre "Somente OKR", nunca visualizador nem admin de OKR, sem assistente nem e-mail de parada/conclusão. O setor
+//    dele (um por pessoa) quem põe é o BANCO (030), não o servidor.
+// Comparar cargo SÓ por estes ajudantes: o próximo cargo "de diretoria" entra num lugar só.
+const DIRETOR_INDUSTRIAL = "DIRETOR_INDUSTRIAL";
+const REPRESENTANTE = "REPRESENTANTE";
+const CARGOS_VISAO_CEO = ["CEO", DIRETOR_INDUSTRIAL];
+const ehVisaoCeo = (role: any): boolean => CARGOS_VISAO_CEO.includes(String(role ?? ""));
+const ehRepresentante = (role: any): boolean => String(role ?? "") === REPRESENTANTE;
+// O setor de cada representante (posto pelo banco, 030): 'Representante — Nome Sobrenome'.
+const PREFIXO_SETOR_REPRESENTANTE = "Representante — ";
+// Os cargos que o cadastro aceita (o CHECK users_role_check do banco; os dois novos a partir da 030). Conferido ANTES
+// de qualquer gravação: antes o cargo ia cru e só o banco recusava — no 'update' com troca de login, DEPOIS do
+// kpi_rename_login ("o login novo já foi gravado").
+const CARGOS_VALIDOS = ["GESTOR", "PROJETISTA", "CEO", "COORDENADOR", "PROCESSOS", "QUALIDADE", ADM_EXTERNO, DIRETOR_INDUSTRIAL, REPRESENTANTE];
+const CARGO_DESCONHECIDO_MSG = (role: any) =>
+  `Cargo desconhecido ("${String(role ?? "").replace(/[^\w .-]/g, "").slice(0, 30)}"). Nada foi gravado.`;
 const ehVisualizador = (r: any, id: string) =>
   !!r && (r.okr_viewer || r.role === ADM_EXTERNO) && !r.okr_admin && id !== EDSON_ID;
 // O cargo a partir da linha do cadastro (sem linha ou desligado = sem cargo: todas as rotas de admin
@@ -672,13 +708,16 @@ app.post("/api/auth/login", async (req, res) => {
   // Cracha de sessao: so emitimos para quem NAO precisa criar senha (quem
   // precisa vai para a tela de criar senha, sem sessao valida ainda).
   const token = user.must_set_password ? null : signSupabaseJwt(user);
+  // REPRESENTANTE (06/10/2026): a tela o recebe SEMPRE como "Somente OKR", mesmo se a marca faltar no cadastro (a
+  // garantia de verdade é a marca gravada — create/update daqui — e o CHECK da 030).
+  const representante = ehRepresentante(user.role);
   // Sanitiza: o payload de login NUNCA leva salary/senha/hash para o navegador
   // (C2). So o Edson ve salario, e por uma porta propria (/api/users/salaries).
   const safeUser = {
     id: user.id, username: user.username, name: user.name, surname: user.surname,
     email: user.email, phone: user.phone, role: user.role,
     must_set_password: user.must_set_password,
-    okr_enabled: user.okr_enabled, okr_only: user.okr_only, sector: user.sector,
+    okr_enabled: representante ? true : user.okr_enabled, okr_only: representante ? true : user.okr_only, sector: user.sector,
     okr_admin: user.okr_admin,
     okr_viewer: ehVisualizador(vw, uid),
   };
@@ -858,13 +897,15 @@ app.post("/api/auth/confirm-password", async (req, res) => {
 // nao pode mais mudar o proprio cargo p/ CEO nem sobrescrever a senha de
 // ninguem falando direto com o banco.
 // ============================================================
-const ADMIN_ROLES = ["GESTOR", "CEO", "COORDENADOR"];   // Configurações e e-mail de teste (o CEO segue: custo/hora, 30/09)
+// Configurações e e-mail de teste (o CEO segue: custo/hora, 30/09; o Diretor Industrial junto, 06/10 — "o mesmo privilégio").
+const ADMIN_ROLES = ["GESTOR", ...CARGOS_VISAO_CEO, "COORDENADOR"];
 // PESSOAS (cadastrar, editar outra pessoa, excluir, mudar setor): o CEO NÃO. Decisão do Edson, 01/10/2026:
 // "ceo não pode dar cargo a ninguem e nem liberar acesso, o objetivo é visualização macro, se quiserem
 // algo que peçam". Vale também para o CEO admin de OKR (a marca dá o OKR de todos, não poder sobre
-// pessoas). O CEO continua editando o PRÓPRIO contato (cai no caminho do "isSelf").
+// pessoas). O CEO continua editando o PRÓPRIO contato (cai no caminho do "isSelf"). O Diretor Industrial (06/10)
+// é igual ao CEO aqui também: fica de fora (ehVisaoCeo).
 const PESSOAS_ADMIN_ROLES = ["GESTOR", "COORDENADOR"];
-const CEO_SO_VE = "O CEO acompanha tudo (visão macro), mas não dá cargo nem libera acesso — peça ao Edson.";
+const CEO_SO_VE = "O CEO e o Diretor Industrial acompanham tudo (visão macro), mas não dão cargo nem liberam acesso — peça ao Edson.";
 // Setor RESERVADO (KPI dos setores, 026 — decisão do Edson, 01/10: "P&D: só eu e os CEOs"): quem entra no
 // setor passa a ver os indicadores dele, então pôr ou tirar alguém de lá é só do Edson. Espelho de
 // kpis_setor_reservado (SQL) e da chave kpis_setor_chave ('P&D' → 'p d').
@@ -873,15 +914,51 @@ const setorChaveSrv = (v: unknown): string =>
   String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const setorReservado = (v: unknown): boolean => SETORES_RESERVADOS.includes(setorChaveSrv(v));
 const SETOR_RESERVADO_MSG = "O setor P&D é reservado: só o Edson põe ou tira alguém dele.";
+// Setor de REPRESENTANTE (030, 06/10/2026): é só do representante dono dele — "cada representante vê só os seus
+// indicadores", e quem acompanha todos é quem já vê tudo, "mais ninguém (o Vinicius NÃO)" (Edson, 06/10). O banco só
+// confere quando o ALVO é representante: pôr OUTRA pessoa num setor desses abriria os indicadores do vendedor a ela.
+// Comparado pela CHAVE (a do KPI: 'representante - fulano' é o mesmo setor que 'Representante — Fulano').
+const CHAVE_SETOR_REPRESENTANTE = setorChaveSrv(PREFIXO_SETOR_REPRESENTANTE);   // 'representante'
+const setorDeRepresentante = (v: unknown): boolean => {
+  const k = setorChaveSrv(v);
+  return k === CHAVE_SETOR_REPRESENTANTE || k.startsWith(CHAVE_SETOR_REPRESENTANTE + " ");
+};
+const SETOR_DE_REPRESENTANTE_MSG = "Os setores \"Representante — …\" são só dos representantes (o banco põe sozinho): escolha outro setor.";
+// As recusas do gatilho do representante (030) chegam do banco com o código na frente (P0001): a tela mostra a frase
+// limpa, sem "Erro DB:" (06/10/2026). Fora delas, null (quem chama monta a mensagem de sempre).
+const erroDoRepresentanteMsg = (e: any): string | null => {
+  const m = String((e && e.message) || "");
+  if (/USERS_REPRESENTANTE_HOMONIMO/.test(m)) {
+    const achado = /o setor "(.*)" já é de outra pessoa \(login ([^)]*)\)/.exec(m);
+    return achado
+      ? `O setor "${achado[1]}" já é de outra pessoa (login ${achado[2]}) — diferencie o representante pelo sobrenome.`
+      : "Já existe um representante com este nome e sobrenome — diferencie pelo sobrenome.";
+  }
+  if (/USERS_REPRESENTANTE_SEM_029/.test(m))
+    return "Os representantes só ganham login depois da migração 029 (sem ela, quem é \"Somente OKR\" ainda lê a engenharia pela API) — avise o Edson. Nada foi gravado.";
+  if (/USERS_REPRESENTANTE:/.test(m)) return "O Edson nunca é representante.";
+  if (/USERS_SETOR_DE_REPRESENTANTE/.test(m)) return SETOR_DE_REPRESENTANTE_MSG;
+  return null;
+};
 // CEO e GESTOR — decisão do Edson, 25/09/2026: "qualquer GESTOR". GESTOR e COORDENADOR
 // cadastram e editam (o CEO não, desde 01/10 — PESSOAS_ADMIN_ROLES), mas só um GESTOR dá ou tira CEO/GESTOR, e só
 // ele troca login, e-mail ou senha — ou exclui — as contas que leem o OKR de todos
 // (CEO, GESTOR, admin de OKR, admin de visualização). Antes um COORDENADOR ou CEO se
 // punha como CEO pela API (okr_is_ceo() libera o OKR de todos), ou trocava o e-mail de
 // um CEO ou do admin de OKR e pedia o código de "Criar / redefinir senha" no lugar dele.
-const CARGOS_DE_TOPO = ["CEO", "GESTOR"];
+// 06/10/2026: o Diretor Industrial é cargo de topo como o CEO (senão um COORDENADOR se dava o cargo pela API e
+// ganhava a visão do CEO). O REPRESENTANTE não é de topo nem "conta que lê tudo", mas DAR ou TIRAR esse cargo também
+// é só de GESTOR (ou do Edson): um COORDENADOR não cria representante nem o transforma em PROJETISTA (cargoSoDoGestor).
+const CARGOS_DE_TOPO = [...CARGOS_VISAO_CEO, "GESTOR"];
 const ehCargoDeTopo = (role: any) => CARGOS_DE_TOPO.includes(String(role ?? "").trim().toUpperCase());
 const contaQueLeTudo = (r: any) => !!r && (ehCargoDeTopo(r.role) || r.role === ADM_EXTERNO || !!r.okr_admin || !!r.okr_viewer);
+const cargoSoDoGestor = (role: any) => ehCargoDeTopo(role) || ehRepresentante(role);
+// As contas cujo ACESSO (login, e-mail, senha, excluir) só um GESTOR ou o Edson mexe: as que leem tudo e a do
+// representante (06/10/2026, "ninguém mais" acompanha os representantes — com a senha trocada, um COORDENADOR
+// entraria como ele e veria os indicadores do setor dele).
+const contaSoDoGestor = (r: any) => contaQueLeTudo(r) || (!!r && ehRepresentante(r.role));
+const CARGO_SO_DO_GESTOR_MSG = "Só um GESTOR dá ou tira o cargo CEO, Diretor Industrial, GESTOR ou Representante.";
+const REPRESENTANTE_SO_OKR_MSG = "O representante é sempre \"Somente OKR\": não pode ser admin de visualização nem admin de OKR (a marca de admin de OKR, só o Edson tira).";
 
 // POST /api/users/save { mode: 'create'|'update', user }
 app.post("/api/users/save", async (req, res) => {
@@ -901,22 +978,27 @@ app.post("/api/users/save", async (req, res) => {
     if (alvo === EDSON_ID && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Só o próprio Edson altera a conta dele." });
     try {
       if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR mudam o setor de alguém." });
-      if (!claimsAreEdson(claims) && String(await currentRole(admin, claims.sub)) === "CEO") return res.status(403).json({ success: false, error: CEO_SO_VE });
+      // O CEO e o Diretor Industrial (06/10) não mudam setor de ninguém, mesmo admins de OKR ("só visão macro").
+      if (!claimsAreEdson(claims) && ehVisaoCeo(await currentRole(admin, claims.sub))) return res.status(403).json({ success: false, error: CEO_SO_VE });
     }
     catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
     const setor = String((user && user.sector) ?? "").trim();
     if (setor.length > 60) return res.json({ success: false, message: "O nome do setor é longo demais (até 60 letras)." });
     // O setor que a tela via (sectorAntes): se outro admin o mudou no meio, recusa em vez de desfazer calado.
-    const { data: atual, error: aErr } = await admin.from("users").select("sector").eq("id", alvo).limit(1);
+    const { data: atual, error: aErr } = await admin.from("users").select("sector, role").eq("id", alvo).limit(1);
     if (aErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
     if (!atual || !atual.length) return res.json({ success: false, message: "Usuário não encontrado." });
     const setorAtual = String((atual[0] as any).sector || "").trim();
     if (setor === setorAtual) return res.json({ success: true, semMudanca: true });   // já é esse: nada a gravar (a tela não registra troca)
+    // O setor do REPRESENTANTE (06/10/2026) é só dele e quem o põe é o banco (030): gravar outro seria desfeito calado.
+    if (ehRepresentante((atual[0] as any).role)) return res.json({ success: false, message: "O setor do representante é só dele (posto automaticamente)." });
+    // …e o setor de um representante não serve para outra pessoa (06/10/2026).
+    if (setorDeRepresentante(setor)) return res.json({ success: false, message: SETOR_DE_REPRESENTANTE_MSG });
     if ((setorReservado(setor) || setorReservado(setorAtual)) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
     if (user && user.sectorAntes !== undefined && user.sectorAntes !== null && String(user.sectorAntes).trim() !== setorAtual)
       return res.status(409).json({ success: false, setorAtual, error: `O setor desta pessoa mudou enquanto a tela estava aberta (agora: "${setorAtual || "sem setor"}"). Nada foi gravado — confira e salve de novo.` });
     const { data: mudou, error: sErr } = await admin.from("users").update({ sector: setor || null }).eq("id", alvo).select("id");
-    if (sErr) return res.json({ success: false, message: `Erro DB: ${sErr.message}` });
+    if (sErr) return res.json({ success: false, message: erroDoRepresentanteMsg(sErr) || `Erro DB: ${sErr.message}` });
     if (!mudou || !mudou.length) return res.json({ success: false, message: "Usuário não encontrado." });
     console.log(`[users/save] setor de ${alvo} → "${setor || "—"}" por ${canonUuid(claims.sub)} (KPI dos setores)`);
     return res.json({ success: true });
@@ -932,7 +1014,7 @@ app.post("/api/users/save", async (req, res) => {
     const papel = meuId ? papelDoCadastro(eu, meuId) : null;
     isAdmin = PESSOAS_ADMIN_ROLES.includes(String(papel)) || claimsAreEdson(claims);   // o CEO não (01/10); o Edson pelo id
     isGestor = papel === "GESTOR" || claimsAreEdson(claims);
-    if (papel === "CEO" && !claimsAreEdson(claims) && (mode === "create" || canonUuid(user.id) !== meuId)) return res.status(403).json({ success: false, error: CEO_SO_VE });
+    if (ehVisaoCeo(papel) && !claimsAreEdson(claims) && (mode === "create" || canonUuid(user.id) !== meuId)) return res.status(403).json({ success: false, error: CEO_SO_VE });
   }
   catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
 
@@ -988,7 +1070,12 @@ app.post("/api/users/save", async (req, res) => {
 
   if (mode === "create") {
     if (!isAdmin) return res.status(403).json({ success: false, error: "Sem permissao para criar usuarios." });
-    if (ehCargoDeTopo(user.role) && !isGestor) return res.status(403).json({ success: false, error: "Só um GESTOR dá o cargo CEO ou GESTOR." });
+    if (!CARGOS_VALIDOS.includes(String(user.role ?? ""))) return res.json({ success: false, message: CARGO_DESCONHECIDO_MSG(user.role) });
+    if (cargoSoDoGestor(user.role) && !isGestor) return res.status(403).json({ success: false, error: CARGO_SO_DO_GESTOR_MSG });
+    // REPRESENTANTE (06/10/2026): nasce SEMPRE "Somente OKR" (com OKR), nunca visualizador — como o ADM Externo nasce
+    // visualizador. Sem isto, um representante criado sem a marca viraria usuário da engenharia.
+    const novoRepresentante = ehRepresentante(user.role);
+    if (novoRepresentante && (!!user.okrViewer || !!user.okrAdmin)) return res.json({ success: false, message: REPRESENTANTE_SO_OKR_MSG });
     try {
       if (await inUse("username", user.username)) return res.json({ success: false, message: "Nome de usuário já existe." });
       if (await okrKeyTaken(user.username.toLowerCase())) return res.json({ success: false, message: "Esse nome de usuário está ligado ao OKR de outra pessoa." });
@@ -1004,8 +1091,11 @@ app.post("/api/users/save", async (req, res) => {
     // O SETOR é a porta do KPI dos setores (a pessoa vê e lança os indicadores do setor dela):
     // só o Edson e os admins de OKR o dão — inclusive na criação. Decisão do Edson, 30/09: "Só o
     // Edson e os admins de OKR mudam o SETOR de qualquer pessoa (inclusive na criação)".
-    const setorNovo = String(user.sector || "").trim();
+    // O do REPRESENTANTE (06/10/2026) é só dele e quem o põe é o banco (030): o enviado é ignorado — e não barra a
+    // criação por quem não dá setor (o GESTOR cria o representante sem precisar do Edson).
+    const setorNovo = novoRepresentante ? "" : String(user.sector || "").trim();
     if (setorNovo) {
+      if (setorDeRepresentante(setorNovo)) return res.json({ success: false, message: SETOR_DE_REPRESENTANTE_MSG });
       try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR definem o setor (o setor abre o KPI do setor). Crie sem setor e peça a eles." }); }
       catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
       if (setorReservado(setorNovo) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
@@ -1016,13 +1106,14 @@ app.post("/api/users/save", async (req, res) => {
       id: user.id || randomUUID(), name: user.name, surname: user.surname, email: user.email, phone: user.phone,
       username: user.username, password: user.password, role: user.role,
       salary: claimsAreEdson(claims) ? (Number(user.salary) || 0) : 0,
-      // Admin de visualização não tem OKR próprio nem é "somente OKR" (tem restrição própria).
-      okr_enabled: newViewer ? false : !!(user.okrEnabled || user.okrOnly), // "somente OKR" implica ter OKR
-      okr_only: newViewer ? false : !!user.okrOnly,
+      // Admin de visualização não tem OKR próprio nem é "somente OKR" (tem restrição própria). O representante é
+      // sempre "Somente OKR" (newViewer é falso para ele: recusado acima).
+      okr_enabled: newViewer ? false : !!(user.okrEnabled || user.okrOnly || novoRepresentante), // "somente OKR" implica ter OKR
+      okr_only: newViewer ? false : !!(user.okrOnly || novoRepresentante),
       okr_viewer: newViewer,
       sector: setorNovo || null,
     }]);
-    if (error) return res.json({ success: false, message: `Erro DB: ${error.message}` });
+    if (error) return res.json({ success: false, message: erroDoRepresentanteMsg(error) || `Erro DB: ${error.message}` });
     if (setorNovo) console.log(`[users/save] setor "${setorNovo}" dado na criação de ${user.username} por ${canonUuid(claims.sub)}`);
     return res.json({ success: true });
   }
@@ -1040,7 +1131,7 @@ app.post("/api/users/save", async (req, res) => {
       .eq("id", user.id);
     if (pErr) {
       if ((pErr as any).code === "23505") return res.json({ success: false, message: "Este e-mail já pertence a outro usuário." });
-      return res.json({ success: false, message: `Erro DB: ${pErr.message}` });
+      return res.json({ success: false, message: erroDoRepresentanteMsg(pErr) || `Erro DB: ${pErr.message}` });
     }
     return res.json({ success: true });
   }
@@ -1058,7 +1149,14 @@ app.post("/api/users/save", async (req, res) => {
   let setorPedido = "";
   let setorMudou = "";
   let setorTroca: { de: string; para: string } | null = null;   // a troca de setor que foi GRAVADA (a tela registra no log só ela)
+  let setorDoCadastro = "";        // o setor antes deste salvar
+  let viraRepresentante = false;   // passa a ser REPRESENTANTE agora (o banco troca o setor pelo dele, 030)
+  let cargoDa030 = false;          // passa a ter um cargo que só existe a partir da 030 (DIRETOR_INDUSTRIAL, REPRESENTANTE)
   if (isAdmin) {
+    // Cargo fora da lista: recusado aqui, ANTES de qualquer gravação (inclusive do kpi_rename_login, lá embaixo).
+    if (user.role !== undefined && user.role !== null && !CARGOS_VALIDOS.includes(String(user.role))) {
+      return res.json({ success: false, message: CARGO_DESCONHECIDO_MSG(user.role) });
+    }
     // Renomear para um username que já existe (mesmo mudando maiúsculas, ex.: "EDSON") é recusado.
     try {
       if (await inUse("username", user.username, user.id)) return res.json({ success: false, message: "Nome de usuário já existe." });
@@ -1066,13 +1164,37 @@ app.post("/api/users/save", async (req, res) => {
       if (curErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
       if (!cur || !cur.length) return res.json({ success: false, message: "Usuário não encontrado." });
       const oldName = String((cur[0] as any).username || "").trim();
+      // REPRESENTANTE (06/10/2026): quem FICA (ou passa a ser) representante é sempre "Somente OKR".
+      const representanteFinal = ehRepresentante(user.role === undefined || user.role === null ? (cur[0] as any).role : user.role);
+      if (representanteFinal && user.id === EDSON_ID) return res.json({ success: false, message: "O Edson nunca é representante." });
+      const cargoMuda = user.role !== undefined && user.role !== null && String(user.role) !== String((cur[0] as any).role || "");
+      viraRepresentante = representanteFinal && cargoMuda;
+      cargoDa030 = cargoMuda && (String(user.role) === DIRETOR_INDUSTRIAL || ehRepresentante(user.role));
+      // Quem não pode DAR o cargo ouve isso primeiro (e não a frase do setor ou da marca, que sugeririam que sem elas
+      // daria certo).
+      if (viraRepresentante && !isGestor) return res.status(403).json({ success: false, error: CARGO_SO_DO_GESTOR_MSG });
       // SETOR (KPI dos setores, 30/09): sem o campo no pedido = fica como está; mudar só o Edson e os
       // admins de OKR — senão um COORDENADOR se punha no Financeiro e lia os indicadores de lá.
       const setorAtual = String((cur[0] as any).sector || "").trim();
+      setorDoCadastro = setorAtual;
       setorPedido = user.sector === undefined || user.sector === null ? setorAtual : String(user.sector).trim();
       // Mexeu no campo e voltou ao que via: não é troca — fica o do cadastro (que outro admin pode ter mudado).
       if (user.sectorAntes !== undefined && user.sectorAntes !== null && setorPedido === String(user.sectorAntes).trim()) setorPedido = setorAtual;
+      // O do representante é só dele e quem o põe é o banco (030): o enviado é ignorado (fica o do cadastro, e o banco
+      // o refaz) — e não barra quem não dá setor (o GESTOR transforma alguém em representante sem precisar do Edson).
+      if (representanteFinal) setorPedido = setorAtual;
+      // …mas virar representante TROCA o setor (o banco põe o dele): quem está no P&D só sai pelo Edson (a regra do
+      // setor reservado, que a troca pelo banco pularia).
+      if (viraRepresentante && setorReservado(setorAtual) && !claimsAreEdson(claims)) {
+        return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
+      }
+      // …e tirar alguém do setor dele (ida e volta pelo cargo) é mudar o setor: só o Edson e os admins de OKR (30/09).
+      if (viraRepresentante && setorAtual && !(await isOkrMasterDb(admin, claims.sub))) {
+        return res.status(403).json({ success: false, error: "Esta pessoa tem setor, e virar representante troca o setor dela (o representante tem um só dele): só o Edson e os admins de OKR mudam o setor de alguém." });
+      }
       if (setorPedido !== setorAtual) {
+        // O setor de um representante não serve para outra pessoa (06/10/2026).
+        if (setorDeRepresentante(setorPedido)) return res.json({ success: false, message: SETOR_DE_REPRESENTANTE_MSG });
         if (!(await isOkrMasterDb(admin, claims.sub))) {
           return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR mudam o setor de alguém (o setor abre o KPI do setor)." });
         }
@@ -1097,6 +1219,11 @@ app.post("/api/users/save", async (req, res) => {
       const wasExterno = (cur[0] as any).role === ADM_EXTERNO;
       const wantExterno = (user.role === undefined || user.role === null ? (cur[0] as any).role : user.role) === ADM_EXTERNO;
       if (wantExterno) wantViewer = true;
+      // O representante: sempre "Somente OKR" (como o ADM Externo é sempre visualizador) e nunca visualizador nem admin de OKR.
+      if (representanteFinal) {
+        if (wantViewer || !!(cur[0] as any).okr_admin) return res.json({ success: false, message: REPRESENTANTE_SO_OKR_MSG });
+        wantOnly = true;
+      }
       // Mudar quem é "só visualização" (ou o grupo ADM Externo): só o Edson, ou um GESTOR admin
       // de OKR. Um CEO admin de OKR não — senão rebaixaria um GESTOR pela API (Edson, 30/09).
       if ((wantViewer !== wasViewer || wantExterno !== wasExterno) && (!isGestor || !(await isOkrMasterDb(admin, claims.sub)))) {
@@ -1123,20 +1250,21 @@ app.post("/api/users/save", async (req, res) => {
       if (alvoErr || !alvo || !alvo.length) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
       const a = alvo[0] as any;
       const cargoNovo = user.role === undefined || user.role === null ? a.role : user.role; // sem o campo, o cargo fica
-      if (String(cargoNovo) !== String(a.role || "") && (ehCargoDeTopo(cargoNovo) || ehCargoDeTopo(a.role))) {
-        return res.status(403).json({ success: false, error: "Só um GESTOR dá ou tira o cargo CEO ou GESTOR." });
+      // Dar ou tirar CEO, Diretor Industrial, GESTOR ou Representante (06/10/2026): só GESTOR (ou o Edson).
+      if (String(cargoNovo) !== String(a.role || "") && (cargoSoDoGestor(cargoNovo) || cargoSoDoGestor(a.role))) {
+        return res.status(403).json({ success: false, error: CARGO_SO_DO_GESTOR_MSG });
       }
       // "Somente OKR" (029, 05/10/2026) tranca a engenharia no banco e tira o R$ de quem a tem: nas contas que leem
-      // o OKR de todos (CEO, GESTOR, admins do OKR, visualizador), pôr ou tirar a marca é de GESTOR — a mesma régua
-      // de login/e-mail/senha delas (decisão do Edson, 25/09: "qualquer GESTOR").
+      // o OKR de todos (CEO, Diretor Industrial, GESTOR, admins do OKR, visualizador), pôr ou tirar a marca é de
+      // GESTOR — a mesma régua de login/e-mail/senha delas (decisão do Edson, 25/09: "qualquer GESTOR").
       if (wantOnly !== wasOnly && contaQueLeTudo(a)) {
-        return res.status(403).json({ success: false, error: "\"Somente OKR\" de CEO, GESTOR e dos admins do OKR só um GESTOR muda." });
+        return res.status(403).json({ success: false, error: "\"Somente OKR\" de CEO, Diretor Industrial, GESTOR e dos admins do OKR só um GESTOR muda." });
       }
-      if (!isSelf && contaQueLeTudo(a)) {
+      if (!isSelf && contaSoDoGestor(a)) {
         const mudaEmail = String(user.email || "").trim().toLowerCase() !== String(a.email || "").trim().toLowerCase();
         const mudaLogin = user.username !== String(a.username || "").trim();
         if (mudaEmail || mudaLogin || !!user.password) {
-          return res.status(403).json({ success: false, error: "Login, e-mail e senha de CEO, GESTOR e dos admins do OKR só um GESTOR altera." });
+          return res.status(403).json({ success: false, error: "Login, e-mail e senha de CEO, Diretor Industrial, GESTOR, dos admins do OKR e dos representantes só um GESTOR altera." });
         }
       }
     }
@@ -1158,19 +1286,46 @@ app.post("/api/users/save", async (req, res) => {
   }
   // Troca de login + a chave do OKR dele numa transação só (kpi_rename_login): antes
   // eram duas chamadas, e se a segunda falhasse a pessoa perdia o próprio OKR.
-  if (renameTo) {
+  const trocarLogin = async (cadastroJaGravado: boolean): Promise<string | null> => {
     const { error: rnErr } = await admin.rpc("kpi_rename_login", { p_user: user.id, p_new: renameTo });
-    if (rnErr) {
-      const m = String(rnErr.message || "");
-      if (/OKR_CHAVE_OCUPADA/.test(m)) return res.json({ success: false, message: "Esse nome de usuário está ligado ao OKR de outra pessoa." });
-      if ((rnErr as any).code === "23505") return res.json({ success: false, message: "Nome de usuário já existe." });
-      return res.json({ success: false, message: `Não consegui trocar o login: ${m}` });
+    if (!rnErr) return null;
+    const m = String(rnErr.message || "");
+    const msg = /OKR_CHAVE_OCUPADA/.test(m) ? "Esse nome de usuário está ligado ao OKR de outra pessoa."
+      : (rnErr as any).code === "23505" ? "Nome de usuário já existe."
+      : erroDoRepresentanteMsg(rnErr) || `Não consegui trocar o login: ${m}`;
+    return cadastroJaGravado ? `${msg} Os outros dados foram salvos; só o login não mudou.` : msg;
+  };
+  // O cadastro (cargo, marcas, setor, contato). Devolve o setor como ficou GRAVADO (o gatilho do representante o troca).
+  const gravarCadastro = async (loginJaGravado: boolean): Promise<{ erro: string | null; setor?: string }> => {
+    const { data: gravou, error } = await admin.from("users").update(patch).eq("id", user.id).select("sector");
+    if (error) {
+      if ((error as any).code === "23505") return { erro: "E-mail ou nome de usuário já pertence a outra pessoa." };
+      return { erro: `${erroDoRepresentanteMsg(error) || `Erro DB: ${error.message}`}${loginJaGravado ? " (o login novo já foi gravado)" : ""}` };
     }
+    return { erro: null, setor: gravou && gravou.length ? String((gravou[0] as any).sector || "").trim() : undefined };
+  };
+  // CARGO DA 030 + LOGIN NOVO no mesmo salvar (06/10/2026): o cadastro PRIMEIRO, o login depois. Antes da 030 o banco
+  // recusa DIRETOR_INDUSTRIAL e REPRESENTANTE (users_role_check), e o gatilho do representante recusa o homônimo — com
+  // o login gravado antes, ficava "o login novo já foi gravado" e o resto não. Os outros cargos seguem na ordem de sempre.
+  let gravado: { erro: string | null; setor?: string };
+  if (renameTo && cargoDa030) {
+    gravado = await gravarCadastro(false);
+    if (gravado.erro) return res.json({ success: false, message: gravado.erro });
+    const erroLogin = await trocarLogin(true);
+    if (erroLogin) return res.json({ success: false, message: erroLogin });
+  } else {
+    if (renameTo) {
+      const erroLogin = await trocarLogin(false);
+      if (erroLogin) return res.json({ success: false, message: erroLogin });
+    }
+    gravado = await gravarCadastro(!!renameTo);
+    if (gravado.erro) return res.json({ success: false, message: gravado.erro });
   }
-  const { error } = await admin.from("users").update(patch).eq("id", user.id);
-  if (error) {
-    if ((error as any).code === "23505") return res.json({ success: false, message: "E-mail ou nome de usuário já pertence a outra pessoa." });
-    return res.json({ success: false, message: `Erro DB: ${error.message}${renameTo ? " (o login novo já foi gravado)" : ""}` });
+  // Quem PASSA a ser representante sai do setor que tinha: o banco põe o dele (030). A troca vai na resposta como as
+  // outras, para a tela registrá-la no log (06/10/2026) — antes ela acontecia calada.
+  if (viraRepresentante && gravado.setor !== undefined && gravado.setor !== setorDoCadastro) {
+    setorTroca = { de: setorDoCadastro, para: gravado.setor };
+    setorMudou = `"${setorDoCadastro || "—"}" → "${gravado.setor || "—"}"`;
   }
   if (setorMudou) console.log(`[users/save] setor de ${user.id}: ${setorMudou} por ${canonUuid(claims.sub)}`);
   if (isSelf && user.password) {
@@ -1210,8 +1365,9 @@ app.post("/api/settings/save", async (req, res) => {
   // CUSTO/HORA (022, 30/09/2026). R$ só para o Edson (pelo id) e os CEOs (cargo do cadastro) — decisão
   // do Edson, 30/09: de qualquer outro admin, o valor e o modo são ignorados (o resto grava).
   // 029 (05/10/2026): a mesma régua de quem VÊ o R$ (/api/labor/hourly-cost) — CEO marcado "Somente OKR" não grava.
+  // 06/10/2026: o Diretor Industrial como o CEO (ehVisaoCeo) — senão recebia "salvo" e o valor nunca era gravado.
   let ceoQueVeReais = false;
-  if (papel === "CEO" && ("hourly_cost" in row || "use_automatic_cost" in row)) {
+  if (ehVisaoCeo(papel) && ("hourly_cost" in row || "use_automatic_cost" in row)) {
     try {
       const eu = await lerUsuario(admin, canonUuid(claims.sub) || "", "okr_only", "Nao consegui conferir o seu acesso. Tente de novo.");
       ceoQueVeReais = !!eu && !eu.okr_only;
@@ -1813,7 +1969,7 @@ app.post("/api/users/delete", async (req, res) => {
   let isGestor = false; // só GESTOR exclui CEO, GESTOR e as contas que leem o OKR de todos
   try {
     const papel = await currentRole(admin, claims.sub);
-    if (papel === "CEO" && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: CEO_SO_VE });
+    if (ehVisaoCeo(papel) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: CEO_SO_VE });
     if (!PESSOAS_ADMIN_ROLES.includes(String(papel)) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Sem permissao." });
     isGestor = papel === "GESTOR" || claimsAreEdson(claims);
   }
@@ -1829,8 +1985,8 @@ app.post("/api/users/delete", async (req, res) => {
   // o OKR ficava sem dono, calado).
   const { data: cur, error: curErr } = await admin.from("users").select("username, role, okr_admin, okr_viewer").eq("id", id).limit(1);
   if (curErr) return res.json({ success: false, message: "Nao consegui ler o usuario. Nada foi excluido; tente de novo." });
-  if (!isGestor && contaQueLeTudo(cur && cur[0])) {
-    return res.status(403).json({ success: false, error: "Só um GESTOR exclui CEO, GESTOR e os admins do OKR." });
+  if (!isGestor && contaSoDoGestor(cur && cur[0])) {
+    return res.status(403).json({ success: false, error: "Só um GESTOR exclui CEO, Diretor Industrial, GESTOR, os admins do OKR e os representantes." });
   }
   const oldKey = String((cur && cur[0] && (cur[0] as any).username) || "").trim().toLowerCase();
   // Quem tem REGISTRO não é excluído. No banco de produção (lido em 30/09), projetos, atividades,
@@ -1908,7 +2064,9 @@ app.post("/api/users/delete", async (req, res) => {
 //  - taxaInovacoes = a taxa de antes do corte (a linha que cobre 31/08/2026): a tela de Inovações não
 //    muda (decisão 5). Só para quem vê Inovações (a mesma lista de canSeeInnovations, App.tsx).
 // Antes: UMA média com os salários de HOJE, a todos (hourlyRate), aplicada a registros de qualquer data.
-const CUSTO_CARGOS_QUE_VEEM_INOVACOES = ["GESTOR", "CEO", "PROJETISTA", "COORDENADOR", "PROCESSOS"];
+// 06/10/2026: onde diz "CEO" vale também o Diretor Industrial (ehVisaoCeo / CARGOS_VISAO_CEO) — "o mesmo privilégio e
+// visualização do CEO". O REPRESENTANTE fica fora das duas listas (é "Somente OKR").
+const CUSTO_CARGOS_QUE_VEEM_INOVACOES = ["GESTOR", ...CARGOS_VISAO_CEO, "PROJETISTA", "COORDENADOR", "PROCESSOS"];
 const CUSTO_DIA_DAS_INOVACOES = "2026-08-31";
 // TRANSIÇÃO (cético de 30/09): uma aba aberta com o pacote de ANTES lê `hourlyRate`; sem ele o custo/hora
 // vira 0 e a tela antiga de Inovações GRAVA a economia errada. Até este dia (de Joinville, inclusive),
@@ -1918,11 +2076,13 @@ const CUSTO_HOURLY_RATE_ANTIGO_ATE = "2026-10-07";
 
 // A regra de ANTES (a 022 não rodou): a média de hoje, como esta rota fazia até 30/09. Só serve para a
 // taxa das Inovações não virar 0 se o código subir antes da 022 (a ordem certa é a 022 primeiro).
+// 06/10/2026: o Diretor Industrial e o Representante também fora da média (como o CEO e o PROCESSOS) — custo por
+// ÁREA, nunca por cargo; a mesma exclusão da custo_hora_taxa_calculada no banco (030).
 const custoTaxaDaRegraDeAntes = async (admin: any): Promise<number | null> => {
   const { data, error } = await admin.from("users").select("role,salary");
   if (error) { console.error("[labor/hourly-cost] regra de antes:", error.code || "(sem código)"); return null; }
   const relevant = (data || []).filter(
-    (u: any) => u.role !== "CEO" && u.role !== "PROCESSOS" && u.role !== ADM_EXTERNO && Number(u.salary) > 0
+    (u: any) => !ehVisaoCeo(u.role) && u.role !== "PROCESSOS" && u.role !== ADM_EXTERNO && !ehRepresentante(u.role) && Number(u.salary) > 0
   );
   const total = relevant.reduce((acc: number, u: any) => acc + Number(u.salary || 0), 0);
   return total / (relevant.length || 1) / 220; // media mensal / 220h
@@ -1944,7 +2104,7 @@ app.get("/api/labor/hourly-cost", async (req, res) => {
   if (!r || ehVisualizador(r, id) || desligadoPeloCadastro(r, id)) return res.status(403).json({ success: false, error: "Sem permissao." });
   const ehEdson = claimsAreEdson(hcClaims);
   // 029 (05/10/2026): "Somente OKR" não vê nada da engenharia — nem R$, mesmo com cargo CEO (o Edson, sempre).
-  const podeVerReais = ehEdson || (r.role === "CEO" && !r.okr_only);
+  const podeVerReais = ehEdson || (ehVisaoCeo(r.role) && !r.okr_only);
   const veInovacoes = ehEdson || (CUSTO_CARGOS_QUE_VEEM_INOVACOES.includes(String(r.role || "")) && !r.okr_only);
   const hoje = hojeJoinville();
   const transicao = hoje <= CUSTO_HOURLY_RATE_ANTIGO_ATE;
@@ -2019,7 +2179,7 @@ app.get("/api/projects/custo-gravado", async (req, res) => {
   try { r = await lerUsuario(admin, id, "role, okr_viewer, okr_admin, okr_only", "Nao consegui conferir o seu acesso. Tente de novo."); }
   catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
   if (!r || ehVisualizador(r, id) || desligadoPeloCadastro(r, id)) return res.status(403).json({ success: false, error: "Sem permissao." });
-  if (!(claimsAreEdson(claims) || (r.role === "CEO" && !r.okr_only))) return res.status(403).json({ success: false, error: "Sem permissao." });
+  if (!(claimsAreEdson(claims) || (ehVisaoCeo(r.role) && !r.okr_only))) return res.status(403).json({ success: false, error: "Sem permissao." });   // CEO ou Diretor Industrial (06/10)
   const custoGravado: Record<string, number> = {};
   let depoisDe = "";
   for (let pagina = 0; ; pagina++) {

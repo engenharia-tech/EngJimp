@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy, UserX } from 'lucide-react';
+import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy, UserX, Factory, Handshake } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { isEdsonUser } from '../utils/identity';
+import { ehVisaoCeo, ehRepresentante, PREFIXO_SETOR_REPRESENTANTE } from '../utils/cargos';
+import { ehSetorDeRepresentante, SETOR_DE_REPRESENTANTE_MSG } from '../kpis/kpis';
 import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts, addAuditLog, desligarUsuario } from '../services/storageService';
 import { getWebhookUrl, saveWebhookUrl } from '../services/webhookService';
 import { useToast } from './Toast';
@@ -108,6 +110,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    // O setor de um representante é só dele (06/10/2026, "cada um só os seus"): quem não é representante não
+    // recebe um — veria, editaria e excluiria os indicadores dele (028). Só quando o setor foi mudado aqui (o de
+    // quem deixou de ser representante fica como está); pela chave, como o banco ("Representante - João"…).
+    if (!representanteEfetivo && podeMudarSetor && setorTocado && sector.trim() !== setorCarregado && ehSetorDeRepresentante(sector)) {
+      addToast(SETOR_DE_REPRESENTANTE_MSG, 'error');
+      return;
+    }
     setIsRegistering(true);
 
     const userPayload: User & { sectorAntes?: string } = {
@@ -121,17 +130,20 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       role,
       salary,
       // Admin de visualização não tem OKR próprio nem é "somente OKR" (o servidor também força).
-      okrEnabled: (okrViewer || role === 'ADM_EXTERNO') ? false : (okrEnabled || okrOnly),
-      okrOnly: (okrViewer || role === 'ADM_EXTERNO') ? false : okrOnly,
+      // O REPRESENTANTE (06/10/2026) é sempre "Somente OKR", com OKR, e nunca visualizador — o
+      // servidor e o banco (030) forçam o mesmo.
+      okrEnabled: representanteEfetivo ? true : viewerEfetivo ? false : (okrEnabled || okrOnly),
+      okrOnly: representanteEfetivo ? true : viewerEfetivo ? false : okrOnly,
       // Só quem pode mexer na marca a manda; o resto não manda (o servidor mantém a
       // do cadastro) — assim uma lista aberta há horas não desfaz nem esbarra na marca.
-      okrViewer: canMarkOkrViewer ? (okrViewer || role === 'ADM_EXTERNO') : undefined,
+      okrViewer: canMarkOkrViewer ? viewerEfetivo : undefined,
       // O setor abre o KPI do setor: só o Edson e os admins de OKR o mandam (o servidor confere);
       // os demais não mandam o campo e o servidor mantém o do cadastro.
       // …e só se foi TOCADO: a lista aberta há horas não desfaz a troca que outro admin acabou de fazer.
-      sector: podeMudarSetor && setorTocado ? sector : undefined,
+      // O do representante nunca vai: o banco põe o setor só dele (030).
+      sector: podeMudarSetor && setorTocado && !representanteEfetivo ? sector : undefined,
       // …e diz qual setor a tela via: se outro admin o mudou no meio, o servidor recusa (409).
-      sectorAntes: podeMudarSetor && setorTocado && editingUserId ? setorCarregado : undefined,
+      sectorAntes: podeMudarSetor && setorTocado && !representanteEfetivo && editingUserId ? setorCarregado : undefined,
     };
 
     let result;
@@ -363,6 +375,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
           case 'CEO': return <Briefcase className="w-3 h-3 text-yellow-600" />;
           case 'COORDENADOR': return <Eye className="w-3 h-3 text-teal-600" />;
           case 'PROCESSOS': return <Activity className="w-3 h-3 text-purple-600" />;
+          case 'DIRETOR_INDUSTRIAL': return <Factory className="w-3 h-3 text-yellow-600" />;
+          case 'REPRESENTANTE': return <Handshake className="w-3 h-3 text-orange-600" />;
           default: return <UserIcon className="w-3 h-3 text-gray-600" />;
       }
   };
@@ -379,13 +393,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   // O SETOR é a porta do KPI dos setores (a pessoa vê e lança os indicadores do setor dela): só o
   // Edson e os admins de OKR o mudam, inclusive na criação (decisão do Edson, 30/09). O servidor
   // confere pelo cadastro.
-  const podeMudarSetor = isEdson || (!!currentUser.okrAdmin && currentUser.role !== 'CEO');   // o CEO não (01/10: visão macro)
+  const podeMudarSetor = isEdson || (!!currentUser.okrAdmin && !ehVisaoCeo(currentUser.role));   // o CEO e o Diretor Industrial não (01/10: visão macro; 06/10)
+  // REPRESENTANTE (06/10/2026): só um GESTOR ou o Edson dá o cargo (e o tira) — o servidor confere.
+  const podeDarRepresentante = isGestor || isEdson;
   // Os setores já usados na Equipe, com a grafia mais comum — sugere para não nascer "Suprimento"
   // ao lado de "Suprimentos" (o KPI junta maiúsculas e acentos, mas não singular com plural).
   const setoresUsados = React.useMemo(() => {
     const cont = new Map<string, Map<string, number>>();
     users.forEach(u => {
       const g = (u.sector || '').trim(); if (!g) return;
+      if (ehSetorDeRepresentante(g)) return;   // o setor de cada representante é só dele (06/10): não se sugere a outro
       const k = g.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
       const m = cont.get(k) || new Map<string, number>(); m.set(g, (m.get(g) || 0) + 1); cont.set(k, m);
     });
@@ -394,7 +411,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   const EDSON_UUID = '1e570c78-7278-4e8d-a90e-a820c11bb07a';
   // O grupo ADM Externo É o visualizador — deduzido na hora, não gravado no estado: escolher
   // o cargo por engano e voltar não deixa a pessoa marcada nem com o OKR desligado.
-  const viewerEfetivo = okrViewer || role === 'ADM_EXTERNO';
+  // O REPRESENTANTE (06/10/2026, pedido do Edson: os vendedores "precisam escrever seus OKRs assim como os
+  // seus KPIs") é sempre "Somente OKR" com OKR, e nunca visualizador — deduzido do cargo do mesmo jeito.
+  const representanteEfetivo = ehRepresentante(role);
+  const viewerEfetivo = !representanteEfetivo && (okrViewer || role === 'ADM_EXTERNO');
+  // O setor do representante é só dele: o banco o põe ao gravar (Representante — Nome Sobrenome, espaços juntados).
+  // Mas o banco (030) MANTÉM o que já começa com "Representante — " ("quem muda o nome depois não muda o setor") e o
+  // servidor manda o do cadastro: a prévia mostra esse, e só calcula pelo nome quando o banco vai calcular.
+  const setorDoRepresentante = setorCarregado.startsWith(PREFIXO_SETOR_REPRESENTANTE)
+    ? setorCarregado
+    : PREFIXO_SETOR_REPRESENTANTE + `${name} ${surname}`.replace(/\s+/g, ' ').trim();
   // Gestor can do everything. Coordenador can view. Everyone can edit themselves.
   
   const canCreateUser = isGestor;
@@ -510,8 +536,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               <option value="PROJETISTA">{t('projetista')}</option>
               <option value="GESTOR">{t('gestor')}</option>
               <option value="CEO">{t('ceo')}</option>
+              {/* Diretor Industrial (06/10/2026): "o mesmo privilégio e visualização do CEO" — quem dá é quem dá CEO (GESTOR). */}
+              {(isGestor || role === 'DIRETOR_INDUSTRIAL') && (
+                <option value="DIRETOR_INDUSTRIAL" disabled={!isGestor}>{t('diretor_industrial')}</option>
+              )}
               <option value="COORDENADOR">{t('coordenador')}</option>
               <option value="PROCESSOS">{t('processos')}</option>
+              {/* Representante (06/10/2026): vendedor de fora, sempre "Somente OKR" — só o GESTOR ou o Edson põe ou tira. */}
+              {(podeDarRepresentante || role === 'REPRESENTANTE') && (
+                <option value="REPRESENTANTE" disabled={!podeDarRepresentante}>{t('representante')}</option>
+              )}
               {/* ADM Externo = admin de visualização do OKR: só o Edson/admin de OKR põe ou tira. */}
               {(canMarkOkrViewer || role === 'ADM_EXTERNO') && (
                 <option value="ADM_EXTERNO" disabled={!canMarkOkrViewer}>{t('adm_externo')}</option>
@@ -538,15 +572,21 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               id="um-sector"
               type="text"
               list="um-setores"
-              value={sector}
+              value={representanteEfetivo ? setorDoRepresentante : sector}
               onChange={e => { setSector(e.target.value); setSetorTocado(true); }}
-              disabled={!podeMudarSetor}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!podeMudarSetor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
+              disabled={!podeMudarSetor || representanteEfetivo}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!podeMudarSetor || representanteEfetivo ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
               placeholder="Ex.: Comercial, PCP, RH, Fábrica"
             />
             <datalist id="um-setores">{setoresUsados.map(g => <option key={g} value={g} />)}</datalist>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-              {podeMudarSetor ? 'O setor abre o KPI do setor: a pessoa vê e lança os indicadores dele. Prefira um setor da lista.' : 'Só o Edson e os admins de OKR mudam o setor (ele abre o KPI do setor).'}
+              {representanteEfetivo
+                ? `O setor do representante é só dele (posto automaticamente): ele vê e lança só os indicadores dele.${setorCarregado.startsWith(PREFIXO_SETOR_REPRESENTANTE) ? ' Mudar o nome depois não muda o setor.' : ''}`
+                : ehSetorDeRepresentante(sector)
+                ? (setorTocado && sector.trim() !== setorCarregado
+                  ? SETOR_DE_REPRESENTANTE_MSG
+                  : `Este é o setor de um representante, que é só dele: ${podeMudarSetor ? 'dê à pessoa o setor novo dela.' : 'o Edson ou um admin de OKR dá o setor novo da pessoa.'}`)
+                : podeMudarSetor ? 'O setor abre o KPI do setor: a pessoa vê e lança os indicadores dele. Prefira um setor da lista.' : 'Só o Edson e os admins de OKR mudam o setor (ele abre o KPI do setor).'}
             </p>
           </div>
           {isGestor && (
@@ -554,8 +594,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
                 type="checkbox"
-                checked={!viewerEfetivo && (okrEnabled || okrOnly)}
-                disabled={okrOnly || viewerEfetivo}
+                checked={representanteEfetivo || (!viewerEfetivo && (okrEnabled || okrOnly))}
+                disabled={representanteEfetivo || okrOnly || viewerEfetivo}
                 onChange={e => setOkrEnabled(e.target.checked)}
                 className="w-5 h-5 rounded accent-blue-600"
               />
@@ -567,22 +607,22 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
                 type="checkbox"
-                checked={!viewerEfetivo && okrOnly}
-                disabled={viewerEfetivo}
+                checked={representanteEfetivo || (!viewerEfetivo && okrOnly)}
+                disabled={representanteEfetivo || viewerEfetivo}
                 onChange={e => { setOkrOnly(e.target.checked); if (e.target.checked) setOkrEnabled(true); }}
                 className="w-5 h-5 rounded accent-amber-600"
               />
               <span className="text-sm">
                 <span className="font-semibold text-black dark:text-white">Somente OKR</span>
-                <span className="block text-xs text-gray-500 dark:text-slate-400">Ele vê SÓ a aba OKR — nada de engenharia (dashboard, projetos, etc.).</span>
+                <span className="block text-xs text-gray-500 dark:text-slate-400">{representanteEfetivo ? 'O representante é sempre "Somente OKR": o OKR, a Agenda e os indicadores dele — nada de engenharia.' : 'Ele vê SÓ a aba OKR — nada de engenharia (dashboard, projetos, etc.).'}</span>
               </span>
             </label>
             {canMarkOkrViewer && editingUserId !== EDSON_UUID && (
             <label className="md:col-span-2 flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
                 type="checkbox"
-                checked={okrViewer || role === 'ADM_EXTERNO'}
-                disabled={role === 'ADM_EXTERNO'}
+                checked={viewerEfetivo}
+                disabled={role === 'ADM_EXTERNO' || representanteEfetivo}
                 onChange={e => { setOkrViewer(e.target.checked); if (e.target.checked) { setOkrEnabled(false); setOkrOnly(false); } }}
                 className="w-5 h-5 rounded accent-violet-600"
               />
@@ -997,7 +1037,7 @@ ALTER TABLE public.innovations DROP CONSTRAINT IF EXISTS innovations_type_check;
 
 -- 2. Atualizar Cargos Permitidos
 ALTER TABLE public.users ADD CONSTRAINT users_role_check 
-CHECK (role IN ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR', 'ADM_EXTERNO'));
+CHECK (role IN ('GESTOR', 'PROJETISTA', 'CEO', 'QUALIDADE', 'PROCESSOS', 'COORDENADOR', 'ADM_EXTERNO', 'DIRETOR_INDUSTRIAL', 'REPRESENTANTE'));
 
 -- 3. Garantir que as colunas necessárias existem na tabela de projetos
 ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS client_name text;

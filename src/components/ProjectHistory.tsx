@@ -10,6 +10,7 @@ import { useToast } from './Toast';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { useLanguage } from '../i18n/LanguageContext';
 import { resolveUser, buildUsersMap, resolveProjectUser } from '../utils/userUtils';
+import { ehVisaoCeo, ehRepresentante, rotuloCargo } from '../utils/cargos';
 import { podeVerReais, custoEmReaisOrdemHistorico, taxaNaData, custoParaExportar, usuariosParaSeletor, rotuloDesligado, CORTE_SERIE, diaJoinvilleOuNulo } from '../utils/custoHora';
 
 interface ProjectHistoryProps {
@@ -606,7 +607,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
       case 'COORDENADOR': return t('coordenador');
       case 'PROCESSOS': return t('processos');
       case 'ADM_EXTERNO': return t('adm_externo' as any);
-      default: return role;
+      // Os dois cargos de 06/10/2026 pela tradução, como os outros (es/en saem traduzidos).
+      case 'DIRETOR_INDUSTRIAL': return t('diretor_industrial');
+      case 'REPRESENTANTE': return t('representante');
+      // Os outros (QUALIDADE) pelo rótulo único — o código do banco não aparece cru (a linha já é maiúscula pelo estilo).
+      default: return rotuloCargo(role);
     }
   };
 
@@ -1162,7 +1167,8 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
             ) : (
                 filteredProjects.map((project) => {
                     const user = resolveUser(project.userId, data.users) || (project.userId ? usersMap[project.userId] : null);
-                    const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
+                    // O Diretor Industrial junto com o CEO (06/10/2026; paridade — o Histórico não abre para nenhum dos dois).
+                    const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) || ehVisaoCeo(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
                     const pActiveSeconds = project.totalActiveSeconds;
                     const pInterruptionSeconds = project.interruptionSeconds || 0;
 
@@ -1277,7 +1283,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                 const taxaDoProjeto = veReais ? taxaNaData(data.settings, project.startTime) : 0;
                 const cost = veReais ? custoEmReaisOrdemHistorico(data.settings, pActiveSeconds, project.startTime) : 0;
 
-                const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
+                const canEdit = ['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role) || ehVisaoCeo(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson';
 
                 return (
                 <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-black/50 transition-colors group">
@@ -1308,7 +1314,7 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                                 >
                                     <Edit className="w-4 h-4" />
                                 </button>
-                                {(['GESTOR', 'COORDENADOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
+                                {(['GESTOR', 'COORDENADOR'].includes(currentUser.role) || ehVisaoCeo(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
                                     <button 
                                         onClick={() => recalculateSingleProject(project)}
                                         className="text-gray-400 dark:text-slate-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 p-1.5 rounded transition"
@@ -1785,7 +1791,11 @@ export const ProjectHistory: React.FC<ProjectHistoryProps> = ({ data, currentUse
                             ) : (
                                 // Desligar sem excluir (Edson, 30/09): quem já tinha saído na data do
                                 // projeto some da escolha; quem já está no registro continua aparecendo.
-                                usuariosParaSeletor<User>(data.users, editForm.startDate, editForm.userId).map(user => {
+                                // O representante (06/10/2026) não é projetista: um NS atribuído a ele sumiria calado
+                                // das contas da engenharia. Só continua aparecendo se já for o dono gravado.
+                                usuariosParaSeletor<User>(data.users, editForm.startDate, editForm.userId)
+                                  .filter(u => !ehRepresentante(u.role) || u.id === editForm.userId)
+                                  .map(user => {
                                     return (
                                         <option key={user.id} value={user.id}>
                                             {user.name} {user.surname ? user.surname : ''}{rotuloDesligado(user)}

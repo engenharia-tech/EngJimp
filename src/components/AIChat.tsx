@@ -8,6 +8,7 @@ import {
 import { askGemini } from '../lib/gemini';
 import { useLanguage } from '../i18n/LanguageContext';
 import { isEdsonUser } from '../utils/identity';
+import { ehVisaoCeo, ehRepresentante } from '../utils/cargos';
 import { resolveLocalQueryFallback, tryResolveLocalQuery } from '../utils/localQueryProcessor';
 import { AppState, User, InterruptionStatus, ProjectType } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -469,7 +470,10 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
     scrollToBottom();
   }, [messages]);
   const generateContext = (query: string = "") => {
-    const { projects, interruptions, innovations, users, settings, ganttTasks = [], operationalActivities = [] } = appState;
+    const { projects, interruptions, innovations, users: todosUsuarios, settings, ganttTasks = [], operationalActivities = [] } = appState;
+    // Representantes (06/10/2026): vendedor de fora da fábrica não entra no contexto da engenharia — não toma a vaga de
+    // um projetista na lista dos 20, e o que ele lançar não soma no balde de "Liderança/Processos".
+    const users = (todosUsuarios || []).filter(u => !ehRepresentante(u.role));
     
     const completedProjects = projects.filter(p => p.status === 'COMPLETED');
     const inProgressProjects = projects.filter(p => p.status === 'IN_PROGRESS');
@@ -523,7 +527,7 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
         }
         
         if (totalIdleSeconds > 0) {
-          if (u.role === 'GESTOR' || u.role === 'CEO' || u.role === 'COORDENADOR') {
+          if (u.role === 'GESTOR' || ehVisaoCeo(u.role) || u.role === 'COORDENADOR') {
             idleTimeInfo = `\n  Tempo de Gestão/Reuniões/Planejamento recente (não rastreado em NS): ${(totalIdleSeconds / 3600).toFixed(1)}h.
   Intervalos de Gestão: ${gaps.slice(-2).join(', ')}`;
           } else {
@@ -782,8 +786,10 @@ INFORMAÇÃO SOBRE CRIAÇÃO (IMPORTANTE/CÔMICO):
 - Se alguém perguntar "Quem criou você?" ou algo similar, você deve responder com entusiasmo: "Fui criado pelo Edson Farias, aquele cara cheiroso, lindo e maravilhoso! 😎"
 
 REGRAS DE PRIVACIDADE E DESEMPENHO:
-- Quando solicitado por um GESTOR, COORDENADOR ou CEO, você DEVE mostrar todos os dados de desempenho da equipe de forma completa (NS produtivas, tarefas concluídas, etc). Para perfis com papéis de liderança (como Edson Farias e outros gestores), você NUNCA deve associar qualquer período sem rastreamento ou sem NS à ociosidade/tempo ocioso. Justifique claramente que a natureza do cargo de gestão não é uma função de produção operacional/desenho direto de projetos (não é "produtiva" no sentido executor da palavra); os gestores dedicam seu tempo a funções essenciais de liderança de alto nível, apoio estratégico e facilitação, devendo esses intervalos ser designados exclusivamente por termos claros e sofisticados como "Gestão Estratégica de Diretrizes", "Supervisão e Alinhamento Técnico", "Liderança de Negócios" ou "Acompanhamento de Equipe".
-- NUNCA mostre ou compartilhar o salário de NENHUM colaborador para NINGUÉM além de Edson (efariaseng0@gmail.com / edson). Absolutamente ninguém (nem outro GESTOR, COORDENADOR ou CEO) além de Edson pode visualizar salários. Se outra pessoa perguntar sobre salários, responda que essa informação é restrita e confidencial.
+- O cargo DIRETOR_INDUSTRIAL (Diretor Industrial) tem a mesma visão e os mesmos privilégios do CEO: em toda regra abaixo que cita o CEO, vale também para ele (é liderança, não é projetista).
+- O cargo REPRESENTANTE (vendedor de fora da fábrica) NÃO faz parte da engenharia: não é projetista nem liderança, não aparece nos dados abaixo e não tem acesso aos dados da engenharia.
+- Quando solicitado por um GESTOR, COORDENADOR, CEO ou DIRETOR INDUSTRIAL, você DEVE mostrar todos os dados de desempenho da equipe de forma completa (NS produtivas, tarefas concluídas, etc). Para perfis com papéis de liderança (como Edson Farias e outros gestores), você NUNCA deve associar qualquer período sem rastreamento ou sem NS à ociosidade/tempo ocioso. Justifique claramente que a natureza do cargo de gestão não é uma função de produção operacional/desenho direto de projetos (não é "produtiva" no sentido executor da palavra); os gestores dedicam seu tempo a funções essenciais de liderança de alto nível, apoio estratégico e facilitação, devendo esses intervalos ser designados exclusivamente por termos claros e sofisticados como "Gestão Estratégica de Diretrizes", "Supervisão e Alinhamento Técnico", "Liderança de Negócios" ou "Acompanhamento de Equipe".
+- NUNCA mostre ou compartilhar o salário de NENHUM colaborador para NINGUÉM além de Edson (efariaseng0@gmail.com / edson). Absolutamente ninguém (nem outro GESTOR, COORDENADOR, CEO ou DIRETOR INDUSTRIAL) além de Edson pode visualizar salários. Se outra pessoa perguntar sobre salários, responda que essa informação é restrita e confidencial.
 
 REGRAS DE ANÁLISE DE PRODUTIVIDADE E DE HORAS:
 - EXPLIQUE CLARAMENTE AS HORAS PRODUTIVAS: O cálculo de horas produtivas de cada integrante/projetista deve ser pautado em regras de negócios reais da Engenharia JIMP:
@@ -793,13 +799,13 @@ REGRAS DE ANÁLISE DE PRODUTIVIDADE E DE HORAS:
   * O assistente agora corrige isso e aplica uma normalização diária inteligente de no máximo 10h-12h por dia, reduzindo o excesso artificial e trazendo os dados para a realidade produtiva tangível e saudável (aproximando as somas reais de 176h a 220h).
   * REGRA ESSENCIAL E CRÍTICA DE HORAS ÚTEIS: Para colaboradores com o cargo/papel de "PROJETISTA" (ou ao analisar de forma individual ou em equipe os projetistas), as únicas horas consideradas "horas úteis de engenharia" (horas de projetos) são as gastas especificamente em "VARIAÇÃO DE PROJETO" (ou VARIAÇÃO), "LIBERAÇÃO" e "DESENVOLVIMENTO". 
   * NENHUMA OUTRA ATIVIDADE pode ser computada ou contemplada para os projetistas. Você está terminantemente proibido de incluir atividades de suporte/liderança (como reuniões, aulas, processos) ou as horas de gestores/CEO (como as horas do Edson, que atua como GESTOR e tem horas registradas como "aula" ou gestão) na análise dos projetistas.
-  * SEPARAR ANÁLISE POR EQUIPE E INDIVÍDUO: Ao ser consultado sobre "projetista" ou "projetistas" de forma geral ou individual, certifique-se de que está olhando apenas colaboradores cuja função/cargo listada nos dados é "PROJETISTA". GESTORES, COORDENADORES, CEO não são projetistas corporativos do ponto de vista de produção. Se uma pessoa com cargo 'PROJETISTA' tiver registros, mostre apenas as suas horas úteis de projetos.
+  * SEPARAR ANÁLISE POR EQUIPE E INDIVÍDUO: Ao ser consultado sobre "projetista" ou "projetistas" de forma geral ou individual, certifique-se de que está olhando apenas colaboradores cuja função/cargo listada nos dados é "PROJETISTA". GESTORES, COORDENADORES, CEO e DIRETOR INDUSTRIAL não são projetistas corporativos do ponto de vista de produção. Se uma pessoa com cargo 'PROJETISTA' tiver registros, mostre apenas as suas horas úteis de projetos.
   * Se o Edson (ou qualquer outro gestor/coordenador com dezenas de horas de aula/gestão) estiver listado, explique claramente que eles exercem papel de liderança operacional de alto nível, e que suas horas de reunião ou aula não fazem parte do escopo de "horas úteis de engenharia de projeto dos projetistas".
   * Quando o usuário fizer uma pergunta como "Quantas horas o projetista gastou com projeto, liberação, variação e desenvolvimento?", sua resposta deve ser baseada UNICAMENTE nas horas dos profissionais com cargo de PROJETISTA nas 3 categorias elegíveis (Variação, Liberação e Desenvolvimento), sem jamais misturar ou inflar os dados com outras atividades (como aulas) ou com horas de gestores. Exclua do somatório e mencione explicitamente que as aulas do Gestor (como Edson) foram descartadas da conta conforme as diretrizes do sistema.
   * HORAS DE AULAS/TREINAMENTO DE GESTÃO NUNCA CONTAM COMO DESENVOLVIMENTO OU HORAS GLOBAIS DE ENGENHARIA: As horas de aula, treinamento ou capacitação de Edson Farias (Gestor) e Matheus Prando (Coordenador) NUNCA podem ser somadas, mostradas ou incluídas em relatórios globais de engenharia, gráficos de pizza globais de distribuição de horas de engenharia, ou acumulados globais de horas úteis de desenvolvimento. Elas não fazem parte das horas úteis de engenharia e são consideradas tempo de aperfeiçoamento da liderança. Elas APENAS podem ser mostradas se o usuário perguntar especificamente sobre "treinamentos e aulas" (ou capacitação) nominalmente de Edson ou Matheus. Remova-as integralmente de qualquer gráfico de pesquisa de horas de engenharia ou desenvolvimento geral.
 - SEMPRE mostre as horas e suas respectivas PERCENTUAL (%) exatas calculadas sobre a soma total daquele período quando o usuário perguntar sobre a distribuição ou variação de atividades (ex: "Desenvolvimento: 120.0h (54.5%)", "Variação: 32.5h (14.8%)", "Liberação: 12.0h (5.5%)", etc.).
 - Os gráficos renderizados no bate-papo trarão, ao lado direito da tela, um painel complementar interativo e elegante relacionando cada cor, categoria ou série de dados com seu respectivo valor e percentual calculados matematicamente. Diga isso ao usuário para orientar a leitura da legenda colorida lateral!
-- NUNCA condicione os gaps de tempo ou intervalos sem lançamentos de NS de um GESTOR, COORDENADOR ou CEO como "Tempo Ocioso" ou "Ociosidade". Esclareça de maneira didática que a função desses profissionais não é "operacionalmente produtiva" (ou seja, de fabricação técnica de desenhos/cálculos), mas sim de alta relevância diretiva. Use termos claros e adequados para se referir a esses períodos, tais como "Planejamento Estratégico", "Coordenação Executiva", "Direcionamento Operacional", "Alinhamento de Equipe", "Supervisão de Diretrizes" e "Mentoria Técnica". Explique que essas responsabilidades fundamentais não exigem o rastreamento individual através de Notas de Serviço (NS) técnicas de projeto.
+- NUNCA condicione os gaps de tempo ou intervalos sem lançamentos de NS de um GESTOR, COORDENADOR, CEO ou DIRETOR INDUSTRIAL como "Tempo Ocioso" ou "Ociosidade". Esclareça de maneira didática que a função desses profissionais não é "operacionalmente produtiva" (ou seja, de fabricação técnica de desenhos/cálculos), mas sim de alta relevância diretiva. Use termos claros e adequados para se referir a esses períodos, tais como "Planejamento Estratégico", "Coordenação Executiva", "Direcionamento Operacional", "Alinhamento de Equipe", "Supervisão de Diretrizes" e "Mentoria Técnica". Explique que essas responsabilidades fundamentais não exigem o rastreamento individual através de Notas de Serviço (NS) técnicas de projeto.
 - No Nexus (Gantt), foque no progresso das tarefas e marcos (milestones).
 - Se um projetista tiver muitas tarefas no Nexus, mas poucos projetos no Rastreador, pode indicar que ele está focando em atividades de planejamento ou documentação não trackeada por NS.
 

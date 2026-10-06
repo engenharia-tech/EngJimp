@@ -117,6 +117,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
           case 'PROJETISTA': return t('projetista');
           case 'PROCESSOS': return t('processos');
           case 'ADM_EXTERNO': return t('adm_externo' as any);
+          // Cargos novos (06/10/2026, pedido do Edson).
+          case 'DIRETOR_INDUSTRIAL': return t('diretor_industrial');
+          case 'REPRESENTANTE': return t('representante');
           default: return role;
       }
   };

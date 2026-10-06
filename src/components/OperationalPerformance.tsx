@@ -55,6 +55,7 @@ import { addAuditLog } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { isExcludedFromEngineering, usersIndex } from '../utils/pndSplit';
 import { rotuloDesligado } from '../utils/custoHora';
+import { ehVisaoCeo, ehRepresentante, foraDaEngenharia } from '../utils/cargos';
 import { ptBR, es, enUS } from 'date-fns/locale';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useToast } from './Toast';
@@ -236,7 +237,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     };
   }, []);
 
-  const canEditOthers = ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role);
+  // O Diretor Industrial entra junto com o CEO (06/10/2026, paridade: hoje nenhum dos dois chega a esta tela).
+  const canEditOthers = ['GESTOR', 'COORDENADOR'].includes(currentUser.role) || ehVisaoCeo(currentUser.role);
   const canEditCurrent = selectedUserId === currentUser.id || (canEditOthers && selectedUserId !== 'ALL');
 
   // When tab is engineering, we might want to default to ALL if allowed
@@ -329,7 +331,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   }, [language]);
 
   const filteredUsers = useMemo(() => {
-    const nonProcessUsers = users.filter(u => u.role !== 'PROCESSOS');
+    // Fora o PROCESSOS e, desde 06/10/2026, o REPRESENTANTE (vendedor não é da equipe de engenharia).
+    const nonProcessUsers = users.filter(u => !foraDaEngenharia(u.role));
     if (canEditOthers) return nonProcessUsers;
     return nonProcessUsers.filter(u => u.id === currentUser.id);
   }, [users, currentUser.id, canEditOthers]);
@@ -348,11 +351,19 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     if (!valido) setSelectedUserId(currentUser.id);
   }, [filteredUsers, selectedUserId, currentUser.id, activeTab, canEditOthers]);
 
+  // Representantes (06/10/2026): vendedor de fora da fábrica não soma nas horas da engenharia — uma "visita a cliente"
+  // ou um "desenvolvimento de cliente" dele não pode virar hora de projeto. (O PROCESSOS segue como estava.)
+  // Vale também para "Equipe Completa" (selectedUserId === 'ALL'), coerente com o seletor, que já o tira.
+  const representanteIds = useMemo(
+    () => new Set((users || []).filter(u => ehRepresentante(u?.role)).map(u => u.id)),
+    [users]
+  );
+
   const filteredActivities = useMemo(() => {
     return activities.filter(a => {
       const activityStart = parseISO(a.startTime);
       const activityEnd = a.endTime ? parseISO(a.endTime) : new Date();
-      const isUser = selectedUserId === 'ALL' ? true : a.userId === selectedUserId;
+      const isUser = selectedUserId === 'ALL' ? !(a.userId && representanteIds.has(a.userId)) : a.userId === selectedUserId;
       if (!isUser) return false;
 
       if (viewMode === 'day') {
@@ -376,13 +387,13 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return activityStart.getFullYear() === selectedDate.getFullYear();
       }
     });
-  }, [activities, selectedDate, selectedUserId, viewMode]);
+  }, [activities, selectedDate, selectedUserId, viewMode, representanteIds]);
 
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
       const projectStart = parseISO(p.startTime);
       const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
-      const isUser = selectedUserId === 'ALL' ? true : p.userId === selectedUserId;
+      const isUser = selectedUserId === 'ALL' ? !(p.userId && representanteIds.has(p.userId)) : p.userId === selectedUserId;
       if (!isUser) return false;
 
       if (viewMode === 'day') {
@@ -404,13 +415,13 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return projectStart.getFullYear() === selectedDate.getFullYear();
       }
     });
-  }, [projects, selectedDate, selectedUserId, viewMode]);
+  }, [projects, selectedDate, selectedUserId, viewMode, representanteIds]);
 
   const filteredInterruptions = useMemo(() => {
     return (interruptions || []).filter(i => {
       const start = parseISO(i.startTime);
       const end = i.endTime ? parseISO(i.endTime) : new Date();
-      const isUser = selectedUserId === 'ALL' ? true : i.designerId === selectedUserId;
+      const isUser = selectedUserId === 'ALL' ? !(i.designerId && representanteIds.has(i.designerId)) : i.designerId === selectedUserId;
       if (!isUser) return false;
 
       if (viewMode === 'day') {
@@ -424,7 +435,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return start.getFullYear() === selectedDate.getFullYear();
       }
     });
-  }, [interruptions, selectedDate, selectedUserId, viewMode]);
+  }, [interruptions, selectedDate, selectedUserId, viewMode, representanteIds]);
 
   // For the global/engineering tab, we need all projects, activities and interruptions for the period (unfiltered by single user)
   const engineeringProjects = useMemo(() => {
@@ -432,6 +443,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     return projects.filter(p => {
       // Corte P&D: participação do Edson sai do painel de engenharia a partir de 01/09/2026.
       if (isExcludedFromEngineering(p.userId, p.startTime, pndIdx)) return false;
+      if (p.userId && representanteIds.has(p.userId)) return false;
       const projectStart = parseISO(p.startTime);
       const projectEnd = p.endTime ? parseISO(p.endTime) : new Date();
 
@@ -446,13 +458,14 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return projectStart.getFullYear() === selectedDate.getFullYear();
       }
     });
-  }, [projects, selectedDate, viewMode, users]);
+  }, [projects, selectedDate, viewMode, users, representanteIds]);
 
   const engineeringActivities = useMemo(() => {
     const pndIdx = usersIndex(users);
     return (activities || []).filter(a => {
       // Corte P&D: atividades do Edson saem do painel de engenharia a partir de 01/09/2026.
       if (isExcludedFromEngineering(a.userId, a.startTime, pndIdx)) return false;
+      if (a.userId && representanteIds.has(a.userId)) return false;
       const activityStart = parseISO(a.startTime);
       const activityEnd = a.endTime ? parseISO(a.endTime) : new Date();
 
@@ -467,13 +480,14 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return activityStart.getFullYear() === selectedDate.getFullYear();
       }
     });
-  }, [activities, selectedDate, viewMode, users]);
+  }, [activities, selectedDate, viewMode, users, representanteIds]);
 
   const engineeringInterruptions = useMemo(() => {
     const pndIdx = usersIndex(users);
     return (interruptions || []).filter(i => {
       // Corte P&D: interrupções do Edson saem do painel de engenharia a partir de 01/09/2026.
       if (isExcludedFromEngineering(i.designerId, i.startTime, pndIdx)) return false;
+      if (i.designerId && representanteIds.has(i.designerId)) return false;
       const start = parseISO(i.startTime);
       const end = i.endTime ? parseISO(i.endTime) : new Date();
 
@@ -488,7 +502,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         return start.getFullYear() === selectedDate.getFullYear();
       }
     });
-  }, [interruptions, selectedDate, viewMode, users]);
+  }, [interruptions, selectedDate, viewMode, users, representanteIds]);
 
   const currentActivity = useMemo(() => {
     return activities.find(a => !a.endTime && a.userId === selectedUserId);
@@ -1320,7 +1334,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
     setIsAddingType(false);
   };
 
-  const isReadOnly = currentUser.role === 'CEO';
+  // (Sem uso hoje.) O Diretor Industrial junto com o CEO (06/10/2026), se um dia for ligada.
+  const isReadOnly = ehVisaoCeo(currentUser.role);
 
   const toggleFlag = async (activity: OperationalActivity) => {
     if (!canEditCurrent) return;
@@ -1503,7 +1518,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
             <Save size={18} />
             <span className="hidden sm:inline">LIBERAÇÃO RETROATIVA</span>
           </button>
-          {['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+          {canEditOthers && (
             <>
               <button
                 onClick={() => setActiveTab('engineering')}
@@ -2403,9 +2418,9 @@ const CurrentActivityTracker: React.FC<{
     }
   }, [activityTypes, selectedType]);
 
-  // Check if the current user is Edson or GESTOR/CEO
+  // Check if the current user is Edson or GESTOR/CEO (o Diretor Industrial junto com o CEO, 06/10/2026)
   const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson' || (currentUser?.name && currentUser.name.toLowerCase().includes('edson'));
-  const isOvertimeAllowed = currentUser?.role === 'GESTOR' || currentUser?.role === 'CEO' || isEdson;
+  const isOvertimeAllowed = currentUser?.role === 'GESTOR' || ehVisaoCeo(currentUser?.role) || isEdson;
 
   if (currentActivity) {
     return (
@@ -2647,6 +2662,7 @@ const EngineeringDashboard: React.FC<{
           return acc + (p?.totalActiveSeconds || 0);
         }, 0);
 
+    // (as atividades do REPRESENTANTE já saem antes, em engineeringActivities — 06/10/2026)
     const activitiesSeconds = relevantActivities.reduce((acc, a) => {
       if (!isGestor && a?.isOvertime) return acc;
       if (!isDevOrProjectActivity(a)) return acc;

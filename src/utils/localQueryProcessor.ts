@@ -1,4 +1,5 @@
 import { AppState, User, InterruptionStatus } from '../types';
+import { ehRepresentante, rotuloCargo } from './cargos';
 
 /**
  * Intelligent client-side rule-based fallback processor for chatbot.
@@ -13,11 +14,13 @@ export const resolveLocalQueryFallback = (
 ): string => {
   const normalized = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const name = currentUser.name;
-  const role = currentUser.role;
+  // O cargo sai pelo rótulo (06/10/2026: o código do banco, ex. DIRETOR_INDUSTRIAL, não aparece cru).
+  const role = rotuloCargo(currentUser.role);
   const email = currentUser.email || 'Não informado';
 
   const projects = appState.projects || [];
-  const users = appState.users || [];
+  // Representantes (06/10/2026): vendedor de fora da fábrica não entra nas fichas nem nos rankings da engenharia.
+  const users = (appState.users || []).filter(u => !ehRepresentante(u.role));
   const interruptions = appState.interruptions || [];
   const ganttTasks = appState.ganttTasks || [];
 
@@ -241,7 +244,7 @@ Não foram localizadas NSs concluídas para **${mentionedUser.name}** no mês se
 *Dados extraídos em tempo real do banco de dados local da Engenharia JIMP*
 
 * **Nome Completo:** ${mentionedUser.name} ${mentionedUser.surname || ''}
-* **Cargo / Função:** \`${mentionedUser.role}\`
+* **Cargo / Função:** \`${rotuloCargo(mentionedUser.role)}\`
 * **E-mail:** \`${mentionedUser.email || 'Não cadastrado'}\`
 ${monthHighlight}
 📊 **Resumo Acumulado de Liberações por Categoria (Tracker):**
@@ -301,7 +304,7 @@ ${projList}
     }).sort((a, b) => b.totalCompleted - a.totalCompleted);
 
     const tableRows = userSummaryList.map(s => {
-      return `| **${s.user.name} ${s.user.surname || ''}**${s.isSelf} | \`${s.user.role}\` | **${s.liberacoesCount}** | **${s.variacoesCount}** | **${s.desenvolvimentosCount}** | **${s.totalCompleted} NSs** | ${s.totalInProgress} |`;
+      return `| **${s.user.name} ${s.user.surname || ''}**${s.isSelf} | \`${rotuloCargo(s.user.role)}\` | **${s.liberacoesCount}** | **${s.variacoesCount}** | **${s.desenvolvimentosCount}** | **${s.totalCompleted} NSs** | ${s.totalInProgress} |`;
     }).join('\n');
 
     return `### 📦 Quantidades Exatas de Projetos (NS) Liberados por Projetista por Categoria
@@ -364,7 +367,7 @@ ${tableRows}
       else medal = `[${index + 1}º]`;
 
       const isSelf = stat.user.id === currentUser.id ? ' **(Você)**' : '';
-      return `| ${medal} | **${stat.user.name} ${stat.user.surname || ''}**${isSelf} | \`${stat.user.role}\` | **${stat.completed}** | ${stat.inProgress} | ${stat.total} | ${stat.completedGantt}/${stat.ganttCount} |`;
+      return `| ${medal} | **${stat.user.name} ${stat.user.surname || ''}**${isSelf} | \`${rotuloCargo(stat.user.role)}\` | **${stat.completed}** | ${stat.inProgress} | ${stat.total} | ${stat.completedGantt}/${stat.ganttCount} |`;
     }).join('\n');
 
     return `### 🏆 Ranking Geral de Liberação de Projetos (Tempo Real)
@@ -671,7 +674,7 @@ const ANALYTICAL_HINTS = [
 
 const hasFactualIntent = (query: string, appState: AppState, currentUser: User): boolean => {
   const normalized = normalizeText(query);
-  const users = appState.users || [];
+  const users = (appState.users || []).filter(u => !ehRepresentante(u.role)); // o mesmo corte da ficha (06/10/2026)
   const any = (arr: string[]): boolean => arr.some(k => normalized.includes(k));
 
   // 1. Nome de um colaborador mencionado (ficha operacional dele)

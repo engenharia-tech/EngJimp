@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { User } from '../types';
 import { addAuditLog } from '../services/storageService';
+import { ehVisaoCeo, ehRepresentante } from '../utils/cargos';
 import { Plus, Pencil, Archive, ArchiveRestore, Trash2, AlertTriangle, Calculator, Link2, Users, Search, Save, Loader2 } from 'lucide-react';
 import { useToast } from '../components/Toast';
-import { KpisAcesso, KpisIndicador, KpisSetor, KpisTipoAtividade, FREQ_ROTULO, fmtValor, gerencia, hojeSP, inicioPeriodo, metaVigente, setorChave } from './kpis';
+import { KpisAcesso, KpisIndicador, KpisSetor, KpisTipoAtividade, FREQ_ROTULO, fmtValor, gerencia, hojeSP, inicioPeriodo, metaVigente, setorChave, ehSetorDeRepresentante, SETOR_DE_REPRESENTANTE_MSG } from './kpis';
 import { KpisDados } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
 import { KpisIndicadorModal } from './KpisIndicadorModal';
@@ -20,8 +21,11 @@ export const KpisCadastro: React.FC<{
   const admin = !!acesso.administra;
   const setorFixo = admin ? null : acesso.setorNome;
   const { addToast } = useToast();
-  // Decisão do Edson, 01/10: o CEO é visão macro — mexer no setor das pessoas, ele pede.
-  const ceoSoVe = currentUser.role === 'CEO' && currentUser.id !== EDSON_ID;
+  // Decisão do Edson, 01/10: o CEO é visão macro — mexer no setor das pessoas, ele pede. O Diretor Industrial
+  // também (06/10/2026: "o mesmo privilégio e visualização do CEO").
+  const ceoSoVe = ehVisaoCeo(currentUser.role) && currentUser.id !== EDSON_ID;
+  // REPRESENTANTE (06/10/2026): só indicador lançado à mão.
+  const soManual = ehRepresentante(currentUser.role);
   const [setores, setSetores] = useState<KpisSetor[] | null | undefined>(undefined); // undefined = lendo
   const [tipos, setTipos] = useState<KpisTipoAtividade[] | null | undefined>(undefined);
   const [modal, setModal] = useState<{ ind?: KpisIndicador } | null>(null);
@@ -29,8 +33,9 @@ export const KpisCadastro: React.FC<{
 
   useEffect(() => {
     service.setores().then(setSetores).catch(() => setSetores(null));
-    service.tiposAtividade().then(setTipos).catch(() => setTipos(null));
-  }, [service, dados.lidoEm]);
+    // O representante (só lançado à mão) não precisa dos tipos de atividade da engenharia (06/10/2026).
+    if (soManual) setTipos([]); else service.tiposAtividade().then(setTipos).catch(() => setTipos(null));
+  }, [service, dados.lidoEm, soManual]);
 
   const chavesComGente = useMemo(() => new Set((setores || []).map(s => s.chave)), [setores]);
   // Os avisos de cadastro de pessoas são de quem administra (a lista de setores só vem para quem vê todos).
@@ -137,15 +142,17 @@ Não dá para desfazer (fica só um registro na auditoria). Para guardar os núm
       {admin && <PessoasESetores users={users} currentUser={currentUser} setores={setores || []} service={service}
         onMudou={(id, setor) => { onUsuariosMudou?.(id, setor); onGravou(); }} />}
 
-      {modal && <KpisIndicadorModal indicador={modal.ind} dados={dados} service={service} setores={setores ?? null} tipos={tipos} ceoSoVe={ceoSoVe} setorFixo={setorFixo} onFechar={() => setModal(null)} onGravou={onGravou} />}
+      {modal && <KpisIndicadorModal indicador={modal.ind} dados={dados} service={service} setores={setores ?? null} tipos={tipos} ceoSoVe={ceoSoVe} setorFixo={setorFixo} soManual={soManual} onFechar={() => setModal(null)} onGravou={onGravou} />}
     </div>
   );
 };
 
 // PESSOAS E SETORES (01/10) — decisão do Edson, 30/09: "Só o Edson e os admins de OKR mudam o SETOR de
 // qualquer pessoa"; e, 01/10, o CEO é visão macro ("não pode dar cargo a ninguem e nem liberar acesso"):
-// para o CEO (mesmo admin de OKR) a lista é só leitura. O setor é a porta do KPI do setor. Grava SÓ o
-// setor, por um caminho próprio do servidor (que confere quem pede).
+// para o CEO (mesmo admin de OKR) a lista é só leitura — e para o Diretor Industrial (06/10). O setor é a
+// porta do KPI do setor. Grava SÓ o setor, por um caminho próprio do servidor (que confere quem pede).
+// O REPRESENTANTE (06/10) tem um setor só dele, posto pelo banco: a linha dele é só leitura, e o setor de um
+// representante não é sugerido a ninguém.
 const LinhaPessoa: React.FC<{ u: User; setores: KpisSetor[]; podeEditar: boolean; service: KpisService; currentUser: User; onMudou: (id: string, setor: string) => void }> = ({ u, setores, podeEditar, service, currentUser, onMudou }) => {
   const { addToast } = useToast();
   const atual = (u.sector || '').trim();
@@ -155,6 +162,9 @@ const LinhaPessoa: React.FC<{ u: User; setores: KpisSetor[]; podeEditar: boolean
   const mudou = txt.trim() !== atual;
   const salvar = async () => {
     if (!mudou || gravando) return;
+    // O setor de um representante é só dele (06/10/2026): pôr outra pessoa nele abriria os indicadores do
+    // representante a ela. Pela chave ("Representante - João", sem acento…); o servidor recusa o mesmo.
+    if (ehSetorDeRepresentante(txt)) { addToast(SETOR_DE_REPRESENTANTE_MSG, 'error'); return; }
     setGravando(true);
     try {
       const { gravou } = await service.mudarSetor(u.id, txt.trim(), atual);
@@ -184,7 +194,7 @@ const LinhaPessoa: React.FC<{ u: User; setores: KpisSetor[]; podeEditar: boolean
           <input value={txt} onChange={e => setTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') salvar(); }} list="kpis-setores-existentes" maxLength={60}
             aria-label={`Setor de ${u.name}`} placeholder="sem setor"
             className="w-full max-w-[220px] px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
-        ) : <span className="text-xs text-slate-500 dark:text-slate-400">{atual || '—'}{u.id === EDSON_ID && currentUser.id !== EDSON_ID ? <span className="text-[10px]"> (só o Edson muda o dele)</span> : null}</span>}
+        ) : <span className="text-xs text-slate-500 dark:text-slate-400">{atual || '—'}{u.id === EDSON_ID && currentUser.id !== EDSON_ID ? <span className="text-[10px]"> (só o Edson muda o dele)</span> : ehRepresentante(u.role) ? <span className="text-[10px]"> (o setor do representante é só dele, posto automaticamente)</span> : null}</span>}
       </td>
       <td className="px-5 py-2 text-right">
         {podeEditar && mudou && (
@@ -199,8 +209,9 @@ const LinhaPessoa: React.FC<{ u: User; setores: KpisSetor[]; podeEditar: boolean
 
 const EDSON_ID = '1e570c78-7278-4e8d-a90e-a820c11bb07a';
 const PessoasESetores: React.FC<{ users: User[]; currentUser: User; setores: KpisSetor[]; service: KpisService; onMudou: (id: string, setor: string) => void }> = ({ users, currentUser, setores, service, onMudou }) => {
-  // Decisão do Edson, 01/10: o CEO é visão macro — não dá cargo nem libera acesso (o servidor confere).
-  const ceoSoVe = currentUser.role === 'CEO' && currentUser.id !== EDSON_ID;
+  // Decisão do Edson, 01/10: o CEO é visão macro — não dá cargo nem libera acesso (o servidor confere). O Diretor
+  // Industrial também (06/10/2026).
+  const ceoSoVe = ehVisaoCeo(currentUser.role) && currentUser.id !== EDSON_ID;
   const [busca, setBusca] = useState('');
   const lista = useMemo(() => {
     const q = setorChave(busca);
@@ -213,20 +224,20 @@ const PessoasESetores: React.FC<{ users: User[]; currentUser: User; setores: Kpi
     <details className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden">
       <summary className="px-5 py-3 cursor-pointer select-none text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 flex items-center gap-2">
         <Users size={14} /> Pessoas e setores ({(users || []).filter(u => !/^zz_/i.test(u.username || '')).length})
-        <span className="normal-case font-normal tracking-normal text-[11px] text-slate-400 ml-auto">{ceoSoVe ? 'o setor abre o KPI do setor — o CEO acompanha; para mudar, peça ao Edson' : 'o setor abre o KPI do setor — só o Edson e os admins de OKR (fora o CEO) mudam'}</span>
+        <span className="normal-case font-normal tracking-normal text-[11px] text-slate-400 ml-auto">{ceoSoVe ? 'o setor abre o KPI do setor — o CEO e o Diretor Industrial acompanham; para mudar, peça ao Edson' : 'o setor abre o KPI do setor — só o Edson e os admins de OKR (fora o CEO e o Diretor Industrial) mudam'}</span>
       </summary>
       <div className="px-5 pb-3 flex items-center gap-2">
         <Search size={14} className="text-slate-400" />
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="procurar pessoa ou setor" aria-label="Procurar pessoa ou setor"
           className="flex-1 max-w-sm px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
-      <datalist id="kpis-setores-existentes">{setores.map(s => <option key={s.chave} value={s.nome} />)}</datalist>
+      <datalist id="kpis-setores-existentes">{setores.filter(s => !ehSetorDeRepresentante(s.nome)).map(s => <option key={s.chave} value={s.nome} />)}</datalist>
       <div className="overflow-x-auto max-h-96">
         <table className="w-full text-sm min-w-[520px]">
           <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
             {lista.map(u => (
               <LinhaPessoa key={u.id} u={u} setores={setores} service={service} currentUser={currentUser} onMudou={onMudou}
-                podeEditar={!ceoSoVe && (u.id !== EDSON_ID || currentUser.id === EDSON_ID)} />
+                podeEditar={!ceoSoVe && !ehRepresentante(u.role) && (u.id !== EDSON_ID || currentUser.id === EDSON_ID)} />
             ))}
             {!lista.length && <tr><td className="px-5 py-4 text-sm text-slate-400">Ninguém com esse nome.</td></tr>}
           </tbody>

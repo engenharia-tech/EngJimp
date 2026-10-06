@@ -6,6 +6,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { recalculateAllInterruptionTimes, recalculateAllProjectTimes, getDatabaseStats, addAuditLog } from '../services/storageService';
 import { authHeaders } from '../services/authToken';
 import { podeVerReais, avisoSemSerie, taxaNaData, hojeJoinville, modoManual, CORTE_SERIE } from '../utils/custoHora';
+import { rotuloCargo } from '../utils/cargos';
 
 // 'AAAA-MM-DD' → 'dd/mm/aaaa' pelo texto (sem Date: nada de fuso trocar o dia).
 const diaBr = (dia: string): string => {
@@ -304,7 +305,8 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                 <option value={30}>30 minutos</option>
               </select>
             </div>
-            {/* Custo/hora — R$ só para o Edson e os CEOs (decisão do Edson, 30/09/2026). Para os outros o
+            {/* Custo/hora — R$ só para o Edson e os CEOs (decisão do Edson, 30/09/2026; o Diretor Industrial vê
+                como o CEO desde 06/10/2026). Para os outros o
                 bloco inteiro vira um aviso, sem interruptor e sem campo: o servidor também ignora o
                 custo/hora vindo deles (/api/settings/save). */}
             {!veReais ? (
@@ -315,7 +317,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                   ? 'O custo/hora por período ainda não foi instalado (falta rodar a migração 022). Até lá, as telas mostram só horas.'
                   : custoNaoCarregou
                     ? 'Não consegui ler o custo/hora agora (sessão vencida ou sem conexão). Saia e entre de novo; até lá, as telas mostram só horas.'
-                    : 'Custo/hora: visível só para o Edson e os CEOs.'}
+                    : 'Custo/hora: visível só para o Edson, os CEOs e o Diretor Industrial.'}
               </div>
             </div>
             ) : (
@@ -367,7 +369,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                       Custo/hora de hoje ({diaBr(hoje)}): {brl(indiceVigente >= 0 ? periodos[indiceVigente].taxa : 0)}
                     </p>
                     <p className="text-[10px] text-blue-600 dark:text-blue-400">
-                      Média dos salários da engenharia ÷ 220 h por mês (fora CEO, PROCESSOS, ADM Externo e salário zerado; de {diaBr(CORTE_SERIE)} em diante, sem o salário do Edson).
+                      Média dos salários da engenharia ÷ 220 h por mês (fora CEO, Diretor Industrial, PROCESSOS, ADM Externo, Representante e salário zerado; de {diaBr(CORTE_SERIE)} em diante, sem o salário do Edson).
                       A série muda sozinha quando o cadastro muda: um aumento vale do dia em que é salvo, e quem é desligado sai no dia seguinte ao último dia.
                     </p>
                   </div>
@@ -549,7 +551,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                                     {user.name} {user.surname || ''}
                                   </p>
                                   <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono truncate">
-                                    {user.role} {hasEmail ? `• ${userEmail}` : '• (Sem E-mail Cadastrado)'}
+                                    {rotuloCargo(user.role)} {hasEmail ? `• ${userEmail}` : '• (Sem E-mail Cadastrado)'}
                                   </p>
                                 </div>
                               </div>

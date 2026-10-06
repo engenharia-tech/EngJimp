@@ -23,6 +23,7 @@ import {
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { authHeaders } from '../services/authToken';
 import { podeVerReais, custoEmReais, usuariosParaSeletor, rotuloDesligado } from '../utils/custoHora';
+import { ehVisaoCeo, ehRepresentante, rotuloCargo } from '../utils/cargos';
 
 interface InterruptionManagerProps {
   data: AppState;
@@ -92,8 +93,9 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
     return email === 'efariaseng0@gmail.com' || username === 'edson' || (name && name.includes('edson')) || false;
   }, [currentUser]);
 
-  const canManage = currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR' || currentUser.role === 'CEO' || isEdson;
-  const isCEO = currentUser.role === 'CEO' && !isEdson;
+  // O Diretor Industrial vale como o CEO nas duas regras (06/10/2026; paridade — esta tela não abre para nenhum dos dois).
+  const canManage = currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR' || ehVisaoCeo(currentUser.role) || isEdson;
+  const isCEO = ehVisaoCeo(currentUser.role) && !isEdson;
 
   useEffect(() => {
     console.log("[InterruptionManager] Current User Evaluation:", {
@@ -775,9 +777,12 @@ export const InterruptionManager: React.FC<InterruptionManagerProps> = ({
                   >
                     <option value="">Selecione o Projetista</option>
                     {/* Desligar sem excluir (Edson, 30/09): some quem já tinha saído na data da parada; o já escolhido fica. */}
-                    {usuariosParaSeletor<User>(data.users, formStartDate, formDesignerId).map(u => (
+                    {/* O representante (06/10/2026) não é projetista: a parada dele sumiria das contas da engenharia. Só fica se já for o escolhido. */}
+                    {usuariosParaSeletor<User>(data.users, formStartDate, formDesignerId)
+                      .filter(u => !ehRepresentante(u.role) || u.id === formDesignerId)
+                      .map(u => (
                       <option key={u.id} value={u.id}>
-                        {u.name} {u.surname || ''}{rotuloDesligado(u)} ({u.role})
+                        {u.name} {u.surname || ''}{rotuloDesligado(u)} ({rotuloCargo(u.role)})
                       </option>
                     ))}
                   </select>

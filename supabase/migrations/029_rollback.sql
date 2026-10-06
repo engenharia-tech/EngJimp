@@ -13,6 +13,14 @@ begin;
 set local search_path = public, extensions;
 set local lock_timeout = '5s';
 
+-- 030 (06/10/2026): o REPRESENTANTE é gente de fora e só existe porque a 029 tira a engenharia de quem é "Somente OKR".
+-- Desfazer a 029 com representante cadastrado reabriria a engenharia (e o R$) para ele, calado: recusa.
+do $$ begin
+  if exists (select 1 from public.users where role = 'REPRESENTANTE') then
+    raise exception 'KPI 029_rollback: há representante cadastrado — desfazer a 029 abriria a engenharia para ele. Troque o cargo (ou desligue) antes. Nada foi mudado.';
+  end if;
+end $$;
+
 do $$
 declare
   t text;

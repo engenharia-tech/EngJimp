@@ -59,6 +59,7 @@ import { addGanttTask, updateGanttTask, deleteGanttTask, addAuditLog, fetchDelet
 import { useToast } from '../Toast';
 import { User } from '../../types';
 import { hojeJoinville, rotuloDesligado, usuariosParaSeletor } from '../../utils/custoHora';
+import { ehRepresentante } from '../../utils/cargos';
 
 const generateId = () => {
   try {
@@ -1676,7 +1677,10 @@ const AssigneePicker = ({ assignedTo, users, onUpdate }: { assignedTo: string[],
   // aparece quem está ativo hoje. Quem já está atribuído continua na lista, com "(desligado)",
   // para poder ser tirado — e quem estava atribuído quando a lista abriu fica até ela fechar
   // (tirar sem querer tem volta; a mudança grava na hora).
-  const escolhiveis = usuariosParaSeletor(users, hojeJoinville(), [...assignedTo, ...atribuidosAoAbrir]);
+  // O representante (06/10/2026) não é responsável de tarefa da engenharia: só continua se já estiver atribuído.
+  const manterNoPicker = [...assignedTo, ...atribuidosAoAbrir];
+  const escolhiveis = usuariosParaSeletor(users, hojeJoinville(), manterNoPicker)
+    .filter(u => !ehRepresentante(u.role) || manterNoPicker.includes(u.id));
   const filteredUsers = escolhiveis.filter(u =>
     u.name.toLowerCase().includes(search.toLowerCase()) || 
     u.email?.toLowerCase().includes(search.toLowerCase())
@@ -1950,7 +1954,10 @@ export const TaskEditorModal = ({ isOpen, task, onClose, onSave, onDelete, users
   // aparece para escolha NOVA quem está ativo hoje. Quem a tarefa já tinha quando o modal abriu
   // (e quem está marcado agora) continua, com "(desligado)" — desmarcar sem querer tem volta.
   const [atribuidosAoAbrir] = useState<string[]>(() => (Array.isArray(task?.assignedTo) ? task.assignedTo : []));
-  const responsaveis = usuariosParaSeletor(users, hojeJoinville(), [...atribuidosAoAbrir, ...(formData?.assignedTo || [])]);
+  // O representante (06/10/2026) fica fora da escolha nova, como no seletor da linha.
+  const manterNoModal: string[] = [...atribuidosAoAbrir, ...(formData?.assignedTo || [])];
+  const responsaveis = usuariosParaSeletor(users, hojeJoinville(), manterNoModal)
+    .filter((u: AppUser) => !ehRepresentante(u.role) || manterNoModal.includes(u.id));
 
   // Fecha o modal com Escape.
   useEffect(() => {

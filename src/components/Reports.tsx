@@ -45,6 +45,13 @@ import {
 import { analyzePerformance } from '../services/geminiService';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ProjectType } from '../types';
+import { ehRepresentante } from '../utils/cargos';
+
+// Representantes (06/10/2026): vendedor de fora da fábrica não entra na produtividade nem na "atividade por
+// projetista" — uma "visita a cliente" dele viraria hora de DESENVOLVIMENTO da engenharia. (Os outros cargos seguem
+// como estavam.)
+const idsDeRepresentantes = (users: User[]): Set<string> =>
+  new Set((users || []).filter(u => ehRepresentante(u.role)).map(u => u.id));
 
 interface ReportsProps {
   data: AppState;
@@ -204,9 +211,11 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
   const productivityData = useMemo(() => {
     const pndIdx = usersIndex(data.users);
+    const repIds = idsDeRepresentantes(data.users);
     const filtered = data.projects.filter(p => {
       // Corte P&D: participação do Edson sai do relatório a partir de 01/09/2026.
       if (isExcludedFromEngineering(p.userId, p.startTime, pndIdx)) return false;
+      if (p.userId && repIds.has(p.userId)) return false;
       if (!isProjectInPeriod(p)) return false;
 
       // Role-based filtering: Designers only see their own
@@ -230,6 +239,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       if (!a.startTime) return false;
       // Corte P&D: atividades do Edson saem do relatório a partir de 01/09/2026.
       if (isExcludedFromEngineering(a.userId, a.startTime, pndIdx)) return false;
+      if (a.userId && repIds.has(a.userId)) return false;
       if (!isDateInPeriod(new Date(a.startTime))) return false;
 
       if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) {
@@ -424,9 +434,11 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
 
   const designerData = useMemo(() => {
     const pndIdx = usersIndex(data.users);
+    const repIds = idsDeRepresentantes(data.users);
     const filtered = data.projects.filter(p => {
       // Corte P&D: participação do Edson sai do ranking a partir de 01/09/2026.
       if (isExcludedFromEngineering(p.userId, p.startTime, pndIdx)) return false;
+      if (p.userId && repIds.has(p.userId)) return false;
       // Include all projects with activity in the period
       if (!isProjectInPeriod(p)) return false;
 
@@ -506,6 +518,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       if (!a.startTime) return;
       // Corte P&D: atividades do Edson saem do ranking a partir de 01/09/2026.
       if (isExcludedFromEngineering(a.userId, a.startTime, pndIdx)) return;
+      if (a.userId && repIds.has(a.userId)) return;
       if (!isDateInPeriod(new Date(a.startTime))) return;
       if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) return;
 

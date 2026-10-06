@@ -415,6 +415,7 @@ export const kpisErrorMessage = (e: any, fallback: string, leitura = false): str
   if (/KPIS_MOTIVO_LONGO/.test(m)) return 'O motivo vai até 300 letras. Nada foi salvo.';
   if (/KPIS_MOTIVO/.test(m)) return 'Diga o motivo da correção (pelo menos 3 letras). Nada foi salvo.';
   if (/KPIS_CALCULADO/.test(m)) return 'Este indicador é calculado sozinho pela base — não se lança à mão.';
+  if (/KPIS_REPRESENTANTE_SO_MANUAL/.test(m)) return 'No setor de um representante (e pelo próprio representante) só entra indicador lançado à mão — o calculado lê a base da engenharia. Nada foi salvo.';
   if (/KPIS_ESCOPO_SETOR/.test(m)) return 'Contar horas, projetos ou paradas de "todo mundo" é só do Edson e dos admins de OKR (inclui o P&D, que é reservado) — use as pessoas do setor ou a régua da engenharia. Nada foi salvo.';
   if (/KPIS_EXCLUIR_CONFIRMA/.test(m)) return 'O número de lançamentos mudou enquanto a tela estava aberta — atualizei; confira e confirme de novo. Nada foi apagado.';
   if (/KPIS_ARQUIVADO/.test(m)) return 'Este indicador está arquivado — não recebe lançamentos.';

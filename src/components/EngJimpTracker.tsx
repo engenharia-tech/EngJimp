@@ -9,6 +9,7 @@ import { authHeaders } from '../services/authToken';
 import { triggerExcelUpdate } from '../services/webhookService';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
+import { ehVisaoCeo, rotuloCargo } from '../utils/cargos';
 
 // SUBSTITUA ISSO PELA SUA URL DO WEBHOOK DO TEAMS
 const TEAMS_WEBHOOK_URL = "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL_HERE";
@@ -1469,7 +1470,8 @@ JIMPNEXUS
       {!activeProject && (
         <div className="space-y-8">
           
-          {/* New Project Form - GESTOR, CEO, COORDENADOR, PROJETISTA */}
+          {/* New Project Form - GESTOR, CEO, COORDENADOR, PROJETISTA (o Diretor Industrial junto com o CEO, 06/10/2026 —
+              paridade: o rastreador não abre para nenhum dos dois, canUseTracker) */}
           {openInterruption ? (
             /* Active Interruption Card */
             <div className="bg-red-50 dark:bg-red-950/20 border-2 border-red-500 dark:border-red-900 rounded-xl p-6 shadow-lg animate-in fade-in slide-in-from-top-4 duration-300">
@@ -1522,7 +1524,7 @@ JIMPNEXUS
                 </div>
               </div>
             </div>
-          ) : ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') ? (
+          ) : (['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') || ehVisaoCeo(currentUser?.role)) ? (
               <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-md border border-gray-100 dark:border-slate-700 border-l-4 border-l-blue-500">
                 <h2 className="text-lg font-mono font-bold uppercase tracking-[0.12em] mb-4 flex items-center text-black dark:text-white">
                   <Clock className="w-5 h-5 mr-2.5 text-blue-600 dark:text-blue-400" />
@@ -1716,7 +1718,7 @@ JIMPNEXUS
                 </div>
                 <h3 className="text-lg font-bold text-black dark:text-white mb-2">{t('viewMode')}</h3>
                 <p className="text-black dark:text-white max-w-md mx-auto">
-                    {t('viewModeDesc', { role: currentUser?.role })}
+                    {t('viewModeDesc', { role: rotuloCargo(currentUser?.role) })}
                 </p>
             </div>
           )}
@@ -1750,7 +1752,7 @@ JIMPNEXUS
                         </div>
                         
                         <div className="flex gap-2 mt-3">
-                            {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') && (
+                            {(['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') || ehVisaoCeo(currentUser?.role)) && (
                                 <button 
                                   onClick={() => handleResumeFromList(p)}
                                   disabled={isSaving}
@@ -1765,7 +1767,7 @@ JIMPNEXUS
                                 </button>
                             )}
 
-                            {['CEO', 'COORDENADOR'].includes(currentUser?.role || '') && (
+                            {(currentUser?.role === 'COORDENADOR' || ehVisaoCeo(currentUser?.role)) && (
                                 <button 
                                     onClick={() => setSelectedProjectDetails(p)}
                                     className="px-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 font-bold py-2 rounded hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors flex items-center justify-center shadow-sm"
@@ -2112,7 +2114,7 @@ JIMPNEXUS
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                    {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') && (
+                    {(['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') || ehVisaoCeo(currentUser?.role)) && (
                         <>
                             <button 
                                 onClick={handlePauseProject}
@@ -2193,7 +2195,7 @@ JIMPNEXUS
                          </label>
                      </div>
                      <div className="md:col-span-1">
-                         {['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') && (
+                         {(['GESTOR', 'COORDENADOR', 'PROJETISTA'].includes(currentUser?.role || '') || ehVisaoCeo(currentUser?.role)) && (
                              <button 
                                 onClick={handleAddVariation}
                                 className="w-full bg-purple-600 hover:bg-purple-700 text-white p-2 rounded flex items-center justify-center shadow-sm"

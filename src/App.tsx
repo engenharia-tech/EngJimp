@@ -79,6 +79,7 @@ import { ToastProvider, useToast } from './components/Toast';
 import { useLanguage } from './i18n/LanguageContext';
 import { Language } from './i18n/translations';
 import { useAppState } from './contexts/StateContext';
+import { ehVisaoCeo, ehRepresentante, CARGOS_VISAO_CEO } from './utils/cargos';
 
 interface NavItemProps {
   id: any;
@@ -537,6 +538,9 @@ const AppContent: React.FC = () => {
     if (!currentUser || data.interruptions.length === 0) return;
     // O visualizador do OKR não recebe aviso da engenharia (o banco nem lhe entrega as interrupções).
     if (currentUser.okrViewer || currentUser.role === 'ADM_EXTERNO') return;
+    // Nem o "Somente OKR" (06/10/2026: inclui o representante, que é sempre "Somente OKR"). A mesma régua do
+    // isOkrOnly (declarado mais abaixo), pelo cadastro do login, como a linha de cima. O Edson nunca é restrito.
+    if ((currentUser.username || '').trim().toLowerCase() !== 'edson' && (currentUser.okrOnly || ehRepresentante(currentUser.role))) return;
 
     const checkAlerts = () => {
       const now = new Date().getTime();
@@ -574,6 +578,10 @@ const AppContent: React.FC = () => {
     // atividades esquecidas fica com o navegador de quem pode gravar.
     const meV = (data.users || []).find(u => u.id === currentUser.id);
     if ((meV?.okrViewer ?? currentUser.okrViewer) || (meV?.role ?? currentUser.role) === 'ADM_EXTERNO') return;
+    // O "Somente OKR" (06/10/2026: inclui o representante) não corrige atividades da engenharia — a mesma
+    // régua do isOkrOnly (declarado mais abaixo). O Edson nunca é restrito.
+    if ((currentUser.username || '').trim().toLowerCase() !== 'edson'
+      && ((meV?.okrOnly ?? currentUser.okrOnly) || ehRepresentante(meV?.role ?? currentUser.role))) return;
     // 029 (05/10/2026): a divisão usa o horário de trabalho de Configurações — só com a linha LIDA do banco
     // nesta carga (senão seria o padrão 07:30–17:30 ou uma cópia velha do navegador, gravando cortes errados).
     if (!data.settings.carregadoDoBanco) return;
@@ -660,7 +668,7 @@ const AppContent: React.FC = () => {
   // Who can see ALL project history?
   const canSeeAllHistory = useMemo(() => {
       if (!currentUser) return false;
-      return ['GESTOR', 'CEO', 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);
+      return ['GESTOR', ...CARGOS_VISAO_CEO, 'COORDENADOR', 'PROJETISTA'].includes(currentUser.role);   // o Diretor Industrial como o CEO (06/10)
   }, [currentUser]);
 
   // "Admin de visualização" do OKR (users.okr_viewer): vê Indicadores e Linha do
@@ -677,17 +685,19 @@ const AppContent: React.FC = () => {
   // "Somente OKR": usuário que só pode ver a aba OKR — nada de engenharia.
   // Vem de users.okr_only (marcado na tela de Usuários). O Edson nunca é restrito.
   // O admin de visualização também não vê engenharia.
+  // O REPRESENTANTE (06/10/2026) é "Somente OKR" pelo CARGO, mesmo sem a marca (como o ADM_EXTERNO é
+  // visualizador pelo cargo): um vendedor cadastrado sem a marca não ganha Dashboard, Nexus nem Gantt.
   const isOkrOnly = useMemo(() => {
       const uname = (currentUser?.username || '').trim().toLowerCase();
       if (uname === 'edson') return false;
       if (isOkrViewer) return true;
       const me = (data.users || []).find(u => u.id === currentUser?.id);
-      return !!(me?.okrOnly ?? currentUser?.okrOnly);
+      return !!(me?.okrOnly ?? currentUser?.okrOnly) || ehRepresentante(me?.role ?? currentUser?.role);
   }, [data.users, currentUser, isOkrViewer]);
 
   const canUseTracker = useMemo(() => {
       if (!currentUser || isOkrOnly) return false;
-      // CEO cannot use tracker
+      // CEO cannot use tracker (nem o Diretor Industrial nem o representante, 06/10/2026)
       return ['PROJETISTA', 'GESTOR', 'COORDENADOR'].includes(currentUser.role);
   }, [currentUser, isOkrOnly]);
 
@@ -714,10 +724,10 @@ const AppContent: React.FC = () => {
     const me = (data.users || []).find(u => u.id === currentUser?.id);
     return !!(me?.okrEnabled ?? currentUser?.okrEnabled);
   }, [isOkrViewer, isEdsonOwner, isOkrOnly, data.users, currentUser]);
-  // Indicadores / Linha do tempo / Governança: Edson, CEO ou admin de OKR. O admin
+  // Indicadores / Linha do tempo / Governança: Edson, CEO (ou Diretor Industrial, 06/10) ou admin de OKR. O admin
   // de visualização vê só Indicadores e Linha do tempo (canSeeOkrManagement barra o resto).
   const canSeeOkrIndicators = useMemo(
-    () => isEdsonOwner || isOkrAdmin || isOkrViewer || currentUser?.role === 'CEO',
+    () => isEdsonOwner || isOkrAdmin || isOkrViewer || ehVisaoCeo(currentUser?.role),
     [isEdsonOwner, isOkrAdmin, isOkrViewer, currentUser]
   );
   const canSeeOkrManagement = canSeeOkrIndicators && !isOkrViewer;
@@ -741,13 +751,13 @@ const AppContent: React.FC = () => {
   const { acesso: kpisAcesso, lido: kpisLido, reler: relerKpisAcesso } = useKpisAcesso(currentUser?.id, !!currentUser && !isLocked && !isOkrViewer);
   const canUseKpis = !!currentUser && !isOkrViewer && (isOkrMaster || (!!kpisAcesso && kpisAcesso.cadastrado && !kpisAcesso.visualizador && (kpisAcesso.veTodos || kpisAcesso.indicadores > 0 || kpisAcesso.cria)));
   // No OKR, "Ligar ao KPI" só aparece com a 023 no banco, e o seletor oferece só os indicadores que
-  // o DONO daquele OKR enxerga (o setor dele; todos, se ele for o Edson, CEO ou admin de OKR). O
+  // o DONO daquele OKR enxerga (o setor dele; todos, se ele for o Edson, CEO/Diretor Industrial ou admin de OKR). O
   // cadastro dos outros não traz a marca de admin de OKR: sem ela, o seletor fica no setor (mais
   // estreito que o banco, nunca mais largo) — o banco confere de novo.
   const donoKpiDe = (u: User) => ({
     nome: u.name || u.username,
     setor: (u.sector || '').trim(),
-    veTodos: u.id === '1e570c78-7278-4e8d-a90e-a820c11bb07a' || u.role === 'CEO' || !!u.okrAdmin,
+    veTodos: u.id === '1e570c78-7278-4e8d-a90e-a820c11bb07a' || ehVisaoCeo(u.role) || !!u.okrAdmin,
     // A mesma régua do banco (kpis_dono_ve): desligado ANTES de hoje (Joinville) não enxerga mais.
     desligado: !!u.desligadoEm && u.desligadoEm < hojeSP(),
   });
@@ -780,12 +790,13 @@ const AppContent: React.FC = () => {
   // Who can manage Innovations? (CEO, Manager, Designer, Coordinator, Processos)
   const canSeeInnovations = useMemo(() => {
       if (!currentUser || isOkrOnly) return false;
-      return ['GESTOR', 'CEO', 'PROJETISTA', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
+      // O Diretor Industrial como o CEO (06/10/2026). O REPRESENTANTE nunca (não copia o PROCESSOS aqui).
+      return ['GESTOR', ...CARGOS_VISAO_CEO, 'PROJETISTA', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role);
   }, [currentUser, isOkrOnly]);
 
   const canSeeEngineeringPerformance = useMemo(() => {
     if (!currentUser || isOkrOnly) return false;
-    return ['GESTOR', 'COORDENADOR', 'CEO', 'PROCESSOS'].includes(currentUser.role);
+    return ['GESTOR', 'COORDENADOR', ...CARGOS_VISAO_CEO, 'PROCESSOS'].includes(currentUser.role);   // Diretor sim, representante não (06/10)
   }, [currentUser, isOkrOnly]);
 
   const canSeeAudit = useMemo(() => {
@@ -803,7 +814,7 @@ const AppContent: React.FC = () => {
     const role = currentUser.role;
 
     // "Super Viewers" - See everything in DB
-    if (['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS', 'PROJETISTA'].includes(role)) {
+    if (['GESTOR', ...CARGOS_VISAO_CEO, 'COORDENADOR', 'PROCESSOS', 'PROJETISTA'].includes(role)) {
       return data;
     }
 
@@ -824,7 +835,7 @@ const AppContent: React.FC = () => {
 
   const handleProjectCreate = async (project: ProjectSession): Promise<AppState | undefined> => {
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', ...CARGOS_VISAO_CEO];   // o Diretor Industrial como o CEO (06/10)
     if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionCreate'), 'error');
       return;
@@ -866,7 +877,7 @@ const AppContent: React.FC = () => {
   // Liberação em lote: cria X liberações rápidas (já concluídas) de uma vez.
   const handleProjectsBatchCreate = async (projects: ProjectSession[]): Promise<AppState | undefined> => {
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', ...CARGOS_VISAO_CEO];   // o Diretor Industrial como o CEO (06/10)
     if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionCreate'), 'error');
       return;
@@ -909,7 +920,7 @@ const AppContent: React.FC = () => {
 
   const handleProjectUpdate = async (project: ProjectSession, isHeartbeat = false) => {
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', ...CARGOS_VISAO_CEO];   // o Diretor Industrial como o CEO (06/10)
     if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       if (!isHeartbeat) addToast(t('noPermissionEdit'), 'error');
       return;
@@ -997,7 +1008,7 @@ const AppContent: React.FC = () => {
   const handleProjectDelete = async (id: string) => {
     console.log("handleProjectDelete called for id:", id);
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', 'CEO'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROJETISTA', ...CARGOS_VISAO_CEO];   // o Diretor Industrial como o CEO (06/10)
     if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('onlyManagerDelete'), 'error');
       return;
@@ -1048,7 +1059,7 @@ const AppContent: React.FC = () => {
 
   const handleInnovationAdd = async (innovation: InnovationRecord) => {
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'CEO'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS', ...CARGOS_VISAO_CEO];   // o Diretor Industrial como o CEO (06/10)
     if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionAddInnovation'), 'error');
       return;
@@ -1091,7 +1102,7 @@ const AppContent: React.FC = () => {
 
   const handleInnovationStatusChange = async (id: string, status: string) => {
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'CEO'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS', ...CARGOS_VISAO_CEO];   // o Diretor Industrial como o CEO (06/10)
     if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionChangeInnovationStatus'), 'error');
       return;
@@ -1122,7 +1133,7 @@ const AppContent: React.FC = () => {
 
   const handleInnovationUpdate = async (innovation: InnovationRecord) => {
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS', 'CEO'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', 'PROCESSOS', ...CARGOS_VISAO_CEO];   // o Diretor Industrial como o CEO (06/10)
     if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionEditInnovation'), 'error');
       return;
@@ -1157,7 +1168,7 @@ const AppContent: React.FC = () => {
 
   const handleInnovationDelete = async (id: string) => {
     const isEdson = currentUser?.email?.trim().toLowerCase() === 'efariaseng0@gmail.com' || currentUser?.username?.trim().toLowerCase() === 'edson';
-    const allowedRoles = ['GESTOR', 'COORDENADOR', 'CEO'];
+    const allowedRoles = ['GESTOR', 'COORDENADOR', ...CARGOS_VISAO_CEO];   // o Diretor Industrial como o CEO (06/10)
     if (!currentUser || (!allowedRoles.includes(currentUser.role) && !isEdson)) {
       addToast(t('noPermissionDeleteInnovation'), 'error');
       return;
@@ -1744,7 +1755,7 @@ const AppContent: React.FC = () => {
              <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
-          {!isOkrOnly && ['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
+          {!isOkrOnly && ['GESTOR', ...CARGOS_VISAO_CEO, 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
             <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
@@ -1752,11 +1763,11 @@ const AppContent: React.FC = () => {
             <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
-          {!isOkrOnly && ['GESTOR', 'CEO'].includes(currentUser.role) && (
+          {!isOkrOnly && ['GESTOR', ...CARGOS_VISAO_CEO].includes(currentUser.role) && (
             <NavItem id="settings" labelKey="settings" icon={UserCog} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
-          {!isOkrOnly && ['GESTOR', 'CEO'].includes(currentUser.role) && (
+          {!isOkrOnly && ['GESTOR', ...CARGOS_VISAO_CEO].includes(currentUser.role) && (
             <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
         </nav>
@@ -1865,16 +1876,16 @@ const AppContent: React.FC = () => {
             {canSeeInnovations && (
                 <NavItem id="innovations" labelKey="innovations" icon={Lightbulb} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
-            {!isOkrOnly && ['GESTOR', 'CEO', 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
+            {!isOkrOnly && ['GESTOR', ...CARGOS_VISAO_CEO, 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
                 <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             {!isOkrOnly && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
                <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
-            {!isOkrOnly && ['GESTOR', 'CEO'].includes(currentUser.role) && (
+            {!isOkrOnly && ['GESTOR', ...CARGOS_VISAO_CEO].includes(currentUser.role) && (
                 <NavItem id="settings" labelKey="settings" icon={UserCog} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
-            {!isOkrOnly && ['GESTOR', 'CEO'].includes(currentUser.role) && (
+            {!isOkrOnly && ['GESTOR', ...CARGOS_VISAO_CEO].includes(currentUser.role) && (
                 <NavItem id="seo" labelKey="seo" icon={Search} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             <div className="mt-auto p-4 border-t border-gray-100 dark:border-slate-800">
@@ -2074,7 +2085,9 @@ const AppContent: React.FC = () => {
                 })()
               ) : (
                 // Demais donos habilitados: só o próprio OKR, editável, com botão
-                // de compartilhar (link só-leitura para o gestor dele).
+                // de compartilhar (link só-leitura para o gestor dele). O selo diz quem lê: o dono, o Edson e quem
+                // acompanha todos (admins de OKR, os CEOs, o Diretor Industrial desde 06/10/2026 e o visualizador) —
+                // o antigo "Só o Edson e você" não era verdade.
                 <OkrView
                   key={`okr-${myOkrOwnerKey}`}
                   currentUser={currentUser}
@@ -2085,7 +2098,7 @@ const AppContent: React.FC = () => {
                   heading="Meu OKR"
                   seedEmpty
                   canShare
-                  privacyNote="Só o Edson e você"
+                  privacyNote="Você, o Edson e quem acompanha todos"
                   podeLigarKpi={!!kpisAcesso && kpisAcesso.indicadores > 0}
                   donoKpi={donoKpiDe(currentUser)}
                 />
@@ -2198,7 +2211,8 @@ const AppContent: React.FC = () => {
              />
           )}
 
-          {activeTab === 'nexus' && !isOkrOnly && (
+          {/* O representante nunca (06/10/2026: sem assistente de IA) — o isOkrOnly já o tira; fica explícito. */}
+          {activeTab === 'nexus' && !isOkrOnly && !ehRepresentante(currentUser.role) && (
             <NexusChat appState={data} currentUser={currentUser} theme={theme} />
           )}
 
@@ -2212,7 +2226,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'reports' && !isOkrViewer && ['GESTOR', 'CEO', 'COORDENADOR'].includes(currentUser.role) && (
+          {activeTab === 'reports' && !isOkrViewer && ['GESTOR', ...CARGOS_VISAO_CEO, 'COORDENADOR'].includes(currentUser.role) && (
             <Reports 
               data={displayData} 
               currentUser={currentUser} 
@@ -2221,7 +2235,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'settings' && !isOkrViewer && (['GESTOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
+          {activeTab === 'settings' && !isOkrViewer && (['GESTOR', ...CARGOS_VISAO_CEO].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
             <Settings 
               settings={effectiveSettings}
               users={data.users}
@@ -2230,7 +2244,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'seo' && !isOkrViewer && (['GESTOR', 'CEO'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
+          {activeTab === 'seo' && !isOkrViewer && (['GESTOR', ...CARGOS_VISAO_CEO].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
             <SEOManager 
               data={data.seoData}
               currentUser={currentUser}
@@ -2374,8 +2388,9 @@ const AppContent: React.FC = () => {
           )}
 
           {/* Floating AI Assistant Trigger Button */}
-          {/* O admin de visualização do OKR não usa o assistente: ele lê dados de engenharia. */}
-          {currentUser && !isOkrViewer && !isFloatingAiOpen && (
+          {/* O admin de visualização do OKR não usa o assistente: ele lê dados de engenharia. Nem o
+              REPRESENTANTE (06/10/2026, vendedor de fora): o contexto da IA leva a engenharia inteira. */}
+          {currentUser && !isOkrViewer && !ehRepresentante(currentUser.role) && !isFloatingAiOpen && (
             <button
               onClick={() => setIsFloatingAiOpen(true)}
               className="fixed bottom-6 right-6 z-40 bg-gradient-to-tr from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-full p-4 shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 cursor-pointer active:scale-95 group focus:outline-none border border-blue-400/20 ring-4 ring-blue-500/10 hover:ring-blue-500/30 animate-bounce"
@@ -2392,7 +2407,7 @@ const AppContent: React.FC = () => {
           )}
 
           {/* Floating AI Assistant Chat panel */}
-          {currentUser && !isOkrViewer && isFloatingAiOpen && (
+          {currentUser && !isOkrViewer && !ehRepresentante(currentUser.role) && isFloatingAiOpen && (
             <div className="fixed bottom-24 right-4 sm:right-6 md:right-8 w-[350px] sm:w-[450px] h-[550px] max-h-[75vh] z-50 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-300 border border-slate-200 dark:border-slate-800">
               <AIChat 
                 appState={data} 
