@@ -2139,12 +2139,29 @@ export const fetchUsers = async (opts: { incluirExternos?: boolean } = {}): Prom
   }
 };
 
+// Quem tem uma MARCA de administração (07/10/2026, migração 032), lida à parte e só pela Equipe: `admin_usuarios`
+// (a caixa "Administra usuários (TI)" do Edson mostra a de hoje) e `okr_admin` (a Equipe do TI esconde "Editar" das
+// contas que leem o OKR de todos — o cadeado no Nascimento; a 032 dá o grant de COLUNA dela, decisão do Edson 07/10).
+// Só os ids; nunca entra em USER_SAFE_COLUMNS (as outras telas não precisam).
+// Sem grant de coluna, coluna que não existe (032 não rodou) ou qualquer erro = null: "não sei", NUNCA "ninguém" —
+// quem chama não pode tratar null como "não tem". Log só com o código do erro.
+export const lerIdsComMarca = async (coluna: 'admin_usuarios' | 'okr_admin'): Promise<Set<string> | null> => {
+  try {
+    const { data, error } = await supabase.from('users').select('id').eq(coluna, true);
+    if (error) { console.warn(`[users] não li a marca ${coluna}:`, (error as any).code || ''); return null; }
+    return new Set((data || []).map((r: any) => String(r.id)));
+  } catch {
+    return null;
+  }
+};
+
 // Updated signature to return detail info
 // Gestao de usuarios agora e MEDIADA PELO SERVIDOR (C1 da auditoria): o
 // navegador nao escreve mais direto na tabela users. O servidor confere o
 // cargo no cracha e escreve via service_role. Isso impede escalada de
 // privilegio (virar CEO) e tomada de conta (sobrescrever senha alheia).
-export const registerUser = async (user: User): Promise<{ success: boolean; message?: string }> => {
+// O id da conta nova é o que o SERVIDOR sorteia (07/10): o que a tela manda é ignorado — `id` volta na resposta.
+export const registerUser = async (user: User): Promise<{ success: boolean; message?: string; id?: string }> => {
   try {
     const res = await fetch('/api/users/save', {
       method: 'POST',
@@ -2152,7 +2169,7 @@ export const registerUser = async (user: User): Promise<{ success: boolean; mess
       body: JSON.stringify({ mode: 'create', user }),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data.success) return { success: true, message: data.message };
+    if (res.ok && data.success) return { success: true, message: data.message, ...(typeof data.id === 'string' && data.id ? { id: data.id } : {}) };
     return { success: false, message: data.message || data.error || 'Erro ao criar usuário.' };
   } catch (error: any) {
     console.error("FAILED TO REGISTER USER", error);

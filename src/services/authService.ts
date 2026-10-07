@@ -31,6 +31,8 @@ const mapUser = (u: any): User => ({
   okrAdmin: !!u.okr_admin,
   okrViewer: !!u.okr_viewer,
   sector: u.sector || '',
+  // 032 (07/10/2026): só `true` vale — servidor antigo (sem o campo) ou valor estranho = não administra usuários.
+  adminUsuarios: u.admin_usuarios === true,
 });
 
 export const loginViaServer = async (username: string, password: string): Promise<LoginResult> => {

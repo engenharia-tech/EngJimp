@@ -97,6 +97,11 @@ export interface User {
   // trabalhado, inclusive. Nulo = ativo. Tudo o que a pessoa fez continua no nome dela; os seletores
   // e divisores leem esta data por src/utils/custoHora.ts (ativoNaData, usuariosParaSeletor...).
   desligadoEm?: string | null;
+  // "Administra usuários (TI)" (users.admin_usuarios, migração 032 — decisão do Edson, 07/10/2026): abre a Equipe para
+  // criar, editar (só cargos comuns, sem e-mail/login/senha de conta existente) e excluir/desligar — nunca salário nem R$.
+  // Só o Edson dá ou tira. Do usuário logado vem do login (como o okrAdmin: mudou a marca → novo login); na lista da
+  // Equipe só existe quando a tela conseguiu ler a marca — ausente = "não sei", nunca "não tem".
+  adminUsuarios?: boolean;
 }
 
 export interface PauseRecord {
@@ -393,7 +398,14 @@ export interface GanttTask {
   category?: string;
 }
 
-export type AuditAction = 'CREATE' | 'DELETE' | 'UPDATE' | 'LOGIN' | 'LOGOUT' | 'UPDATE_STATUS' | 'ADMIN_RECALCULATE';
+// Gravadas pelo SERVIDOR (07/10/2026), que o TI não apaga nem lê:
+//  · TI_CONTA — cada conta que quem administra usuários pela marca (032) cria, altera, desliga ou exclui (o mesmo resumo do
+//    e-mail ao Edson, gravado ANTES de o e-mail sair);
+//  · AVISO_NAO_ENVIADO — esse e-mail automático ao Edson não saiu (a mudança vale; o registro diz que o aviso faltou);
+//  · CODIGO_SENHA_ENVIADO / SENHA_CRIADA_PELO_CODIGO — o código para criar a senha foi enviado ao e-mail do cadastro / a senha
+//    foi criada com ele (nunca o código nem a senha).
+export type AuditAction = 'CREATE' | 'DELETE' | 'UPDATE' | 'LOGIN' | 'LOGOUT' | 'UPDATE_STATUS' | 'ADMIN_RECALCULATE' | 'AVISO_NAO_ENVIADO'
+  | 'TI_CONTA' | 'CODIGO_SENHA_ENVIADO' | 'SENHA_CRIADA_PELO_CODIGO';
 
 export interface AuditLog {
   id: string;

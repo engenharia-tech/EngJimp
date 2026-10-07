@@ -80,6 +80,7 @@ import { useLanguage } from './i18n/LanguageContext';
 import { Language } from './i18n/translations';
 import { useAppState } from './contexts/StateContext';
 import { ehVisaoCeo, ehRepresentante, CARGOS_VISAO_CEO } from './utils/cargos';
+import { abreEquipePelaMarca } from './utils/adminUsuarios';
 
 interface NavItemProps {
   id: any;
@@ -769,18 +770,26 @@ const AppContent: React.FC = () => {
   // Alvo do OKR que o Edson está olhando: 'self' (o dele) ou o username de outro.
   const [okrTarget, setOkrTarget] = useState<string>('self');
 
+  // ADMINISTRA USUÁRIOS (TI) — users.admin_usuarios, migração 032 (decisão do Edson, 07/10/2026): a aba Equipe abre
+  // pela marca, MESMO "Somente OKR" (o Luiz Henrique, da TI). A marca vem do LOGIN (mudou → novo login). Nunca para o
+  // visualizador nem para o representante (o banco só lhes entrega a própria linha). Menu desktop + celular + gate do
+  // render + o redirecionamento do "Somente OKR", juntos. A Equipe, nesse modo, esconde salário/R$ e as contas altas;
+  // quem barra é o servidor.
+  const canSeeTeamPelaMarca = abreEquipePelaMarca(currentUser, isOkrViewer);
+
   // Usuário "somente OKR" só circula pelas abas da família OKR (Meu OKR e,
   // para o admin, Indicadores/Linha do tempo/Governança) e pela Agenda. Qualquer
   // outra aba (engenharia) é redirecionada para "okr". O visualizador não tem
-  // agenda: fica em Indicadores/Linha do tempo.
+  // agenda: fica em Indicadores/Linha do tempo. Quem administra usuários pela marca
+  // (032) também fica na Equipe.
   useEffect(() => {
     if (isOkrViewer) {
       if (!['okr_ind', 'okr_timeline'].includes(activeTab)) setActiveTab('okr_ind');
       return;
     }
-    const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov', 'okr_exec', 'agenda', 'kpi_setores'];
+    const okrTabs = ['okr', 'okr_ind', 'okr_timeline', 'okr_gov', 'okr_exec', 'agenda', 'kpi_setores', ...(canSeeTeamPelaMarca ? ['team'] : [])];
     if (isOkrOnly && !okrTabs.includes(activeTab)) setActiveTab('okr');
-  }, [isOkrViewer, isOkrOnly, activeTab, setActiveTab]);
+  }, [isOkrViewer, isOkrOnly, activeTab, setActiveTab, canSeeTeamPelaMarca]);
   // KPI dos setores: a aba guardada abre em branco quando o acesso some (setor mudou, último indicador
   // arquivado). Só depois da 1ª leitura do acesso — antes dela, tirar da aba tiraria quem tem acesso.
   useEffect(() => {
@@ -1759,7 +1768,7 @@ const AppContent: React.FC = () => {
             <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
-          {!isOkrOnly && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
+          {((!isOkrOnly && ['GESTOR', 'COORDENADOR'].includes(currentUser.role)) || canSeeTeamPelaMarca) && (
             <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} isCollapsed={isSidebarCollapsed} onClick={handleNavClick} />
           )}
 
@@ -1879,7 +1888,7 @@ const AppContent: React.FC = () => {
             {!isOkrOnly && ['GESTOR', ...CARGOS_VISAO_CEO, 'COORDENADOR', 'PROCESSOS'].includes(currentUser.role) && (
                 <NavItem id="reports" labelKey="reports" icon={FileText} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
-            {!isOkrOnly && ['GESTOR', 'COORDENADOR'].includes(currentUser.role) && (
+            {((!isOkrOnly && ['GESTOR', 'COORDENADOR'].includes(currentUser.role)) || canSeeTeamPelaMarca) && (
                <NavItem id="team" labelKey="team" icon={Users} activeTab={activeTab} theme={theme} t={t} onClick={handleNavClick} />
             )}
             {!isOkrOnly && ['GESTOR', ...CARGOS_VISAO_CEO].includes(currentUser.role) && (
@@ -2253,7 +2262,7 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'team' && !isOkrViewer && (['GESTOR', 'COORDENADOR'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson') && (
+          {activeTab === 'team' && !isOkrViewer && (['GESTOR', 'COORDENADOR'].includes(currentUser.role) || currentUser.email === 'efariaseng0@gmail.com' || currentUser.username === 'edson' || canSeeTeamPelaMarca) && (
              <div className="space-y-6">
                 <div className="mb-6">
                   <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('team').toUpperCase()}</h2>

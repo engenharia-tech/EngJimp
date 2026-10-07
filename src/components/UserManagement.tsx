@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy, UserX, Factory, Handshake } from 'lucide-react';
+import { UserPlus, Shield, User as UserIcon, CheckCircle, Loader2, Eye, Activity, Briefcase, Edit, X, Trash2, AlertCircle, Database, Copy, UserX, Factory, Handshake, Lock } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { isEdsonUser } from '../utils/identity';
 import { ehVisaoCeo, ehRepresentante, PREFIXO_SETOR_REPRESENTANTE } from '../utils/cargos';
 import { ehSetorDeRepresentante, SETOR_DE_REPRESENTANTE_MSG } from '../kpis/kpis';
-import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts, addAuditLog, desligarUsuario } from '../services/storageService';
+import { EDSON_ID, CARGOS_DO_TI, ehModoTI, porqueTINaoEdita, tiExcluiOuDesliga, setorVedadoAoTI, SETOR_VEDADO_AO_TI_MSG, emailValido, tiSoComoRepresentante, TI_EMAIL_FORA_MSG } from '../utils/adminUsuarios';
+import { registerUser, fetchUsers, updateUser, deleteUser, deleteAllIssues, removeDuplicateProjects, findDuplicateProjects, deleteProjectById, DuplicateGroup, updateSettings, fetchAppState, recalculateAllProjectCosts, addAuditLog, desligarUsuario, lerIdsComMarca } from '../services/storageService';
 import { getWebhookUrl, saveWebhookUrl } from '../services/webhookService';
 import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -50,8 +51,23 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   // Settings State
   const [hourlyCost, setHourlyCost] = useState<number>(0);
 
+  // ADMINISTRA USUÁRIOS (TI) — 032, decisão do Edson (07/10/2026). Quem tem a marca e não é o Edson nem GESTOR/
+  // COORDENADOR usa esta tela no "modo TI" (ver src/utils/adminUsuarios.ts): cargos comuns, conta nova sem senha,
+  // e-mail/login/senha de conta existente só leitura, contas altas sem Editar, nada de salário/R$. O Edson (pelo id) é o
+  // único que vê e muda a marca. GESTOR, COORDENADOR e o Edson seguem com a tela de sempre.
+  const modoTI = ehModoTI(currentUser);
+  const souEdsonId = currentUser.id === EDSON_ID;
+  // Quem precisa saber quem tem a marca: o Edson (a caixa), o modo TI (não edita outro TI) e GESTOR/COORDENADOR (e-mail,
+  // login e senha de quem a tem são só do Edson — o formulário deles mostra os dois só leitura, 07/10).
+  const leMarcaTI = souEdsonId || modoTI || currentUser.role === 'GESTOR' || currentUser.role === 'COORDENADOR';
+  // As marcas lidas à parte (lerIdsComMarca): undefined = ainda não pedi/não é para mim; null = não consegui ler.
+  const [idsAdminUsuarios, setIdsAdminUsuarios] = useState<Set<string> | null | undefined>(undefined);   // o Edson e o modo TI
+  const [idsOkrAdmin, setIdsOkrAdmin] = useState<Set<string> | null | undefined>(undefined);             // só o modo TI
+
   useEffect(() => {
       setWebhookUrl(getWebhookUrl());
+      // O custo/hora é R$: o modo TI nem pede a carga (e o estado abaixo não aparece na tela).
+      if (modoTI) return;
       // Load settings from app state
       const loadSettings = async () => {
           const state = await fetchAppState();
@@ -94,6 +110,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   const [desligarDia, setDesligarDia] = useState<string>('');
   const [desligarErro, setDesligarErro] = useState<string>('');
   const [isDesligando, setIsDesligando] = useState(false);
+  // A caixa "Administra usuários (TI)" (só o Edson, no editar): o valor e se ele mexeu (só vai ao servidor se mexeu).
+  const [adminUsuariosMarca, setAdminUsuariosMarca] = useState(false);
+  const [adminUsuariosTocado, setAdminUsuariosTocado] = useState(false);
 
   useEffect(() => {
     loadList();
@@ -101,9 +120,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
 
   const loadList = async () => {
     setLoadingList(true);
-    const list = await fetchUsers({ incluirExternos: true }); // a Equipe mostra todo mundo, inclusive o ADM Externo
+    // A Equipe mostra todo mundo, inclusive o ADM Externo. Junto, a marca que cada um precisa (032): o Edson, quem
+    // administra usuários (a caixa); GESTOR/COORDENADOR, quem administra usuários (e-mail/login só leitura); o modo TI,
+    // quem administra usuários e quem é admin de OKR (não edita — o cadeado; a 032 dá a leitura de okr_admin). Sem
+    // leitura = null ("não sei").
+    const [list, marcaTI, marcaOkr] = await Promise.all([
+      fetchUsers({ incluirExternos: true }),
+      leMarcaTI ? lerIdsComMarca('admin_usuarios') : Promise.resolve(undefined),
+      modoTI ? lerIdsComMarca('okr_admin') : Promise.resolve(undefined),
+    ]);
     const sortedList = [...list].sort((a, b) => a.name.localeCompare(b.name));
     setUsers(sortedList);
+    setIdsAdminUsuarios(marcaTI);
+    setIdsOkrAdmin(marcaOkr);
     setLoadingList(false);
     return sortedList;
   };
@@ -117,16 +146,33 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       addToast(SETOR_DE_REPRESENTANTE_MSG, 'error');
       return;
     }
+    // Modo TI (032): a tela já só oferece o permitido; isto segura o que escapar (o servidor confere de novo).
+    const contaAntes = editingUserId ? users.find(u => u.id === editingUserId) : undefined;
+    if (modoTI) {
+      if (!CARGOS_DO_TI.includes(role)) { addToast('Você dá só os cargos Projetista, Processos, Qualidade e Representante.', 'error'); return; }
+      if (editingUserId && (!contaAntes || porqueNaoEdita(contaAntes))) {
+        addToast((contaAntes && porqueNaoEdita(contaAntes)) || 'Não achei esta conta na lista. Recarregue a tela.', 'error');
+        return;
+      }
+      if (!editingUserId && !emailValido(email)) { addToast('Informe um e-mail válido: é por ele que a pessoa cria a própria senha.', 'error'); return; }
+      // conta sem e-mail da empresa: só como representante (07/10; o servidor confere de novo)
+      if (editingUserId && contaAntes && role !== 'REPRESENTANTE' && tiSoComoRepresentante(contaAntes)) { addToast(TI_EMAIL_FORA_MSG, 'error'); return; }
+      if (setorTocado && sector.trim() !== setorCarregado && setorVedadoAoTI(sector)) { addToast(SETOR_VEDADO_AO_TI_MSG, 'error'); return; }
+    }
     setIsRegistering(true);
 
     const userPayload: User & { sectorAntes?: string } = {
       id: editingUserId || crypto.randomUUID(),
       name,
       surname,
-      email,
+      // Modo TI: numa conta que já existe, e-mail e login vão como estão no cadastro (os campos são só leitura). O mesmo
+      // para o GESTOR/COORDENADOR na conta de quem administra usuários (identidadeTravada, 07/10).
+      email: identidadeTravada && contaAntes ? (contaAntes.email || '') : email,
       phone,
-      username,
-      password,
+      username: identidadeTravada && contaAntes ? contaAntes.username : username,
+      // Modo TI: nunca manda senha — a conta nova nasce com senha sorteada pelo servidor e a pessoa cria a dela pelo
+      // código no e-mail; a de quem já existe não muda. Na conta de quem administra usuários, só o Edson manda senha.
+      password: modoTI || alvoTemMarcaTI ? '' : password,
       role,
       salary,
       // Admin de visualização não tem OKR próprio nem é "somente OKR" (o servidor também força).
@@ -144,6 +190,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       sector: podeMudarSetor && setorTocado && !representanteEfetivo ? sector : undefined,
       // …e diz qual setor a tela via: se outro admin o mudou no meio, o servidor recusa (409).
       sectorAntes: podeMudarSetor && setorTocado && !representanteEfetivo && editingUserId ? setorCarregado : undefined,
+      // "Administra usuários (TI)" (032): só o Edson manda, só no editar de outra pessoa e só se mexeu na caixa; sem o
+      // campo, o servidor mantém a marca do cadastro.
+      adminUsuarios: mostraCaixaAdminUsuarios && adminUsuariosTocado ? adminUsuariosMarca : undefined,
     };
 
     let result;
@@ -165,15 +214,18 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
         if (oldUser) {
           if (oldUser.name !== name) changedProps.push(`Nome (ex: "${oldUser.name}", novo: "${name}")`);
           if ((oldUser.surname || '') !== surname) changedProps.push(`Sobrenome (ex: "${oldUser.surname || ''}", novo: "${surname}")`);
-          if ((oldUser.email || '') !== email) changedProps.push(`E-mail (ex: "${oldUser.email || ''}", novo: "${email}")`);
+          // O que FOI enviado (no modo TI, e-mail e login vão os do cadastro, mesmo que o campo tenha sido mexido).
+          if ((oldUser.email || '') !== (userPayload.email || '')) changedProps.push(`E-mail (ex: "${oldUser.email || ''}", novo: "${userPayload.email || ''}")`);
           if ((oldUser.phone || '') !== phone) changedProps.push(`Telefone (ex: "${oldUser.phone || ''}", novo: "${phone}")`);
-          if (oldUser.username !== username) changedProps.push(`Login (ex: "${oldUser.username}", novo: "${username}")`);
+          if (oldUser.username !== userPayload.username) changedProps.push(`Login (ex: "${oldUser.username}", novo: "${userPayload.username}")`);
           if (oldUser.role !== role) changedProps.push(`Cargo (ex: "${oldUser.role}", novo: "${role}")`);
           const trocaSetor = (result as { setor?: { de: string; para: string } }).setor;
           if (trocaSetor) changedProps.push(`Setor (ex: "${trocaSetor.de}", novo: "${trocaSetor.para}")`);
           // Salário é só do Edson, mas o Log de Auditoria é lido por GESTOR, CEO e COORDENADOR
           // (migração 011): o log diz QUE mudou, nunca os valores (decisão do Edson, 30/09).
           if ((oldUser.salary || 0) !== salary) changedProps.push('Salário (alterado)');
+          if (userPayload.adminUsuarios !== undefined && (!idsAdminUsuarios || idsAdminUsuarios.has(oldUser.id) !== userPayload.adminUsuarios))
+            changedProps.push(`Administra usuários (TI) (${userPayload.adminUsuarios ? 'dada' : 'tirada'})`);
         }
         details = changedProps.length > 0 
           ? `Usuário ${userPayload.username} editado por ${currentUser.name}. Modificações: ${changedProps.join(', ')}`
@@ -187,7 +239,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
           userName: currentUser.name,
           action: editingUserId ? 'UPDATE' : 'CREATE',
           entityType: 'USER',
-          entityId: userPayload.id,
+          // Na criação, o id é o que o servidor sorteou (o da tela é ignorado — 07/10).
+          entityId: editingUserId ? userPayload.id : ((result as { id?: string }).id || userPayload.id),
           entityName: userPayload.username,
           details
       });
@@ -297,7 +350,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
         return;
       }
       setDesligarAlvo(null);
-      addToast(result.custoDesde ? `Desligado. O custo muda a partir de ${diaBr(result.custoDesde, true)}.` : 'Desligado.', 'success');
+      // O modo TI (032) não ouve falar de custo: "Desligado." e só.
+      addToast(result.custoDesde && !modoTI ? `Desligado. O custo muda a partir de ${diaBr(result.custoDesde, true)}.` : 'Desligado.', 'success');
       if (result.message) addToast(result.message, 'warning'); // desligou, mas o servidor tem algo a dizer
       // O log diz quem e quando, nunca salário nem custo (o Log é lido por GESTOR, CEO e COORDENADOR).
       addAuditLog({
@@ -349,10 +403,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     setOkrOnly(false);
     setOkrViewer(false);
     setSector(''); setSetorTocado(false); setSetorCarregado(''); editandoRef.current = null;
+    setAdminUsuariosMarca(false); setAdminUsuariosTocado(false);
     setEditingUserId(null);
   };
 
   const handleEdit = (user: User) => {
+    // Modo TI (032): conta que ele não edita nem abre o formulário (o botão já não aparece; isto segura o resto).
+    const porque = porqueNaoEdita(user);
+    if (porque) { addToast(porque, 'warning'); return; }
+    setAdminUsuariosMarca(!!(idsAdminUsuarios && idsAdminUsuarios.has(user.id))); setAdminUsuariosTocado(false);
     setName(user.name);
     setSurname(user.surname || '');
     setEmail(user.email || '');
@@ -393,9 +452,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
   // O SETOR é a porta do KPI dos setores (a pessoa vê e lança os indicadores do setor dela): só o
   // Edson e os admins de OKR o mudam, inclusive na criação (decisão do Edson, 30/09). O servidor
   // confere pelo cadastro.
-  const podeMudarSetor = isEdson || (!!currentUser.okrAdmin && !ehVisaoCeo(currentUser.role));   // o CEO e o Diretor Industrial não (01/10: visão macro; 06/10)
-  // REPRESENTANTE (06/10/2026): só um GESTOR ou o Edson dá o cargo (e o tira) — o servidor confere.
-  const podeDarRepresentante = isGestor || isEdson;
+  // O modo TI (032, decisão do Edson 07/10) também define o setor — menos o P&D e o "Teste" (setorVedadoAoTI).
+  const podeMudarSetor = isEdson || (!!currentUser.okrAdmin && !ehVisaoCeo(currentUser.role)) || modoTI;   // o CEO e o Diretor Industrial não (01/10: visão macro; 06/10)
+  // REPRESENTANTE (06/10/2026): só um GESTOR ou o Edson dá o cargo (e o tira) — o servidor confere. O modo TI também
+  // (032, 07/10: é um dos cargos comuns); antes da 029 o banco recusa o representante para todos.
+  const podeDarRepresentante = isGestor || isEdson || modoTI;
   // Os setores já usados na Equipe, com a grafia mais comum — sugere para não nascer "Suprimento"
   // ao lado de "Suprimentos" (o KPI junta maiúsculas e acentos, mas não singular com plural).
   const setoresUsados = React.useMemo(() => {
@@ -403,12 +464,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     users.forEach(u => {
       const g = (u.sector || '').trim(); if (!g) return;
       if (ehSetorDeRepresentante(g)) return;   // o setor de cada representante é só dele (06/10): não se sugere a outro
+      if (modoTI && setorVedadoAoTI(g)) return;  // o P&D e o "Teste" não são do modo TI (032): não se sugerem
       const k = g.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
       const m = cont.get(k) || new Map<string, number>(); m.set(g, (m.get(g) || 0) + 1); cont.set(k, m);
     });
     return Array.from(cont.values()).map(m => Array.from(m.entries()).sort((a, b) => b[1] - a[1])[0][0]).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [users]);
-  const EDSON_UUID = '1e570c78-7278-4e8d-a90e-a820c11bb07a';
+  }, [users, modoTI]);
+  const EDSON_UUID = EDSON_ID;
   // O grupo ADM Externo É o visualizador — deduzido na hora, não gravado no estado: escolher
   // o cargo por engano e voltar não deixa a pessoa marcada nem com o OKR desligado.
   // O REPRESENTANTE (06/10/2026, pedido do Edson: os vendedores "precisam escrever seus OKRs assim como os
@@ -423,19 +485,48 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
     : PREFIXO_SETOR_REPRESENTANTE + `${name} ${surname}`.replace(/\s+/g, ' ').trim();
   // Gestor can do everything. Coordenador can view. Everyone can edit themselves.
   
-  const canCreateUser = isGestor;
-  const canDeleteUser = isGestor;
+  // Modo TI (032): cria, exclui e desliga também — todos menos o Edson, o teste e a própria conta (tiExcluiOuDesliga).
+  const canCreateUser = isGestor || modoTI;
+  const canDeleteUser = (targetUser: User) => isGestor || (modoTI && tiExcluiOuDesliga(targetUser, currentUser));
   // Desligar: o Edson (pelo id) ou um GESTOR — decisão do Edson, 30/09/2026 (o servidor confere pelo
   // cadastro). Nunca a si mesmo, nunca o Edson, e não aparece para quem já tem último dia gravado.
-  const canDesligar = currentUser.id === EDSON_UUID || isGestor;
+  const canDesligar = currentUser.id === EDSON_UUID || isGestor || modoTI;
   const canDesligarUser = (targetUser: User) =>
-      canDesligar && targetUser.id !== currentUser.id && targetUser.id !== EDSON_UUID && !ultimoDiaTrabalhado(targetUser);
+      canDesligar && targetUser.id !== currentUser.id && targetUser.id !== EDSON_UUID && !ultimoDiaTrabalhado(targetUser)
+      && (!modoTI || tiExcluiOuDesliga(targetUser, currentUser));
+
+  // Por que o modo TI não edita esta conta (null = edita, ou não é o modo TI): vira o cadeado com a dica na lista.
+  const porqueNaoEdita = (targetUser: User): string | null =>
+      modoTI ? porqueTINaoEdita(targetUser, currentUser, idsOkrAdmin ?? null, idsAdminUsuarios ?? null) : null;
 
   const canEditUser = (targetUser: User) => {
+      if (modoTI) return !porqueNaoEdita(targetUser);
       if (isGestor) return true;
       if (currentUser.id === targetUser.id) return true;
       return false;
   };
+
+  // A caixa "Administra usuários (TI)" (032): só o Edson (pelo id) a vê, no editar de OUTRA pessoa. A marca de hoje vem
+  // de lerIdsComMarca; sem leitura (null) a caixa fica "indeterminada" até ele marcar ou desmarcar.
+  const mostraCaixaAdminUsuarios = souEdsonId && !!editingUserId && editingUserId !== EDSON_UUID;
+  const marcaAdminUsuariosDesconhecida = idsAdminUsuarios === null;
+  // O banco (032, CHECK users_admin_usuarios_so_comuns) só aceita a marca em PROJETISTA, PROCESSOS ou QUALIDADE, sem
+  // visualizador: em outro cargo a caixa só serve para TIRAR a marca.
+  const cargoAceitaMarcaTI = ['PROJETISTA', 'PROCESSOS', 'QUALIDADE'].includes(role) && !viewerEfetivo;
+  // No modo TI, e-mail, login e senha de uma conta que JÁ existe são só leitura (decisão do Edson, 07/10: trocar o
+  // e-mail ou gerar código = tomar a conta).
+  // …e e-mail, login e senha de quem ADMINISTRA USUÁRIOS só o Edson troca (o servidor recusa com 403 —
+  // MARCA_ACESSO_SO_EDSON_MSG): no formulário do GESTOR/COORDENADOR eles ficam só leitura e a senha não é pedida.
+  // Sem saber a marca (null), o formulário fica como sempre e o servidor responde a frase dele.
+  const alvoTemMarcaTI = !!editingUserId && editingUserId !== currentUser.id && !souEdsonId && !modoTI
+      && !!(idsAdminUsuarios && idsAdminUsuarios.has(editingUserId));
+  const identidadeTravada = modoTI || alvoTemMarcaTI;
+  const identidadeSoLeitura = (modoTI && !!editingUserId) || alvoTemMarcaTI;
+  // …e o setor de quem está no P&D ou no "Teste" também (só o Edson tira alguém de lá).
+  const setorTravadoTI = modoTI && setorVedadoAoTI(setorCarregado);
+  // …e o representante sem e-mail da empresa fica representante no modo TI (07/10): o seletor só oferece esse cargo.
+  const contaEmEdicao = editingUserId ? users.find(u => u.id === editingUserId) : undefined;
+  const cargosDoTIAqui: readonly UserRole[] = modoTI && contaEmEdicao && tiSoComoRepresentante(contaEmEdicao) ? ['REPRESENTANTE'] : CARGOS_DO_TI;
 
   return (
     <div className="space-y-6">
@@ -482,15 +573,27 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             />
           </div>
           <div>
-            <label htmlFor="um-email" className="block text-sm font-medium text-black dark:text-white mb-1">E-mail</label>
+            <label htmlFor="um-email" className="block text-sm font-medium text-black dark:text-white mb-1">E-mail{modoTI && !editingUserId && <span className="text-xs text-gray-400 dark:text-slate-500"> (obrigatório)</span>}</label>
             <input
               id="um-email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              readOnly={identidadeSoLeitura}
+              required={modoTI && !editingUserId}
+              aria-describedby={modoTI || alvoTemMarcaTI ? 'um-email-dica' : undefined}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${identidadeSoLeitura ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
               placeholder="exemplo@exemplo.com"
             />
+            {(modoTI || alvoTemMarcaTI) && (
+              <p id="um-email-dica" className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                {alvoTemMarcaTI
+                  ? 'E-mail, login e senha de quem administra usuários (TI): só o Edson troca (trocar um deles é tomar a conta e, com ela, a marca).'
+                  : editingUserId
+                  ? 'E-mail, login e senha de uma conta que já existe: só o Edson ou um GESTOR troca.'
+                  : 'O da empresa (jimp.com.br, joinvilleimplementos.com.br ou furgoesjoinville.com.br; só o representante pode ter outro): é por ele que a pessoa recebe o código para criar a própria senha.'}
+              </p>
+            )}
           </div>
           <div>
             <label htmlFor="um-phone" className="block text-sm font-medium text-black dark:text-white mb-1">Celular</label>
@@ -510,29 +613,52 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
+              readOnly={identidadeSoLeitura}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${identidadeSoLeitura ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
               required
             />
           </div>
+          {modoTI || alvoTemMarcaTI ? (
+          <div>
+            {/* Modo TI (032): nenhuma senha passa por aqui — nem na conta nova (o servidor sorteia uma que ninguém conhece e
+                a pessoa cria a dela pelo código no e-mail) nem na que já existe. Na conta de quem administra usuários,
+                a senha só o Edson troca (o GESTOR/COORDENADOR vê a nota, não o campo). */}
+            <span className="block text-sm font-medium text-black dark:text-white mb-1">Senha</span>
+            <p data-um="senha-nota" className="p-2 rounded-lg border border-dashed border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 text-xs text-gray-600 dark:text-slate-300">
+              {alvoTemMarcaTI
+                ? 'A senha de quem administra usuários só o Edson troca; a própria pessoa cria uma nova pelo código no e-mail dela, em “Criar / redefinir senha”.'
+                : editingUserId
+                ? 'A senha é da pessoa: ela cria uma nova pelo código que chega no e-mail dela, em “Criar / redefinir senha”, na tela de entrada.'
+                : 'Sem senha aqui: a pessoa cria a própria senha pelo código que chega no e-mail dela, em “Criar / redefinir senha”, na tela de entrada.'}
+            </p>
+          </div>
+          ) : (
           <div>
             <label className="block text-sm font-medium text-black dark:text-white mb-1">Senha</label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={password}
               onChange={e => setPassword(e.target.value)}
               className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
               placeholder="Defina uma senha"
-              required
+              // Só quando o Edson mexeu na caixa "Administra usuários (TI)" (032) a senha em branco vale ("manter a atual",
+              // como o servidor já trata): dar ou tirar a marca não pode obrigar a regravar a senha da pessoa. O resto
+              // segue como sempre (pendência antiga: o campo obrigatório também na edição).
+              required={!(mostraCaixaAdminUsuarios && adminUsuariosTocado)}
             />
           </div>
+          )}
           <div>
-            <label className="block text-sm font-medium text-black dark:text-white mb-1">Função {(!isGestor) && <span className="text-xs text-gray-400 dark:text-slate-500">(Somente Gestor)</span>}</label>
-            <select 
+            <label className="block text-sm font-medium text-black dark:text-white mb-1">Função {(!isGestor && !modoTI) && <span className="text-xs text-gray-400 dark:text-slate-500">(Somente Gestor)</span>}</label>
+            <select
               value={role}
               onChange={e => setRole(e.target.value as UserRole)}
-              disabled={!isGestor}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!isGestor ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
+              disabled={!isGestor && !modoTI}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!isGestor && !modoTI ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
             >
+              {/* Modo TI (032, decisão do Edson 07/10): só os cargos comuns. GESTOR, COORDENADOR, CEO, Diretor e ADM Externo
+                  (e as marcas de admin/visualizador do OKR) seguem com o Edson e o GESTOR. */}
+              {modoTI ? cargosDoTIAqui.map(c => <option key={c} value={c}>{t(c.toLowerCase() as any)}</option>) : (<>
               <option value="PROJETISTA">{t('projetista')}</option>
               <option value="GESTOR">{t('gestor')}</option>
               <option value="CEO">{t('ceo')}</option>
@@ -550,8 +676,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               {(canMarkOkrViewer || role === 'ADM_EXTERNO') && (
                 <option value="ADM_EXTERNO" disabled={!canMarkOkrViewer}>{t('adm_externo')}</option>
               )}
+              </>)}
             </select>
           </div>
+          {/* Salário: o modo TI (032) nem vê o campo — "essa informação nunca está aberta para ele" (Edson, 07/10). */}
+          {!modoTI && (
           <div>
             <label className="block text-sm font-medium text-black dark:text-white mb-1">Salário (R$) {(!isEdson) && <span className="text-xs text-gray-400 dark:text-slate-500">(Restrito)</span>}</label>
             <input
@@ -566,6 +695,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               placeholder={!isEdson ? '••••••' : 'Ex: 5000.00'}
             />
           </div>
+          )}
           <div>
             <label htmlFor="um-sector" className="block text-sm font-medium text-black dark:text-white mb-1">Setor</label>
             <input
@@ -574,8 +704,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               list="um-setores"
               value={representanteEfetivo ? setorDoRepresentante : sector}
               onChange={e => { setSector(e.target.value); setSetorTocado(true); }}
-              disabled={!podeMudarSetor || representanteEfetivo}
-              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!podeMudarSetor || representanteEfetivo ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
+              disabled={!podeMudarSetor || representanteEfetivo || setorTravadoTI}
+              className={`w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!podeMudarSetor || representanteEfetivo || setorTravadoTI ? 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900 dark:text-slate-200'}`}
               placeholder="Ex.: Comercial, PCP, RH, Fábrica"
             />
             <datalist id="um-setores">{setoresUsados.map(g => <option key={g} value={g} />)}</datalist>
@@ -586,10 +716,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                 ? (setorTocado && sector.trim() !== setorCarregado
                   ? SETOR_DE_REPRESENTANTE_MSG
                   : `Este é o setor de um representante, que é só dele: ${podeMudarSetor ? 'dê à pessoa o setor novo dela.' : 'o Edson ou um admin de OKR dá o setor novo da pessoa.'}`)
+                : setorTravadoTI || (modoTI && setorTocado && sector.trim() !== setorCarregado && setorVedadoAoTI(sector))
+                ? SETOR_VEDADO_AO_TI_MSG
                 : podeMudarSetor ? 'O setor abre o KPI do setor: a pessoa vê e lança os indicadores dele. Prefira um setor da lista.' : 'Só o Edson e os admins de OKR mudam o setor (ele abre o KPI do setor).'}
             </p>
           </div>
-          {isGestor && (
+          {(isGestor || modoTI) && (
           <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
               <input
@@ -633,6 +765,29 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             </label>
             )}
           </div>
+          )}
+          {/* "Administra usuários (TI)" (032, decisão do Edson 07/10/2026): só o Edson dá ou tira, no editar de outra pessoa. */}
+          {mostraCaixaAdminUsuarios && (
+          <label data-um="caixa-admin-usuarios" className="md:col-span-2 flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={adminUsuariosMarca}
+              ref={el => { if (el) el.indeterminate = marcaAdminUsuariosDesconhecida && !adminUsuariosTocado; }}
+              onChange={e => { setAdminUsuariosMarca(e.target.checked); setAdminUsuariosTocado(true); }}
+              disabled={!cargoAceitaMarcaTI && !adminUsuariosMarca && !marcaAdminUsuariosDesconhecida}
+              className="w-5 h-5 rounded accent-emerald-600"
+            />
+            <span className="text-sm">
+              <span className="font-semibold text-black dark:text-white">Administra usuários (TI)</span>
+              <span className="block text-xs text-gray-500 dark:text-slate-400">Abre a Equipe para criar, editar (só cargos comuns; e-mail, login e senha de conta que já existe, não) e excluir ou desligar usuários — menos você e o teste. Nunca vê salário nem R$. Vale a partir do próximo login da pessoa.</span>
+              {!cargoAceitaMarcaTI && (
+                <span className="block text-xs text-amber-700 dark:text-amber-400 mt-0.5">A marca só vale em Projetista, Processos ou Qualidade (sem visualizador){adminUsuariosMarca ? ': desmarque antes de mudar o cargo.' : '.'}</span>
+              )}
+              {marcaAdminUsuariosDesconhecida && !adminUsuariosTocado && (
+                <span className="block text-xs text-amber-700 dark:text-amber-400 mt-0.5">Não consegui ler a marca de hoje (a 032 já rodou?). Marcar ou desmarcar grava o que você escolher.</span>
+              )}
+            </span>
+          </label>
           )}
           <div className="md:col-span-2">
             <button
@@ -682,10 +837,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                            {canEditThisUser && (
                             <button onClick={() => handleEdit(u)} className="p-1.5 text-indigo-600 dark:text-indigo-400"><Edit className="w-4 h-4" /></button>
                            )}
+                           {/* Modo TI (032): no lugar do Editar, o cadeado com o porquê. */}
+                           {!canEditThisUser && porqueNaoEdita(u) && (
+                            <button type="button" data-um="cadeado" onClick={() => addToast(porqueNaoEdita(u)!, 'info')} className="p-1.5 text-gray-400 dark:text-slate-500" title={porqueNaoEdita(u)!} aria-label={porqueNaoEdita(u)!}><Lock className="w-4 h-4" /></button>
+                           )}
                            {canDesligarUser(u) && (
                             <button onClick={() => abrirDesligar(u)} className="p-1.5 text-amber-600 dark:text-amber-400" title="Desligar" aria-label={`Desligar ${u.name}`}><UserX className="w-4 h-4" /></button>
                            )}
-                           {canDeleteUser && (
+                           {canDeleteUser(u) && (
                             <button onClick={() => handleDelete(u)} className="p-1.5 text-red-600 dark:text-red-400"><Trash2 className="w-4 h-4" /></button>
                            )}
                         </div>
@@ -699,6 +858,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                                 {t(u.role.toLowerCase() as any)}
                             </span>
                         </div>
+                        {/* O modo TI (032) não tem a coluna de salário, nem mascarada. */}
+                        {!modoTI && (
                         <div>
                             <span className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Salário</span>
                             <span className="text-xs font-black text-gray-800 dark:text-slate-200">
@@ -707,6 +868,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                                 : '***'}
                             </span>
                         </div>
+                        )}
                         <div className="col-span-2">
                              <span className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Contato</span>
                              <div className="text-[11px] font-medium text-gray-700 dark:text-slate-300 truncate">{u.email || '-'}</div>
@@ -727,16 +889,17 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
               <th className="p-4">E-mail / Celular</th>
               <th className="p-4">Senha</th>
               <th className="p-4">Função</th>
-              <th className="p-4">Salário</th>
+              {!modoTI && <th className="p-4">Salário</th>}
               <th className="p-4 text-center">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
             {users.map((u) => {
               const canEditThisUser = canEditUser(u);
-              const canDeleteThisUser = canDeleteUser; // Only Gestor
+              const canDeleteThisUser = canDeleteUser(u); // o GESTOR (todos, como sempre) e o modo TI (032: menos o Edson, o teste e a própria)
               const canDesligarThisUser = canDesligarUser(u);
-              const showActions = canEditThisUser || canDeleteThisUser || canDesligarThisUser;
+              const porqueNaoEditaEste = canEditThisUser ? null : porqueNaoEdita(u);
+              const showActions = canEditThisUser || canDeleteThisUser || canDesligarThisUser || !!porqueNaoEditaEste;
 
               return (
               <tr key={u.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${currentUser.id === u.id ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''}`}>
@@ -767,12 +930,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                     {t(u.role.toLowerCase() as any)}
                   </span>
                 </td>
+                {/* Salário: só o Edson vê o valor; o modo TI (032) não tem a coluna. */}
+                {!modoTI && (
                 <td className="p-4 text-black dark:text-white">
-                  {/* Only show salary if user is GESTOR or viewing their own salary */}
                   {isEdson
                     ? (u.salary ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(u.salary) : '-')
                     : '***'}
                 </td>
+                )}
                 <td className="p-4 text-center">
                   <div className="flex items-center justify-center gap-2">
                     {canEditThisUser && (
@@ -782,6 +947,11 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
                       title="Editar Usuário"
                     >
                       <Edit className="w-4 h-4" />
+                    </button>
+                    )}
+                    {porqueNaoEditaEste && (
+                    <button type="button" data-um="cadeado" onClick={() => addToast(porqueNaoEditaEste, 'info')} className="text-gray-300 dark:text-slate-600 hover:text-gray-500 dark:hover:text-slate-400 p-2 rounded cursor-help" title={porqueNaoEditaEste} aria-label={porqueNaoEditaEste}>
+                      <Lock className="w-4 h-4" />
                     </button>
                     )}
                     {canDesligarThisUser && (
@@ -810,7 +980,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
             )})}
             {!loadingList && users.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-4 text-center text-gray-400 dark:text-slate-500">Nenhum usuário encontrado.</td>
+                <td colSpan={modoTI ? 6 : 7} className="p-4 text-center text-gray-400 dark:text-slate-500">Nenhum usuário encontrado.</td>
               </tr>
             )}
           </tbody>
@@ -1238,7 +1408,9 @@ NOTIFY pgrst, 'reload config';`}
             Desligar {desligarAlvo.name} {desligarAlvo.surname || ''}
           </h3>
           <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
-            Tira o acesso (senha e e-mail), mantém todo o histórico no nome dele e tira o salário do custo/hora a partir do dia seguinte. Não se desfaz pela tela.
+            {modoTI
+              ? 'Tira o acesso (senha e e-mail) e mantém todo o histórico no nome dele. Não se desfaz pela tela.'
+              : 'Tira o acesso (senha e e-mail), mantém todo o histórico no nome dele e tira o salário do custo/hora a partir do dia seguinte. Não se desfaz pela tela.'}
           </p>
           <label htmlFor="um-desligar-dia" className="block text-sm font-medium text-black dark:text-white mb-1">Último dia trabalhado</label>
           <input
@@ -1252,7 +1424,9 @@ NOTIFY pgrst, 'reload config';`}
             className="w-full p-2 border dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900 dark:text-slate-200"
           />
           <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">
-            No último dia a pessoa ainda conta. Se o último dia for de um mês já fechado, o custo só muda a partir do 1º dia deste mês (mês fechado não muda).
+            {modoTI
+              ? 'O último dia trabalhado fica registrado no nome da pessoa (não pode ser no futuro).'
+              : 'No último dia a pessoa ainda conta. Se o último dia for de um mês já fechado, o custo só muda a partir do 1º dia deste mês (mês fechado não muda).'}
           </p>
           {desligarErro && (
             <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400 flex items-start gap-1.5">

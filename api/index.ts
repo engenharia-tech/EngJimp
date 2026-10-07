@@ -716,6 +716,12 @@ app.post("/api/auth/login", async (req, res) => {
   // REPRESENTANTE (06/10/2026): a tela o recebe SEMPRE como "Somente OKR", mesmo se a marca faltar no cadastro (a
   // garantia de verdade é a marca gravada — create/update daqui — e o CHECK da 030).
   const representante = ehRepresentante(user.role);
+  // "Administra usuários" (032, 07/10/2026): a tela abre a Equipe a quem tem a marca. Só cargo comum pode tê-la; sem a 032
+  // ou com falha na leitura = false (a tela só esconde; quem barra é o servidor, que relê a marca em cada pedido).
+  let adminUsuarios = false;
+  if (vw && CARGOS_COM_A_MARCA.includes(String(vw.role || ""))) {
+    try { adminUsuarios = await administraUsuariosDb(admin, uid); } catch { adminUsuarios = false; }
+  }
   // Sanitiza: o payload de login NUNCA leva salary/senha/hash para o navegador
   // (C2). So o Edson ve salario, e por uma porta propria (/api/users/salaries).
   const safeUser = {
@@ -725,6 +731,7 @@ app.post("/api/auth/login", async (req, res) => {
     okr_enabled: representante ? true : user.okr_enabled, okr_only: representante ? true : user.okr_only, sector: user.sector,
     okr_admin: user.okr_admin,
     okr_viewer: ehVisualizador(vw, uid),
+    admin_usuarios: adminUsuarios,
   };
   return res.json({ success: true, user: safeUser, token });
 });
@@ -782,6 +789,15 @@ Se nao foi voce que pediu, ignore este e-mail.
       .eq("username", u.username);
     return res.status(500).json({ success: false, error: "Nao consegui enviar o e-mail com o codigo. Tente novamente." });
   }
+  // O RASTRO (07/10, achado da crítica ao "administra usuários"): o código vai para a caixa do cadastro, e as caixas da
+  // empresa quem administra é o TI — ele pedia o código de uma conta que já existe, lia, criava a senha e entrava, sem
+  // registro nenhum. Cada código enviado fica no Log de Auditoria, gravado pelo SERVIDOR (o TI não o apaga nem o lê; o
+  // código em si, nunca). Avisar o Edson ou reservar o código das contas altas é decisão dele (pendente). Nunca atrasa
+  // além de 3 s nem barra o pedido.
+  await logDoServidor(admin, { user_id: null, action: "CODIGO_SENHA_ENVIADO", entity_id: canonUuid(u.id) || String(u.id || ""),
+    entity_name: String(u.username || ""), ip_address: ip,
+    details: `O código para criar a senha da conta ${avisoLimpo(u.username, 60)} foi enviado ao e-mail do cadastro (${avisoLimpo(email, 120)}). Pedido feito na tela de entrada, sem login.` },
+    AVISO_TI_LOG_PRAZO_MS, "[auth/request-code]");
   return res.json({ success: true, delivered: "email" });
 });
 
@@ -802,10 +818,12 @@ app.post("/api/auth/set-password", async (req, res) => {
   if ((await rlHit(`setpw:fail:${unameKey}`, 900)) > 6) return tooMany(res, 900); // conta antes (ver login)
 
   // Desligado (022) não cria senha nem com um código que tenha sobrado (a tentativa já foi contada).
+  let contaDoCodigo: any = null;   // para o rastro no Log (abaixo)
   {
     const { data: cand, error: candErr } = await lerComDesligado((c) => admin.from("users").select(c).ilike("username", ilikeExact(unameKey)).limit(50), "id,username");
     if (candErr) return res.status(503).json({ success: false, error: "Nao consegui conferir o usuario. Tente de novo." });
     const alvo = (cand || []).find((r: any) => loginKey(r.username) === unameKey);
+    contaDoCodigo = alvo || null;
     if (alvo && desligadoPeloCadastro(alvo, canonUuid(alvo.id))) {
       return res.status(400).json({ success: false, error: "Codigo invalido ou expirado." });
     }
@@ -824,6 +842,13 @@ app.post("/api/auth/set-password", async (req, res) => {
     return res.status(400).json({ success: false, error: "Codigo invalido ou expirado." });
   }
   await rlReset(`setpw:fail:${unameKey}`); // sucesso limpa as falhas
+  // O RASTRO (07/10): a senha criada com o código do e-mail fica no Log de Auditoria, gravada pelo SERVIDOR (ver o
+  // request-code). Nunca a senha nem o código.
+  await logDoServidor(admin, { user_id: null, action: "SENHA_CRIADA_PELO_CODIGO",
+    entity_id: contaDoCodigo ? canonUuid(contaDoCodigo.id) || String(contaDoCodigo.id || "") : "",
+    entity_name: String((contaDoCodigo && contaDoCodigo.username) || unameKey), ip_address: ip,
+    details: `A senha da conta ${avisoLimpo((contaDoCodigo && contaDoCodigo.username) || unameKey, 60)} foi criada com o código enviado ao e-mail do cadastro. Feito na tela de entrada, sem login.` },
+    AVISO_TI_LOG_PRAZO_MS, "[auth/set-password]");
   return res.json({ success: true });
 });
 
@@ -1021,8 +1046,289 @@ const contaSoDoGestor = (r: any) => contaQueLeTudo(r) || (!!r && ehRepresentante
 const CARGO_SO_DO_GESTOR_MSG = "Só um GESTOR dá ou tira o cargo CEO, Diretor Industrial, GESTOR ou Representante.";
 const REPRESENTANTE_SO_OKR_MSG = "O representante é sempre \"Somente OKR\": não pode ser admin de visualização nem admin de OKR (a marca de admin de OKR, só o Edson tira).";
 
+// ---- ADMINISTRA USUÁRIOS (TI) — migração 032, 07/10/2026. Pedido do Edson (07/10): "a gente criou o usuário do Luiz,
+// que é da TI, e eu preciso que você dê permissão para ele criar o usuário, excluir o usuário, exceto o meu … sem que
+// ele possa ver os salários." É uma MARCA (users.admin_usuarios), não um cargo: GESTOR/COORDENADOR abririam a engenharia
+// e o R$. Lida do CADASTRO na hora (nunca do crachá) e só vale em cargo comum, fora do visualizador e de quem está
+// desligado (o CHECK da 032 garante o mesmo no banco). Quem a tem — e não é o Edson nem GESTOR/COORDENADOR, que seguem
+// exatamente como antes — pode, decisões dele de 07/10, e SÓ isto:
+//  · criar e editar com os cargos comuns (CARGOS_DO_TI); admin de OKR, visualizador, ADM Externo e a marca, nunca;
+//  · a conta que ele cria nasce SEM senha (a digitada é ignorada; o banco sorteia o hash — users_senha_sorteada, 032) e
+//    com e-mail válido: a pessoa cria a dela pelo código em "Criar / redefinir senha";
+//  · numa conta que já existe NÃO troca e-mail, login nem senha (trocar e-mail ou gerar código = tomar a conta, inclusive
+//    a Agenda que só a pessoa vê) e não edita as contas altas (CEO, Diretor, GESTOR, COORDENADOR, admins de OKR,
+//    visualizador, quem tem a marca), o Edson nem o teste; da própria conta, só o contato (cargo, marcas e setor: Edson);
+//  · definir o setor, menos o P&D (reservado) e o "Teste" (031) — as regras do representante (030) seguem;
+//  · excluir e desligar todos, menos o Edson e o teste (quem tem registros: só desligar — a trava 409 continua).
+// Salário, R$, custo/hora e Log de Auditoria seguem fechados para ele (o cargo dele não os abre; a marca não entra lá).
+// A marca, só o Edson dá ou tira (no editar).
+const CARGOS_DO_TI = ["PROJETISTA", "PROCESSOS", "QUALIDADE", REPRESENTANTE];
+const CARGOS_COM_A_MARCA = ["PROJETISTA", "PROCESSOS", "QUALIDADE"];   // espelho do CHECK users_admin_usuarios_so_comuns
+// Antes da 032 a coluna não existe: 42703 (Postgres) ou PGRST204 (cache do PostgREST) = ninguém tem a marca.
+const semColunaAdminUsuarios = (e: any): boolean => !!e && ["42703", "PGRST204"].includes(String(e.code));
+const avisosSemAdminUsuarios = new Set<string>();
+const avisaSemAdminUsuarios = (e: any) => {
+  const code = String(e.code);
+  if (!avisosSemAdminUsuarios.has(code)) { avisosSemAdminUsuarios.add(code); console.warn("[users] sem a coluna admin_usuarios (a 032 rodou?):", code); }
+};
+// Quem está logado administra usuários pela marca? Sem a 032 = não. Qualquer outro erro LANÇA (a rota responde 503):
+// "não consegui conferir" nunca vira "administra".
+async function administraUsuariosDb(admin: any, sub: any): Promise<boolean> {
+  const id = canonUuid(sub);
+  if (!id || id === EDSON_ID) return false;   // o Edson manda em tudo pelo id; não usa a marca
+  const { data, error } = await admin.from("users").select("admin_usuarios, role, okr_viewer, desligado_em").eq("id", id).limit(1);
+  if (error) {
+    if (semColunaAdminUsuarios(error)) { avisaSemAdminUsuarios(error); return false; }
+    throw new Error("Não consegui conferir a sua permissão. Nada foi gravado; tente de novo.");
+  }
+  const r = data && data[0];
+  return !!r && r.admin_usuarios === true && CARGOS_COM_A_MARCA.includes(String(r.role || "")) && !r.okr_viewer && !desligadoPeloCadastro(r, id);
+}
+// A marca de uma conta (o alvo): true/false, ou null sem a 032. Outro erro LANÇA.
+async function marcaAdminUsuariosDe(admin: any, id: string): Promise<boolean | null> {
+  const { data, error } = await admin.from("users").select("admin_usuarios").eq("id", id).limit(1);
+  if (error) {
+    if (semColunaAdminUsuarios(error)) { avisaSemAdminUsuarios(error); return null; }
+    throw new Error("Não consegui conferir o usuário. Nada foi gravado; tente de novo.");
+  }
+  return !!(data && data[0] && data[0].admin_usuarios === true);
+}
+// A conta como o TI a vê (para decidir se edita): cargo, marcas, contato e login. Falha LANÇA.
+async function contaParaTI(admin: any, id: string): Promise<any | null> {
+  // (nome, setor e as marcas do OKR vão também ao aviso ao Edson — o "antes" do que o TI mudou, 07/10)
+  const { data, error } = await lerComUsuarioTeste((c) => admin.from("users").select(c).eq("id", id).limit(1), "id, role, okr_admin, okr_viewer, email, username, name, surname, sector, okr_only, okr_enabled");
+  if (error) throw new Error("Não consegui ler o usuário. Nada foi gravado; tente de novo.");
+  const a = data && data[0];
+  if (!a) return null;
+  return { ...a, admin_usuarios: (await marcaAdminUsuariosDe(admin, id)) === true };
+}
+// As contas que o TI NÃO edita (exclui e desliga, sim): as que leem tudo, o COORDENADOR, quem tem a marca, o teste, o Edson.
+const contaAltaParaTI = (a: any): boolean =>
+  !a || contaQueLeTudo(a) || String(a.role || "") === "COORDENADOR" || a.admin_usuarios === true || a.usuario_teste === true || canonUuid(a.id) === EDSON_ID;
+const TI_CARGO_MSG = "Você dá só os cargos Projetista, Processos, Qualidade ou Representante. Os outros, peça ao Edson.";
+const TI_MARCAS_MSG = "Admin de OKR, admin de visualização e \"administra usuários\" você não dá nem tira: peça ao Edson.";
+const TI_CONTA_ALTA_MSG = "Esta conta você não edita (direção, gestão, coordenação, admin do OKR, visualizador ou quem administra usuários): peça ao Edson. Desligar ou excluir, você pode.";
+const TI_ACESSO_MSG = "E-mail, login e senha de uma conta que já existe você não troca: é por eles que se entra na conta. Peça ao Edson; a senha, a própria pessoa cria em \"Criar / redefinir senha\".";
+const TI_SI_MESMO_MSG = "Na sua conta você muda só o contato (nome, telefone, e-mail), em Meu Perfil. Cargo, setor e marcas, só o Edson.";
+const TI_EMAIL_MSG = "Informe um e-mail válido: é para ele que vai o código com que a pessoa cria a própria senha. Nada foi gravado.";
+const TI_CRIADO_MSG = (login: string) =>
+  `Conta criada sem senha: ${login} cria a própria em "Criar / redefinir senha", na tela de entrada, com o código que chega no e-mail cadastrado.`;
+const MARCA_SO_EDSON_MSG = "A marca \"administra usuários\" só o Edson dá ou tira.";
+const MARCA_SO_COMUNS_MSG = "Quem administra usuários fica num cargo comum (Projetista, Processos ou Qualidade), sem ser admin de visualização nem usuário de teste: tire a marca antes de mudar o cargo, ou dê a marca a outra pessoa. Nada foi gravado.";
+const MARCA_SEM_032_MSG = "A marca \"administra usuários\" só existe depois da migração 032. Nada foi gravado.";
+const MARCA_NO_EDITAR_MSG = "A marca \"administra usuários\" se dá depois de criar a conta, no editar. Nada foi gravado.";
+const MARCA_ACESSO_SO_EDSON_MSG = "E-mail, login e senha de quem administra usuários só o Edson altera (trocar um deles é tomar a conta e, com ela, a marca).";
+const TI_EMAIL_EMPRESA_MSG = `Use o e-mail da empresa (${ALLOWED_EMAIL_DOMAINS.join(", ")}): é para ele que vai o código com que a pessoa cria a própria senha. Só o representante, que é de fora, pode ter outro. Nada foi gravado.`;
+// A mesma régua no EDITAR e no modo setor (07/10, achado da crítica): a trava do e-mail da empresa existia só no criar — o TI
+// criava um REPRESENTANTE com um e-mail dele, de fora (permitido), e no editar o passava a PROJETISTA num setor comum, sem
+// "Somente OKR": uma conta com engenharia e setor cujo código vai para uma caixa que nem passa pela empresa. Agora conta com
+// e-mail de fora só fica com o TI enquanto for representante; o resto (e virar outro cargo), só o Edson ou um GESTOR.
+const tiBarraEmailDeFora = (cargoFinal: unknown, email: unknown): boolean =>
+  !ehRepresentante(cargoFinal) && !recipientAllowed(String(email || ""), new Set<string>());
+const TI_EMAIL_FORA_MSG = `Esta conta não tem e-mail da empresa (${ALLOWED_EMAIL_DOMAINS.join(", ")}): você só a mantém como representante. Outro cargo, o setor ou as marcas dela, peça ao Edson (ou a um GESTOR). Nada foi gravado.`;
+
+// ---- O AVISO AO EDSON A CADA MUDANÇA DO TI (07/10/2026) ------------------------------------------------------------------
+// Decisão do Edson (07/10), pelo risco da "conta-fantoche" (o TI administra as caixas de e-mail da empresa: poderia criar
+// uma caixa e uma conta comum num setor e entrar nela): "E-mail para mim a cada mudança". Toda ação de quem administra
+// usuários PELA MARCA (o TI: tem a marca e não é o Edson, GESTOR nem COORDENADOR) que mexe numa pessoa — criar a conta;
+// mudar nome, cargo, setor, "Somente OKR" ou "OKR habilitado"; desligar; excluir — manda UM e-mail ao Edson, DEPOIS que a
+// gravação deu certo. Ação recusada não avisa (nada mudou); a própria conta do TI (o contato dele) também não — é o Meu
+// Perfil de todo mundo, não o poder da marca.
+//  · PARA QUEM: o e-mail de notificação do Edson (o mesmo de NOTIFY_RECIPIENTS e do alerta de uso), escolhido AQUI —
+//    nada do pedido entra no destino.
+//  · O QUÊ: quem fez (nome e login), o quê, a conta (nome, login, e-mail), antes → depois de nome/cargo/setor/"Somente OKR"/
+//    "OKR habilitado" e o dia e a hora de Joinville. Só esses campos, copiados um a um (contaDoAviso): nunca salário, R$,
+//    senha nem código.
+//  · O RASTRO NO SERVIDOR (07/10, achado da crítica): ANTES de tentar o e-mail, o servidor grava no Log de Auditoria
+//    (service_role, ação TI_CONTA, sem salário) o mesmo resumo do aviso. Sem isso, quando o e-mail saía, o único registro era
+//    a mensagem — numa caixa de domínio que o próprio TI administra (uma regra apagava "KPI — o TI…"), e o Log da tela vem
+//    do navegador, que o TI pula chamando a API direto. A linha que o servidor grava o TI não apaga, não altera e não lê
+//    (audit_logs não tem política de DELETE/UPDATE para a tela, e pode_ler_auditoria não o inclui — ensaiado no banco, 07/10).
+//  · COMO: pelo sendPlainMail (a conta oficial, a mesma do /api/send-email), ESPERANDO no máximo 8 s E o que ainda sobra até
+//    ~8,5 s desde o começo da rota (o mínimo é 1,5 s) — na Vercel o que roda depois da resposta pode ser cortado (e a função,
+//    sem o Fluid, morre aos 10 s), então o aviso sai antes da resposta e nunca a empurra para além do corte. Falhou (sem
+//    EMAIL_*, recusa, prazo)? A mudança CONTINUA valendo (já foi gravada), o servidor anota no Log de Auditoria que o aviso não
+//    saiu (service_role, ação AVISO_NAO_ENVIADO, sem salário) e o console.error leva só o código do erro. Nunca lança.
+const AVISO_TI_PARA = "edson@jimp.com.br";
+const AVISO_TI_PRAZO_MS = 8000;
+const AVISO_TI_ORCAMENTO_MS = 8500;   // até aqui, desde o começo da rota, o SMTP pode esperar (o resto é do Log e da resposta)
+const AVISO_TI_PRAZO_MIN_MS = 1500;
+const AVISO_TI_LEITURA_PRAZO_MS = 2000;
+const AVISO_TI_LOG_PRAZO_MS = 3000;
+type AvisoTIAcao = "criou" | "alterou" | "desligou" | "excluiu";
+// lida = o cadastro foi lido (sem ele, o aviso diz "não consegui ler" em vez de afirmar valores)
+type AvisoTIConta = { id: string; lida: boolean; name: string; surname: string; username: string; email: string; role: string; sector: string; okr_only: boolean; okr_enabled: boolean };
+// As colunas que o aviso lê do cadastro (nunca salary/password/código).
+const AVISO_TI_COLS = "name, surname, username, email, role, sector, okr_only, okr_enabled";
+// Os ÚNICOS campos que entram no aviso, um a um — nunca `...linha` (a linha gravada pode trazer salário e senha).
+const contaDoAviso = (id: string, r: any): AvisoTIConta => ({
+  id, lida: !!r,
+  name: String(r?.name ?? ""), surname: String(r?.surname ?? ""), username: String(r?.username ?? ""), email: String(r?.email ?? ""),
+  role: String(r?.role ?? ""), sector: String(r?.sector ?? ""), okr_only: r?.okr_only === true, okr_enabled: r?.okr_enabled === true,
+});
+const CARGO_NO_AVISO: Record<string, string> = {
+  PROJETISTA: "Projetista", PROCESSOS: "Processos", QUALIDADE: "Qualidade", REPRESENTANTE: "Representante", GESTOR: "Gestor",
+  COORDENADOR: "Coordenador", CEO: "CEO", DIRETOR_INDUSTRIAL: "Diretor Industrial", ADM_EXTERNO: "ADM Externo",
+};
+// Texto do cadastro numa linha só (sem quebra nem caractere de controle) e curto.
+const avisoLimpo = (v: unknown, max = 120): string => {
+  const s = String(v ?? "").replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, " ").replace(/\s+/g, " ").trim();
+  return s.length > max ? s.slice(0, max) + "…" : s;
+};
+const avisoNome = (c: AvisoTIConta): string => avisoLimpo(`${c.name} ${c.surname}`) || "—";
+const avisoCargo = (c: AvisoTIConta): string => CARGO_NO_AVISO[c.role] || avisoLimpo(c.role, 40) || "—";
+const avisoSetor = (c: AvisoTIConta): string => avisoLimpo(c.sector, 60) || "sem setor";
+const avisoSimNao = (b: boolean): string => (b ? "sim" : "não");
+// O que conta como mudança para o aviso (o telefone sozinho não conta).
+const avisoTIMudou = (a: AvisoTIConta, d: AvisoTIConta): boolean =>
+  avisoNome(a) !== avisoNome(d) || a.role !== d.role || a.sector.trim() !== d.sector.trim() || a.okr_only !== d.okr_only || a.okr_enabled !== d.okr_enabled;
+// "07/10/2026 às 14:32", no horário de Joinville (a Vercel roda em UTC).
+const avisoQuando = (d: Date): string => {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(d);
+  const g = (t: string) => (p.find((x) => x.type === t) || { value: "" }).value;
+  return `${g("day")}/${g("month")}/${g("year")} às ${g("hour")}:${g("minute")}`;
+};
+const avisoDia = (iso: string): string => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || "")); return m ? `${m[3]}/${m[2]}/${m[1]}` : avisoLimpo(iso, 20); };
+
+type AvisoTI = { acao: AvisoTIAcao; conta: AvisoTIConta; antes?: AvisoTIConta; ultimoDia?: string; setorPeloBanco?: boolean };
+const AVISO_NAO_LI = "não consegui ler o cadastro";
+// O bloco "o que mudou / como nasceu / como estava", em linhas "Rótulo: valor" — o MESMO no e-mail e no Log do servidor.
+// Um lado que não foi lido diz "não consegui ler" (antes dizia "—" e afirmava "(igual)").
+const avisoTIBloco = (a: AvisoTI): { titulo: string; linhas: string[] } => {
+  const c = a.conta;
+  const v = (k: AvisoTIConta, f: (k: AvisoTIConta) => string) => (k.lida ? f(k) : AVISO_NAO_LI);
+  const campo = (rotulo: string, antes: string | undefined, depois: string) =>
+    antes === undefined ? `${rotulo}: ${depois}` : antes === depois && antes !== AVISO_NAO_LI ? `${rotulo}: ${depois} (igual)` : `${rotulo}: ${antes} → ${depois}`;
+  if (a.acao === "criou") {
+    return { titulo: "Como a conta nasceu", linhas: [
+      campo("Cargo", undefined, avisoCargo(c)),
+      campo("Setor", undefined, a.setorPeloBanco ? "o próprio do representante (posto pelo banco)" : avisoSetor(c)),
+      campo("Somente OKR", undefined, avisoSimNao(c.okr_only)),
+      campo("OKR habilitado", undefined, avisoSimNao(c.okr_enabled))] };
+  }
+  if (a.acao === "alterou" && a.antes) {
+    const b = a.antes;
+    return { titulo: "O que mudou (antes → depois)", linhas: [
+      campo("Nome", v(b, avisoNome), v(c, avisoNome)),
+      campo("Cargo", v(b, avisoCargo), v(c, avisoCargo)),
+      campo("Setor", v(b, avisoSetor), avisoSetor(c)),
+      campo("Somente OKR", v(b, (k) => avisoSimNao(k.okr_only)), v(c, (k) => avisoSimNao(k.okr_only))),
+      campo("OKR habilitado", v(b, (k) => avisoSimNao(k.okr_enabled)), v(c, (k) => avisoSimNao(k.okr_enabled)))] };
+  }
+  return { titulo: "Como a conta estava", linhas: [
+    ...(a.acao === "desligou" ? [`Último dia trabalhado: ${avisoDia(a.ultimoDia || "")}`] : []),
+    campo("Cargo", undefined, v(c, avisoCargo)),
+    campo("Setor", undefined, v(c, avisoSetor)),
+    campo("Somente OKR", undefined, v(c, (k) => avisoSimNao(k.okr_only))),
+    campo("OKR habilitado", undefined, v(c, (k) => avisoSimNao(k.okr_enabled)))] };
+};
+const avisoTIMensagem = (a: AvisoTI, ator: { nome: string; login: string }, quando: string): { subject: string; text: string } => {
+  const c = a.conta;
+  const login = avisoLimpo(c.username, 60) || "—";
+  const bloco = avisoTIBloco(a);
+  const linhas = [
+    "Aviso automático do KPI de Engenharia (JIMPNexus): uma mudança numa conta, feita por quem administra usuários pela marca (o TI).",
+    "",
+    `Quem fez: ${ator.nome || "—"} (login ${ator.login || "—"})`,
+    `O que fez: ${a.acao} uma conta`,
+    `Quando: ${quando} (horário de Joinville)`,
+    "",
+    "A conta",
+    ...(c.lida ? [] : [`  (${AVISO_NAO_LI} desta conta: confira pelo id, na Equipe)`]),
+    `  Nome: ${c.lida ? avisoNome(c) : "—"}`,
+    `  Login: ${login}`,
+    `  E-mail: ${avisoLimpo(c.email, 120) || "—"}`,
+    `  Id: ${c.id}`,
+    "",
+    ...(a.acao === "desligou" ? ["Desligar tira o acesso e o e-mail do cadastro; o que a pessoa fez continua no nome dela.", ""] : []),
+    bloco.titulo,
+    ...bloco.linhas.map((l) => `  ${l}`),
+    "",
+    "Não reconhece esta mudança? Na Equipe do KPI você desliga a conta e tira a marca \"administra usuários\" de quem a fez (só você tira).",
+    "Este aviso sai sozinho a cada conta que o TI cria, altera, desliga ou exclui. Cada um fica também no Log de Auditoria (ação TI_CONTA), gravado pelo servidor.",
+  ];
+  return { subject: `KPI — o TI ${a.acao} uma conta: ${login}`, text: linhas.join("\n") };
+};
+// A linha do Log de Auditoria que o SERVIDOR grava a cada ação do TI (F1, 07/10): o mesmo resumo, numa linha.
+const avisoTIResumo = (a: AvisoTI, ator: { nome: string; login: string }, quando: string): string => {
+  const c = a.conta;
+  const bloco = avisoTIBloco(a);
+  return `${ator.nome || "—"} (login ${ator.login || "—"}) ${a.acao} a conta ${avisoLimpo(c.username, 60) || "—"} ` +
+    `(${c.lida ? avisoNome(c) : AVISO_NAO_LI}; e-mail ${avisoLimpo(c.email, 120) || "—"}; id ${c.id}) em ${quando}. ` +
+    `${bloco.titulo}: ${bloco.linhas.join("; ")}.`;
+};
+
+// Uma conta para o aviso, lida do cadastro (prazo curto). Nunca lança: null = não consegui ler.
+async function lerContaDoAviso(admin: any, id: string): Promise<AvisoTIConta | null> {
+  try {
+    const { data, error } = (await agendaComPrazo(Promise.resolve(admin.from("users").select(AVISO_TI_COLS).eq("id", id).limit(1)), AVISO_TI_LEITURA_PRAZO_MS)) as any;
+    if (error || !data || !data[0]) return null;
+    return contaDoAviso(id, data[0]);
+  } catch { return null; }
+}
+
+// Uma linha no Log de Auditoria, gravada pelo SERVIDOR (service_role; o gatilho audit_logs_carimba_quem confia nela). Prazo
+// curto; nunca lança. true = gravou.
+async function logDoServidor(admin: any, linha: { user_id: string | null; action: string; entity_id: string; entity_name: string; details: string; ip_address?: string | null },
+  prazoMs: number = AVISO_TI_LOG_PRAZO_MS, rotulo = "[AvisoTI]"): Promise<boolean> {
+  try {
+    const { error } = (await agendaComPrazo(Promise.resolve(admin.from("audit_logs").insert([{
+      user_id: linha.user_id, user_name: "Sistema Nexus", action: linha.action, entity_type: "USER",
+      entity_id: linha.entity_id, entity_name: linha.entity_name, details: linha.details,
+      ...(linha.ip_address ? { ip_address: linha.ip_address } : {}),
+    }])), prazoMs)) as any;
+    if (error) { console.error(`${rotulo} não consegui gravar no Log de Auditoria (${linha.action}):`, String(error.code || "(sem código)")); return false; }
+    return true;
+  } catch (e: any) {
+    console.error(`${rotulo} não consegui gravar no Log de Auditoria (${linha.action}):`, String((e && e.code) || "erro"));
+    return false;
+  }
+}
+// "8 s", "6,5 s"
+const avisoSegundos = (ms: number): string => `${(Math.round(ms / 100) / 10).toString().replace(".", ",")} s`;
+
+// Grava o rastro no Log (TI_CONTA) e manda o aviso (ou anota no Log que não saiu). Chamar só DEPOIS de a gravação dar certo.
+// inicioRota = o Date.now() do começo da rota: o prazo do SMTP desconta o que a rota já gastou. Nunca lança.
+async function avisarEdsonDoTI(admin: any, atorSub: any, a: AvisoTI, inicioRota: number = Date.now()): Promise<void> {
+  const atorId = canonUuid(atorSub) || "";
+  const login = avisoLimpo(a.conta.username, 60) || a.conta.id;
+  try {
+    let ator = { nome: "", login: "" };
+    const eu = atorId ? await lerContaDoAviso(admin, atorId) : null;
+    if (eu) ator = { nome: avisoNome(eu), login: avisoLimpo(eu.username, 60) };
+    else ator = { nome: `(${AVISO_NAO_LI})`, login: atorId || "?" };
+    const quando = avisoQuando(new Date());
+    // 1) o RASTRO, antes do e-mail: se o SMTP pendurar e a função for cortada, a linha já está no Log.
+    await logDoServidor(admin, { user_id: atorId || null, action: "TI_CONTA", entity_id: a.conta.id, entity_name: login, details: avisoTIResumo(a, ator, quando) });
+    // 2) o e-mail, com o prazo que sobra
+    const { subject, text } = avisoTIMensagem(a, ator, quando);
+    const semConfig = !process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS;
+    const prazo = Math.max(AVISO_TI_PRAZO_MIN_MS, Math.min(AVISO_TI_PRAZO_MS, AVISO_TI_ORCAMENTO_MS - (Date.now() - inicioRota)));
+    try {
+      await agendaComPrazo(sendPlainMail(AVISO_TI_PARA, subject, text), prazo);
+      console.log(`[AvisoTI] aviso ao Edson enviado: o TI ${a.acao} a conta ${login}`);
+      return;
+    } catch (e: any) {
+      // Só o código: a mensagem do SMTP pode ecoar usuário/senha da conta de envio.
+      const code = String((e && (e.code || e.responseCode)) || "erro");
+      const motivo = semConfig ? "o e-mail não está configurado no servidor"
+        : code === "TIMEOUT" ? `o servidor de e-mail não respondeu em ${avisoSegundos(prazo)}`
+        : `o servidor de e-mail recusou ou caiu (erro ${avisoLimpo(code, 20)})`;
+      console.error(`[AvisoTI] o aviso ao Edson NÃO saiu (o TI ${a.acao} a conta ${login}):`, semConfig ? "sem EMAIL_*" : code);
+      const details = `O e-mail automático ao Edson não saiu: ${ator.nome} (login ${ator.login}) ${a.acao} a conta ${login} (${a.conta.lida ? avisoNome(a.conta) : AVISO_NAO_LI}) em ${quando}. ` +
+        `Motivo: ${motivo}. A mudança continua valendo — confira na Equipe.`;
+      // o que sobra até ~9,5 s (nunca menos de 0,5 s): a linha TI_CONTA já está lá; esta só diz que o e-mail faltou
+      await logDoServidor(admin, { user_id: atorId || null, action: "AVISO_NAO_ENVIADO", entity_id: a.conta.id, entity_name: login, details },
+        Math.max(500, Math.min(AVISO_TI_LOG_PRAZO_MS, 9500 - (Date.now() - inicioRota))));
+    }
+  } catch (e: any) {
+    console.error("[AvisoTI] falha inesperada no aviso:", String((e && e.code) || "erro"));
+  }
+}
+
 // POST /api/users/save { mode: 'create'|'update', user }
 app.post("/api/users/save", async (req, res) => {
+  const inicioRota = Date.now();   // o prazo do aviso ao Edson desconta o que a rota já gastou
   const claims = verifyBearerToken(req);
   if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
   const admin = getSupabaseAdmin();
@@ -1037,26 +1343,43 @@ app.post("/api/users/save", async (req, res) => {
     const alvo = canonUuid(user && user.id);
     if (!alvo) return res.status(400).json({ success: false, error: "id ausente ou invalido." });
     if (alvo === EDSON_ID && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Só o próprio Edson altera a conta dele." });
+    // …e quem administra usuários (032, TI): define o setor das contas que ele edita, menos P&D e Teste (as recusas abaixo).
+    let setorPeloTI = false;
+    let avisaEdson = false;   // a troca sai em e-mail ao Edson (07/10): quem tem a marca, mesmo que mude o setor como admin de OKR
     try {
-      if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR mudam o setor de alguém." });
+      if (!(await isOkrMasterDb(admin, claims.sub))) {
+        setorPeloTI = await administraUsuariosDb(admin, claims.sub);
+        if (!setorPeloTI) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR mudam o setor de alguém." });
+      }
       // O CEO e o Diretor Industrial (06/10) não mudam setor de ninguém, mesmo admins de OKR ("só visão macro").
       if (!claimsAreEdson(claims) && ehVisaoCeo(await currentRole(admin, claims.sub))) return res.status(403).json({ success: false, error: CEO_SO_VE });
+      avisaEdson = setorPeloTI || (await administraUsuariosDb(admin, claims.sub));   // o Edson: false, sem ir ao banco
     }
     catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
     const setor = String((user && user.sector) ?? "").trim();
     if (setor.length > 60) return res.json({ success: false, message: "O nome do setor é longo demais (até 60 letras)." });
     // O setor que a tela via (sectorAntes): se outro admin o mudou no meio, recusa em vez de desfazer calado.
-    const { data: atual, error: aErr } = await lerComUsuarioTeste((c) => admin.from("users").select(c).eq("id", alvo).limit(1), "sector, role");
+    // (junto, a conta como está — o "antes" do aviso ao Edson, lido ANTES de gravar: lida depois, uma leitura que desistia
+    // mandava um aviso de "—" que nem dizia de quem era a troca — 07/10, achado da crítica)
+    const { data: atual, error: aErr } = await lerComUsuarioTeste((c) => admin.from("users").select(c).eq("id", alvo).limit(1), AVISO_TI_COLS);   // (traz sector e role)
     if (aErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
     if (!atual || !atual.length) return res.json({ success: false, message: "Usuário não encontrado." });
     // O usuário teste (031): só o Edson mexe na conta dele, o setor incluído.
     if ((atual[0] as any).usuario_teste && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: USUARIO_TESTE_SO_EDSON_MSG });
+    // O TI (032): o setor dele mesmo é do Edson; o das contas altas, de quem as edita (ele não).
+    if (setorPeloTI) {
+      if (alvo === canonUuid(claims.sub)) return res.status(403).json({ success: false, error: TI_SI_MESMO_MSG });
+      try { if (contaAltaParaTI(await contaParaTI(admin, alvo))) return res.status(403).json({ success: false, error: TI_CONTA_ALTA_MSG }); }
+      catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+    }
     const setorAtual = String((atual[0] as any).sector || "").trim();
     if (setor === setorAtual) return res.json({ success: true, semMudanca: true });   // já é esse: nada a gravar (a tela não registra troca)
     // O setor do REPRESENTANTE (06/10/2026) é só dele e quem o põe é o banco (030): gravar outro seria desfeito calado.
     if (ehRepresentante((atual[0] as any).role)) return res.json({ success: false, message: "O setor do representante é só dele (posto automaticamente)." });
     // …e o setor de um representante não serve para outra pessoa (06/10/2026).
     if (setorDeRepresentante(setor)) return res.json({ success: false, message: SETOR_DE_REPRESENTANTE_MSG });
+    // O TI (032) não mexe no setor de conta comum com e-mail de fora da empresa (07/10, a mesma régua do criar e do editar).
+    if (setorPeloTI && tiBarraEmailDeFora((atual[0] as any).role, (atual[0] as any).email)) return res.status(403).json({ success: false, error: TI_EMAIL_FORA_MSG });
     if ((setorReservado(setor) || setorReservado(setorAtual)) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
     // O setor do teste (031): quem entra nele passa a ver os indicadores do teste — só o Edson põe ou tira alguém.
     if ((setorSoEdson(setor) || setorSoEdson(setorAtual)) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_SO_EDSON_MSG });
@@ -1066,11 +1389,16 @@ app.post("/api/users/save", async (req, res) => {
     if (sErr) return res.json({ success: false, message: erroDoRepresentanteMsg(sErr) || `Erro DB: ${sErr.message}` });
     if (!mudou || !mudou.length) return res.json({ success: false, message: "Usuário não encontrado." });
     console.log(`[users/save] setor de ${alvo} → "${setor || "—"}" por ${canonUuid(claims.sub)} (KPI dos setores)`);
+    if (avisaEdson) {
+      const antes = contaDoAviso(alvo, atual[0]);   // lida antes de gravar (acima); o "depois" muda só o setor
+      await avisarEdsonDoTI(admin, claims.sub, { acao: "alterou", antes: { ...antes, sector: setorAtual }, conta: { ...antes, sector: setor } }, inicioRota);
+    }
     return res.json({ success: true });
   }
   if (!user || !user.username) return res.status(400).json({ success: false, error: "Dados incompletos." });
   let isAdmin = false;
   let isGestor = false; // só GESTOR mexe em CEO/GESTOR e nas contas que leem o OKR de todos
+  let ehTI = false;     // administra usuários pela marca (032) — só quem não é admin pelo cargo; GESTOR/COORDENADOR seguem como antes
   try {
     // Desligado (022): nenhum modo — nem o próprio contato pelo Meu Perfil, que não passa pelo cargo.
     const meuId = canonUuid(claims.sub);
@@ -1080,6 +1408,7 @@ app.post("/api/users/save", async (req, res) => {
     isAdmin = PESSOAS_ADMIN_ROLES.includes(String(papel)) || claimsAreEdson(claims);   // o CEO não (01/10); o Edson pelo id
     isGestor = papel === "GESTOR" || claimsAreEdson(claims);
     if (ehVisaoCeo(papel) && !claimsAreEdson(claims) && (mode === "create" || canonUuid(user.id) !== meuId)) return res.status(403).json({ success: false, error: CEO_SO_VE });
+    if (!isAdmin && mode !== "profile") ehTI = await administraUsuariosDb(admin, claims.sub);
   }
   catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
 
@@ -1134,9 +1463,23 @@ app.post("/api/users/save", async (req, res) => {
   } catch (e: any) { return res.json({ success: false, message: e.message }); }
 
   if (mode === "create") {
-    if (!isAdmin) return res.status(403).json({ success: false, error: "Sem permissao para criar usuarios." });
+    if (!isAdmin && !ehTI) return res.status(403).json({ success: false, error: "Sem permissao para criar usuarios." });
     if (!CARGOS_VALIDOS.includes(String(user.role ?? ""))) return res.json({ success: false, message: CARGO_DESCONHECIDO_MSG(user.role) });
-    if (cargoSoDoGestor(user.role) && !isGestor) return res.status(403).json({ success: false, error: CARGO_SO_DO_GESTOR_MSG });
+    // O TI (032): só cargo comum, nenhuma marca, e-mail válido (é por ele que a pessoa cria a senha).
+    if (ehTI) {
+      if (!CARGOS_DO_TI.includes(String(user.role))) return res.status(403).json({ success: false, error: TI_CARGO_MSG });
+      if (!!user.okrViewer || !!user.okrAdmin || !!user.adminUsuarios) return res.status(403).json({ success: false, error: TI_MARCAS_MSG });
+      if (!isValidEmail(user.email)) return res.json({ success: false, message: TI_EMAIL_MSG });
+      // …e da EMPRESA (07/10, achado da crítica): com um e-mail dele, o TI pedia o código e entrava na conta que acabou de
+      // criar — uma conta comum, com engenharia e o setor que ele escolhesse ("conta-fantoche"). O representante (vendedor
+      // de fora, sempre "Somente OKR", setor só dele) fica de fora.
+      if (!ehRepresentante(user.role) && !recipientAllowed(String(user.email), new Set<string>())) return res.json({ success: false, message: TI_EMAIL_EMPRESA_MSG });
+    } else if (user.adminUsuarios === true) {
+      // A marca se dá no editar, e só o Edson.
+      if (!claimsAreEdson(claims)) return res.status(403).json({ success: false, error: MARCA_SO_EDSON_MSG });
+      return res.json({ success: false, message: MARCA_NO_EDITAR_MSG });
+    }
+    if (cargoSoDoGestor(user.role) && !isGestor && !(ehTI && CARGOS_DO_TI.includes(String(user.role)))) return res.status(403).json({ success: false, error: CARGO_SO_DO_GESTOR_MSG });
     // REPRESENTANTE (06/10/2026): nasce SEMPRE "Somente OKR" (com OKR), nunca visualizador — como o ADM Externo nasce
     // visualizador. Sem isto, um representante criado sem a marca viraria usuário da engenharia.
     const novoRepresentante = ehRepresentante(user.role);
@@ -1161,16 +1504,26 @@ app.post("/api/users/save", async (req, res) => {
     const setorNovo = novoRepresentante ? "" : String(user.sector || "").trim();
     if (setorNovo) {
       if (setorDeRepresentante(setorNovo)) return res.json({ success: false, message: SETOR_DE_REPRESENTANTE_MSG });
-      try { if (!(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR definem o setor (o setor abre o KPI do setor). Crie sem setor e peça a eles." }); }
+      // …e quem administra usuários (032): menos P&D e Teste (as recusas logo abaixo valem para ele).
+      try { if (!ehTI && !(await isOkrMasterDb(admin, claims.sub))) return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR definem o setor (o setor abre o KPI do setor). Crie sem setor e peça a eles." }); }
       catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
       if (setorReservado(setorNovo) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_RESERVADO_MSG });
       if (setorSoEdson(setorNovo) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: SETOR_SO_EDSON_MSG });
     }
     // Salario so e gravado se quem cria for o Edson. Um admin comum nem
     // enxerga salario (cliente recebe 0), entao nunca escreve esse campo.
-    const { error } = await admin.from("users").insert([{
-      id: user.id || randomUUID(), name: user.name, surname: user.surname, email: user.email, phone: user.phone,
-      username: user.username, password: user.password, role: user.role,
+    // A conta que o TI cria (032) nasce SEM senha: a digitada é ignorada (nunca vai ao banco, nem em texto puro), vai
+    // password vazio + must_set_password, e o banco sorteia o hash (users_senha_sorteada) — ninguém entra até a pessoa
+    // criar a dela pelo código no e-mail.
+    const semSenha = ehTI;
+    // O id da conta nova é SEMPRE sorteado aqui, nunca o que o cliente manda (07/10, achado da crítica): excluir uma conta
+    // sem registros e recriá-la com o MESMO id herdava os convites da Agenda dela (participantes e alertas guardam o id,
+    // sem FK, e o disparador acha o destinatário pelo id na hora de mandar) — inclusive os compromissos do Edson.
+    const idNovo = randomUUID();
+    const linhaNova = {
+      id: idNovo, name: user.name, surname: user.surname, email: user.email, phone: user.phone,
+      username: user.username, password: semSenha ? "" : user.password, role: user.role,
+      ...(semSenha ? { must_set_password: true } : {}),
       salary: claimsAreEdson(claims) ? (Number(user.salary) || 0) : 0,
       // Admin de visualização não tem OKR próprio nem é "somente OKR" (tem restrição própria). O representante é
       // sempre "Somente OKR" (newViewer é falso para ele: recusado acima).
@@ -1178,10 +1531,17 @@ app.post("/api/users/save", async (req, res) => {
       okr_only: newViewer ? false : !!(user.okrOnly || novoRepresentante),
       okr_viewer: newViewer,
       sector: setorNovo || null,
-    }]);
+    };
+    const { error } = await admin.from("users").insert([linhaNova]);
     if (error) return res.json({ success: false, message: erroDoRepresentanteMsg(error) || `Erro DB: ${error.message}` });
     if (setorNovo) console.log(`[users/save] setor "${setorNovo}" dado na criação de ${user.username} por ${canonUuid(claims.sub)}`);
-    return res.json({ success: true });
+    // O aviso ao Edson (07/10): a conta que o TI criou, como nasceu (contaDoAviso copia só os campos do aviso).
+    if (ehTI) await avisarEdsonDoTI(admin, claims.sub, { acao: "criou", conta: contaDoAviso(idNovo, linhaNova), setorPeloBanco: novoRepresentante }, inicioRota);
+    if (semSenha) {
+      console.log(`[users/save] ${user.username} criado sem senha (administra usuários) por ${canonUuid(claims.sub)}`);
+      return res.json({ success: true, id: idNovo, semSenha: true, message: TI_CRIADO_MSG(user.username) });
+    }
+    return res.json({ success: true, id: idNovo });
   }
 
   // Meu Perfil: SÓ o contato da própria pessoa. O perfil manda o usuário que o
@@ -1210,7 +1570,7 @@ app.post("/api/users/save", async (req, res) => {
   // update
   if (!user.id) return res.status(400).json({ success: false, error: "id ausente." });
   if (!String(user.name || "").trim()) return res.json({ success: false, message: "Informe o nome." });
-  if (!isAdmin && !isSelf) return res.status(403).json({ success: false, error: "Sem permissao." });
+  if (!isAdmin && !isSelf && !ehTI) return res.status(403).json({ success: false, error: "Sem permissao." });
   // O usuário teste (031): a conta dele só o Edson altera — nenhum GESTOR/COORDENADOR (senão trocava a senha e entrava
   // como ele). Conferido depois do "Sem permissao." (quem não é admin não distingue a conta dele de outra qualquer) e
   // antes de qualquer leitura ou gravação do alvo. A própria pessoa segue (o contato, como no Meu Perfil).
@@ -1222,6 +1582,54 @@ app.post("/api/users/save", async (req, res) => {
   if (isSelf && !claimsAreEdson(claims)) {
     try { if (await testeTrocaOEmail(admin, user.id, user.email)) return res.status(403).json({ success: false, error: EMAIL_TESTE_SO_EDSON_MSG }); }
     catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+  }
+  // A MARCA "administra usuários" (032): só o Edson dá ou tira — vindo de qualquer outra pessoa, mudar = 403 (mandar o
+  // valor que já está no cadastro passa). Lida também em todo editar de admin: quem a tem não sobe de cargo com ela.
+  const comoTI = ehTI && !isSelf;   // o TI editando OUTRA conta (a própria, só o contato — abaixo)
+  const pedeMarca = user.adminUsuarios !== undefined && user.adminUsuarios !== null;
+  let marcaAlvo: boolean | null = null;   // a marca do alvo hoje (null = a 032 não rodou)
+  let marcaNova: boolean | null = null;   // o valor novo, só quando o Edson a muda
+  if (pedeMarca || isAdmin || comoTI) {
+    try { marcaAlvo = await marcaAdminUsuariosDe(admin, user.id); }
+    catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+  }
+  if (pedeMarca && (user.adminUsuarios === true) !== (marcaAlvo === true)) {
+    if (!claimsAreEdson(claims)) return res.status(403).json({ success: false, error: MARCA_SO_EDSON_MSG });
+    if (marcaAlvo === null) return res.json({ success: false, message: MARCA_SEM_032_MSG });
+    marcaNova = user.adminUsuarios === true;
+  }
+  // O TI na PRÓPRIA conta (032): só o contato, como no Meu Perfil — cargo, setor e marcas dele, só o Edson. Mandar o que já
+  // está no cadastro passa (a tela pode mandar o formulário inteiro); mudar = 403.
+  if (ehTI && isSelf) {
+    const { data: eu, error: euErr } = await admin.from("users").select("role, sector, okr_only, okr_viewer, okr_admin").eq("id", user.id).limit(1);
+    if (euErr || !eu || !eu.length) return res.status(503).json({ success: false, message: "Não consegui ler o seu cadastro. Nada foi gravado; tente de novo." });
+    const e0 = eu[0] as any;
+    const muda = (v: any, atual: any, bool = false) => v !== undefined && v !== null && (bool ? !!v !== !!atual : String(v).trim() !== String(atual ?? "").trim());
+    if (muda(user.role, e0.role) || muda(user.sector, e0.sector) || muda(user.okrOnly, e0.okr_only, true) || muda(user.okrViewer, e0.okr_viewer, true) || muda(user.okrAdmin, e0.okr_admin, true)) {
+      return res.status(403).json({ success: false, error: TI_SI_MESMO_MSG });
+    }
+  }
+  // O TI em OUTRA conta (032): só as comuns; e-mail, login e senha de quem já existe, nunca (é tomar a conta); só cargos
+  // comuns; nenhuma marca. Conferido contra o CADASTRO, antes de qualquer gravação.
+  let contaAntesDoTI: AvisoTIConta | null = null;   // como a conta estava, para o aviso ao Edson (07/10)
+  if (comoTI) {
+    let a: any = null;
+    try { a = await contaParaTI(admin, user.id); }
+    catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+    if (!a) return res.json({ success: false, message: "Usuário não encontrado." });
+    contaAntesDoTI = contaDoAviso(user.id, a);
+    if (contaAltaParaTI(a)) return res.status(403).json({ success: false, error: TI_CONTA_ALTA_MSG });
+    const mudaEmail = String(user.email || "").trim().toLowerCase() !== String(a.email || "").trim().toLowerCase();
+    const mudaLogin = user.username !== String(a.username || "").trim();
+    if (mudaEmail || mudaLogin || !!user.password) return res.status(403).json({ success: false, error: TI_ACESSO_MSG });
+    user.email = a.email ?? null;   // nem a grafia muda: fica o e-mail do cadastro, letra por letra
+    if (user.role !== undefined && user.role !== null && !CARGOS_DO_TI.includes(String(user.role))) return res.status(403).json({ success: false, error: TI_CARGO_MSG });
+    // e-mail de fora da empresa: só enquanto for representante (o cargo final; sem o campo, fica o do cadastro) — 07/10
+    if (tiBarraEmailDeFora(user.role === undefined || user.role === null ? a.role : user.role, a.email)) return res.status(403).json({ success: false, error: TI_EMAIL_FORA_MSG });
+    if ((user.okrViewer !== undefined && user.okrViewer !== null && !!user.okrViewer !== !!a.okr_viewer)
+        || (user.okrAdmin !== undefined && user.okrAdmin !== null && !!user.okrAdmin !== !!a.okr_admin)) {
+      return res.status(403).json({ success: false, error: TI_MARCAS_MSG });
+    }
   }
   // Todos podem editar dados de contato; SO admin muda username/role/salary/senha.
   const patch: any = { name: user.name, surname: user.surname, email: user.email, phone: user.phone };
@@ -1235,7 +1643,9 @@ app.post("/api/users/save", async (req, res) => {
   let setorDoCadastro = "";        // o setor antes deste salvar
   let viraRepresentante = false;   // passa a ser REPRESENTANTE agora (o banco troca o setor pelo dele, 030)
   let cargoDa030 = false;          // passa a ter um cargo que só existe a partir da 030 (DIRETOR_INDUSTRIAL, REPRESENTANTE)
-  if (isAdmin) {
+  let cargoDoCadastro = "";        // o cargo antes deste salvar (a marca da 032 só fica em cargo comum)
+  // O TI (comoTI) passa pelo mesmo caminho do admin, com o que já foi barrado acima e as exceções marcadas abaixo.
+  if (isAdmin || comoTI) {
     // Cargo fora da lista: recusado aqui, ANTES de qualquer gravação (inclusive do kpi_rename_login, lá embaixo).
     if (user.role !== undefined && user.role !== null && !CARGOS_VALIDOS.includes(String(user.role))) {
       return res.json({ success: false, message: CARGO_DESCONHECIDO_MSG(user.role) });
@@ -1247,6 +1657,7 @@ app.post("/api/users/save", async (req, res) => {
       if (curErr) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
       if (!cur || !cur.length) return res.json({ success: false, message: "Usuário não encontrado." });
       const oldName = String((cur[0] as any).username || "").trim();
+      cargoDoCadastro = String((cur[0] as any).role || "");
       // REPRESENTANTE (06/10/2026): quem FICA (ou passa a ser) representante é sempre "Somente OKR".
       const representanteFinal = ehRepresentante(user.role === undefined || user.role === null ? (cur[0] as any).role : user.role);
       if (representanteFinal && user.id === EDSON_ID) return res.json({ success: false, message: "O Edson nunca é representante." });
@@ -1255,7 +1666,8 @@ app.post("/api/users/save", async (req, res) => {
       cargoDa030 = cargoMuda && (String(user.role) === DIRETOR_INDUSTRIAL || ehRepresentante(user.role));
       // Quem não pode DAR o cargo ouve isso primeiro (e não a frase do setor ou da marca, que sugeririam que sem elas
       // daria certo).
-      if (viraRepresentante && !isGestor) return res.status(403).json({ success: false, error: CARGO_SO_DO_GESTOR_MSG });
+      // (o TI dá o Representante: é cargo comum — decisão do Edson, 07/10)
+      if (viraRepresentante && !isGestor && !comoTI) return res.status(403).json({ success: false, error: CARGO_SO_DO_GESTOR_MSG });
       // SETOR (KPI dos setores, 30/09): sem o campo no pedido = fica como está; mudar só o Edson e os
       // admins de OKR — senão um COORDENADOR se punha no Financeiro e lia os indicadores de lá.
       const setorAtual = String((cur[0] as any).sector || "").trim();
@@ -1274,14 +1686,16 @@ app.post("/api/users/save", async (req, res) => {
       if (viraRepresentante && setorSoEdson(setorAtual) && !claimsAreEdson(claims)) {
         return res.status(403).json({ success: false, error: SETOR_SO_EDSON_MSG });
       }
-      // …e tirar alguém do setor dele (ida e volta pelo cargo) é mudar o setor: só o Edson e os admins de OKR (30/09).
-      if (viraRepresentante && setorAtual && !(await isOkrMasterDb(admin, claims.sub))) {
+      // …e tirar alguém do setor dele (ida e volta pelo cargo) é mudar o setor: só o Edson e os admins de OKR (30/09) —
+      // e o TI (032), que define o setor (o P&D e o Teste já foram barrados logo acima).
+      if (viraRepresentante && setorAtual && !comoTI && !(await isOkrMasterDb(admin, claims.sub))) {
         return res.status(403).json({ success: false, error: "Esta pessoa tem setor, e virar representante troca o setor dela (o representante tem um só dele): só o Edson e os admins de OKR mudam o setor de alguém." });
       }
       if (setorPedido !== setorAtual) {
         // O setor de um representante não serve para outra pessoa (06/10/2026).
         if (setorDeRepresentante(setorPedido)) return res.json({ success: false, message: SETOR_DE_REPRESENTANTE_MSG });
-        if (!(await isOkrMasterDb(admin, claims.sub))) {
+        // (o TI define o setor das contas que edita — 032; P&D e Teste: as recusas logo abaixo)
+        if (!comoTI && !(await isOkrMasterDb(admin, claims.sub))) {
           return res.status(403).json({ success: false, error: "Só o Edson e os admins de OKR mudam o setor de alguém (o setor abre o KPI do setor)." });
         }
         if ((setorReservado(setorPedido) || setorReservado(setorAtual)) && !claimsAreEdson(claims)) {
@@ -1340,8 +1754,10 @@ app.post("/api/users/save", async (req, res) => {
       if (alvoErr || !alvo || !alvo.length) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
       const a = alvo[0] as any;
       const cargoNovo = user.role === undefined || user.role === null ? a.role : user.role; // sem o campo, o cargo fica
-      // Dar ou tirar CEO, Diretor Industrial, GESTOR ou Representante (06/10/2026): só GESTOR (ou o Edson).
-      if (String(cargoNovo) !== String(a.role || "") && (cargoSoDoGestor(cargoNovo) || cargoSoDoGestor(a.role))) {
+      // Dar ou tirar CEO, Diretor Industrial, GESTOR ou Representante (06/10/2026): só GESTOR (ou o Edson). O TI (032)
+      // troca entre os cargos comuns, o Representante incluído (os outros já foram barrados acima).
+      const trocaDoTI = comoTI && CARGOS_DO_TI.includes(String(cargoNovo)) && CARGOS_DO_TI.includes(String(a.role || ""));
+      if (String(cargoNovo) !== String(a.role || "") && (cargoSoDoGestor(cargoNovo) || cargoSoDoGestor(a.role)) && !trocaDoTI) {
         return res.status(403).json({ success: false, error: CARGO_SO_DO_GESTOR_MSG });
       }
       // "Somente OKR" (029, 05/10/2026) tranca a engenharia no banco e tira o R$ de quem a tem: nas contas que leem
@@ -1358,6 +1774,17 @@ app.post("/api/users/save", async (req, res) => {
         }
       }
     }
+    // E-mail, login e senha de quem ADMINISTRA USUÁRIOS (032): só o Edson (07/10, achado da crítica). Trocar o e-mail e
+    // pedir o código em "Criar / redefinir senha" é entrar na conta — e ganhar a marca, que só o Edson dá: um COORDENADOR
+    // (ou um GESTOR) passaria a excluir GESTOR e CEO e a definir setor. O contato (nome, telefone) segue com eles.
+    if (!isSelf && !claimsAreEdson(claims) && marcaAlvo === true) {
+      const { data: am, error: amErr } = await admin.from("users").select("email, username").eq("id", user.id).limit(1);
+      if (amErr || !am || !am.length) return res.json({ success: false, message: "Não consegui ler o usuário. Tente de novo." });
+      const a0 = am[0] as any;
+      const mudaEmailM = String(user.email || "").trim().toLowerCase() !== String(a0.email || "").trim().toLowerCase();
+      const mudaLoginM = user.username !== String(a0.username || "").trim();
+      if (mudaEmailM || mudaLoginM || !!user.password) return res.status(403).json({ success: false, error: MARCA_ACESSO_SO_EDSON_MSG });
+    }
     patch.role = user.role;
     // A PRÓPRIA senha só muda por /api/auth/change-password, que confere a atual.
     if (user.password && !isSelf) patch.password = user.password;
@@ -1366,6 +1793,23 @@ app.post("/api/users/save", async (req, res) => {
     patch.okr_only = wantViewer ? false : wantOnly;
     if ((wantViewer ? false : wantOnly) !== wasOnly) console.log(`[users/save] "Somente OKR" de ${user.id}: ${wasOnly} → ${!wasOnly} por ${canonUuid(claims.sub)}`);
     patch.sector = setorPedido || null;
+  }
+  // A MARCA (032) só fica em cargo comum, fora do visualizador, do Edson e do teste (o CHECK users_admin_usuarios_so_comuns
+  // e o molde do teste): o Edson dando a marca, ou um admin subindo de cargo quem a tem, ouve a frase — antes de gravar.
+  const marcaFinal = marcaNova !== null ? marcaNova : marcaAlvo === true;
+  if (marcaFinal && (isAdmin || comoTI)) {
+    const cargoFinal = String(patch.role ?? cargoDoCadastro);
+    if (!CARGOS_COM_A_MARCA.includes(cargoFinal) || patch.okr_viewer === true || user.id === EDSON_ID) {
+      return res.json({ success: false, message: MARCA_SO_COMUNS_MSG });
+    }
+  }
+  if (marcaNova === true) {
+    try { if (await ehUsuarioTeste(admin, user.id)) return res.json({ success: false, message: MARCA_SO_COMUNS_MSG }); }
+    catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
+  }
+  if (marcaNova !== null) {
+    patch.admin_usuarios = marcaNova;
+    console.log(`[users/save] "administra usuários" de ${user.id}: ${!marcaNova} → ${marcaNova} pelo Edson`);
   }
   // Salario: leitura E escrita restritas ao Edson. Sem esta guarda, um admin
   // comum editando um usuario ZERARIA o salario real (o cliente dele tem 0).
@@ -1418,6 +1862,17 @@ app.post("/api/users/save", async (req, res) => {
     setorMudou = `"${setorDoCadastro || "—"}" → "${gravado.setor || "—"}"`;
   }
   if (setorMudou) console.log(`[users/save] setor de ${user.id}: ${setorMudou} por ${canonUuid(claims.sub)}`);
+  // O aviso ao Edson (07/10): o TI mudou nome, cargo, setor, "Somente OKR" ou "OKR habilitado" de OUTRA conta. O "depois" é
+  // o que foi gravado (o setor, como o banco o deixou — o do representante ele troca); só o telefone não avisa.
+  if (comoTI && contaAntesDoTI) {
+    const a0 = contaAntesDoTI;
+    const depois = contaDoAviso(user.id, {
+      name: patch.name ?? a0.name, surname: patch.surname ?? a0.surname, username: a0.username, email: a0.email,
+      role: patch.role ?? a0.role, sector: gravado.setor !== undefined ? gravado.setor : patch.sector !== undefined ? (patch.sector ?? "") : a0.sector,
+      okr_only: patch.okr_only ?? a0.okr_only, okr_enabled: patch.okr_enabled ?? a0.okr_enabled,
+    });
+    if (avisoTIMudou(a0, depois)) await avisarEdsonDoTI(admin, claims.sub, { acao: "alterou", antes: a0, conta: depois }, inicioRota);
+  }
   if (isSelf && user.password) {
     return res.json({ success: true, ...(setorTroca ? { setor: setorTroca } : {}), message: "Os dados foram salvos, mas a SUA senha não muda por aqui: troque em Meu Perfil, que confere a senha atual." });
   }
@@ -2254,15 +2709,22 @@ app.post("/api/agenda/testar", async (req, res) => {
 
 // POST /api/users/delete { id } — so admin, nao pode excluir a si mesmo
 app.post("/api/users/delete", async (req, res) => {
+  const inicioRota = Date.now();   // o prazo do aviso ao Edson desconta o que a rota já gastou
   const claims = verifyBearerToken(req);
   if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
   const admin = getSupabaseAdmin();
   if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
   let isGestor = false; // só GESTOR exclui CEO, GESTOR e as contas que leem o OKR de todos
+  // …e quem administra usuários (032, TI): exclui todos menos o Edson e o teste — decisão do Edson, 07/10 ("inclusive
+  // CEO, Diretor, Gestor, admins de OKR"). Quem tem registros: só desligar (a trava 409 abaixo vale para ele também).
+  let ehTI = false;
   try {
     const papel = await currentRole(admin, claims.sub);
     if (ehVisaoCeo(papel) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: CEO_SO_VE });
-    if (!PESSOAS_ADMIN_ROLES.includes(String(papel)) && !claimsAreEdson(claims)) return res.status(403).json({ success: false, error: "Sem permissao." });
+    if (!PESSOAS_ADMIN_ROLES.includes(String(papel)) && !claimsAreEdson(claims)) {
+      ehTI = await administraUsuariosDb(admin, claims.sub);
+      if (!ehTI) return res.status(403).json({ success: false, error: "Sem permissao." });
+    }
     isGestor = papel === "GESTOR" || claimsAreEdson(claims);
   }
   catch (e: any) { return res.status(503).json({ success: false, message: e.message }); }
@@ -2275,7 +2737,8 @@ app.post("/api/users/delete", async (req, res) => {
 
   // Sem saber o login não dá para arquivar o OKR dele: não exclui (antes excluía e
   // o OKR ficava sem dono, calado).
-  const { data: cur, error: curErr } = await lerComUsuarioTeste((c) => admin.from("users").select(c).eq("id", id).limit(1), "username, role, okr_admin, okr_viewer");
+  // (nome, e-mail, setor e as marcas do OKR: o aviso ao Edson quando quem exclui é o TI — 07/10)
+  const { data: cur, error: curErr } = await lerComUsuarioTeste((c) => admin.from("users").select(c).eq("id", id).limit(1), "username, role, okr_admin, okr_viewer, name, surname, email, sector, okr_only, okr_enabled");
   if (curErr) return res.json({ success: false, message: "Nao consegui ler o usuario. Nada foi excluido; tente de novo." });
   // O usuário teste (031): só o Edson mexe na conta dele — e nem o Edson o exclui por aqui: excluir arquiva o OKR como
   // 'excluido:<id>:<login>' e apaga a linha de users, e daí em diante o banco não sabe mais que aquele OKR e aquele log
@@ -2285,7 +2748,7 @@ app.post("/api/users/delete", async (req, res) => {
     if (!claimsAreEdson(claims)) return res.status(403).json({ success: false, error: USUARIO_TESTE_SO_EDSON_MSG });
     return res.status(409).json({ success: false, message: "O usuário de teste não é excluído pela Equipe: o OKR e o log dele ficariam à vista de outras pessoas. Use Desligar, ou peça a limpeza completa pelo banco." });
   }
-  if (!isGestor && contaSoDoGestor(cur && cur[0])) {
+  if (!isGestor && !ehTI && contaSoDoGestor(cur && cur[0])) {
     return res.status(403).json({ success: false, error: "Só um GESTOR exclui CEO, Diretor Industrial, GESTOR, os admins do OKR e os representantes." });
   }
   const oldKey = String((cur && cur[0] && (cur[0] as any).username) || "").trim().toLowerCase();
@@ -2331,20 +2794,25 @@ app.post("/api/users/delete", async (req, res) => {
     return res.status(409).json({
       success: false,
       message: `Não excluí: este usuário tem ${achados.join(", ")}. Excluir apagaria a autoria desses registros. ` +
-        "Para quem saiu da empresa, o certo é desligar (tirar o acesso e manter o cadastro) — use Desligar na tela de Equipe (Edson ou GESTOR).",
+        "Para quem saiu da empresa, o certo é desligar (tirar o acesso e manter o cadastro) — use Desligar na tela de Equipe" +
+        (ehTI ? "." : " (Edson ou GESTOR)."),   // o TI (032) também desliga: a frase não o manda pedir a outro
     });
   }
   // O custo/hora por período (022) segue a exclusão sozinho (gatilho de users, de hoje em diante).
-  const { data, error } = await admin.from("users").delete().eq("id", id).select();
+  // Só o id volta (antes `.select()` trazia a linha inteira — salário e senha — ao servidor, e ninguém a usava).
+  const { data, error } = await admin.from("users").delete().eq("id", id).select("id");
   if (error) return res.json({ success: false, message: `Erro ao excluir: ${error.message}` });
   if (!data || data.length === 0) return res.json({ success: false, message: "Usuario nao encontrado." });
   // O OKR de quem saiu é ARQUIVADO (chave 'excluido:...'), não apagado: fica guardado
   // e o login fica livre — antes, recriar a pessoa com o mesmo login era recusado.
+  let resposta: { success: true; message?: string } = { success: true };
   if (oldKey) {
     const { error: arqErr } = await admin.from("okr_state").update({ owner_key: `excluido:${id}:${oldKey}` }).eq("owner_key", oldKey);
-    if (arqErr) return res.json({ success: true, message: `Usuario excluido, mas o OKR dele nao foi arquivado: ${arqErr.message}` });
+    if (arqErr) resposta = { success: true, message: `Usuario excluido, mas o OKR dele nao foi arquivado: ${arqErr.message}` };
   }
-  return res.json({ success: true });
+  // O aviso ao Edson (07/10): o TI excluiu — a conta como estava (lida antes de excluir).
+  if (ehTI) await avisarEdsonDoTI(admin, claims.sub, { acao: "excluiu", conta: contaDoAviso(id, cur && cur[0]) }, inicioRota);
+  return res.json(resposta);
 });
 
 // ============================================================
@@ -2515,6 +2983,7 @@ app.get("/api/projects/custo-gravado", async (req, res) => {
 // seguinte (nunca antes do mês corrente: mês fechado não muda). O cadastro e tudo o que a pessoa fez
 // ficam no nome dela. Resposta: custoDesde = o 1º dia sem o salário dela no custo.
 app.post("/api/users/desligar", async (req, res) => {
+  const inicioRota = Date.now();   // o prazo do aviso ao Edson desconta o que a rota já gastou
   res.set("Cache-Control", "private, no-store");
   const claims = verifyBearerToken(req);
   if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
@@ -2525,8 +2994,12 @@ app.post("/api/users/desligar", async (req, res) => {
   let papel: string | null = null;
   try { papel = await currentRole(admin, meuId); }
   catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+  // …e quem administra usuários (032, TI): desliga todos menos o Edson e o teste (decisão do Edson, 07/10).
+  let ehTI = false;   // o TI não ouve falar de custo: a resposta dele vai sem o custoDesde (abaixo)
   if (!(claimsAreEdson(claims) || papel === "GESTOR")) {
-    return res.status(403).json({ success: false, error: "Só o Edson ou um GESTOR desliga." });
+    try { ehTI = await administraUsuariosDb(admin, meuId); }
+    catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+    if (!ehTI) return res.status(403).json({ success: false, error: "Só o Edson ou um GESTOR desliga." });
   }
   const alvo = canonUuid((req.body || {}).id);
   if (!alvo) return res.status(400).json({ success: false, error: "id ausente ou invalido." });
@@ -2547,6 +3020,14 @@ app.post("/api/users/desligar", async (req, res) => {
   if (ultimoDia > hojeJoinville()) return res.status(400).json({ success: false, error: "O último dia não pode ser no futuro: desligue no fim do último dia." });
   if (ultimoDia < "2026-01-01") return res.status(400).json({ success: false, error: "O último dia tem de ser de 2026 em diante." });
 
+  // O aviso ao Edson (07/10), quando quem desliga é o TI: a conta como está AGORA — desligar tira o e-mail do cadastro.
+  let contaAntesDoTI: AvisoTIConta | null = null;
+  if (ehTI) {
+    const { data: ca, error: caErr } = await admin.from("users").select(AVISO_TI_COLS).eq("id", alvo).limit(1);
+    if (caErr) return res.status(503).json({ success: false, error: "Não consegui ler o usuário. Nada foi gravado; tente de novo." });
+    contaAntesDoTI = contaDoAviso(alvo, ca && ca[0]);
+  }
+
   const { data, error } = await admin.rpc("kpi_desligar_usuario", { p_user: alvo, p_ultimo_dia: ultimoDia });
   if (error) {
     const code = String(error.code || "");
@@ -2562,7 +3043,9 @@ app.post("/api/users/desligar", async (req, res) => {
     return res.status(500).json({ success: false, error: "Não consegui desligar. Nada foi gravado; tente de novo." });
   }
   const custoDesde = String((data && typeof data === "object" && (data as any).custo_desde) || "").slice(0, 10);
-  return res.json({ success: true, ...(/^\d{4}-\d{2}-\d{2}$/.test(custoDesde) ? { custoDesde } : {}) });
+  if (ehTI && contaAntesDoTI) await avisarEdsonDoTI(admin, meuId, { acao: "desligou", conta: contaAntesDoTI, ultimoDia }, inicioRota);
+  // O TI (032, decisão do Edson 07/10: "nunca vê salário, R$, custo/hora"): desligou, e só — sem a data do custo/hora.
+  return res.json({ success: true, ...(!ehTI && /^\d{4}-\d{2}-\d{2}$/.test(custoDesde) ? { custoDesde } : {}) });
 });
 
 // GET /api/users/salaries — salarios individuais. SO o Edson (dono) ve.
