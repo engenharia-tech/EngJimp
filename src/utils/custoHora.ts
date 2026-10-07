@@ -24,7 +24,7 @@
 //  - a fração de quem saiu conta DIAS ÚTEIS, com a mesma regra de feriados da
 //    capacidade do Dashboard (getCapacityForMonth), e vem SÓ do desligadoEm: a
 //    regra "Edson até 31/08" NÃO entra aqui (o per capita mantém o corte de
-//    23/09 como está — commit d96e50f).
+//    23/09 como está — commit 17840ec).
 //
 // Puro: sem React, sem fetch, sem console. Nunca imprimir taxa ou salário.
 // ─────────────────────────────────────────────────────────────────────────────

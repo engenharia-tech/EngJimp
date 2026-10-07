@@ -1176,7 +1176,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     // Use available designers excluding non-engineering roles.
     // Corte P&D: o Edson (P&D) sai do divisor de per capita — não é capacidade de entrega.
-    // (fica EXATAMENTE como em 23/09, commit d96e50f — cético de 30/09: jan–ago não mudam.)
+    // (fica EXATAMENTE como em 23/09, commit 17840ec — cético de 30/09: jan–ago não mudam.)
     //
     // Desligado (decisão do Edson, 30/09/2026: desligar, não excluir): pesa pela fração de DIAS
     // ÚTEIS do período em que ainda estava (fracaoAteDesligar, só pelo desligadoEm); quem saiu antes
