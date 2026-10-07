@@ -16,6 +16,8 @@ import { useToast } from '../components/Toast';
 import { useKpisNoOkr, aplicarKpis, estadoKpi, krLigado, mapaDoServidor, KpisMapa, KpiEstado } from '../kpis/kpisNoOkr';
 import { fmtValor, fmtDia, rotuloPeriodo } from '../kpis/kpis';
 import { KpisLigarDialog, KpisDonoOkr, KpisLigacao } from './KpisLigarDialog';
+import { useAvisosParecidos } from './ParecidosAviso';
+import { textoDoPortfolio } from './parecidosService';
 
 const STATUS_OPTIONS = ['Não iniciado', 'Em andamento', 'Em risco', 'Concluído'];
 const FORMAT_OPTIONS: { v: OkrFormat; l: string }[] = [{ v: 'bin', l: 'Sim/Não' }, { v: 'pct', l: 'Percentual' }, { v: 'num', l: 'Contagem' }];
@@ -122,6 +124,10 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
   const kpiDono = external ? kpiDonoExterno : ownerKey;
   const store = useMemo(() => aplicarKpis(rawStore, kpiDono, kpiMapa), [rawStore, kpiDono, kpiMapa]);
   const [ligando, setLigando] = useState<{ objId: string; kr: OkrKeyResult } | null>(null);
+  // INICIATIVAS PARECIDAS (07/10): depois de GRAVAR o título de um objetivo, de um KR ou o nome/descrição de um item
+  // do portfólio, o servidor diz se outra pessoa toca algo parecido (aviso amarelo; não impede nada). Só em tela que
+  // edita — nunca no link público nem em quem só lê — e nunca ao só abrir a tela.
+  const parecidos = useAvisosParecidos(ownerKey, !readOnly && !external);
 
   useEffect(() => {
     if (external) { setStore(external); setLoading(false); return; }
@@ -531,7 +537,8 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
             <div className="flex items-start gap-3 mb-4">
               <div className="shrink-0 w-10 h-10 rounded-xl bg-blue-600/10 text-blue-600 dark:text-blue-400 grid place-items-center font-black">{o.id}</div>
               <div className="flex-1 min-w-0">
-                <EditField value={o.title} onCommit={v => updateObj(o.id, { title: v })} readOnly={readOnly} className="text-base font-bold text-slate-800 dark:text-white leading-snug" placeholder="Objetivo…" />
+                <EditField value={o.title} onCommit={v => parecidos.aposGravar(`o:${o.uid || o.id}`, 'objetivo', o.uid || o.id, v, updateObj(o.id, { title: v }))} readOnly={readOnly} className="text-base font-bold text-slate-800 dark:text-white leading-snug" placeholder="Objetivo…" />
+                {parecidos.avisoDe(`o:${o.uid || o.id}`)}
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0 text-[11px] text-slate-400" title="Responsável pelo objetivo">
                   <UserRound size={11} /> <span className="font-bold uppercase tracking-wide text-[10px]">Responsável</span>
                   <ExecutorSinglePicker value={o.responsavel} registry={registry} readOnly={readOnly || !registryOk} onChange={v => updateObj(o.id, { responsavel: v })} />
@@ -568,8 +575,9 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
                             <ExecutorMultiPicker value={krExecutores(k, registry)} registry={registry} readOnly={readOnly || !registryOk} onAdd={ref => addExecutor(o.id, k, ref)} onRemove={ref => removeExecutor(o.id, k, ref)} />
                           </span>
                         </div>
-                        <EditField value={k.title} onCommit={v => updateKr(o.id, k, { title: v })} readOnly={readOnly} multiline className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-0.5 block" placeholder="Resultado-chave…" />
+                        <EditField value={k.title} onCommit={v => parecidos.aposGravar(`k:${o.id}:${k.uid || k.id}`, 'kr', k.uid || k.id, v, updateKr(o.id, k, { title: v }))} readOnly={readOnly} multiline className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-0.5 block" placeholder="Resultado-chave…" />
                         <EditField value={k.metric} onCommit={v => updateKr(o.id, k, { metric: v })} readOnly={readOnly} className="text-[11px] text-slate-400 mt-0.5 block" placeholder="métrica (ex.: % concluído)" />
+                        {parecidos.avisoDe(`k:${o.id}:${k.uid || k.id}`)}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={`text-sm font-black tabular-nums ${textColor(p)}`}>{Math.round(p * 100)}%</span>
@@ -652,7 +660,9 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
           onConfirm={l => ligarKpi(ligando.objId, ligando.kr, l).then(ok => { if (!ok) setLigando(null); return ok; })} />
       )}
 
-      <PortfolioPanel portfolio={store.portfolio} onMutate={mutatePortfolio} readOnly={readOnly} onDeleteLog={name => logDelete('projeto do portfólio', name)} />
+      <PortfolioPanel portfolio={store.portfolio} onMutate={mutatePortfolio} readOnly={readOnly} onDeleteLog={name => logDelete('projeto do portfólio', name)}
+        onTextoGravado={(i, gravou) => parecidos.aposGravar(`p:${i.id}`, 'portfolio', i.id, textoDoPortfolio(i.name, i.what), gravou)}
+        avisoDe={id => parecidos.avisoDe(`p:${id}`)} />
 
       {!readOnly && <CheckinsPanel period={active} allKrs={active.objectives.flatMap(o => o.keyResults)} onAdd={c => patchActive(p => (p.checkins || []).some(x => x.id === c.id) ? p : ({ ...p, checkins: [c, ...(p.checkins || [])] }))} currentUser={currentUser} />}
     </div>
@@ -784,9 +794,15 @@ const StatusDropdown: React.FC<{ value: string; onChange: (v: string) => void; r
   );
 };
 
-const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onMutate: (fn: (pf: PortfolioItem[]) => PortfolioItem[]) => void; readOnly?: boolean; onDeleteLog?: (name: string) => void }> = ({ portfolio, onMutate, readOnly, onDeleteLog }) => {
+// `onTextoGravado` (07/10): o nome ou o "o que é" de um item foi confirmado — recebe o item JÁ com o texto novo e a
+// promessa da gravação (o aviso de iniciativa parecida só pergunta se gravou). `avisoDe` põe o aviso no cartão.
+const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onMutate: (fn: (pf: PortfolioItem[]) => PortfolioItem[]) => Promise<boolean> | void; readOnly?: boolean; onDeleteLog?: (name: string) => void; onTextoGravado?: (item: PortfolioItem, gravou: Promise<boolean> | void) => void; avisoDe?: (id: string) => React.ReactNode }> = ({ portfolio, onMutate, readOnly, onDeleteLog, onTextoGravado, avisoDe }) => {
   const items = Array.isArray(portfolio) ? portfolio : [];
   const update = (id: string, patch: Partial<PortfolioItem>) => onMutate(pf => pf.map(i => i.id === id ? { ...i, ...patch } : i));
+  const updateTexto = (i: PortfolioItem, patch: Pick<Partial<PortfolioItem>, 'name' | 'what'>) => {
+    const gravou = update(i.id, patch);
+    onTextoGravado?.({ ...i, ...patch }, gravou);
+  };
   const remove = (id: string, name?: string) => { onDeleteLog?.(name || ''); onMutate(pf => pf.filter(i => i.id !== id)); };
   const add = () => { const item = { id: `p${Date.now().toString(36)}`, name: 'Novo projeto', what: '', category: 'Sistemas', status: 'Desenvolvimento', nextMilestone: '' }; onMutate(pf => pf.some(x => x.id === item.id) ? pf : [...pf, item]); };
   const prod = items.filter(i => i.status === 'Produção').length;
@@ -802,8 +818,9 @@ const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onMutate: (fn: (pf:
           <div key={i.id} className="rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/30 p-4 group">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <EditField value={i.name} onCommit={v => update(i.id, { name: v })} readOnly={readOnly} className="text-sm font-bold text-slate-800 dark:text-white block" placeholder="Nome" />
-                <EditField value={i.what} onCommit={v => update(i.id, { what: v })} readOnly={readOnly} className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block" placeholder="o que é" />
+                <EditField value={i.name} onCommit={v => updateTexto(i, { name: v })} readOnly={readOnly} className="text-sm font-bold text-slate-800 dark:text-white block" placeholder="Nome" />
+                <EditField value={i.what} onCommit={v => updateTexto(i, { what: v })} readOnly={readOnly} className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block" placeholder="o que é" />
+                {avisoDe?.(i.id)}
               </div>
               {!readOnly && <button onClick={() => { if (window.confirm(`Remover "${i.name}" do portfólio?`)) remove(i.id, i.name); }} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={14} /></button>}
             </div>

@@ -6,6 +6,11 @@ import { OkrStore, OkrGovState, OkrGovReview } from './okr';
 import { useOkrWriter, OkrWriteStatus } from './useOkrWriter';
 import { User } from '../types';
 import { useToast } from '../components/Toast';
+import { ParecidosPainel } from './ParecidosPainel';
+import { isEdsonUser } from '../utils/identity';
+import { ehVisaoCeo } from '../utils/cargos';
+
+const EDSON_ID = '1e570c78-7278-4e8d-a90e-a820c11bb07a';
 
 const CADENCE = [
   { icon: Activity, tag: 'Operação', freq: 'Semanal', desc: 'Tratar bloqueios, incidentes e pendências com os responsáveis de cada setor.' },
@@ -23,7 +28,12 @@ const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypt
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (iso: string) => { try { const [y, m, d] = iso.split('-'); return d ? `${d}/${m}/${y}` : iso; } catch { return iso; } };
 
-const OkrGovernanceInner: React.FC<{ editable: boolean; currentUser: User }> = ({ editable, currentUser }) => {
+// `podeVerParecidos` (07/10): o painel "Iniciativas parecidas" é só do Edson, dos admins de OKR e da visão do CEO
+// (CEO / Diretor Industrial). O App manda o valor lido do cadastro; sem ele, a tela usa o que o login trouxe. Quem
+// barra de verdade é o servidor (403).
+type OkrGovernanceProps = { editable: boolean; currentUser: User; podeVerParecidos?: boolean };
+const OkrGovernanceInner: React.FC<OkrGovernanceProps> = ({ editable, currentUser, podeVerParecidos }) => {
+  const veParecidos = podeVerParecidos ?? (currentUser?.id === EDSON_ID || isEdsonUser(currentUser) || !!currentUser?.okrAdmin || ehVisaoCeo(currentUser?.role));
   const { addToast } = useToast();
   const [store, setStore] = useState<OkrStore | null>(null);
   const [loading, setLoading] = useState(true);
@@ -195,8 +205,11 @@ const OkrGovernanceInner: React.FC<{ editable: boolean; currentUser: User }> = (
           ))}
         </div>
       </div>
+
+      {/* Iniciativas parecidas (07/10): o mesmo assunto tocado por pessoas diferentes */}
+      {veParecidos && <ParecidosPainel />}
     </div>
   );
 };
 
-export const OkrGovernance = withOkrSafe<{ editable: boolean; currentUser: User }>(OkrGovernanceInner, 'a governança do ciclo');
+export const OkrGovernance = withOkrSafe<OkrGovernanceProps>(OkrGovernanceInner, 'a governança do ciclo');

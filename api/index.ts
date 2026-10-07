@@ -199,6 +199,11 @@ app.post("/api/send-email", async (req, res) => {
   }
 });
 
+// Os modelos do Gemini: o padrão e os de reserva, na ordem em que se tenta. UMA lista para o assistente (logo abaixo)
+// e para a comparação de iniciativas parecidas do OKR (bloco OKR PARECIDOS, 07/10/2026).
+const GEMINI_MODELO_PADRAO = "gemini-3.5-flash";
+const GEMINI_MODELOS_RESERVA = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"];
+
 // API Route for Gemini analysis and chat
 app.post("/api/gemini/generate", async (req, res) => {
   // Exige cracha valido: sem isto qualquer um queimava a cota do Gemini e
@@ -237,11 +242,11 @@ app.post("/api/gemini/generate", async (req, res) => {
     }
 
     const apiKey = rawApiKey.trim();
-    const targetModel = model || "gemini-3.5-flash";
+    const targetModel = model || GEMINI_MODELO_PADRAO;
     let text = "";
 
     // Robust generator trying multiple compatible models if the primary one is unreleased or not accessible
-    const modelsToTry = [targetModel, "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"];
+    const modelsToTry = [targetModel, ...GEMINI_MODELOS_RESERVA];
     const uniqueModels = Array.from(new Set(modelsToTry));
     let lastError: any = null;
     let success = false;
@@ -1693,6 +1698,193 @@ app.get("/api/okr/public", async (req, res) => {
       .map(p => ({ dono: "", k: p.id, de: p.de, ate: p.ate, ...vals.get(`${p.dono}|${p.id}|${p.de}|${p.ate}`)! })) : null;
   }
   return res.json({ success: true, data: row.data, kpi });
+});
+
+// ========================= OKR PARECIDOS =========================
+// INICIATIVAS PARECIDAS (07/10/2026). Pedido do Edson: "o Edson tá criando um OKR e esse OKR tem a palavra aplicativo
+// de inovação … e o Nascimento está fazendo alguma coisa que tem aplicativo de inovação … gostaria que tivesse uma
+// inteligência que avisasse que tem um projeto paralelo com um nome similar rodando pelo usuário A, B ou C."
+// Decisões dele (07/10):
+//  · pessoa comum recebe SÓ O NOME de quem toca algo parecido ("converse com ele") — nunca o texto, o item nem o motivo
+//    da IA sobre o OKR alheio; o Edson, os admins de OKR e a visão do CEO (CARGOS_VISAO_CEO) recebem o texto. O nível é
+//    lido do CADASTRO na hora (nunca do crachá); não conseguir ler = 503, nunca "completo" por engano;
+//  · compara SÓ o OKR: objetivos, KRs (do período ativo, não arquivados) e o portfólio — nada do Nexus Flow, Inovações
+//    ou KPI dos setores. Fora: o OKR do dono que está sendo editado (o item e os irmãos dele), os 'excluido:…', os
+//    desligados e — salvo para o Edson — o usuário teste (031: a service_role passa por cima da RLS, o filtro é aqui);
+//  · "texto + IA confirma": candidatos pelo texto (grátis) e o Gemini (os mesmos modelos de /api/gemini/generate) diz
+//    se é o MESMO assunto, em UMA chamada de ~8 s. Falhou/demorou = só texto, com corte mais alto, e a resposta diz
+//    (ia: 'indisponivel');
+//  · aviso amarelo, não impede salvar (é a tela); nada novo no banco — cache em memória de 10 min.
+// A lógica pura mora em ./_parecidos.ts, carregada na hora como a da agenda: se faltar no pacote, cai só isto.
+type ParecidosMod = typeof import("./_parecidos.js");
+let parecidosModP: Promise<ParecidosMod> | null = null;
+const parecidosMod = (): Promise<ParecidosMod> => {
+  if (!parecidosModP) parecidosModP = import("./_parecidos.js").catch((e) => { parecidosModP = null; throw e; });
+  return parecidosModP;
+};
+// `chave` (só no nível nomes) = o login do cadastro, minúsculo — o único OKR que essa pessoa edita (a RLS só deixa o
+// dono e o master gravarem), logo o único ownerKey que ela pode mandar (achado A2, 07/10).
+type NivelParecidos = { id: string; nivel: "completo" | "nomes"; edson: boolean; chave?: string };
+// null = sem acesso (403): sem cadastro, desligado, visualizador (okr_viewer / ADM_EXTERNO, "o master vence") ou sem OKR
+// (nem okr_enabled, nem "Somente OKR"). O representante é sempre "Somente OKR" e nunca admin de OKR (06/10): nível nomes,
+// mesmo se uma marca aparecer. Falha ao ler o cadastro LANÇA (a rota responde 503).
+async function nivelParecidos(admin: any, sub: any): Promise<NivelParecidos | null> {
+  const id = canonUuid(sub); if (!id) return null;
+  if (id === EDSON_ID) return { id, nivel: "completo", edson: true };
+  const r = await lerUsuario(admin, id, "username, role, okr_viewer, okr_admin, okr_only, okr_enabled", "Nao consegui conferir o seu acesso. Tente de novo.");
+  if (!r || desligadoPeloCadastro(r, id) || ehVisualizador(r, id)) return null;
+  const chave = String(r.username || "").trim().toLowerCase();
+  if (ehRepresentante(r.role)) return { id, nivel: "nomes", edson: false, chave };
+  if (r.okr_admin || ehVisaoCeo(r.role)) return { id, nivel: "completo", edson: false };
+  if (r.okr_enabled || r.okr_only) return { id, nivel: "nomes", edson: false, chave };
+  return null;
+}
+// Os itens de todos os OKRs que podem aparecer. Só as colunas necessárias: okr_state sem share_token; users sem salário
+// nem senha. A marca do teste por lerComUsuarioTeste (antes da 031 = ninguém é teste; outro erro = erro → 503), e o
+// desligado_em NA MESMA leitura, sem a releitura do lerComDesligado: lá, qualquer erro relia sem a coluna e punha null
+// em todos — uma falha passageira fazia o OKR dos DESLIGADOS entrar (e ficar 10 min no cache). Aqui erro = 503 (A4, 07/10;
+// a 022 já está no banco).
+async function itensParecidos(admin: any, mod: ParecidosMod, incluiTeste: boolean) {
+  const [{ data: okrs, error: e1 }, { data: us, error: e2 }] = await Promise.all([
+    admin.from("okr_state").select("owner_key, data"),
+    lerComUsuarioTeste((c) => admin.from("users").select(c), "username, name, surname, desligado_em"),
+  ]);
+  if (e1 || e2) throw new Error("Nao consegui ler os OKRs agora. Tente de novo.");
+  return mod.itensDeTodos(okrs as any[], mod.pessoasDoCadastro(us), incluiTeste);
+}
+// O Gemini do jeito de /api/gemini/generate (o mesmo cliente, a mesma chave, os mesmos modelos de reserva), com prazo:
+// cada modelo recebe o tempo que SOBRA, e cota estourada para na hora. As instruções vão em systemInstruction e os
+// textos dos OKRs em JSON, como dados. Devolve o texto cru — quem confere é o módulo (lerRespostaIa).
+const geminiParecidos = async (pedido: { sistema: string; dados: string }, prazoMs: number): Promise<string> => {
+  const chave = String(process.env.GEMINI_API_KEY || "").trim();
+  if (!chave) throw new Error("GEMINI_API_KEY ausente");
+  const ai = new GoogleGenAI({ apiKey: chave, httpOptions: { headers: { "User-Agent": "aistudio-build" } } });
+  const fim = Date.now() + prazoMs;
+  let ultimo: any = null;
+  for (const modelo of [GEMINI_MODELO_PADRAO, ...GEMINI_MODELOS_RESERVA]) {
+    const resta = fim - Date.now();
+    if (resta < 300) break;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), resta);
+    try {
+      const r = await ai.models.generateContent({
+        model: modelo,
+        contents: [{ role: "user", parts: [{ text: pedido.dados }] }],
+        config: { systemInstruction: pedido.sistema, responseMimeType: "application/json", abortSignal: ctrl.signal },
+      });
+      if (r && r.text) return r.text;
+    } catch (e: any) {
+      ultimo = e;
+      const m = String((e && e.message) || e).toLowerCase();
+      if (m.includes("quota") || m.includes("429") || m.includes("exhausted")) break;
+    } finally { clearTimeout(t); }
+  }
+  throw ultimo || new Error("sem resposta");
+};
+// Chama a IA (a falsa da bancada, quando trocada) dentro do prazo e confere a resposta. null = IA indisponível (erro,
+// demora ou resposta fora do formato). No log só o tipo do erro — nunca os textos dos OKRs. `prazoMax`: o tempo que
+// SOBRA até a hora fixa da resposta do nível nomes (a IA nunca a ultrapassa; sem tempo = sem IA).
+async function confirmarComIa(mod: ParecidosMod, pedido: { sistema: string; dados: string }, n: number, onde: string, prazoMax?: number): Promise<Map<number, string> | null> {
+  const ia = mod.iaDeTeste() || geminiParecidos;
+  const prazo = Math.min(mod.prazoDaIa(), prazoMax ?? Infinity);
+  if (!(prazo > 0)) { console.warn(`[parecidos] ${onde}: sem tempo para a IA; ficou só o texto`); return null; }
+  try {
+    const lida = mod.lerRespostaIa(await mod.comPrazo(ia(pedido, prazo), prazo + 250), n);
+    if (!lida) console.warn(`[parecidos] ${onde}: resposta da IA fora do formato; ficou só o texto`);
+    return lida;
+  } catch (e: any) {
+    console.warn(`[parecidos] ${onde}: IA indisponivel (${String((e && (e.status || e.code || e.message)) || "erro").slice(0, 60)}); ficou só o texto`);
+    return null;
+  }
+}
+
+// POST /api/okr/parecidos { ownerKey, texto, tipo: 'objetivo'|'kr'|'portfolio', ref? } — o texto que acabou de ser
+// gravado no OKR de `ownerKey` tem algo parecido no OKR de outra pessoa? `ref` (o item editado) é aceito, só o formato
+// é conferido (não é usado: a comparação já tira o OKR inteiro do dono). Texto curto ou padrão ("Novo resultado-chave"…) = itens [] sem custo.
+// NÍVEL NOMES (achados A1/A2/A6, 07/10): o ownerKey tem de ser o PRÓPRIO login (senão 403) — tirar o OKR de outra pessoa
+// da comparação dizia de quem era a palavra, e dava o cache dela; e a resposta sai SEMPRE na mesma hora (t0 + prazo da
+// IA + 1 s), com ou sem candidato, do cache ou não — pelo tempo dava para saber se uma palavra estava no OKR de alguém,
+// mesmo com a IA dizendo "não é o mesmo assunto". 4xx, 503 e texto curto saem na hora (não dependem do OKR alheio).
+app.post("/api/okr/parecidos", async (req, res) => {
+  const t0 = Date.now();
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  let quem: NivelParecidos | null;
+  try { quem = await nivelParecidos(admin, claims.sub); }
+  catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+  if (!quem) return res.status(403).json({ success: false, error: "Sem permissao." });
+  // Conta ANTES de trabalhar (cache e texto curto também contam): 30 por 10 min por pessoa.
+  if ((await rlHit(`parecidos:user:${quem.id}`, 600)) > 30) return tooMany(res, 600);
+  let mod: ParecidosMod;
+  try { mod = await parecidosMod(); }
+  catch (e: any) {
+    console.error("[parecidos] modulo _parecidos nao carregou:", e?.message || e);
+    return res.status(503).json({ success: false, error: "A comparação não está disponível agora." });
+  }
+  const b: any = req.body || {};
+  const ownerKey = typeof b.ownerKey === "string" ? b.ownerKey.trim().toLowerCase() : "";
+  if (!ownerKey || ownerKey.length > 120) return res.status(400).json({ success: false, error: "Dono do OKR invalido." });
+  if (quem.nivel === "nomes" && (!quem.chave || ownerKey !== quem.chave)) return res.status(403).json({ success: false, error: "Sem permissao." });
+  if (!mod.ehTipo(b.tipo)) return res.status(400).json({ success: false, error: "Tipo invalido." });
+  if (typeof b.texto !== "string") return res.status(400).json({ success: false, error: "Texto invalido." });
+  if (b.ref != null && (typeof b.ref !== "string" || b.ref.length > 200)) return res.status(400).json({ success: false, error: "Item invalido." });
+  const texto = b.texto.slice(0, mod.TEXTO_MAX);
+  if (!mod.textoValido(texto)) return res.json(mod.respostaPorNivel(quem.nivel, { ia: "ok", itens: [] }));
+  // A hora fixa do nível nomes (0 = sem hora fixa: o nível completo já vê o texto). A IA só tem o que sobra até ela.
+  const fixo = quem.nivel === "nomes" ? t0 + mod.prazoDaIa() + 1000 : 0;
+  const responder = async (corpo: unknown) => {
+    const resta = fixo - Date.now();
+    if (resta > 0) await new Promise((ok) => setTimeout(ok, resta));
+    return res.json(corpo);
+  };
+  // O cache guarda o resultado COMPLETO; o nível é aplicado na saída, para cada um. O Edson (que vê o teste) tem a sua chave.
+  const chave = mod.chavePedido(quem.edson, ownerKey, texto);
+  let r = mod.cachePedidos.get(chave);
+  if (!r) {
+    let itens: Awaited<ReturnType<typeof itensParecidos>>;
+    try { itens = await itensParecidos(admin, mod, quem.edson); }
+    catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+    const cands = mod.candidatos(texto, ownerKey, itens);
+    const prazoMax = fixo ? fixo - Date.now() - 500 : undefined;
+    const confirmados = cands.length ? await confirmarComIa(mod, mod.pedidoConfirmar(texto, cands), cands.length, "pedido", prazoMax) : new Map<number, string>();
+    r = mod.resultadoConfirmar(cands, confirmados);
+    mod.cachePedidos.set(chave, r, r.ia === "ok" ? mod.CACHE_MS : mod.CACHE_SEM_IA_MS);
+  }
+  return responder(mod.respostaPorNivel(quem.nivel, r));
+});
+
+// GET /api/okr/parecidos/painel — os pares parecidos entre OKRs de pessoas DIFERENTES, com o texto. Só o nível completo
+// (Edson, admins de OKR, visão do CEO); o resto, 403. Uma chamada à IA para os até 40 pares; cache de 10 min.
+app.get("/api/okr/parecidos/painel", async (req, res) => {
+  const claims = verifyBearerToken(req);
+  if (!claims) return res.status(401).json({ success: false, error: "Nao autorizado." });
+  const admin = getSupabaseAdmin();
+  if (!admin) return res.status(503).json({ success: false, error: "Servidor nao configurado." });
+  let quem: NivelParecidos | null;
+  try { quem = await nivelParecidos(admin, claims.sub); }
+  catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+  if (!quem || quem.nivel !== "completo") return res.status(403).json({ success: false, error: "Só o Edson, os admins de OKR e a diretoria (CEO / Diretor Industrial) veem as iniciativas parecidas." });
+  if ((await rlHit(`parecidos:painel:${quem.id}`, 600)) > 10) return tooMany(res, 600);
+  let mod: ParecidosMod;
+  try { mod = await parecidosMod(); }
+  catch (e: any) {
+    console.error("[parecidos] modulo _parecidos nao carregou:", e?.message || e);
+    return res.status(503).json({ success: false, error: "A comparação não está disponível agora." });
+  }
+  const chave = quem.edson ? "com-teste" : "sem-teste";
+  let r = mod.cachePainel.get(chave);
+  if (!r) {
+    let itens: Awaited<ReturnType<typeof itensParecidos>>;
+    try { itens = await itensParecidos(admin, mod, quem.edson); }
+    catch (e: any) { return res.status(503).json({ success: false, error: e.message }); }
+    const pares = mod.paresCandidatos(itens);
+    const confirmados = pares.length ? await confirmarComIa(mod, mod.pedidoPainel(pares), pares.length, "painel") : new Map<number, string>();
+    r = { ...mod.resultadoPainel(pares, confirmados), geradoEm: new Date().toISOString() };
+    mod.cachePainel.set(chave, r, r.ia === "ok" ? mod.CACHE_MS : mod.CACHE_SEM_IA_MS);
+  }
+  return res.json({ success: true, ia: r.ia, geradoEm: r.geradoEm, pares: r.pares });
 });
 
 // ========================= AGENDA =========================

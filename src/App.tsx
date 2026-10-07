@@ -2120,7 +2120,8 @@ const AppContent: React.FC = () => {
 
           {activeTab === 'okr_gov' && canSeeOkrManagement && (
             <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
-              <OkrGovernance editable={isOkrMaster} currentUser={currentUser} />
+              {/* Iniciativas parecidas (07/10): o painel só para o Edson, os admins de OKR e a visão do CEO (o servidor confere). */}
+              <OkrGovernance editable={isOkrMaster} currentUser={currentUser} podeVerParecidos={isEdsonOwner || isOkrAdmin || ehVisaoCeo(currentUser?.role)} />
             </div>
           )}
 
