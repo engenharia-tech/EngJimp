@@ -280,18 +280,30 @@ export const newUid = (): string => (typeof crypto !== 'undefined' && crypto.ran
 
 export const emptyKr = (id: string): OkrKeyResult => ({ id, uid: newUid(), title: 'Novo resultado-chave', metric: '', baseline: 0, target: 1, current: 0, format: 'bin', due: '', initiatives: '', tasks: [], status: 'Não iniciado' });
 
-// IDs novos NUNCA repetem um já usado: o maior existente, ou o maior JÁ EMITIDO
-// (krSeq/objSeq, guardado), + 1. Contar a posição repetia id depois de uma exclusão
-// (O1,O3,O4 → "novo" virava O4 de novo), e apagar o último e criar outro devolvia o
-// mesmo rótulo — uma tela aberta editava o KR novo achando que era o antigo.
+// OBJETIVOS novos NUNCA repetem um id já usado: o maior existente, ou o maior JÁ EMITIDO
+// (objSeq, guardado), + 1. Contar a posição repetia id depois de uma exclusão (O1,O3,O4 →
+// "novo" virava O4 de novo) — e a tela acha o objetivo SÓ pelo id, então uma tela aberta
+// editaria o objetivo novo achando que era o antigo.
 const maxNum = (ids: string[], re: RegExp) => ids.reduce((m, id) => { const x = re.exec(id || ''); return x ? Math.max(m, +x[1]) : m; }, 0);
 export const nextObjectiveNum = (p: { objectives: OkrObjective[]; objSeq?: number }): number =>
   Math.max(maxNum(p.objectives.map(o => o.id), /^O(\d+)$/i), Number(p.objSeq) || 0) + 1;
 export const nextObjectiveId = (objs: OkrObjective[], objSeq?: number): string => `O${nextObjectiveNum({ objectives: objs, objSeq })}`;
+// KRs novos pegam o MENOR número livre do objetivo (26/10, reclamação levada pelo Edson: "quando
+// apago um que tenha erro e recrio ele nasce com KR 7.2"). Apagar o KR7.1 e criar outro volta a dar
+// KR7.1. Seguro porque a tela acha o KR pelo rótulo E pela identidade (uid, `sameKr` em OkrView) e
+// o cartão do KR tem a chave rótulo+uid: uma tela aberta que mostrava o KR apagado não edita o novo
+// calada (nem por campo aberto/rascunho) — desiste e avisa. Os check-ins guardam só o rótulo: os do
+// KR apagado viram "(excluído)" no removeKr e, de novo, quando o KR novo nasce (pega os de antes de
+// 26/10 e os de tela velha); o check-in só grava se o KR que a tela mostrava ainda existe. O krSeq
+// antigo dos objetivos fica no dado e não é mais usado.
 export const nextKrNum = (o: OkrObjective): number => {
   const n = (o.id || '').replace(/\D/g, '') || '0';
   const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return Math.max(maxNum(o.keyResults.map(k => k.id), new RegExp(`^KR${esc}\\.(\\d+)$`, 'i')), Number(o.krSeq) || 0) + 1;
+  const re = new RegExp(`^KR${esc}\\.(\\d+)$`, 'i');
+  const usados = new Set(o.keyResults.map(k => { const x = re.exec(k.id || ''); return x ? +x[1] : 0; }));
+  let i = 1;
+  while (usados.has(i)) i++;
+  return i;
 };
 export const nextKrId = (o: OkrObjective): string => `KR${(o.id || '').replace(/\D/g, '') || '0'}.${nextKrNum(o)}`;
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { withOkrSafe } from './OkrSafe';
-import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown, Link2, ExternalLink, UserRound, Archive, ArchiveRestore, History, Gauge, Link2Off } from 'lucide-react';
+import { Target, Flag, CheckCircle2, AlertTriangle, Clock, Plus, Lock, RefreshCw, Layers, Trash2, Share2, Printer, Activity as ActivityIcon, Copy, CalendarDays, ChevronDown, Link2, ExternalLink, UserRound, Archive, ArchiveRestore, History, Gauge, Link2Off, Pencil } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, CartesianGrid, Legend } from 'recharts';
 import { User, ProjectSession, OperationalActivity, ActivityType } from '../types';
 import { addAuditLog, enableOkrShare, fetchPublicOkrComKpi, fetchOkrExecutors, fetchOkrVersioned, mutateOkr, okrErrorMessage, OkrStaleError } from '../services/storageService';
@@ -216,17 +216,44 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
   // tela mostrava) para o KR da outra pessoa.
   const addKr = (objId: string) => {
     const o0 = active?.objectives.find(o => o.id === objId); if (!o0) return;
-    const num = nextKrNum(o0); const kr = emptyKr(nextKrId(o0));
-    updateObjWith(objId, o => {
-      if (o.keyResults.some(k => k.uid === kr.uid)) return o;  // já gravado (a resposta se perdeu e esta é a nova tentativa)
-      if (o.keyResults.some(k => k.id === kr.id) || nextKrNum(o) > num) throw new OkrStaleError(`Outra pessoa acabou de criar um KR neste objetivo — a tela foi atualizada. Clique em "Adicionar resultado-chave" de novo.`);
-      return { ...o, krSeq: num, keyResults: [...o.keyResults, kr] };
+    // Dado antigo pode ter dois objetivos com o mesmo id (numeração por posição, 23–25/09): o número
+    // livre conta os KRs de todos eles, e o KR entra só no primeiro — nunca troca a lista do outro.
+    const kr = emptyKr(nextKrId({ ...o0, keyResults: active!.objectives.filter(o => o.id === objId).flatMap(o => o.keyResults) }));
+    patchActive(p => {
+      const oi = p.objectives.findIndex(x => x.id === objId);
+      if (oi < 0) return null;
+      const o = p.objectives[oi];
+      if (p.objectives.some(x => x.keyResults.some(k => k.uid === kr.uid))) return p;  // já gravado (a resposta se perdeu e esta é a nova tentativa)
+      // o menor número livre (26/10): se outra pessoa pegou o MESMO rótulo no meio, desiste e avisa
+      if (p.objectives.some(x => x.keyResults.some(k => k.id === kr.id))) throw new OkrStaleError(`Outra pessoa acabou de criar um KR neste objetivo — a tela foi atualizada. Clique em "Adicionar resultado-chave" de novo.`);
+      // e entra no lugar do número: o KR7.1 recriado vem antes do KR7.2, não no fim da lista
+      const num = (id: string) => { const m = /\.(\d+)$/.exec(id || ''); return m ? +m[1] : null; };
+      const n = num(kr.id) ?? 0;
+      const i = o.keyResults.findIndex(k => { const x = num(k.id); return x !== null && x > n; });
+      const krs = o.keyResults.slice();
+      krs.splice(i < 0 ? krs.length : i, 0, kr);
+      // O KR acabou de nascer: nenhum check-in com este rótulo é dele. Os que existem são de um KR
+      // apagado (antes de 26/10 o removeKr não os marcava, ou chegaram de uma tela velha depois) —
+      // marca "(excluído)" para não passarem a parecer do novo. O rótulo não repete no período.
+      const marca = `${kr.id} (excluído)`;
+      return {
+        ...p,
+        objectives: p.objectives.map((x, j) => j === oi ? { ...x, keyResults: krs } : x),
+        checkins: (p.checkins || []).map(c => c.kr === kr.id ? { ...c, kr: marca } : c),
+      };
     });
   };
-  const removeKr = (objId: string, kr: KrRef) => updateObjWith(objId, o => {
-    if (!o.keyResults.some(k => sameKr(k, kr))) return o;
-    // guarda o maior número já usado: o próximo KR não reaproveita o rótulo apagado
-    return { ...o, krSeq: Math.max(Number(o.krSeq) || 0, nextKrNum(o) - 1), keyResults: o.keyResults.filter(k => !sameKr(k, kr)) };
+  // Apagar o KR também marca os check-ins dele (guardam só o rótulo) como "(excluído)": como o
+  // próximo KR do objetivo pode nascer com o mesmo rótulo (26/10), eles não passam a parecer dele.
+  const removeKr = (objId: string, kr: KrRef) => patchActive(p => {
+    const o = p.objectives.find(x => x.id === objId);
+    if (!o) return null;
+    if (!o.keyResults.some(k => sameKr(k, kr))) return p;
+    const marca = `${kr.id} (excluído)`;
+    const objectives = p.objectives.map(x => x.id !== objId ? x : { ...x, keyResults: x.keyResults.filter(k => !sameKr(k, kr)) });
+    // (dado antigo com objetivo repetido: se outro KR vivo ainda tem o rótulo, os check-ins são dele)
+    const rotuloVivo = objectives.some(x => x.keyResults.some(k => k.id === kr.id));
+    return { ...p, objectives, checkins: rotuloVivo ? p.checkins : (p.checkins || []).map(c => c.kr === kr.id ? { ...c, kr: marca } : c) };
   });
   const addObjective = () => {
     if (!active) return;
@@ -560,7 +587,9 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
                 if (k.archived && !showArchived) return null;
                 const p = krProgress(k);
                 return (
-                  <div key={k.id} className={`rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/30 p-4 ${k.archived ? 'opacity-60' : ''}`}>
+                  // A chave é o rótulo E a identidade: o KR recriado com o mesmo rótulo (26/10) remonta o cartão —
+                  // senão um campo aberto ou rascunho do KR apagado seria religado ao novo e gravaria nele.
+                  <div key={`${k.id}|${k.uid || ''}`} className={`rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/30 p-4 ${k.archived ? 'opacity-60' : ''}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
@@ -664,7 +693,14 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
         onTextoGravado={(i, gravou) => parecidos.aposGravar(`p:${i.id}`, 'portfolio', i.id, textoDoPortfolio(i.name, i.what), gravou)}
         avisoDe={id => parecidos.avisoDe(`p:${id}`)} />
 
-      {!readOnly && <CheckinsPanel period={active} allKrs={active.objectives.flatMap(o => o.keyResults)} onAdd={c => patchActive(p => (p.checkins || []).some(x => x.id === c.id) ? p : ({ ...p, checkins: [c, ...(p.checkins || [])] }))} currentUser={currentUser} />}
+      {!readOnly && <CheckinsPanel period={active} allKrs={active.objectives.flatMap(o => o.keyResults)} onAdd={(c, alvo) => patchActive(p => {
+        if ((p.checkins || []).some(x => x.id === c.id)) return p;
+        // O check-in guarda só o rótulo: grava só se o KR que a tela mostrava ainda é o dono dele (26/10 —
+        // apagado e recriado com o mesmo rótulo, o check-in iria para o KR novo).
+        if (!p.objectives.some(o => o.keyResults.some(k => sameKr(k, alvo))))
+          throw new OkrStaleError(`O ${alvo.id} foi excluído ou recriado por outra pessoa enquanto a tela estava aberta — o check-in não foi gravado. A tela foi atualizada; escolha o KR e registre de novo.`);
+        return { ...p, checkins: [c, ...(p.checkins || [])] };
+      })} currentUser={currentUser} />}
     </div>
   );
 };
@@ -721,6 +757,40 @@ const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onMutate: (fn: (
   // vez, o texto volta para o campo — ninguém perde o que digitou.
   const add = () => { const t = text.trim(); if (!t) return; const task = { id: newId(), text: t, done: false }; setText(''); onMutate(ts => ts.some(x => x.id === task.id) ? ts : [...ts, task]).then(ok => { if (!ok) setText(cur => cur || t); }); };
   const setDone = (id: string, done: boolean) => onMutate(ts => ts.map(x => x.id === id ? { ...x, done } : x));
+  // Editar o texto (26/10, reclamação levada pelo Edson: "não é possível editar, só excluir e recriar").
+  // Clique no texto (ou no lápis) abre o campo; Enter ou sair do campo grava; Esc desiste. Grava só a
+  // MUDANÇA na lista atual do banco, e só se a pessoa mudou o texto que viu ao abrir (`base`): fechar sem
+  // mexer não regrava por cima do que outra pessoa mudou no meio. O ref `aberto` é a verdade (muda na
+  // hora): o blur que vem depois do Enter/Esc não grava de novo.
+  type Edicao = { id: string; base: string; focar: boolean };
+  const [editando, setEditando] = useState<Edicao | null>(null);
+  const aberto = useRef<Edicao | null>(null);
+  const [rascunho, setRascunho] = useState('');
+  const abrir = (e: Edicao | null, txt = '') => { aberto.current = e; setEditando(e); setRascunho(txt); };
+  // Abrir outra com um campo ainda aberto (o devolvido por uma falha fica aberto sem foco, e sem foco
+  // não há blur) grava aquele antes — o texto dele não some calado.
+  const comecar = (t: OkrTask) => { if (readOnly) return; if (aberto.current) salvar(); abrir({ id: t.id, base: t.text, focar: true }, t.text); };
+  const ultima = useRef<Record<string, number>>({});   // a edição mais nova de cada atividade
+  const salvar = () => {
+    const ed = aberto.current; if (!ed) return;
+    const novo = rascunho.trim();
+    abrir(null);
+    if (!novo || novo === ed.base) return;   // vazio = desiste (apagar é pela lixeira)
+    const n = (ultima.current[ed.id] || 0) + 1; ultima.current[ed.id] = n;
+    let sumiu = false;
+    onMutate(ts => {
+      const i = ts.findIndex(x => x.id === ed.id);
+      if (i < 0) { sumiu = true; throw new OkrStaleError('Esta atividade foi excluída por outra pessoa enquanto você editava — nada foi gravado.'); }
+      if (ts[i].text === novo) return ts;
+      const c = ts.slice(); c[i] = { ...ts[i], text: novo }; return c;
+    }).then(ok => {
+      // Falhou de vez: o texto volta para o campo — o da edição mais nova desta atividade, só se nenhum
+      // outro campo estiver aberto (ou o aberto for a devolução mais velha desta mesma), e sem roubar o
+      // foco de onde a pessoa estiver digitando agora.
+      const livre = !aberto.current || (aberto.current.id === ed.id && !aberto.current.focar);
+      if (!ok && !sumiu && n === ultima.current[ed.id] && livre) abrir({ ...ed, focar: false }, novo);
+    });
+  };
   return (
     <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-800">
       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Atividades {tasks.length > 0 && `· ${tasks.filter(t => t.done).length}/${tasks.length}`}</span>
@@ -728,8 +798,17 @@ const KrTasks: React.FC<{ kr: OkrKeyResult; readOnly?: boolean; onMutate: (fn: (
         {tasks.map(t => (
           <div key={t.id} className="flex items-center gap-2 group/task">
             <input type="checkbox" checked={t.done} disabled={readOnly} onChange={() => setDone(t.id, !t.done)} className="w-3.5 h-3.5 accent-blue-600 shrink-0" />
-            <span className={`text-xs flex-1 min-w-0 ${t.done ? 'line-through text-slate-400' : 'text-slate-600 dark:text-slate-300'}`}>{t.text}</span>
-            {!readOnly && <button onClick={() => { onDeleteLog?.(t.text); onMutate(ts => ts.filter(x => x.id !== t.id)); }} className="opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={12} /></button>}
+            {editando?.id === t.id ? (
+              <input autoFocus={editando.focar} value={rascunho} aria-label="Editar atividade" onChange={e => setRascunho(e.target.value)}
+                onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === 'Enter') salvar(); else if (e.key === 'Escape') abrir(null); }}
+                onBlur={salvar}
+                className="text-xs flex-1 min-w-0 px-1 -mx-1 py-0.5 bg-white dark:bg-slate-900 border border-blue-400 rounded outline-none focus:ring-1 focus:ring-blue-400 text-slate-700 dark:text-white" />
+            ) : (
+              <span onClick={() => comecar(t)} title={readOnly ? undefined : 'Clique para editar'}
+                className={`text-xs flex-1 min-w-0 ${readOnly ? '' : 'cursor-text hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded px-1 -mx-1 py-0.5 border border-transparent'} ${t.done ? 'line-through text-slate-400' : 'text-slate-600 dark:text-slate-300'}`}>{t.text}</span>
+            )}
+            {!readOnly && editando?.id !== t.id && <button onClick={() => comecar(t)} title="Editar atividade" aria-label="Editar atividade" className="opacity-0 group-hover/task:opacity-100 focus-visible:opacity-100 text-slate-300 hover:text-blue-500 shrink-0 transition-all"><Pencil size={12} /></button>}
+            {!readOnly && <button onClick={() => { onDeleteLog?.(t.text); onMutate(ts => ts.filter(x => x.id !== t.id)); }} title="Excluir atividade" className="opacity-0 group-hover/task:opacity-100 focus-visible:opacity-100 text-slate-300 hover:text-rose-500 shrink-0 transition-all"><Trash2 size={12} /></button>}
           </div>
         ))}
         {tasks.length === 0 && <p className="text-[11px] text-slate-400 italic">Nenhuma atividade cadastrada.</p>}
@@ -852,17 +931,21 @@ const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onMutate: (fn: (pf:
   );
 };
 
-const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd: (c: OkrCheckin) => Promise<boolean>; currentUser: User }> = ({ period, allKrs, onAdd, currentUser }) => {
+const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd: (c: OkrCheckin, alvo: { id: string; uid?: string }) => Promise<boolean>; currentUser: User }> = ({ period, allKrs, onAdd, currentUser }) => {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [kr, setKr] = useState(allKrs[0]?.id || '');
+  // A escolha guarda o rótulo E a identidade (uid) do KR (26/10): se ele for apagado, ou recriado com o
+  // mesmo rótulo, a escolha some e o formulário pede outra — nunca passa calada para outro KR.
+  const chaveKr = (k: OkrKeyResult) => `${k.id}|${rawText(k.uid)}`;
+  const [escolhido, setEscolhido] = useState(allKrs[0] ? chaveKr(allKrs[0]) : '');
+  const krObj = allKrs.find(k => chaveKr(k) === escolhido);
   const [comment, setComment] = useState('');
   const [next, setNext] = useState('');
   const add = () => {
-    if (!comment.trim()) return;
-    const krObj = allKrs.find(k => k.id === kr);
-    const entry: OkrCheckin = { id: newId(), date, kr, current: krObj?.current ?? 0, comment: comment.trim(), next: next.trim() };
+    if (!comment.trim() || !krObj) return;
+    const kr = krObj.id;
+    const entry: OkrCheckin = { id: newId(), date, kr, current: krObj.current ?? 0, comment: comment.trim(), next: next.trim() };
     setComment(''); setNext('');
-    onAdd(entry).then(ok => {
+    onAdd(entry, { id: krObj.id, uid: krObj.uid }).then(ok => {
       // Gravou: registra na auditoria. Não gravou: o texto volta para o formulário.
       if (ok) { try { addAuditLog({ userId: currentUser.id, userName: currentUser.name, action: 'CREATE', entityType: 'OKR_CHECKIN', entityId: entry.id, entityName: kr, details: `Check-in OKR ${kr} (${date}) por ${currentUser.name}` }); } catch {} }
       else { setComment(c => c || entry.comment); setNext(n => n || entry.next); }
@@ -873,10 +956,13 @@ const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd
       <h3 className="text-base font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><CheckCircle2 size={18} className="text-blue-600" /> Check-ins · {period.label}</h3>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
         <input type="date" value={date} max={new Date().toISOString().slice(0, 10)} onChange={e => setDate(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]" />
-        <select value={kr} onChange={e => setKr(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]">{allKrs.map(k => <option key={k.id} value={k.id}>{k.id}</option>)}</select>
+        <select value={krObj ? escolhido : ''} onChange={e => setEscolhido(e.target.value)} className={`px-3 py-2 bg-gray-50 dark:bg-slate-800 border rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark] ${krObj ? 'border-gray-200 dark:border-slate-700' : 'border-amber-400'}`}>
+          {!krObj && <option value="" disabled>{escolhido ? '— o KR escolhido foi excluído: escolha —' : '— escolha o KR —'}</option>}
+          {allKrs.map(k => <option key={chaveKr(k)} value={chaveKr(k)}>{k.id}</option>)}
+        </select>
         <input value={comment} onChange={e => setComment(e.target.value)} placeholder="Comentário / decisão" className="md:col-span-2 px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
         <input value={next} onChange={e => setNext(e.target.value)} placeholder="Próximo passo (opcional)" className="md:col-span-3 px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
-        <button onClick={add} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold"><Plus size={16} /> Registrar</button>
+        <button onClick={add} disabled={!krObj} title={krObj ? undefined : 'Escolha o KR do check-in'} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold"><Plus size={16} /> Registrar</button>
       </div>
       <div className="space-y-2 max-h-72 overflow-y-auto">
         {(period.checkins || []).length === 0 && <p className="text-sm text-slate-400 text-center py-4">Sem check-ins ainda.</p>}
