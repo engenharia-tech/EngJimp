@@ -1042,7 +1042,10 @@ export const fetchOkrVersioned = async (ownerKey: string): Promise<{ store: OkrS
 // Marca de formato: o banco recusa gravação sem ela (trigger okr_state_exige_versao).
 // Uma aba aberta com o código anterior gravava o OKR INTEIRO por cima; sem a marca, a
 // gravação dela é barrada e a pessoa recarrega a página.
-export const OKR_FORMAT_VERSION = 2;
+// 3 (26/10/2026, "faz a versão 3 do OKR agora"): o KR recriado reaproveita o rótulo (5dbf77e) e as travas
+// disso (cartão por rótulo+uid, check-in por rótulo+uid) só existem no pacote novo — a 034 faz o banco
+// recusar as abas com o pacote anterior. Subir a marca SEMPRE antes do banco: o gatilho aceita "≥ N".
+export const OKR_FORMAT_VERSION = 3;
 const saveOkrIfUnchanged = async (store: OkrStore, ownerKey: string, version: string | null, exists: boolean): Promise<string | null> => {
   const now = new Date().toISOString();
   const payload: OkrStore = { ...store, updatedAt: now, v: OKR_FORMAT_VERSION };
