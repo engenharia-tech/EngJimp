@@ -769,13 +769,23 @@ app.post("/api/auth/request-code", async (req, res) => {
     console.error("[auth/request-code]", error?.message);
     return res.status(500).json({ success: false, error: "Erro ao gerar o codigo." });
   }
+  // O e-mail diz ONDE e COMO usar o código (26/10, pedido do Edson ao liberar os representantes: quem nunca entrou não
+  // sabe o endereço nem o próprio login). O endereço é o da configuração do servidor, nunca o do pedido (Host forjado).
   try {
-    await sendPlainMail(email, "JIMPNexus KPI — codigo para criar sua senha",
+    await sendPlainMail(email, "JIMPNexus KPI — seu acesso: codigo para criar sua senha",
 `${u.name || ""},
 
-Use o codigo abaixo para criar a sua senha no JIMPNexus KPI:
+Este e o codigo para voce criar a sua senha no JIMPNexus KPI:
 
     Codigo: ${code}
+
+Como usar:
+  1. Abra ${agendaAppUrl()}
+  2. Clique em "Criar / redefinir senha"
+  3. Em Usuario, digite: ${u.username}
+  4. Digite o codigo acima, escolha a sua senha (ao menos 6 caracteres) e confirme.
+     Nao precisa clicar em "Enviar codigo de ativacao": o codigo ja esta aqui
+     (pedir de novo gera outro codigo e este deixa de valer).
 
 O codigo vale 24 horas e serve uma unica vez.
 Se nao foi voce que pediu, ignore este e-mail.
