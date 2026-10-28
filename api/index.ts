@@ -3054,9 +3054,52 @@ app.post("/api/users/desligar", async (req, res) => {
   }
   const custoDesde = String((data && typeof data === "object" && (data as any).custo_desde) || "").slice(0, 10);
   if (ehTI && contaAntesDoTI) await avisarEdsonDoTI(admin, meuId, { acao: "desligou", conta: contaAntesDoTI, ultimoDia }, inicioRota);
+  // Depois do rastro/aviso do TI (que não pode esperar por nada) e com prazo próprio: estourou = avisa para conferir.
+  const ficha = await agendaComPrazo(desativarFichaDeExecutor(admin, alvo, meuId), 2500).catch(() => ({ aviso: AVISO_FICHA_MANUAL } as { executor?: string; aviso?: string }));
   // O TI (032, decisão do Edson 07/10: "nunca vê salário, R$, custo/hora"): desligou, e só — sem a data do custo/hora.
-  return res.json({ success: true, ...(!ehTI && /^\d{4}-\d{2}-\d{2}$/.test(custoDesde) ? { custoDesde } : {}) });
+  return res.json({ success: true, ...(!ehTI && /^\d{4}-\d{2}-\d{2}$/.test(custoDesde) ? { custoDesde } : {}),
+    ...(ficha.executor ? { executor: ficha.executor } : {}), ...(ficha.aviso ? { message: ficha.aviso } : {}) });
 });
+
+// A ficha de EXECUTOR do OKR sai da lista de escolha junto com o desligamento (Edson, 28/10/2026, sobre o Rogerio
+// Sinotti: "ele não pode aparecer nas coisas futuras"). O cadastro okr_executor não tem ligação com users, e as fichas de
+// pessoa usam o nome pelo qual a pessoa é chamada: o primeiro ("Charles", "Raphael", "Rogério"), o login ("Vinicius" =
+// José Vinicius Rex, login Vinicius) ou o completo ("Luiz Henrique"). Por isso: a regra de public.okr_norm (sem acento,
+// minúsculo, espaços simples — a do índice único) e os NOMES da pessoa = o completo, o campo nome inteiro, cada palavra
+// do nome e o login (o sobrenome sozinho não conta). Vale primeiro o completo; sem ele, qualquer outro. Só desativa se
+// nenhuma OUTRA pessoa ainda ativa tiver a ficha entre os nomes dela — a ficha "Luiz" é do Luiz Slonski ou do Luiz
+// Henrique? Não chuta: avisa para conferir. Desativar não apaga: os KRs antigos guardam o nome (riscado). Nunca derruba
+// o desligamento, que já foi gravado antes.
+const AVISO_FICHA_MANUAL = "Confira o cadastro de executores do OKR: se a pessoa estiver lá, desative a ficha dela à mão.";
+const okrNorm = (s: unknown): string => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().replace(/\s+/g, " ").toLowerCase();
+const nomesDaPessoa = (u: any): Set<string> => {
+  const nome = okrNorm(u?.name);
+  return new Set([okrNorm(`${u?.name || ""} ${u?.surname || ""}`), nome, ...nome.split(" "), okrNorm(u?.username)].filter(Boolean));
+};
+async function desativarFichaDeExecutor(admin: any, alvo: string, quemDesliga: string): Promise<{ executor?: string; aviso?: string }> {
+  try {
+    const { data: us, error: uErr } = await admin.from("users").select("id, name, surname, username, desligado_em");
+    if (uErr || !Array.isArray(us)) return { aviso: AVISO_FICHA_MANUAL };
+    const eu = us.find((u: any) => u.id === alvo);
+    const completo = okrNorm(`${eu?.name || ""} ${eu?.surname || ""}`), nomes = nomesDaPessoa(eu);
+    if (!completo) return {};
+    const { data: fichas, error: fErr } = await admin.from("okr_executor").select("id, name, updated_at").eq("kind", "pessoa").eq("active", true);
+    if (fErr || !Array.isArray(fichas)) return { aviso: AVISO_FICHA_MANUAL };
+    let iguais = fichas.filter((f: any) => okrNorm(f.name) === completo);
+    if (!iguais.length) iguais = fichas.filter((f: any) => nomes.has(okrNorm(f.name)));
+    if (!iguais.length) return {};
+    if (iguais.length > 1) return { aviso: `Há ${iguais.length} fichas no cadastro de executores do OKR que podem ser dessa pessoa (${iguais.map((x: any) => `"${x.name}"`).join(", ")}) — desative a certa à mão.` };
+    const f = iguais[0], chave = okrNorm(f.name), hoje = hojeJoinville();
+    const outro = us.find((u: any) => u.id !== alvo && (!u.desligado_em || String(u.desligado_em).slice(0, 10) >= hoje) && nomesDaPessoa(u).has(chave));
+    if (outro) return { aviso: `A ficha "${f.name}" do cadastro de executores do OKR pode ser de outra pessoa com o mesmo nome — confira e, se for de quem saiu, desative à mão.` };
+    const quem = us.find((u: any) => u.id === quemDesliga);
+    const { data: up, error: upErr } = await admin.from("okr_executor")
+      .update({ active: false, updated_at: new Date().toISOString(), updated_by: String(quem?.name || "desligamento") })
+      .eq("id", f.id).eq("updated_at", f.updated_at).select("id");
+    if (upErr || !up || !up.length) return { aviso: AVISO_FICHA_MANUAL };
+    return { executor: String(f.name || "") };
+  } catch { return { aviso: AVISO_FICHA_MANUAL }; }
+}
 
 // GET /api/users/salaries — salarios individuais. SO o Edson (dono) ve.
 app.get("/api/users/salaries", async (req, res) => {

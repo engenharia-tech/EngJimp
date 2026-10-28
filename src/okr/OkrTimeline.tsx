@@ -7,6 +7,7 @@ import { fetchAllOkrOrThrow, fetchOkrExecutors, mutateOkr, okrErrorMessage, addA
 import { OkrStore, OkrPeriod, OkrKeyResult, OkrExecutor, OkrPersonRef, krProgress, krExecutores, refName, normName, toIsoDate, parseIsoDay, localDayOf, isBadDate } from './okr';
 import { useToast } from '../components/Toast';
 import { aplicarKpis, krLigado, lerKpisDasLinhas, KpisMapa } from '../kpis/kpisNoOkr';
+import { ativoNaData } from '../utils/custoHora';
 
 const activePeriod = (s: OkrStore) => s.periods.find(p => p.id === s.activePeriodId) || s.periods[0];
 const barColor = (p: number, status: string) => status === 'Em risco' ? '#ef4444' : (p >= 1 || status === 'Concluído') ? '#10b981' : p >= 0.4 ? '#f59e0b' : '#3b82f6';
@@ -110,6 +111,9 @@ const OkrTimelineInner: React.FC<Props> = ({ currentUser, users, canEdit = false
     const bars: Bar[] = []; let waiting = 0;
     (rows || []).forEach(r => {
       const u = byKey[r.ownerKey]; const person = u?.name || r.store.owner || r.ownerKey; const sector = (u?.sector || '').trim();
+      // A linha do tempo é o planejamento do que vem: quem já foi desligado não entra (Edson, 28/10/2026) — nem para
+      // arrastar. O histórico dele fica no OKR dele, que abre só para leitura.
+      if (u && !ativoNaData(u)) return;
       const ap = activePeriod(r.store); if (!ap) return; const { ps, pe } = periodBounds(ap);
       ap.objectives.forEach((o, oi) => o.keyResults.forEach((k, ki) => {
         if (k.archived) return;

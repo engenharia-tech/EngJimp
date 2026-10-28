@@ -81,6 +81,7 @@ import { Language } from './i18n/translations';
 import { useAppState } from './contexts/StateContext';
 import { ehVisaoCeo, ehRepresentante, CARGOS_VISAO_CEO } from './utils/cargos';
 import { abreEquipePelaMarca } from './utils/adminUsuarios';
+import { ativoNaData, ultimoDiaTrabalhado, hojeJoinville } from './utils/custoHora';
 
 interface NavItemProps {
   id: any;
@@ -587,13 +588,22 @@ const AppContent: React.FC = () => {
     // nesta carga (senão seria o padrão 07:30–17:30 ou uma cópia velha do navegador, gravando cortes errados).
     if (!data.settings.carregadoDoBanco) return;
 
+    // Quem foi desligado (Edson, 28/10/2026: "não pode aparecer nas coisas futuras"): a atividade esquecida aberta no
+    // nome dele fecha no ÚLTIMO dia — nada é "retomado automaticamente" depois. O "agora" da divisão vira a meia-noite
+    // seguinte ao último dia (antes do expediente: nenhum trecho novo nasce nesse dia).
+    const agoraDe = (a: { userId?: string }): Date => {
+      const ultimo = ultimoDiaTrabalhado((data.users || []).find(u => u.id === a.userId));
+      if (!ultimo || ultimo >= hojeJoinville()) return new Date();
+      const d = new Date(`${ultimo}T00:00:00`); d.setDate(d.getDate() + 1); return d;
+    };
+
     const runCleanup = async () => {
       // Find any running activity for any user that needs correction
       const runningAct = data.operationalActivities.find(a => {
         if (a.endTime) return false;
         if (normalizedActivityIdsRef.current.has(a.id)) return false;
-        
-        const result = getCleanupSegmentsForActivity(a, data.settings, new Date());
+
+        const result = getCleanupSegmentsForActivity(a, data.settings, agoraDe(a));
         return result && result.needsCorrection;
       });
       if (!runningAct) return;
@@ -601,7 +611,7 @@ const AppContent: React.FC = () => {
       // Skip if we already checked/processed this activity ID
       if (normalizedActivityIdsRef.current.has(runningAct.id)) return;
 
-      const result = getCleanupSegmentsForActivity(runningAct, data.settings, new Date());
+      const result = getCleanupSegmentsForActivity(runningAct, data.settings, agoraDe(runningAct));
       if (result && result.needsCorrection) {
         isNormalizingRef.current = true;
         normalizedActivityIdsRef.current.add(runningAct.id);
@@ -714,9 +724,12 @@ const AppContent: React.FC = () => {
   // Quem manda no OKR de todos (switcher + editar geral): Edson ou admin de OKR.
   const isOkrMaster = isEdsonOwner || isOkrAdmin;
   const myOkrOwnerKey = useMemo(() => (currentUser?.username || '').trim().toLowerCase(), [currentUser]);
-  // Lista de pessoas com OKR para o switcher — todas menos o próprio (que é "Meu OKR").
+  // Lista de pessoas com OKR para o switcher — todas menos o próprio (que é "Meu OKR"). Quem já foi desligado vai para o
+  // fim, marcado, e o OKR dele abre SÓ PARA LER (Edson, 28/10/2026: o dispensado "não pode aparecer nas coisas futuras",
+  // mas o histórico fica): ninguém edita nem cria um OKR vazio no nome dele.
   const okrPeople = useMemo(
-    () => (data.users || []).filter(u => u.okrEnabled && (u.username || '').trim().toLowerCase() !== myOkrOwnerKey),
+    () => (data.users || []).filter(u => u.okrEnabled && (u.username || '').trim().toLowerCase() !== myOkrOwnerKey)
+      .sort((a, b) => Number(!ativoNaData(a)) - Number(!ativoNaData(b))),
     [data.users, myOkrOwnerKey]
   );
   const canUseOkr = useMemo(() => {
@@ -2044,6 +2057,7 @@ const AppContent: React.FC = () => {
                 (() => {
                   const target = okrTarget !== 'self' && okrPeople.some(u => (u.username || '').trim().toLowerCase() === okrTarget) ? okrTarget : 'self';
                   const person = okrPeople.find(u => (u.username || '').trim().toLowerCase() === target);
+                  const personDesligado = !!person && !ativoNaData(person);   // só leitura: o histórico dele, nada novo
                   return (
                     <>
                       {/* Só o Edson escolhe entre o dele e o de cada usuário habilitado. */}
@@ -2052,8 +2066,9 @@ const AppContent: React.FC = () => {
                         <button onClick={() => setOkrTarget('self')} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${target === 'self' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>Meu OKR</button>
                         {okrPeople.map(u => {
                           const uk = (u.username || '').trim().toLowerCase();
+                          const saiu = !ativoNaData(u);
                           return (
-                            <button key={u.id} onClick={() => setOkrTarget(uk)} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${target === uk ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>{u.name}{u.sector ? ` · ${u.sector}` : ''}</button>
+                            <button key={u.id} onClick={() => setOkrTarget(uk)} title={saiu ? 'Desligado — o OKR abre só para leitura' : undefined} className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${saiu && target !== uk ? 'opacity-60 border-dashed ' : ''}${target === uk ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>{u.name}{u.sector ? ` · ${u.sector}` : ''}{saiu ? ' (desligado)' : ''}</button>
                           );
                         })}
                       </div>
@@ -2074,16 +2089,17 @@ const AppContent: React.FC = () => {
                         />
                       ) : (
                         <OkrView
-                          key={`okr-view-${target}`}
+                          key={`okr-view-${target}${personDesligado ? '-leitura' : ''}`}
                           currentUser={currentUser}
                           projects={data.projects}
                           activities={data.operationalActivities}
                           activityTypes={data.activityTypes}
                           ownerKey={target}
-                          heading={`OKR — ${person?.name || target}${person?.sector ? ` · ${person.sector}` : ''}`}
+                          heading={`OKR — ${person?.name || target}${person?.sector ? ` · ${person.sector}` : ''}${personDesligado ? ' (desligado)' : ''}`}
                           ownerName={person?.name || target}
-                          seedEmpty
-                          canShare={isEdsonOwner}
+                          readOnly={personDesligado}
+                          seedEmpty={!personDesligado}
+                          canShare={isEdsonOwner && !personDesligado}
                           privacyNote={`Você edita o de ${person?.name || target}`}
                           podeLigarKpi={!!kpisAcesso && kpisAcesso.indicadores > 0}
                           donoKpi={person ? donoKpiDe(person) : null}

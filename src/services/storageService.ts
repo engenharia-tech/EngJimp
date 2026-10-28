@@ -2238,7 +2238,7 @@ export const deleteUser = async (id: string): Promise<{ success: boolean; messag
 export const desligarUsuario = async (
   id: string,
   ultimoDia: string, // 'AAAA-MM-DD' = último dia trabalhado (inclusive)
-): Promise<{ success: boolean; message?: string; custoDesde?: string }> => {
+): Promise<{ success: boolean; message?: string; custoDesde?: string; executor?: string }> => {
   try {
     const res = await fetch('/api/users/desligar', {
       method: 'POST',
@@ -2248,7 +2248,9 @@ export const desligarUsuario = async (
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.success) {
       const custoDesde = typeof data.custoDesde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.custoDesde) ? data.custoDesde : undefined;
-      return { success: true, message: data.message, ...(custoDesde ? { custoDesde } : {}) };
+      // `executor` (28/10/2026): a ficha de executor do OKR que o servidor desativou junto (nome da ficha).
+      const executor = typeof data.executor === 'string' && data.executor.trim() ? data.executor.trim() : undefined;
+      return { success: true, message: data.message, ...(custoDesde ? { custoDesde } : {}), ...(executor ? { executor } : {}) };
     }
     return { success: false, message: data.message || data.error || 'Erro ao desligar usuário.' };
   } catch {

@@ -158,7 +158,14 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
   // Devolve se ficou GRAVADO (true) — formulário só esquece o texto quando gravou.
   const persist = useCallback((mut: (s: OkrStore) => OkrStore | null): Promise<boolean> => readOnly ? Promise.resolve(false) : write(mut), [readOnly, write]);
 
-  const active = useMemo(() => store?.periods.find(p => p.id === store.activePeriodId) || store?.periods[0], [store]);
+  // Só leitura DENTRO do app (28/10/2026: o OKR de quem foi desligado — o histórico fica): trocar de período é só OLHAR,
+  // guardado aqui na tela; nada é gravado no OKR dele. O link público (external) fica como era.
+  const leituraNoApp = readOnly && !external;
+  const [periodoVisto, setPeriodoVisto] = useState<string | null>(null);
+  const active = useMemo(() => {
+    const id = leituraNoApp && periodoVisto ? periodoVisto : store?.activePeriodId;
+    return store?.periods.find(p => p.id === id) || store?.periods.find(p => p.id === store?.activePeriodId) || store?.periods[0];
+  }, [store, leituraNoApp, periodoVisto]);
 
   // Muda um período. As mudanças são reaplicadas sobre o OKR RELIDO do banco, então
   // acham o período pelo id (não "o ativo de lá") e desistem (null) se ele sumiu.
@@ -341,7 +348,8 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
   };
 
   // Períodos
-  const switchPeriod = (id: string) => persist(s => s.periods.some(p => p.id === id) ? (s.activePeriodId === id ? s : { ...s, activePeriodId: id }) : null);
+  const switchPeriod = (id: string) => leituraNoApp ? (setPeriodoVisto(id), Promise.resolve(false))
+    : persist(s => s.periods.some(p => p.id === id) ? (s.activePeriodId === id ? s : { ...s, activePeriodId: id }) : null);
   const addPeriod = () => {
     if (!store || !active) return;
     const label = window.prompt('Nome do novo período (ex.: Q1 2027):', 'Q1 2027');
@@ -359,13 +367,20 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
     // O período novo é montado UMA vez, aqui: a tela e o banco recebem o mesmo (ids e
     // identidades dos KRs iguais). Montar dentro da mudança sorteava identidades novas
     // no banco, e editar um KR do período recém-criado era recusado.
-    const np = clonePeriodStructure(active, label.trim(), range.trim());
+    // Responsável/executor que o cadastro diz INATIVO (ex.: quem foi dispensado) não passa para o período novo. Só sai quem
+    // aparece inativo: id que esta pessoa não enxerga no cadastro (o representante só lê as equipes — 030) ou excluído dele
+    // passa, como antes; nome sem id (legado) também. Sem o cadastro lido, copia tudo.
+    const ativoNoCadastro = registryOk ? (p: OkrPersonRef) => !p.id || !registry.some(e => e.id === p.id && e.active === false) : undefined;
+    const np = clonePeriodStructure(active, label.trim(), range.trim(), ativoNoCadastro);
+    const contar = (per: OkrPeriod) => per.objectives.reduce((n, o) => n + (o.responsavel ? 1 : 0) + o.keyResults.reduce((m, kk) => m + (kk.executores?.length || 0), 0), 0);
+    const deixados = contar(active) - contar(np);
     persist(s => {
       if (s.periods.some(p => p.id === np.id)) return s;        // já gravado (nova tentativa)
       if (!s.periods.some(p => p.id === srcId)) return null;
       return { ...s, periods: [...s.periods, np], activePeriodId: np.id };
     });
     addToast(`Período "${label}" criado (estrutura copiada, progresso zerado).`, 'success');
+    if (deixados > 0) addToast(`${deixados} atribuição(ões) de quem está inativo no cadastro de executores não passaram para o período novo.`, 'warning');
     if (!parseRange(range) && np.objectives.some(o => o.keyResults.some(kk => kk.kpiId)))
       addToast('Os KRs ligados ao KPI ficaram sem início e prazo (não consegui ler o intervalo "dd/mm/aaaa a dd/mm/aaaa"): defina as datas deles, senão mostram o último valor de todos.', 'warning');
   };
@@ -445,7 +460,7 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
               <p className="text-xs text-slate-500 dark:text-slate-400">{store.owner}</p>
             </div>
             {readOnly
-              ? <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-full px-2 py-1"><Lock size={11} /> Só leitura</span>
+              ? <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-full px-2 py-1"><Lock size={11} /> Só leitura</span>
               : privacyNote && <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-full px-2 py-1"><Lock size={11} /> {privacyNote}</span>}
           </div>
           <div className="flex items-center gap-4 shrink-0">
@@ -476,10 +491,10 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
           <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">{totals.done} feitos</span>
           <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400">{totals.risk} em risco</span>
           <span className={`text-[11px] font-medium ${saving === 'offline' || saving === 'error' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`} role="status">{saving === 'saving' ? 'salvando…' : saving === 'saved' ? 'salvo ✓' : saving === 'offline' ? 'sem conexão — tentando salvar de novo…' : saving === 'error' ? 'não salvo' : ''}</span>
-          {!readOnly && (
+          {(!readOnly || leituraNoApp) && (
             <div className="flex items-center gap-2 no-print">
               <button onClick={handleExport} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"><Printer size={14} /> Exportar</button>
-              {canShare && <button onClick={handleShare} disabled={sharing} className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"><Share2 size={14} /> {sharing ? 'Gerando…' : 'Compartilhar'}</button>}
+              {canShare && !readOnly && <button onClick={handleShare} disabled={sharing} className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"><Share2 size={14} /> {sharing ? 'Gerando…' : 'Compartilhar'}</button>}
             </div>
           )}
         </div>
@@ -693,7 +708,7 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
         onTextoGravado={(i, gravou) => parecidos.aposGravar(`p:${i.id}`, 'portfolio', i.id, textoDoPortfolio(i.name, i.what), gravou)}
         avisoDe={id => parecidos.avisoDe(`p:${id}`)} />
 
-      {!readOnly && <CheckinsPanel period={active} allKrs={active.objectives.flatMap(o => o.keyResults)} onAdd={(c, alvo) => patchActive(p => {
+      {(!readOnly || leituraNoApp) && <CheckinsPanel period={active} allKrs={active.objectives.flatMap(o => o.keyResults)} somenteLer={readOnly} onAdd={(c, alvo) => patchActive(p => {
         if ((p.checkins || []).some(x => x.id === c.id)) return p;
         // O check-in guarda só o rótulo: grava só se o KR que a tela mostrava ainda é o dono dele (26/10 —
         // apagado e recriado com o mesmo rótulo, o check-in iria para o KR novo).
@@ -931,7 +946,8 @@ const PortfolioPanel: React.FC<{ portfolio: PortfolioItem[]; onMutate: (fn: (pf:
   );
 };
 
-const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd: (c: OkrCheckin, alvo: { id: string; uid?: string }) => Promise<boolean>; currentUser: User }> = ({ period, allKrs, onAdd, currentUser }) => {
+// somenteLer (28/10/2026): o OKR de quem foi desligado mostra os check-ins (o histórico), sem o formulário de registrar.
+const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd: (c: OkrCheckin, alvo: { id: string; uid?: string }) => Promise<boolean>; currentUser: User; somenteLer?: boolean }> = ({ period, allKrs, onAdd, currentUser, somenteLer }) => {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   // A escolha guarda o rótulo E a identidade (uid) do KR (26/10): se ele for apagado, ou recriado com o
   // mesmo rótulo, a escolha some e o formulário pede outra — nunca passa calada para outro KR.
@@ -954,7 +970,7 @@ const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-gray-200 dark:border-slate-700 no-print">
       <h3 className="text-base font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><CheckCircle2 size={18} className="text-blue-600" /> Check-ins · {period.label}</h3>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+      {!somenteLer && <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
         <input type="date" value={date} max={new Date().toISOString().slice(0, 10)} onChange={e => setDate(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark]" />
         <select value={krObj ? escolhido : ''} onChange={e => setEscolhido(e.target.value)} className={`px-3 py-2 bg-gray-50 dark:bg-slate-800 border rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:light] dark:[color-scheme:dark] ${krObj ? 'border-gray-200 dark:border-slate-700' : 'border-amber-400'}`}>
           {!krObj && <option value="" disabled>{escolhido ? '— o KR escolhido foi excluído: escolha —' : '— escolha o KR —'}</option>}
@@ -963,7 +979,7 @@ const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd
         <input value={comment} onChange={e => setComment(e.target.value)} placeholder="Comentário / decisão" className="md:col-span-2 px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
         <input value={next} onChange={e => setNext(e.target.value)} placeholder="Próximo passo (opcional)" className="md:col-span-3 px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
         <button onClick={add} disabled={!krObj} title={krObj ? undefined : 'Escolha o KR do check-in'} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold"><Plus size={16} /> Registrar</button>
-      </div>
+      </div>}
       <div className="space-y-2 max-h-72 overflow-y-auto">
         {(period.checkins || []).length === 0 && <p className="text-sm text-slate-400 text-center py-4">Sem check-ins ainda.</p>}
         {(period.checkins || []).map(c => (

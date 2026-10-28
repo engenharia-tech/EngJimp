@@ -5,7 +5,7 @@ import { useToast } from './Toast';
 import { useLanguage } from '../i18n/LanguageContext';
 import { recalculateAllInterruptionTimes, recalculateAllProjectTimes, getDatabaseStats, addAuditLog } from '../services/storageService';
 import { authHeaders } from '../services/authToken';
-import { podeVerReais, avisoSemSerie, taxaNaData, hojeJoinville, modoManual, CORTE_SERIE } from '../utils/custoHora';
+import { podeVerReais, avisoSemSerie, taxaNaData, hojeJoinville, modoManual, CORTE_SERIE, ativoNaData } from '../utils/custoHora';
 import { rotuloCargo } from '../utils/cargos';
 
 // 'AAAA-MM-DD' → 'dd/mm/aaaa' pelo texto (sem Date: nada de fuso trocar o dia).
@@ -533,7 +533,9 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-slate-800/80">
-                      {users.map((user) => {
+                      {/* Desligado não entra para receber o que vem (Edson, 28/10/2026). O desligamento já tira o e-mail do
+                          cadastro; um endereço antigo que tenha ficado nas listas aparece nos destinatários adicionais. */}
+                      {users.filter(u => ativoNaData(u)).map((user) => {
                         const userEmail = user.email?.trim() || '';
                         const hasEmail = !!userEmail && userEmail.includes('@');
                         const isCheckedGen = isCheckedGeneral(userEmail);

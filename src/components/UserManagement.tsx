@@ -352,6 +352,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
       setDesligarAlvo(null);
       // O modo TI (032) não ouve falar de custo: "Desligado." e só.
       addToast(result.custoDesde && !modoTI ? `Desligado. O custo muda a partir de ${diaBr(result.custoDesde, true)}.` : 'Desligado.', 'success');
+      if (result.executor) addToast(`A ficha "${result.executor}" saiu da lista de executores do OKR (o histórico fica).`, 'info');
       if (result.message) addToast(result.message, 'warning'); // desligou, mas o servidor tem algo a dizer
       // O log diz quem e quando, nunca salário nem custo (o Log é lido por GESTOR, CEO e COORDENADOR).
       addAuditLog({
@@ -361,7 +362,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onU
         entityType: 'USER',
         entityId: alvo.id,
         entityName: alvo.username,
-        details: `Usuário ${alvo.username} (${alvo.name}) desligado (último dia ${diaBr(ultimoDia)}) por ${currentUser.name}`
+        details: `Usuário ${alvo.username} (${alvo.name}) desligado (último dia ${diaBr(ultimoDia)}) por ${currentUser.name}${result.executor ? `; ficha de executor do OKR "${result.executor}" desativada` : ''}`
       });
       await loadList();
       onUsersChange?.();

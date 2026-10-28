@@ -54,7 +54,7 @@ import { format, startOfDay, endOfDay, isWithinInterval, parseISO, differenceInS
 import { addAuditLog } from '../services/storageService';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { isExcludedFromEngineering, usersIndex } from '../utils/pndSplit';
-import { rotuloDesligado } from '../utils/custoHora';
+import { rotuloDesligado, ativoNaData } from '../utils/custoHora';
 import { ehVisaoCeo, ehRepresentante, foraDaEngenharia } from '../utils/cargos';
 import { ptBR, es, enUS } from 'date-fns/locale';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -240,6 +240,12 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   // O Diretor Industrial entra junto com o CEO (06/10/2026, paridade: hoje nenhum dos dois chega a esta tela).
   const canEditOthers = ['GESTOR', 'COORDENADOR'].includes(currentUser.role) || ehVisaoCeo(currentUser.role);
   const canEditCurrent = selectedUserId === currentUser.id || (canEditOthers && selectedUserId !== 'ALL');
+  // Quem foi desligado continua na lista para ver e corrigir o histórico (Edson, 30/09), mas ninguém LANÇA no nome dele
+  // depois do último dia (Edson, 28/10/2026: "não pode aparecer nas coisas futuras"). Só a criação trava: parar, editar e
+  // excluir seguem com quem já podia — é por aí que se limpa o que ficou aberto. `quando` = o dia do lançamento (sem = agora).
+  const selecionado = selectedUserId === 'ALL' ? undefined : users.find(u => u.id === selectedUserId);
+  const podeLancarEm = (quando?: string | Date) => !selecionado || ativoNaData(selecionado, quando);
+  const avisoDesligado = () => addToast(`${selecionado?.name || 'Esta pessoa'} foi desligado(a): não se lança nada no nome de quem já saiu depois do último dia.`, 'warning');
 
   // When tab is engineering, we might want to default to ALL if allowed
   useEffect(() => {
@@ -516,7 +522,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       const dayOfWeek = selectedDate.getDay(); // 0 = Sunday, 6 = Saturday
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       
-      if (isWeekend && filteredActivities.length === 0 && filteredProjects.length === 0 && currentUser.id === selectedUserId && !isSeedingRef.current) {
+      if (isWeekend && filteredActivities.length === 0 && filteredProjects.length === 0 && currentUser.id === selectedUserId && podeLancarEm(selectedDate) && !isSeedingRef.current) {
         const folgaType = activityTypes.find(t => t.name.toUpperCase() === 'FOLGA');
         if (folgaType) {
           // Double check against full activities list to prevent duplicates
@@ -1025,6 +1031,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
     const type = activityTypes.find(t => t.id === typeId);
     if (!type) return;
+    if (!podeLancarEm()) { avisoDesligado(); return; }   // iniciar = agora
 
     const newActivity: OperationalActivity = {
       id: crypto.randomUUID(),
@@ -1051,6 +1058,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
   };
 
   const handleStopActivity = async (activity: OperationalActivity) => {
+    // Parar AGORA a atividade de quem já saiu lançaria no nome dele as horas depois do último dia: quem a fecha é a
+    // divisão automática (App.tsx), no fim do último dia (28/10/2026).
+    if (!podeLancarEm()) { addToast(`A atividade de ${selecionado?.name || 'quem foi desligado'} é fechada sozinha no último dia trabalhado — atualize a tela em instantes.`, 'info'); return; }
     const endTime = new Date().toISOString();
     const durationSeconds = calcActiveSeconds(activity.startTime, endTime, settings, !!activity.isOvertime);
     
@@ -1221,6 +1231,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       } else {
         finalNotes = finalNotes.replace('[HORA_EXTRA]', '').trim();
       }
+      // lançamento novo: começo E fim até o último dia (no mês/ano o item vem inteiro, pode atravessar o desligamento)
+      if (!podeLancarEm(newStartTime) || !podeLancarEm(newEndTime)) { avisoDesligado(); setIsSaving(false); return; }
 
       const newActivity: OperationalActivity = {
         id: crypto.randomUUID(),
@@ -1694,6 +1706,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                   onStartActivity={handleStartActivity}
                   onStopActivity={handleStopActivity}
                   canEditCurrent={canEditCurrent}
+                  canStart={podeLancarEm()}
                   theme={theme}
                   t={t}
                   settings={settings}
@@ -1808,7 +1821,8 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                           setGapIsOvertime(item.isOvertime || false);
                         }
                       } else if (item.isGap || item.type === 'interruption' || item.type === 'pause' || item.type === 'project') {
-                        setIsEditingGap({ 
+                        if (!podeLancarEm(item.start) || !podeLancarEm(item.end)) { avisoDesligado(); return; }   // daqui nasce um lançamento novo
+                        setIsEditingGap({
                           start: item.start.toISOString(), 
                           end: item.end.toISOString() 
                         });
@@ -2403,11 +2417,12 @@ const CurrentActivityTracker: React.FC<{
   onStartActivity: (typeId: string, isOvertime?: boolean) => Promise<void>;
   onStopActivity: (activity: OperationalActivity) => Promise<void>;
   canEditCurrent: boolean;
+  canStart: boolean;   // false = desligado depois do último dia: só parar (28/10/2026)
   theme: 'light' | 'dark';
   t: any;
   settings: AppSettings;
   currentUser: User;
-}> = ({ currentActivity, activityTypes, onStartActivity, onStopActivity, canEditCurrent, theme, t, settings, currentUser }) => {
+}> = ({ currentActivity, activityTypes, onStartActivity, onStopActivity, canEditCurrent, canStart, theme, t, settings, currentUser }) => {
   const [selectedType, setSelectedType] = useState('');
   const [isOvertimeSelect, setIsOvertimeSelect] = useState(false);
 
@@ -2486,6 +2501,16 @@ const CurrentActivityTracker: React.FC<{
     );
   }
 
+  // Desligado depois do último dia: sem tipo, sem hora extra, sem iniciar — só o histórico (28/10/2026).
+  if (canEditCurrent && !canStart) {
+    return (
+      <div className="py-8 text-center border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
+        <Clock size={32} className="mx-auto text-gray-200 mb-2" />
+        <p className="text-xs text-gray-400 uppercase font-bold tracking-widest">DESLIGADO — SÓ O HISTÓRICO</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -2536,7 +2561,7 @@ const CurrentActivityTracker: React.FC<{
           {t('startActivity') || 'INICIAR ATIVIDADE'}
         </button>
       )}
-      
+
       {!canEditCurrent && (
         <div className="py-8 text-center border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
           <Clock size={32} className="mx-auto text-gray-200 mb-2" />

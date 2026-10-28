@@ -258,8 +258,12 @@ export const parseRange = (range?: unknown): { ini: string; fim: string } | null
 // KR LIGADO ao KPI: o início e o prazo passam a ser os do período novo (lidos do
 // intervalo digitado; sem intervalo legível, ficam vazios) — senão o trimestre novo
 // mostraria o valor do velho.
-export const clonePeriodStructure = (src: OkrPeriod, label: string, range: string): OkrPeriod => {
+// `manter` (28/10/2026): quem decide se um responsável/executor vai para o período novo — a tela passa "está ativo no
+// cadastro", e o desligado/inativo não nasce atribuído no trimestre seguinte ("não pode aparecer nas coisas futuras").
+// Sem `manter` (cadastro não lido), copia tudo como antes.
+export const clonePeriodStructure = (src: OkrPeriod, label: string, range: string, manter?: (p: OkrPersonRef) => boolean): OkrPeriod => {
   const r = parseRange(range);
+  const fica = (p: OkrPersonRef | null | undefined) => !p || !manter || manter(p);
   return {
     id: `p${Date.now().toString(36)}`,
     label,
@@ -267,9 +271,11 @@ export const clonePeriodStructure = (src: OkrPeriod, label: string, range: strin
     checkins: [],
     objectives: src.objectives.map(o => ({
       ...o,
+      ...(o.responsavel && !fica(o.responsavel) ? { responsavel: null } : {}),
       keyResults: o.keyResults.map(k => ({
         ...k, uid: newUid(), current: k.baseline, status: 'Não iniciado', tasks: (k.tasks || []).map(t => ({ ...t, done: false })),
         ...(k.kpiId ? { start: r ? r.ini : '', due: r ? r.fim : '' } : {}),
+        ...(Array.isArray(k.executores) ? { executores: k.executores.filter(fica) } : {}),
       })),
     })),
   };

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { User } from '../types';
 import { addAuditLog } from '../services/storageService';
 import { ehVisaoCeo, ehRepresentante } from '../utils/cargos';
+import { ativoNaData } from '../utils/custoHora';
 import { Plus, Pencil, Archive, ArchiveRestore, Trash2, AlertTriangle, Calculator, Link2, Users, Search, Save, Loader2 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { KpisAcesso, KpisIndicador, KpisSetor, KpisTipoAtividade, FREQ_ROTULO, fmtValor, gerencia, hojeSP, inicioPeriodo, metaVigente, setorChave, ehSetorDeRepresentante, SETOR_DE_REPRESENTANTE_MSG } from './kpis';
@@ -213,17 +214,19 @@ const PessoasESetores: React.FC<{ users: User[]; currentUser: User; setores: Kpi
   // Industrial também (06/10/2026).
   const ceoSoVe = ehVisaoCeo(currentUser.role) && currentUser.id !== EDSON_ID;
   const [busca, setBusca] = useState('');
+  // Quem já foi desligado não aparece (Edson, 28/10/2026: "não pode aparecer nas coisas futuras") — dar setor é para o
+  // que vem; o que ele fez continua contando nos indicadores (as funções do KPI o tiram depois do último dia).
+  const pessoas = useMemo(() => (users || []).filter(u => !/^zz_/i.test(u.username || '') && ativoNaData(u)), [users]);
   const lista = useMemo(() => {
     const q = setorChave(busca);
-    return (users || [])
-      .filter(u => !/^zz_/i.test(u.username || ''))
+    return pessoas
       .filter(u => !q || setorChave(`${u.name} ${u.surname || ''} ${u.username} ${u.sector || ''}`).includes(q))
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
-  }, [users, busca]);
+  }, [pessoas, busca]);
   return (
     <details className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden">
       <summary className="px-5 py-3 cursor-pointer select-none text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 flex items-center gap-2">
-        <Users size={14} /> Pessoas e setores ({(users || []).filter(u => !/^zz_/i.test(u.username || '')).length})
+        <Users size={14} /> Pessoas e setores ({pessoas.length})
         <span className="normal-case font-normal tracking-normal text-[11px] text-slate-400 ml-auto">{ceoSoVe ? 'o setor abre o KPI do setor — o CEO e o Diretor Industrial acompanham; para mudar, peça ao Edson' : 'o setor abre o KPI do setor — só o Edson e os admins de OKR (fora o CEO e o Diretor Industrial) mudam'}</span>
       </summary>
       <div className="px-5 pb-3 flex items-center gap-2">
