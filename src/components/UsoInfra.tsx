@@ -321,7 +321,7 @@ const Painel: React.FC<{ uso: UsoInfraEstado }> = ({ uso }) => {
               <ul className="text-xs grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
                 <li>CPU ativa: <span className="font-mono font-bold">{d.vercel.limites.cpu_ativa_horas} h</span> <span className="text-slate-400 dark:text-slate-500">(a mais apertada)</span></li>
                 <li>Invocações: <span className="font-mono font-bold">{d.vercel.limites.invocacoes.toLocaleString('pt-BR')}</span></li>
-                <li>CDN requests: <span className="font-mono font-bold">{d.vercel.limites.cdn_requests.toLocaleString('pt-BR')}</span></li>
+                <li>Requisições à CDN: <span className="font-mono font-bold">{d.vercel.limites.cdn_requests.toLocaleString('pt-BR')}</span></li>
                 <li>Transferência: <span className="font-mono font-bold">{d.vercel.limites.transferencia_gb} GB</span></li>
               </ul>
             </>

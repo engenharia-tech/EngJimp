@@ -9,6 +9,7 @@ import { askGemini } from '../lib/gemini';
 import { useLanguage } from '../i18n/LanguageContext';
 import { isEdsonUser } from '../utils/identity';
 import { ehVisaoCeo, ehRepresentante } from '../utils/cargos';
+import { textoParaFiltro, categoriaDaAtividade } from '../utils/atividadeTipo';
 import { resolveLocalQueryFallback, tryResolveLocalQuery } from '../utils/localQueryProcessor';
 import { AppState, User, InterruptionStatus, ProjectType } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -623,8 +624,12 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
       const user = users.find(u => u.id === act.userId);
       if (!user) return;
 
-      const category = act.activityName || 'ATIVIDADE OPERACIONAL';
-      const upperCategory = category.toUpperCase();
+      // Soma pelo TIPO; o nome é só descrição (29/10/2026: pelo nome, o Matheus tinha 2 h de Oficina em setembro e
+      // 107 h de "LACUNA EM BRANCO"; pelo tipo, 28 h de Oficina). Os filtros por palavra olham tipo + nome.
+      const upperCategory = textoParaFiltro(act, appState.activityTypes);
+      // Aula/treinamento lançado com OUTRO tipo (ex.: "AULA" com tipo FÁBRICA) continua sendo aula: a categoria diz isso,
+      // e o filtro dos totais globais (que olha a categoria) segue tirando-a, como antes.
+      const category = /AULA|TREINAMENTO|CAPACIT/.test(upperCategory) ? 'AULA / TREINAMENTO' : categoriaDaAtividade(act, appState.activityTypes, 'ATIVIDADE OPERACIONAL');
       const notesUpper = (act.notes || '').toUpperCase();
       const isDevOrProject = upperCategory.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') ||
                              upperCategory.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || upperCategory.includes('VARIACAO') || notesUpper.includes('VARIACAO') ||
@@ -967,7 +972,7 @@ NUNCA pergunte quem é o usuário pois você tem os dados em absoluto acima. Res
         <div className="flex items-center gap-2">
           <Bot className="w-6 h-6" />
           <div>
-            <h3 className="font-bold leading-none">JIMP AI Assistant</h3>
+            <h3 className="font-bold leading-none">Assistente de IA da JIMP</h3>
             <span className="text-xs text-blue-100 opacity-80">Online • Inteligência Artificial</span>
           </div>
         </div>

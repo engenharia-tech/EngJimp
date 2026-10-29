@@ -105,7 +105,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     try {
       const r = await setPasswordWithCode(username, code.trim(), newPassword);
       if (!r.ok) {
-        setError(r.error || 'Código inválido ou expirado.');
+        setError(r.error || 'Código vencido, já usado ou digitado errado. O código vale 24 horas e serve uma vez só. Clique em "Enviar código de ativação", aqui nesta tela, e use o código do e-mail mais recente (os anteriores deixam de valer).');
         return;
       }
       // Senha criada — entra automaticamente com ela.

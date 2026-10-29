@@ -78,7 +78,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
                 Limpar Dados & Resetar
               </button>
             </div>
-            <p className="text-[10px] text-slate-500 font-mono">JIMPNexus Fallback Suite</p>
+            <p className="text-[10px] text-slate-500 font-mono">JIMPNexus · tela de recuperação</p>
           </div>
         </div>
       );

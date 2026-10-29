@@ -309,7 +309,7 @@ export const ProjectNexus: React.FC<ProjectNexusProps> = ({ state, onUpdateState
             active={activeTab === 'dashboard'} 
             onClick={() => setActiveTab('dashboard')}
             icon={<LayoutDashboard size={16} />}
-            label="Dashboard"
+            label="Visão geral"
           />
         </nav>
       </div>

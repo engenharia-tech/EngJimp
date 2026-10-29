@@ -811,6 +811,12 @@ Se nao foi voce que pediu, ignore este e-mail.
   return res.json({ success: true, delivered: "email" });
 });
 
+// O recado do código recusado (29/10, pedido do Edson: um representante leu "Codigo invalido ou expirado." e não soube
+// o que fazer). É o MESMO texto para código vencido, já usado, errado, conta desligada ou usuário que não existe — não
+// revela qual foi (nem se a conta existe). O caminho é o da própria tela; pedir de novo invalida os códigos anteriores
+// (request_password_code regrava o hash), por isso "o e-mail mais recente".
+const CODIGO_RECUSADO = 'Código vencido, já usado ou digitado errado. O código vale 24 horas e serve uma vez só. Clique em "Enviar código de ativação", aqui nesta tela, e use o código do e-mail mais recente (os anteriores deixam de valer).';
+
 // POST /api/auth/set-password — valida o codigo, grava a senha com hash, apaga o texto puro.
 app.post("/api/auth/set-password", async (req, res) => {
   const admin = getSupabaseAdmin();
@@ -835,7 +841,7 @@ app.post("/api/auth/set-password", async (req, res) => {
     const alvo = (cand || []).find((r: any) => loginKey(r.username) === unameKey);
     contaDoCodigo = alvo || null;
     if (alvo && desligadoPeloCadastro(alvo, canonUuid(alvo.id))) {
-      return res.status(400).json({ success: false, error: "Codigo invalido ou expirado." });
+      return res.status(400).json({ success: false, error: CODIGO_RECUSADO });
     }
   }
 
@@ -849,7 +855,7 @@ app.post("/api/auth/set-password", async (req, res) => {
     return res.status(500).json({ success: false, error: "Erro ao salvar a senha." });
   }
   if (data !== true) {
-    return res.status(400).json({ success: false, error: "Codigo invalido ou expirado." });
+    return res.status(400).json({ success: false, error: CODIGO_RECUSADO });
   }
   await rlReset(`setpw:fail:${unameKey}`); // sucesso limpa as falhas
   // O RASTRO (07/10): a senha criada com o código do e-mail fica no Log de Auditoria, gravada pelo SERVIDOR (ver o

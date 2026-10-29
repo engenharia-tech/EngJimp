@@ -764,7 +764,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, users, onUpdate, c
               value={formData.completionEmailTemplate || ''}
               onChange={e => setFormData({ ...formData, completionEmailTemplate: e.target.value })}
               className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-900 dark:text-white disabled:opacity-80 h-48 font-mono text-sm resize-none"
-              placeholder={"Deixe em branco para usar o formato padrão da engenharia (NS, cliente, código, designer, tempos, interrupções e observações)."}
+              placeholder={"Deixe em branco para usar o formato padrão da engenharia (NS, cliente, código, projetista, tempos, interrupções e observações)."}
             />
             <p className="mt-2 text-xs text-gray-500 dark:text-slate-400 italic">
               Enviado para engenharia@ e Coordenação quando um projetista conclui um projeto. Em branco = formato padrão.

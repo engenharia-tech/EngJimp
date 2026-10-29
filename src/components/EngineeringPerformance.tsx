@@ -36,6 +36,8 @@ import {
 } from '../types';
 import { isPndCarveoutUser } from '../utils/pndSplit';
 import { fracaoAteDesligar, ativoNaData, rotuloDesligado } from '../utils/custoHora';
+import type { ActivityType } from '../types';
+import { ehAusencia, ehDevOuProjeto } from '../utils/atividadeTipo';
 import {
   format,
   parseISO,
@@ -65,6 +67,7 @@ interface EngineeringPerformanceProps {
   startDate?: string;
   endDate?: string;
   currentUser: User;
+  activityTypes?: ActivityType[];   // o TIPO decide ausência e hora de projeto (29/10/2026)
 }
 
 export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
@@ -77,7 +80,8 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
   t,
   startDate,
   endDate,
-  currentUser
+  currentUser,
+  activityTypes
 }) => {
   const [selectedDesignerId, setSelectedDesignerId] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'macro' | 'individual'>('macro');
@@ -149,7 +153,9 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
     // Ausência não é falta de preenchimento: um dia de folga/férias/atestado/
     // feriado/falta abonada não conta nem como cumprido nem como não cumprido —
     // ele simplesmente sai da conta (não entra em esperado nem em reportado).
-    const isAbsenceName = (n?: string) => !!n && /folga|falta|atestado|f[ée]rias|feriado/i.test(n);
+    // (29/10/2026) Pelo TIPO e pelo nome — ehAusencia, em utils/atividadeTipo.ts: a lacuna preenchida como FOLGA/FÉRIAS
+    // ficava com o nome "LACUNA EM BRANCO" e o dia contava como não cumprido; "PAUSAR: Falta de Informações" (tipo
+    // RETRABALHO) tirava da conta um dia trabalhado.
 
     // 'AAAA-MM-DD' de cada dia do período (calendário local), para conferir o último dia de quem saiu.
     const periodDayKeys = periodDays.map(day => format(day, 'yyyy-MM-dd'));
@@ -162,7 +168,7 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
       const userProjects = projects.filter(p => p.userId === designer.id);
       const userActivities = activities.filter(a => a.userId === designer.id);
       const userInterruptions = interruptions.filter(i => i.designerId === designer.id);
-      const userAbsences = userActivities.filter(a => isAbsenceName(a.activityName));
+      const userAbsences = userActivities.filter(a => ehAusencia(a, activityTypes));
 
       const dailyData = periodDays.map((day, dayIdx) => {
         const dayStart = startOfDay(day);
@@ -255,12 +261,9 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         // Add operational activities
         userActivities.forEach(a => {
           if (designer.role === 'PROJETISTA') {
-            const nameUpper = (a.activityName || '').toUpperCase();
-            const notesUpper = (a.notes || '').toUpperCase();
-            const isDevOrProject = nameUpper.includes('DESENVOLVIMENTO') || notesUpper.includes('DESENVOLVIMENTO') ||
-                                   nameUpper.includes('VARIAÇÃO') || notesUpper.includes('VARIAÇÃO') || nameUpper.includes('VARIACAO') || notesUpper.includes('VARIACAO') ||
-                                   nameUpper.includes('LIBERAÇÃO') || notesUpper.includes('LIBERAÇÃO') || nameUpper.includes('LIBERACAO') || notesUpper.includes('LIBERACAO');
-            if (!isDevOrProject) return;
+            // Pelo TIPO também (29/10/2026): "LACUNA EM BRANCO" com tipo DESENVOLVIMENTO PROJETO saía da conta e o dia
+            // aparecia como não cumprido — mesma regra do Painel (Dashboard.tsx), que já olhava o tipo.
+            if (!ehDevOuProjeto(a, activityTypes)) return;
           }
           const start = parseISO(a.startTime);
           const effectiveNow = now > workEnd ? workEnd : now;
@@ -351,7 +354,7 @@ export const EngineeringPerformance: React.FC<EngineeringPerformanceProps> = ({
         dailyData
       };
     }).sort((a, b) => a.avgCompliance - b.avgCompliance); // Worst compliance first
-  }, [designers, projects, activities, interruptions, settings, dateRange]);
+  }, [designers, projects, activities, interruptions, settings, dateRange, activityTypes]);
 
   const selectedDesignerData = useMemo(() => {
     return calculateComplianceData.find(d => d.id === selectedDesignerId);

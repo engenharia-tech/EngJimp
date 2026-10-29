@@ -59,6 +59,7 @@ import { ehVisaoCeo, ehRepresentante, foraDaEngenharia } from '../utils/cargos';
 import { ptBR, es, enUS } from 'date-fns/locale';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useToast } from './Toast';
+import { semMarcador, rotuloDaAtividade } from '../utils/atividadeTipo';
 
 const getOriginalId = (idString: string): string => {
   if (!idString) return '';
@@ -822,8 +823,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         
         // Merge with last final item if it's the same logical entry
         const last = finalItems[finalItems.length - 1];
-        // Note: we check name and type to be safe, since ID might vary for split segments
-        if (last && last.name === bestItem.name && last.type === bestItem.type && last.end.getTime() === sliceStart) {
+        // Só junta pedaços do MESMO lançamento (mesmo id de origem: "-before/-after", "-seg-N"). Juntar pelo NOME fazia
+        // duas lacunas vizinhas preenchidas com tipos diferentes virarem uma só, no tipo da 1ª — e clicar abria a 1ª
+        // com o horário das duas (Matheus, set/2026: 12 emendas, 24 h no tipo errado; 17/09 Fábrica+Outros, Oficina+Gerencial).
+        if (last && getOriginalId(String(last.id)) === getOriginalId(String(bestItem.id)) && last.name === bestItem.name && last.type === bestItem.type && last.end.getTime() === sliceStart) {
           last.end = new Date(sliceEnd);
         } else {
           finalItems.push({
@@ -1107,7 +1110,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
       } else if (item.type === 'pause') {
         // Find the project and remove the pause
         // ID format: `${p.id}-pause-${idx}`
-        const match = item.id.match(/^(.+)-pause-(\d+)$/);
+        const match = item.id.match(/^(.+)-pause-(\d+)(?:-(?:before|after))?$/);   // na visão dia a pausa vem partida no almoço (29/10/2026)
         if (match) {
           const projectId = match[1];
           const pauseIdx = parseInt(match[2]);
@@ -1184,7 +1187,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         await onUpdateActivity({
           ...isEditingActivity,
           activityTypeId: type.id,
-          activityName: gapName || type.name,
+          activityName: semMarcador(gapName) || type.name,   // nunca grava "LACUNA EM BRANCO": sem descrição, o nome é o do tipo
           startTime: newStartTime,
           endTime: newEndTime,
           durationSeconds,
@@ -1238,7 +1241,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
         id: crypto.randomUUID(),
         userId: selectedUserId,
         activityTypeId: type.id,
-        activityName: gapName || type.name,
+        activityName: semMarcador(gapName) || type.name,   // nunca grava "LACUNA EM BRANCO": sem descrição, o nome é o do tipo
         startTime: newStartTime,
         endTime: newEndTime,
         durationSeconds,
@@ -1252,7 +1255,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
 
         // CLEANUP: If filling a pause, remove it from the project
         if (selectedTimelineItem && selectedTimelineItem.type === 'pause') {
-          const match = selectedTimelineItem.id.match(/^(.+)-pause-(\d+)$/);
+          const match = selectedTimelineItem.id.match(/^(.+)-pause-(\d+)(?:-(?:before|after))?$/);   // idem (o "-before/-after" da visão dia)
           if (match) {
             const projectId = match[1];
             const pauseIdx = parseInt(match[2]);
@@ -1804,7 +1807,7 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                           setIsEditingActivity(activity);
                           setIsEditingGap(null);
                           setSelectedActivityType(activity.activityTypeId);
-                          setGapName(activity.activityName);
+                          setGapName(semMarcador(activity.activityName));   // "LACUNA EM BRANCO" não volta ao campo
                           setGapNotes(activity.notes || '');
                           setGapIsFlagged(activity.isFlagged || false);
                           setGapIsOvertime(activity.isOvertime || false);
@@ -1828,8 +1831,10 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                         });
                         setIsEditingActivity(null);
                         setSelectedActivityType('');
-                        setGapName(item.name || '');
-                        setGapNotes(item.name || '');
+                        // O nome NÃO herda o rótulo da tela ("LACUNA EM BRANCO", "PAUSAR: …", "PROJETO: …"): nasce do TIPO
+                        // escolhido (29/10/2026). O rótulo de pausa/projeto fica na observação, como antes; o da lacuna, não.
+                        setGapName('');
+                        setGapNotes(item.isGap ? '' : (item.name || ''));
                         setGapIsFlagged(false);
                         setGapIsOvertime(item.isOvertime || false);
                       }
@@ -1860,7 +1865,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                           item.type === 'interruption' ? 'text-red-600 dark:text-red-400' :
                           theme === 'dark' ? 'text-white' : 'text-gray-800'
                         }`}>
-                          {item.name}
+                          {item.type === 'activity' && item.id !== 'auto-lunch'
+                            ? rotuloDaAtividade({ activityTypeId: item.activityTypeId, activityName: item.name }, activityTypes)   // o TIPO na frente (29/10/2026)
+                            : item.name}
                         </span>
                       </div>
                       <span className={`text-xs font-mono bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-gray-100 dark:border-slate-700 ${
@@ -2334,7 +2341,9 @@ export const OperationalPerformance: React.FC<OperationalPerformanceProps> = ({
                   onChange={(e) => {
                     setSelectedActivityType(e.target.value);
                     const type = activityTypes.find(t => t.id === e.target.value);
-                    if (type && !gapName) setGapName(type.name);
+                    // O nome segue o tipo enquanto for vazio/rótulo ou o nome do tipo anterior; descrição digitada fica.
+                    const anterior = activityTypes.find(tp => tp.id === selectedActivityType);
+                    if (type && (!semMarcador(gapName) || (anterior && gapName.trim().toUpperCase() === anterior.name.trim().toUpperCase()))) setGapName(type.name);
                   }}
                   className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 dark:text-white font-medium"
                 >

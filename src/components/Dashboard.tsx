@@ -22,6 +22,7 @@ import { resolveUser, getUserDisplayName } from '../utils/userUtils';
 import { isExcludedFromEngineering, usersIndex, isPndCarveoutUser } from '../utils/pndSplit';
 import { podeVerReais, avisoSemSerie, custoEmReais, novaSomaPorTaxa, fracaoAteDesligar, limitesDoMes, rotuloDesligado } from '../utils/custoHora';
 import { ehVisaoCeo, ehRepresentante, foraDaEngenharia, rotuloCargo } from '../utils/cargos';
+import { textoParaFiltro, rotuloDaAtividade } from '../utils/atividadeTipo';
 
 interface DashboardProps {
   data: AppState;
@@ -1061,7 +1062,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
         if (isExcludedFromEngineering(a.userId, a.startTime, pndUsersIdx)) return;
 
         // Skip weekend / off-time activities completely to prevent messing up stats
-        const nameUpper = (a.activityName || '').toUpperCase();
+        // (29/10/2026) "TIPO | nome": a lacuna preenchida como FOLGA/AULA tem nome "LACUNA EM BRANCO" e só o tipo diz.
+        const nameUpper = textoParaFiltro(a, data.activityTypes);
         if (nameUpper.includes('FOLGA') || nameUpper.includes('FIM DE SEMANA')) {
             return;
         }
@@ -1161,7 +1163,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     });
 
     return Math.round(totalWorkingSeconds / 3600);
-  }, [filteredProjects, data.operationalActivities, data.interruptions, startDate, endDate, settings, t, selectedDesignerForReleases, pndUsersIdx]);
+  }, [filteredProjects, data.operationalActivities, data.interruptions, startDate, endDate, settings, t, selectedDesignerForReleases, pndUsersIdx, data.activityTypes]);
 
   const perCapitaStats = useMemo(() => {
     const start = startDate ? new Date(startDate) : new Date();
@@ -2023,7 +2025,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
 
     filteredTargetOps.forEach(a => {
       if (!a.startTime) return;
-      const nameUpper = (a.activityName || '').toUpperCase();
+      const nameUpper = textoParaFiltro(a, data.activityTypes);   // TIPO | nome (29/10/2026)
       if (nameUpper.includes('FOLGA') || nameUpper.includes('FIM DE SEMANA')) {
         return;
       }
@@ -2040,8 +2042,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       const hours = Math.max((end.getTime() - start.getTime()) / 3600000, 0);
       const weekday = start.getDay();
       const isOvertime = a.isOvertime || a.isFlagged || weekday === 0 || weekday === 6;
-      const isFactory = a.activityName?.toLowerCase().includes('fabrica') || a.activityName?.toLowerCase().includes('fábrica');
-      const desc = `Atividade: ${a.activityName || 'Operacional'}`;
+      // > 16 h é lançamento aberto/esquecido (o teto do PndManagerial): pelo TIPO, um "fim de expediente" FÁBRICA aberto de
+      // 21/01 a 25/02/2026 (835,7 h) entrava inteiro no Total em Fábrica.
+      const isFactory = (nameUpper.includes('FABRICA') || nameUpper.includes('FÁBRICA')) && hours <= 16;   // pelo TIPO também
+      const desc = `Atividade: ${rotuloDaAtividade(a, data.activityTypes)}`;
       processItem(a.startTime, hours, isOvertime, desc, isFactory, a.userId);
     });
 
@@ -2067,7 +2071,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
     });
 
     filteredTargetOps.forEach(a => {
-      const nameUpper = (a.activityName || '').toUpperCase();
+      const nameUpper = textoParaFiltro(a, data.activityTypes);   // TIPO | nome (29/10/2026)
       if (nameUpper.includes('FOLGA') || nameUpper.includes('FIM DE SEMANA')) {
         return;
       }
@@ -2086,7 +2090,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       if (a.isOvertime || a.isFlagged || weekday === 0 || weekday === 6) {
         historicOvertimeSum += hours;
       }
-      if (a.activityName?.toLowerCase().includes('fabrica') || a.activityName?.toLowerCase().includes('fábrica')) {
+      if ((nameUpper.includes('FABRICA') || nameUpper.includes('FÁBRICA')) && hours <= 16) {   // pelo TIPO também; teto 16 h (29/10/2026)
         historicFactorySum += hours;
       }
     });
@@ -2109,7 +2113,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       monthLabel,
       firstWeekdayMondayIdx
     };
-  }, [data.projects, data.operationalActivities, data.users, selectedEdsonAnalyticsUser]);
+  }, [data.projects, data.operationalActivities, data.users, selectedEdsonAnalyticsUser, data.activityTypes]);
 
   const keyProductsReport = useMemo(() => {
     return PRODUCT_CATEGORIES.filter(cat => cat !== 'Outros').map(category => {
@@ -2569,6 +2573,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
       {canSeePdSection && visibleSections.includes('pd_managerial') && (
         <PndManagerial
           activities={data.operationalActivities}
+          activityTypes={data.activityTypes}
           projects={data.projects}
           users={data.users}
           settings={settings}
@@ -2593,6 +2598,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, currentUser, theme, 
           startDate={startDate}
           endDate={endDate}
           currentUser={currentUser}
+          activityTypes={data.activityTypes}
         />
       )}
 

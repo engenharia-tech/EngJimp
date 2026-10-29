@@ -3,13 +3,15 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend
 } from 'recharts';
 import { Beaker, Clock, Moon, CalendarDays, TrendingUp } from 'lucide-react';
-import { User, ProjectSession, OperationalActivity, AppSettings } from '../types';
+import { User, ProjectSession, OperationalActivity, AppSettings, ActivityType } from '../types';
+import { semMarcador, categoriaDaAtividade, ehAusencia } from '../utils/atividadeTipo';
 import { calcActiveSeconds } from '../utils/workdayCalc';
 import { isEdsonUser } from '../utils/identity';
 import { isPndCarveoutUser } from '../utils/pndSplit';
 
 interface Props {
   activities: OperationalActivity[];
+  activityTypes?: ActivityType[];   // o TIPO entra na categoria (29/10/2026)
   projects: ProjectSession[];
   users: User[];
   settings: AppSettings;
@@ -57,7 +59,7 @@ const CAT_COLORS: Record<string, string> = {
 
 const MAX_SESSION_H = 16; // acima disso é lançamento aberto/esquecido — fora da conta
 
-export const PndManagerial: React.FC<Props> = ({ activities, projects, users, settings, theme, t, currentUser, startDate, endDate }) => {
+export const PndManagerial: React.FC<Props> = ({ activities, activityTypes, projects, users, settings, theme, t, currentUser, startDate, endDate }) => {
   // Sujeito fixo do painel: o Edson (mesmo quando o CEO abre).
   const subject = useMemo(() => {
     return users.find(u => isEdsonUser(u)) || users.find(u => isPndCarveoutUser(u)) || null;
@@ -128,7 +130,10 @@ export const PndManagerial: React.FC<Props> = ({ activities, projects, users, se
       totalExtra += extra / 3600;
     };
 
-    (activities || []).filter(a => a.userId === subject?.id).forEach(a => add(a.activityName, a.startTime, a.endTime));
+    // (29/10/2026) Ausência pelo TIPO também (a lacuna preenchida como FOLGA contava como esforço) e, quando o nome é só
+    // o rótulo "LACUNA EM BRANCO", a categoria sai do TIPO (ia para "Outros"). Nome escrito continua mandando, como antes.
+    (activities || []).filter(a => a.userId === subject?.id && !ehAusencia(a, activityTypes))
+      .forEach(a => add(semMarcador(a.activityName) || categoriaDaAtividade(a, activityTypes, ''), a.startTime, a.endTime));
 
     const monthly = Array.from(buckets.values()).sort((a, b) => a.sort - b.sort)
       .map(b => ({ name: b.label, Normal: +b.normal.toFixed(1), Extra: +b.extra.toFixed(1) }));
@@ -149,7 +154,7 @@ export const PndManagerial: React.FC<Props> = ({ activities, projects, users, se
       extraPct: +extraPct.toFixed(0),
       ignored, sessions,
     };
-  }, [activities, subject, settings, range]);
+  }, [activities, activityTypes, subject, settings, range]);
 
   const axis = theme === 'dark' ? '#94a3b8' : '#475569';
   const grid = theme === 'dark' ? '#334155' : '#e2e8f0';

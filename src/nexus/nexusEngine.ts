@@ -2,6 +2,7 @@ import { AppState, User, InterruptionStatus } from '../types';
 import { askGemini } from '../lib/gemini';
 import { isEdsonUser } from '../utils/identity';
 import { ehVisaoCeo, ehRepresentante } from '../utils/cargos';
+import { textoParaFiltro, categoriaDaAtividade, rotuloDaAtividade, ehAusencia } from '../utils/atividadeTipo';
 import { GoogleGenAI } from "@google/genai";
 
 /**
@@ -97,8 +98,9 @@ export const processNexusQuery = async (
       const projsUsuario = projects.filter(p => p.userId === u.id);
       const tarefasGantt = ganttTasks.filter(t => t.assignedTo?.includes(u.id));
       const atividadesOperacionais = operationalActivities.filter(a => {
-        const name = (a.activityName || '').toUpperCase();
-        return a.userId === u.id && !name.includes('FOLGA') && !name.includes('FIM DE SEMANA');
+        const name = textoParaFiltro(a, appState.activityTypes);   // TIPO | nome (29/10/2026)
+        // ausência (folga, férias, feriado, atestado) não é hora trabalhada — pelo tipo e pelo nome (29/10/2026)
+        return a.userId === u.id && !ehAusencia(a, appState.activityTypes) && !name.includes('FOLGA') && !name.includes('FIM DE SEMANA');
       });
       
       const concluidosRastreador = projsUsuario.filter(p => p.status === 'COMPLETED').length;
@@ -127,7 +129,7 @@ export const processNexusQuery = async (
         })),
         ...atividadesOvertime.map(a => ({
           tipo: 'Atividade Operacional',
-          nome: a.activityName,
+          nome: rotuloDaAtividade(a, appState.activityTypes),
           horas: ((a.durationSeconds || 0) / 3600).toFixed(2),
           data_inicio: a.startTime,
           notas: a.notes || ''
@@ -136,7 +138,10 @@ export const processNexusQuery = async (
 
       // Detalhamento das atividades operacionais
       const resumoAtividades = atividadesOperacionais.reduce((acc: Record<string, number>, a) => {
-        acc[a.activityName] = (acc[a.activityName] || 0) + (a.durationSeconds || 0);
+        // Soma pelo TIPO (29/10/2026): pelo nome, "LACUNA EM BRANCO" virava uma categoria e a Oficina do Matheus de
+        // setembro dava 2 h em vez de 28 h.
+        const cat = categoriaDaAtividade(a, appState.activityTypes);
+        acc[cat] = (acc[cat] || 0) + (a.durationSeconds || 0);
         return acc;
       }, {});
 
@@ -212,10 +217,11 @@ export const processNexusQuery = async (
       
       const projsMes = projects.filter(p => p.startTime.startsWith(mesChave) && designerIds.has(p.userId));
       const opsMes = operationalActivities.filter(a => {
-        const name = (a.activityName || '').toUpperCase();
+        const name = textoParaFiltro(a, appState.activityTypes);   // TIPO | nome (29/10/2026)
         return (
           a.startTime.startsWith(mesChave) && 
           designerIds.has(a.userId) && 
+          !ehAusencia(a, appState.activityTypes) &&
           !name.includes('FOLGA') && 
           !name.includes('FIM DE SEMANA') &&
           !name.includes('AULA') &&

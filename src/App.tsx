@@ -2222,6 +2222,7 @@ const AppContent: React.FC = () => {
                 theme={theme}
                 t={t}
                 currentUser={currentUser}
+                activityTypes={data.activityTypes}
             />
           )}
 
@@ -2381,7 +2382,7 @@ const AppContent: React.FC = () => {
                     />
                     {lockError && (
                       <p className="text-xs text-red-500 font-medium mt-1">
-                        {lockError === 'Senha incorreta.' ? 'Senha incorreta. Tente novamente ou efetue logout.' : lockError}
+                        {lockError === 'Senha incorreta.' ? 'Senha incorreta. Tente novamente ou clique em Sair.' : lockError}
                       </p>
                     )}
                   </div>
@@ -2398,7 +2399,7 @@ const AppContent: React.FC = () => {
                       }}
                       className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 text-sm font-bold rounded-2xl transition-all"
                     >
-                      Sair / Logout
+                      Sair
                     </button>
                     <button
                       type="submit"

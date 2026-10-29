@@ -46,6 +46,7 @@ import { analyzePerformance } from '../services/geminiService';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ProjectType } from '../types';
 import { ehRepresentante } from '../utils/cargos';
+import { ehAusencia, rotuloDaAtividade } from '../utils/atividadeTipo';
 
 // Representantes (06/10/2026): vendedor de fora da fábrica não entra na produtividade nem na "atividade por
 // projetista" — uma "visita a cliente" dele viraria hora de DESENVOLVIMENTO da engenharia. (Os outros cargos seguem
@@ -521,6 +522,9 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       if (a.userId && repIds.has(a.userId)) return;
       if (!isDateInPeriod(new Date(a.startTime))) return;
       if (currentUser.role === 'PROJETISTA' && a.userId !== currentUser.id) return;
+      // Folga/férias/atestado/feriado não é hora produtiva (29/10/2026): para quem não é PROJETISTA toda atividade
+      // entrava aqui como Desenvolvimento — inclusive a FOLGA de 24 h de cada fim de semana (Matheus, set/2026: 201 h).
+      if (ehAusencia(a, data.activityTypes)) return;
 
       const user = resolveUser(a.userId, data.users);
       const name = user ? user.name : (a.userId && a.userId.length < 35 ? a.userId : 'N/A');
@@ -572,7 +576,7 @@ export const Reports: React.FC<ReportsProps> = ({ data, currentUser, theme, sett
       const actCost = custoDoRegistro(duration, a.startTime);
       stats[name].totalCost += actCost;
       stats[name].projects.push({
-        ns: a.activityName || 'Atividade Operacional',
+        ns: rotuloDaAtividade(a, data.activityTypes),   // o TIPO, não "LACUNA EM BRANCO" (29/10/2026)
         client: a.notes || 'Desenvolvimento',
         cost: actCost
       });

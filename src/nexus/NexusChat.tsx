@@ -1101,7 +1101,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
                   theme === 'dark' 
                     ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' 
                     : 'bg-blue-50 text-blue-600 border-blue-100'
-                }`}>Core</span>
+                }`}>Núcleo</span>
               </h3>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`w-1.5 h-1.5 ${theme === 'dark' ? 'bg-emerald-500' : 'bg-emerald-600'} rounded-full animate-pulse`} />
@@ -1434,7 +1434,7 @@ export const NexusChat: React.FC<NexusChatProps> = ({ appState, currentUser, the
           <div className="flex items-center justify-center gap-3 mt-3">
             <div className="h-[1px] flex-1 bg-gray-100 dark:bg-slate-800" />
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              Nexus Intelligence Analytics System
+              Sistema de análise inteligente Nexus
             </p>
             <div className="h-[1px] flex-1 bg-gray-200 dark:bg-slate-800" />
           </div>
