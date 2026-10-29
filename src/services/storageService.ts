@@ -416,6 +416,9 @@ export const fetchEdsonSalaries = async (): Promise<Record<string, number>> => {
 let ultimosProjetos: { sub: string; lista: ProjectSession[] } | null = null;
 
 export const fetchAppState = async (): Promise<AppState> => {
+  // Escrever só se a carga INTEIRA foi feita com um crachá: a tela de login roda esta carga anônima (a RLS devolve vazio,
+  // sem erro) e o login pode terminar no meio dela — foi assim que nasceram as tarefas fantasma do cronograma (29/10/2026).
+  const crachaDaCarga = getAuthToken();
   let projects: ProjectSession[] = [];
   let issues: IssueRecord[] = [];
   let innovations: InnovationRecord[] = [];
@@ -500,7 +503,8 @@ export const fetchAppState = async (): Promise<AppState> => {
     // rede, troca de deploy), "vazio" é mentira — semear aqui criaria tipos
     // duplicados por cima dos 22 que existem. O "Somente OKR" (06/10/2026, inclui o representante) também não semeia
     // nada da engenharia.
-    if (activityTypes.length === 0 && !activityTypesRes.error && !viewerSession && !somenteOkrSession) {
+    if (activityTypes.length === 0 && !activityTypesRes.error && !viewerSession && !somenteOkrSession
+        && !!crachaDaCarga && getAuthToken() === crachaDaCarga) {
       console.log("SEEDING DEFAULT ACTIVITY TYPES...");
       const defaultTypes = DEFAULT_ACTIVITY_TYPES.map(name => ({ name, is_active: true }));
       const { data: seededData, error: seedError } = await supabase.from('activity_types').insert(defaultTypes).select();
@@ -695,77 +699,10 @@ export const fetchAppState = async (): Promise<AppState> => {
       console.log(`FETCHED ${ganttTasks.length} GANTT TASKS`);
     } catch (e) { console.error("GanttTasks mapping error:", e); }
 
-    // Seed default gantt tasks if empty
-    // O visualizador do OKR não recebe tarefas (o banco não entrega) — e não semeia nada. Nem o "Somente OKR" (029).
-    if (ganttTasks.length === 0 && !viewerSession && !somenteOkrSession) {
-        console.log("SEEDING DEFAULT GANTT TASKS...");
-        const parentId = crypto.randomUUID();
-        const subId = crypto.randomUUID();
-        
-        const today = new Date();
-        const inOneWeek = new Date(today);
-        inOneWeek.setDate(today.getDate() + 7);
-        const inTwoWeeks = new Date(today);
-        inTwoWeeks.setDate(today.getDate() + 14);
-
-        const formatDate = (d: Date) => d.toISOString().split('T')[0];
-
-        const demoTasks: any[] = [
-          {
-            id: parentId,
-            title: 'Addition of material',
-            description: 'Fase inicial de aquisição e preparação de materiais.',
-            start_date: formatDate(today),
-            end_date: formatDate(inTwoWeeks),
-            color: 'bg-indigo-600',
-            is_milestone: false,
-            assigned_to: users.length > 0 ? [users[0].id] : [],
-            progress: 0,
-            order: 0,
-            status: 'todo'
-          },
-          {
-            id: subId,
-            parent_id: parentId,
-            title: 'Bumper',
-            description: 'Montagem e verificação do para-choque.',
-            start_date: formatDate(today),
-            end_date: formatDate(inOneWeek),
-            color: 'bg-blue-500',
-            is_milestone: false,
-            assigned_to: users.length > 0 ? [users[0].id] : [],
-            progress: 0,
-            order: 0,
-            status: 'todo'
-          }
-        ];
-        
-        try {
-          await supabase.from('gantt_tasks').insert(demoTasks);
-        } catch (e) {
-          console.error("Gantt seeding error:", e);
-        }
-        
-        ganttTasks.push(...demoTasks.map(demoTask => ({
-            id: demoTask.id,
-            parentId: demoTask.parent_id || null,
-            title: demoTask.title,
-            description: demoTask.description,
-            startDate: demoTask.start_date,
-            endDate: demoTask.end_date,
-            color: demoTask.color,
-            isMilestone: demoTask.is_milestone,
-            assignedTo: demoTask.assigned_to,
-            progress: demoTask.progress,
-            order: demoTask.order,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            attachments: [],
-            status: demoTask.status as any,
-            priority: 'medium' as any,
-            dependencies: []
-        })));
-    }
+    // Cronograma vazio NÃO semeia nada (29/10/2026, Edson: "pode apagar as tarefas fantasmas"). A semente de
+    // demonstração herdada gravava "Addition of material" + "Bumper" em produção: a tela de login lê anônima (a RLS
+    // devolve vazio, sem erro) e, se o login termina no meio da carga, a gravação sai com o crachá — 98 tarefas de
+    // 18/08 a 26/10. Diagnóstico: app/KPI/DIAGNOSTICO - as tarefas fantasma do Nexus Flow (02-10).md.
 
     // Buscar logs locais do localStorage (cache/fallback)
     let fallbackLogs: AuditLog[] = [];
