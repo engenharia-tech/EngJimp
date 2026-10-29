@@ -4,12 +4,13 @@ import { ResponsiveContainer, ComposedChart, Line, XAxis, YAxis, Tooltip, Cartes
 import { Dialog } from '../components/Dialog';
 import { useToast } from '../components/Toast';
 import {
-  KpisHist, KpisIndicador, KpisLancamento, FREQ_ROTULO, SENTIDO_ROTULO, farol, fmtCarimbo, fmtValor, limiteEfetivo, metaVigente,
-  numeroExatoParaCampo, parseNumero, prazoDias, rotuloPeriodo, rotuloPeriodoLongo, rotuloBase, rotuloCalculo,
+  KpisHist, KpisIndicador, KpisLancamento, SENTIDO_ROTULO, farol, fmtCarimbo, fmtValor, limiteEfetivo, metaVigente,
+  numeroExatoParaCampo, parseNumero, prazoDias, rotuloDia, rotuloFrequencia, rotuloPeriodo, rotuloPeriodoLongo, rotuloBase, rotuloCalculo,
 } from './kpis';
 import { KpisDados, resumoDo } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
 import { FarolChip, SetorChip, AtrasoSelo, TendenciaIcon } from './KpisCartao';
+import { KpisDiario } from './KpisDiario';
 
 // DETALHE de um indicador: o gráfico (até 36 períodos, com a meta em degrau e a faixa de
 // atenção), a tabela período a período (quem lançou, quando, se foi corrigido) e o histórico
@@ -32,6 +33,7 @@ export const KpisDetalhe: React.FC<{
   const [valor, setValor] = useState(''); const [motivo, setMotivo] = useState('');
   const [gravando, setGravando] = useState(false);
   const [abrirHist, setAbrirHist] = useState<string | null>(null);  // período cujo histórico está aberto
+  const [diarioPer, setDiarioPer] = useState<string | null>(null);  // 035: o período diário aberto embaixo (null = o em curso)
 
   const lerHist = () => {
     if (i.tipo === 'calculado') { setHist([]); return; }
@@ -89,10 +91,11 @@ export const KpisDetalhe: React.FC<{
             <h3 className="text-lg font-black text-slate-800 dark:text-white leading-tight">{i.nome}</h3>
             <div className="flex items-center gap-2 flex-wrap mt-1 text-[11px] text-slate-500 dark:text-slate-400">
               {mostrarSetor && <SetorChip setor={i.setor} />}
-              <span>{SENTIDO_ROTULO[i.sentido]}</span><span>·</span><span>{FREQ_ROTULO[i.frequencia].toLowerCase()}</span>
+              <span>{SENTIDO_ROTULO[i.sentido]}</span><span>·</span><span>{rotuloFrequencia(i).toLowerCase()}</span>
               {i.unidade && <><span>·</span><span>em {i.unidade}</span></>}
               {i.consolidacao === 'soma' && <><span>·</span><span>soma ao longo do tempo</span></>}
               {i.tipo === 'calculado' ? <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400"><Calculator size={11} /> {rotuloCalculo(i)}</span>
+                : i.diarioDesde ? <><span>·</span><span>cada dia se lança até o dia útil seguinte (desde {rotuloDia(i.diarioDesde)})</span></>
                 : <><span>·</span><span>lançar até {prazoDias(i)} dia(s) depois do fim do período</span></>}
               {!i.ativo && <span className="font-bold uppercase text-amber-600 dark:text-amber-400">arquivado</span>}
             </div>
@@ -103,6 +106,20 @@ export const KpisDetalhe: React.FC<{
         </div>
 
         <div className="p-5 overflow-y-auto space-y-5">
+          {r.ritmo ? (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-3xl font-black tabular-nums text-slate-800 dark:text-white">{fmtValor(r.ritmo.realizado, i.unidade, i.casas)}</span>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {rotuloPeriodo(i.frequencia, r.ritmo.periodo)} até agora
+              {r.ritmo.meta !== null && <> · meta {fmtValor(r.ritmo.meta, i.unidade, i.casas)}</>}
+              {i.consolidacao === 'soma' && r.ritmo.projecao !== null && <> · projeção {fmtValor(r.ritmo.projecao, i.unidade, i.casas)}</>}
+              {r.ultimo && <> · {rotuloPeriodo(i.frequencia, r.ultimo.periodo)}: {fmtValor(r.ultimo.valor, i.unidade, i.casas)}</>}
+            </div>
+            {r.noAno && <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-full px-2.5 py-0.5" title="Soma dos períodos deste ano até agora (com o período em curso)">em {r.noAno.ano}: {fmtValor(r.noAno.valor, i.unidade, i.casas)}</span>}
+            {r.ritmo.meta !== null && <FarolChip f={r.farol} />}
+            <AtrasoSelo i={i} r={r} />
+          </div>
+          ) : (
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-3xl font-black tabular-nums text-slate-800 dark:text-white">{r.ultimo ? fmtValor(r.ultimo.valor, i.unidade, i.casas) : '—'}</span>
             <div className="text-xs text-slate-500 dark:text-slate-400">
@@ -115,6 +132,9 @@ export const KpisDetalhe: React.FC<{
             <TendenciaIcon t={r.tendencia} />
             <AtrasoSelo i={i} r={r} />
           </div>
+          )}
+
+          {i.diarioDesde && <KpisDiario i={i} r={r} dados={dados} service={service} nomes={nomes} podeApagar={podeEditar ?? administra} periodo={diarioPer} onPeriodo={setDiarioPer} onGravou={onGravou} />}
 
           <div className="h-64">
             {grafico.some(g => g.valor !== null || g.emCurso !== null) ? (
@@ -164,7 +184,9 @@ export const KpisDetalhe: React.FC<{
                           <td className="px-4 py-2">{emCurso(p.periodo) ? <span className="text-[11px] font-semibold text-slate-400" title="O período ainda não fechou: o farol sai quando ele terminar">em curso</span>
                             : p.valor !== null ? <FarolChip f={farol(i.sentido, p.valor, m)} /> : <span className="text-[11px] text-slate-400">—</span>}</td>
                           <td className="px-4 py-2 text-[11px] text-slate-500 dark:text-slate-400">
-                            {i.tipo === 'calculado' ? rotuloBase(i, p.atividades ?? 0) : l ? (
+                            {i.tipo === 'calculado' ? rotuloBase(i, p.atividades ?? 0) : p.dias && p.dias.length ? (
+                              <button type="button" onClick={() => setDiarioPer(p.periodo)} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline" title="Ver os dias deste período (no quadro acima)">{p.dias.length} dia(s) lançado(s) — ver</button>
+                            ) : l ? (
                               <span className="inline-flex items-center gap-1.5 flex-wrap">
                                 {nomes.get(l.lancadoPor || '') || '—'}, {quando(l.lancadoEm)}
                                 {(l.alteradoEm || hs.length > 0) && <button type="button" onClick={() => setAbrirHist(a => a === p.periodo ? null : p.periodo)} className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-full px-1.5 py-0.5">corrigido</button>}
@@ -190,7 +212,7 @@ export const KpisDetalhe: React.FC<{
                               <ul className="space-y-1">
                                 {hs.map(h => (
                                   <li key={h.id} className="text-[11px] text-slate-600 dark:text-slate-300">
-                                    {quando(h.em)} · {nomes.get(h.por || '') || '—'} {h.acao === 'apagou' ? <>apagou o valor <b>{fmtValor(h.valorAntes, i.unidade, i.casas)}</b></> : <>corrigiu de <b>{fmtValor(h.valorAntes, i.unidade, i.casas)}</b> para <b>{fmtValor(h.valorDepois, i.unidade, i.casas)}</b></>}{h.motivo ? <> — “{h.motivo}”</> : null}
+                                    {quando(h.em)} · {h.dia ? `${rotuloDia(h.dia)} · ` : ''}{nomes.get(h.por || '') || '—'} {h.acao === 'apagou' ? <>apagou o valor <b>{fmtValor(h.valorAntes, i.unidade, i.casas)}</b></> : <>corrigiu de <b>{fmtValor(h.valorAntes, i.unidade, i.casas)}</b> para <b>{fmtValor(h.valorDepois, i.unidade, i.casas)}</b></>}{h.motivo ? <> — “{h.motivo}”</> : null}
                                   </li>
                                 ))}
                               </ul>
@@ -214,7 +236,7 @@ export const KpisDetalhe: React.FC<{
                 : <ul className="mt-2 space-y-1 max-h-48 overflow-y-auto">
                     {hist.map(h => (
                       <li key={h.id} className="text-[11px] text-slate-600 dark:text-slate-300">
-                        <span className="font-mono text-slate-400">{quando(h.em)}</span> · {rotuloPeriodo(i.frequencia, h.periodo)} · {nomes.get(h.por || '') || '—'}{' '}
+                        <span className="font-mono text-slate-400">{quando(h.em)}</span> · {h.dia ? rotuloDia(h.dia) : rotuloPeriodo(i.frequencia, h.periodo)} · {nomes.get(h.por || '') || '—'}{' '}
                         {h.acao === 'apagou' ? <>apagou {fmtValor(h.valorAntes, i.unidade, i.casas)}</> : <>{fmtValor(h.valorAntes, i.unidade, i.casas)} → {fmtValor(h.valorDepois, i.unidade, i.casas)}</>}
                         {h.motivo ? <> — “{h.motivo}”</> : null}
                       </li>

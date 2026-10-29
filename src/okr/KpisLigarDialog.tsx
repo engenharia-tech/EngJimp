@@ -4,7 +4,7 @@ import { Dialog } from '../components/Dialog';
 import { OkrKeyResult, parseIsoDay } from './okr';
 import { kpisService as servicoPadrao, KpisService, kpisErrorMessage, KPIS_NAO_INSTALADO, kpisAusente } from '../kpis/kpisService';
 import {
-  KpisIndicador, KpisMeta, FREQ_ROTULO, SENTIDO_ROTULO, fmtValor, hojeSP, inicioPeriodo, metaVigente, numeroParaCampo,
+  KpisIndicador, KpisMeta, rotuloFrequencia, SENTIDO_ROTULO, fmtValor, hojeSP, inicioPeriodo, metaVigente, numeroParaCampo,
   parseNumero, setorChave,
 } from '../kpis/kpis';
 
@@ -70,7 +70,8 @@ export const KpisLigarDialog: React.FC<{
     const sm = m ? numeroParaCampo(m.meta, sel.casas) : '';
     setSugestao({ partida: '', meta: sm });
     setMeta(sm); setPartida('');
-    if (sel.tipo === 'manual') {
+    // 035: no lançado todo dia, o último lançamento é UM dia, não o valor do período — não serve de partida.
+    if (sel.tipo === 'manual' && !sel.diarioDesde) {
       kpisService.ultimoAntes(sel.id, parseIsoDay(ini) ? inicioPeriodo(sel.frequencia, ini) : inicioPeriodo(sel.frequencia, hoje))
         .then(l => { if (!vivo || !l) return; const sp = numeroParaCampo(l.valor, sel.casas); setSugestao(s => ({ ...s, partida: sp })); setPartida(v => v || sp); })
         .catch(() => { /* só sugestão */ });
@@ -140,7 +141,7 @@ export const KpisLigarDialog: React.FC<{
                           className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${sel?.id === i.id ? 'bg-blue-50 dark:bg-blue-900/25 text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
                           {i.sentido === 'maior' ? <ArrowUp size={13} className="text-emerald-500 shrink-0" /> : <ArrowDown size={13} className="text-emerald-500 shrink-0" />}
                           <span className="font-semibold flex-1 min-w-0 truncate">{i.nome}</span>
-                          <span className="text-[11px] text-slate-400 shrink-0">{i.unidade || 'número'} · {FREQ_ROTULO[i.frequencia].toLowerCase()}{i.tipo === 'calculado' ? ' · calculado' : ''}</span>
+                          <span className="text-[11px] text-slate-400 shrink-0">{i.unidade || 'número'} · {rotuloFrequencia(i).toLowerCase()}{i.tipo === 'calculado' ? ' · calculado' : ''}</span>
                         </button>
                       ))}
                     </div>
@@ -152,8 +153,9 @@ export const KpisLigarDialog: React.FC<{
               {sel && (
                 <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-3 bg-slate-50/60 dark:bg-slate-800/30">
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    <b>{sel.nome}</b> · {SENTIDO_ROTULO[sel.sentido]} · {FREQ_ROTULO[sel.frequencia].toLowerCase()} ·{' '}
-                    {soma ? 'o KR mostra a SOMA dos períodos entre o início e o prazo' : 'o KR mostra o último valor lançado até o prazo'}
+                    <b>{sel.nome}</b> · {SENTIDO_ROTULO[sel.sentido]} · {rotuloFrequencia(sel).toLowerCase()} ·{' '}
+                    {soma ? `o KR mostra a SOMA dos períodos entre o início e o prazo${sel.diarioDesde ? ' (cada período = a soma dos dias lançados)' : ''}`
+                      : sel.diarioDesde ? 'o KR mostra a MÉDIA dos dias do período mais recente até o prazo (inclusive o período em curso)' : 'o KR mostra o último valor lançado até o prazo'}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>

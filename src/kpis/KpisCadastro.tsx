@@ -5,7 +5,7 @@ import { ehVisaoCeo, ehRepresentante } from '../utils/cargos';
 import { ativoNaData } from '../utils/custoHora';
 import { Plus, Pencil, Archive, ArchiveRestore, Trash2, AlertTriangle, Calculator, Link2, Users, Search, Save, Loader2 } from 'lucide-react';
 import { useToast } from '../components/Toast';
-import { KpisAcesso, KpisIndicador, KpisSetor, KpisTipoAtividade, FREQ_ROTULO, fmtValor, gerencia, hojeSP, inicioPeriodo, metaVigente, setorChave, ehSetorDeRepresentante, SETOR_DE_REPRESENTANTE_MSG } from './kpis';
+import { KpisAcesso, KpisIndicador, KpisSetor, KpisTipoAtividade, rotuloFrequencia, fmtValor, gerencia, hojeSP, inicioPeriodo, metaVigente, setorChave, ehSetorDeRepresentante, SETOR_DE_REPRESENTANTE_MSG } from './kpis';
 import { KpisDados } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
 import { KpisIndicadorModal } from './KpisIndicadorModal';
@@ -119,7 +119,7 @@ Não dá para desfazer (fica só um registro na auditoria). Para guardar os núm
                         {!i.ativo && <span className="ml-2 text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400">arquivado</span>}
                         {lig > 0 && <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400"><Link2 size={11} /> {lig} KR</span>}
                       </td>
-                      <td className="px-3 py-2.5 text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{FREQ_ROTULO[i.frequencia]}</td>
+                      <td className="px-3 py-2.5 text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{rotuloFrequencia(i)}</td>
                       <td className="px-3 py-2.5 text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{i.sentido === 'maior' ? '↑ maior melhor' : '↓ menor melhor'}</td>
                       <td className="px-3 py-2.5 text-[11px] whitespace-nowrap">{m ? <span className="text-slate-600 dark:text-slate-300">meta {fmtValor(m.meta, i.unidade, i.casas)}</span> : <span className="text-amber-600 dark:text-amber-400">sem meta — defina</span>}</td>
                       <td className="px-5 py-2.5 text-right whitespace-nowrap">

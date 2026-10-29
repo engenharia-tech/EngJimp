@@ -1,6 +1,6 @@
 import React from 'react';
 import { ArrowDown, ArrowUp, Clock, Minus, TrendingDown, TrendingUp, Link2, Calculator, Archive } from 'lucide-react';
-import { FAROL_CLASSE, FAROL_ROTULO, KpisFarol, KpisIndicador, KpisTendencia, SENTIDO_ROTULO, fmtDia, fmtValor, rotuloPeriodo } from './kpis';
+import { FAROL_CLASSE, FAROL_ROTULO, FECHA_ROTULO, KpisFarol, KpisIndicador, KpisTendencia, SENTIDO_ROTULO, fmtDia, fmtValor, rotuloDia, rotuloPeriodo } from './kpis';
 import { KpisResumo } from './kpisDados';
 
 // Peças pequenas da aba, usadas no painel, no detalhe e no lançar.
@@ -57,17 +57,46 @@ export const SetorChip: React.FC<{ setor: string }> = ({ setor }) => (
 export const AtrasoSelo: React.FC<{ i: KpisIndicador; r: KpisResumo }> = ({ i, r }) => {
   if (i.tipo === 'calculado' || !i.ativo) return null;
   if (r.pend.situacao === 'atrasado') {
-    const n = r.pend.atrasados.length;
+    // 035: o diário atrasa por DIA ("falta qui 29/10 (3 dias sem valor)"); os períodos de antes dele, como sempre.
+    const n = r.pend.atrasados.length, nd = r.pend.diasAtrasados.length;
     return (
       <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/25 border border-orange-200 dark:border-orange-900/50 rounded-full px-2 py-0.5">
-        <Clock size={11} /> Atrasado — falta {rotuloPeriodo(i.frequencia, r.pend.atrasados[0])}{n > 1 ? ` (${n} períodos sem valor)` : ''}
+        <Clock size={11} /> Atrasado — falta {n ? <>{rotuloPeriodo(i.frequencia, r.pend.atrasados[0])}{n > 1 ? ` (${n} períodos sem valor)` : ''}</> : <>{rotuloDia(r.pend.diasAtrasados[0])}{nd > 1 ? ` (${nd} dias sem valor)` : ''}</>}
       </span>
     );
   }
   if (r.pend.situacao === 'no_prazo' && r.pend.proximoPrazo) {
-    return <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400"><Clock size={11} /> Lançar {rotuloPeriodo(i.frequencia, r.pend.noPrazo[0])} até {fmtDia(r.pend.proximoPrazo).slice(0, 5)}</span>;
+    return <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400"><Clock size={11} /> Lançar {r.pend.noPrazo.length ? rotuloPeriodo(i.frequencia, r.pend.noPrazo[0]) : rotuloDia(r.pend.diasNoPrazo[0])} até {fmtDia(r.pend.proximoPrazo).slice(0, 5)}</span>;
   }
   return null;
+};
+
+// 035: o indicador lançado todo dia mostra o período EM CURSO — o que já entrou, de quanto, e para onde o ritmo leva.
+const CorpoDiario: React.FC<{ i: KpisIndicador; r: KpisResumo }> = ({ i, r }) => {
+  const rt = r.ritmo; if (!rt) return null;
+  const cor = FAROL_CLASSE[r.farol];
+  const pct = rt.meta && rt.realizado !== null && i.consolidacao === 'soma' ? Math.max(0, Math.min(100, (rt.realizado / rt.meta) * 100)) : null;
+  const pctMeta = rt.meta && rt.metaAteAgora !== null && i.consolidacao === 'soma' ? Math.max(0, Math.min(100, (rt.metaAteAgora / rt.meta) * 100)) : null;
+  return (
+    <div className="min-w-0 flex-1">
+      <div className={`text-2xl font-black tabular-nums leading-tight ${rt.realizado !== null ? cor.text : 'text-slate-300 dark:text-slate-600'}`}>
+        {fmtValor(rt.realizado, i.unidade, i.casas)}{rt.meta !== null && <span className="text-sm font-bold text-slate-400"> / {fmtValor(rt.meta, '', i.casas)}</span>}
+      </div>
+      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+        {rotuloPeriodo(i.frequencia, rt.periodo)} até agora{rt.meta !== null ? ` · meta ${FECHA_ROTULO[i.frequencia]}` : ''}
+        {r.semMeta && <> · <span className="text-amber-600 dark:text-amber-400">sem meta — defina</span></>}
+      </div>
+      {pct !== null && (
+        <div className="relative mt-1.5 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden" title="O que já entrou, contra a meta do período (o traço é a meta até hoje)">
+          <div className={`h-full rounded-full ${cor.dot}`} style={{ width: `${pct}%` }} />
+          {pctMeta !== null && <div className="absolute top-0 h-full w-0.5 bg-slate-500 dark:bg-slate-300" style={{ left: `${pctMeta}%` }} />}
+        </div>
+      )}
+      {rt.projecao !== null && i.consolidacao === 'soma' && <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-1">no ritmo de hoje: <b className="tabular-nums">{fmtValor(rt.projecao, i.unidade, i.casas)}</b> no fim</div>}
+      {r.ultimo && <div className="text-[11px] text-slate-400 dark:text-slate-500">{rotuloPeriodo(i.frequencia, r.ultimo.periodo)}: {fmtValor(r.ultimo.valor, i.unidade, i.casas)}</div>}
+      {r.noAno && <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">em {r.noAno.ano}: {fmtValor(r.noAno.valor, i.unidade, i.casas)}</div>}
+    </div>
+  );
 };
 
 export const KpisCartao: React.FC<{ i: KpisIndicador; r: KpisResumo; ligados?: number; mostrarSetor?: boolean; onAbrir: () => void }> = ({ i, r, ligados, mostrarSetor, onAbrir }) => {
@@ -91,7 +120,7 @@ export const KpisCartao: React.FC<{ i: KpisIndicador; r: KpisResumo; ligados?: n
       </div>
 
       <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
+        {r.ritmo ? <CorpoDiario i={i} r={r} /> : <div className="min-w-0">
           <div className={`text-2xl font-black tabular-nums leading-tight ${r.ultimo ? cor.text : 'text-slate-300 dark:text-slate-600'}`}>
             {r.ultimo ? fmtValor(r.ultimo.valor, i.unidade, i.casas) : '—'}
           </div>
@@ -103,7 +132,7 @@ export const KpisCartao: React.FC<{ i: KpisIndicador; r: KpisResumo; ligados?: n
           </div>
           {r.parcial && r.parcial.valor !== null && <div className="text-[11px] text-slate-400 dark:text-slate-500">{rotuloPeriodo(i.frequencia, r.parcial.periodo)} até agora: {fmtValor(r.parcial.valor, i.unidade, i.casas)}</div>}
           {r.noAno && <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">em {r.noAno.ano}: {fmtValor(r.noAno.valor, i.unidade, i.casas)}</div>}
-        </div>
+        </div>}
         <div className="w-24 h-8 shrink-0" style={{ color: cor.hex }}>
           <MiniGrafico v={r.spark} className="w-full h-full" />
         </div>

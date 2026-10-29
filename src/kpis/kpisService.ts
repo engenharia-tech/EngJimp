@@ -8,7 +8,7 @@ import { supabase, fetchAllOkr } from '../services/storageService';
 import { authHeaders } from '../services/authToken';
 import {
   KpisAcesso, KpisFrequencia, KpisHist, KpisIndicador, KpisIndicadorInput, KpisLancamento, KpisMeta, KpisPontoCalculado, KpisSetor, KpisTipoAtividade,
-  KPIS_HIST_COLS, KPIS_IND_COLS, KPIS_IND_COLS_023, KPIS_IND_COLS_025, KPIS_LANC_COLS, KPIS_META_COLS,
+  KPIS_HIST_COLS, KPIS_HIST_COLS_035, KPIS_IND_COLS, KPIS_IND_COLS_023, KPIS_IND_COLS_025, KPIS_IND_COLS_035, KPIS_LANC_COLS, KPIS_LANC_COLS_035, KPIS_META_COLS,
   mapAcesso, mapHist, mapIndicador, mapLancamento, mapMeta, precisa026, precisa027, toIndicadorRow, validarIndicador,
 } from './kpis';
 
@@ -37,6 +37,7 @@ export interface KpisService {
   serieCalculada(indicadorId: string, de: string | null, ate: string | null): Promise<KpisPontoCalculado[]>;
   fontesNovas(): Promise<boolean | null>;                 // 026 no banco (projetos, paradas, inovações, engenharia); null = não deu para saber
   cronograma(): Promise<boolean | null>;                  // 027 no banco (o cronograma do Nexus Flow); null = não deu para saber
+  diario(): Promise<boolean | null>;                      // 035 no banco (lançar todo dia); null = não deu para saber
   criarIndicador(input: KpisIndicadorInput): Promise<KpisIndicador>;
   editarIndicador(id: string, input: KpisIndicadorInput, version: string): Promise<KpisIndicador>;
   arquivarIndicador(id: string, ativo: boolean, version: string): Promise<KpisIndicador>;
@@ -46,7 +47,7 @@ export interface KpisService {
   contarLancamentos(id: string): Promise<number>;                    // 028: no banco (a tela só lê 36 meses)
   salvarMeta(indicadorId: string, valeDesde: string, meta: number, limite: number | null): Promise<KpisMeta>;
   apagarMeta(indicadorId: string, valeDesde: string): Promise<void>;
-  lancar(indicadorId: string, periodo: string, valor: number, comentario: string): Promise<KpisLancamento>;
+  lancar(indicadorId: string, periodo: string, valor: number, comentario: string, dia?: string | null): Promise<KpisLancamento>; // 035: dia = o lançamento de um dia
   corrigir(id: string, valor: number, comentario: string, motivo: string, version: string): Promise<KpisLancamento>;
   apagarLancamento(id: string): Promise<void>;
   valoresLigados(pedidos: KpisPedido[]): Promise<KpisValorLigado[] | null>; // null = 023 ausente
@@ -112,23 +113,34 @@ const todas = async (monta: (de: number, ate: number) => PromiseLike<{ data: any
 let tem025: boolean | null = null;
 let tem026: boolean | null = null;
 let tem027: boolean | null = null;
+let tem035: boolean | null = null;   // 035: diario_desde / dia (lançar todo dia)
 // a tela se identifica em toda alteração de indicador (026: o banco recusa a tela antiga; 027: a que não conhece o
 // cronograma; 028: a que forçava "do setor" para quem não administra, num indicador que o Edson / admin criou)
 const KPIS_VERSAO_TELA = 28;
+let erroDaSonda: any = null;   // o erro da última sonda que não respondeu (rede, sessão) — para dizer o porquê
 const sonda = async (col: string): Promise<boolean | null> => {
   const { error } = await supabase.from('kpis_indicador').select(col).limit(1);
   if (!error) return true;
   if ((error as any).code === '42703' || new RegExp(col).test(String((error as any).message || ''))) return false;
+  erroDaSonda = error;
   return null;
 };
 // reprobe: o "não tem" de antes é perguntado de novo (a migração pode ter rodado com a aba aberta) — no Atualizar.
 const colsIndicador = async (reprobe = false): Promise<string> => {
-  if (reprobe) { if (tem025 === false) tem025 = null; if (tem026 === false) tem026 = null; if (tem027 === false) tem027 = null; }
+  if (reprobe) { if (tem025 === false) tem025 = null; if (tem026 === false) tem026 = null; if (tem027 === false) tem027 = null; if (tem035 === false) tem035 = null; }
   if (tem025 === null) tem025 = await sonda('do_setor');
   if (tem025 === false) return KPIS_IND_COLS_023;
   if (tem026 === null) tem026 = await sonda('calc_fonte');
-  return tem026 === false ? KPIS_IND_COLS_025 : KPIS_IND_COLS;
+  if (tem026 === false) return KPIS_IND_COLS_025;
+  if (tem035 === null) tem035 = await sonda('diario_desde');
+  // 035: sem saber se o banco tem o dia, ler sem ele mostraria UM dia como se fosse o período inteiro (e o Corrigir cairia
+  // nele) — então não lê: o erro diz o porquê e a próxima leitura pergunta de novo.
+  if (tem035 === null) throw erro(erroDaSonda || { message: 'Failed to fetch' });
+  return tem035 === true ? KPIS_IND_COLS_035 : KPIS_IND_COLS;
 };
+// 035: o lançamento e o histórico levam o dia quando o banco o tem.
+const colsLanc = async (): Promise<string> => { await colsIndicador(); return tem035 === true ? KPIS_LANC_COLS_035 : KPIS_LANC_COLS; };
+const diario = async (): Promise<boolean | null> => { await colsIndicador(); return tem035; };
 const fontesNovas = async (): Promise<boolean | null> => {
   await colsIndicador();
   if (tem025 === false || tem026 === false) return false;
@@ -151,7 +163,9 @@ const linhaIndicador = async (input: KpisIndicadorInput): Promise<Record<string,
   const com026 = tem026 !== false && tem025 !== false;
   if (!com026 && precisa026(input)) throw new KpisStaleError('Este cálculo (projetos, paradas, inovações, a engenharia, média ou %) precisa da migração 026 no banco — avise o Edson. Nada foi salvo.');
   if (precisa027(input) && (await cronograma()) === false) throw new KpisStaleError('O cálculo pelo cronograma (Nexus Flow) precisa da migração 027 no banco — avise o Edson. Nada foi salvo.');
-  return toIndicadorRow(input, com026);
+  const com035 = com026 && tem035 === true;
+  if (!com035 && input.diarioDesde) throw new KpisStaleError(tem035 === false ? '"Todo dia" precisa da migração 035 no banco — avise o Edson. Nada foi salvo.' : 'Não consegui confirmar que o banco já aceita "Todo dia" — confira a rede e tente de novo. Nada foi salvo.');
+  return toIndicadorRow(input, com026, com035);
 };
 
 const listIndicadores = async (): Promise<KpisIndicador[]> => {
@@ -162,11 +176,14 @@ const listIndicadores = async (): Promise<KpisIndicador[]> => {
 const listMetas = async (): Promise<KpisMeta[]> =>
   (await todas((a, b) => supabase.from('kpis_meta').select(KPIS_META_COLS).order('indicador_id').order('vale_desde').range(a, b))).map(mapMeta);
 
-const listLancamentos = async (desde: string): Promise<KpisLancamento[]> =>
-  (await todas((a, b) => supabase.from('kpis_lancamento').select(KPIS_LANC_COLS).gte('periodo', desde).order('periodo').order('id').range(a, b))).map(mapLancamento);
+const listLancamentos = async (desde: string): Promise<KpisLancamento[]> => {
+  const cols = await colsLanc();
+  return (await todas((a, b) => supabase.from('kpis_lancamento').select(cols).gte('periodo', desde).order('periodo').order('id').range(a, b))).map(mapLancamento);
+};
 
 const listHist = async (indicadorId: string): Promise<KpisHist[]> => {
-  const { data, error } = await supabase.from('kpis_lancamento_hist').select(KPIS_HIST_COLS)
+  await colsIndicador();
+  const { data, error } = await supabase.from('kpis_lancamento_hist').select(tem035 === true ? KPIS_HIST_COLS_035 : KPIS_HIST_COLS)
     .eq('indicador_id', indicadorId).order('em', { ascending: false }).order('id', { ascending: false }).limit(300);
   if (error) throw erro(error);
   return (data || []).map(mapHist);
@@ -300,14 +317,19 @@ const apagarMeta = async (indicadorId: string, valeDesde: string): Promise<void>
   }
 };
 
-const lancar = async (indicadorId: string, periodo: string, valor: number, comentario: string): Promise<KpisLancamento> => {
+// 035: com `dia`, é o lançamento de um dia (o banco põe o período pelo dia; `periodo` vai só porque a coluna é obrigatória).
+const lancar = async (indicadorId: string, periodo: string, valor: number, comentario: string, dia?: string | null): Promise<KpisLancamento> => {
+  const cols = await colsLanc();
+  if (dia && tem035 !== true) throw new KpisStaleError('Lançar por dia precisa da migração 035 no banco — avise o Edson. Nada foi salvo.');
   const { data, error } = await supabase.from('kpis_lancamento')
-    .insert({ indicador_id: indicadorId, periodo, valor, comentario: comentario.trim() || null }).select(KPIS_LANC_COLS);
+    .insert({ indicador_id: indicadorId, periodo, valor, comentario: comentario.trim() || null, ...(dia ? { dia } : {}) }).select(cols);
   if (error) {
     if ((error as any).code === '23505') {
-      // Outra pessoa lançou este período no meio: relê o que está lá para a tela oferecer Corrigir.
-      const { data: ex } = await supabase.from('kpis_lancamento').select(KPIS_LANC_COLS).eq('indicador_id', indicadorId).eq('periodo', periodo).limit(1);
-      throw new KpisJaLancadoError('Este período já tem valor (alguém lançou enquanto a tela estava aberta). Atualizei — se precisar, use Corrigir.', ex && ex.length ? mapLancamento(ex[0]) : null);
+      // Outra pessoa lançou este período (ou dia) no meio: relê o que está lá para a tela oferecer Corrigir.
+      let q = supabase.from('kpis_lancamento').select(cols).eq('indicador_id', indicadorId);
+      q = dia ? q.eq('dia', dia) : tem035 === true ? q.eq('periodo', periodo).is('dia', null) : q.eq('periodo', periodo);
+      const { data: ex } = await q.limit(1);
+      throw new KpisJaLancadoError(`${dia ? 'Este dia' : 'Este período'} já tem valor (alguém lançou enquanto a tela estava aberta). Atualizei — se precisar, use Corrigir.`, ex && ex.length ? mapLancamento(ex[0]) : null);
     }
     throw erro(error);
   }
@@ -316,9 +338,11 @@ const lancar = async (indicadorId: string, periodo: string, valor: number, comen
 };
 
 const corrigir = async (id: string, valor: number, comentario: string, motivo: string, version: string): Promise<KpisLancamento> => {
-  let q = supabase.from('kpis_lancamento').update({ valor, comentario: comentario.trim() || null, motivo: motivo.trim() || null }).eq('id', id);
+  const cols = await colsLanc();
+  // 035: a tela se identifica (o banco recusa a de antes do diário num lançamento de dia)
+  let q = supabase.from('kpis_lancamento').update({ valor, comentario: comentario.trim() || null, motivo: motivo.trim() || null, ...(tem035 === true ? { versao_tela: 35 } : {}) }).eq('id', id);
   if (version) q = q.eq('atualizado_em', version);
-  const { data, error } = await q.select(KPIS_LANC_COLS);
+  const { data, error } = await q.select(cols);
   if (error) throw erro(error);
   if (!data || !data.length) throw await porQueLancamento(id, version);
   return mapLancamento(data[0]);
@@ -357,8 +381,8 @@ const valoresLigados = async (pedidos: KpisPedido[]): Promise<KpisValorLigado[] 
 
 // O último valor lançado ANTES de um dia (a partida sugerida ao ligar um KR).
 const ultimoAntes = async (indicadorId: string, antesDe: string): Promise<KpisLancamento | null> => {
-  const { data, error } = await supabase.from('kpis_lancamento').select(KPIS_LANC_COLS)
-    .eq('indicador_id', indicadorId).lt('periodo', antesDe).order('periodo', { ascending: false }).limit(1);
+  const { data, error } = await supabase.from('kpis_lancamento').select(await colsLanc())
+    .eq('indicador_id', indicadorId).lt('periodo', antesDe).order('periodo', { ascending: false }).order('lancado_em', { ascending: false }).limit(1);
   if (error) throw erro(error);
   return data && data.length ? mapLancamento(data[0]) : null;
 };
@@ -392,7 +416,7 @@ const mudarSetor = async (userId: string, setor: string, setorAntes?: string): P
 };
 
 export const kpisService: KpisService = {
-  acesso, setores, tiposAtividade, listIndicadores, listMetas, listLancamentos, listHist, serieCalculada, fontesNovas, cronograma,
+  acesso, setores, tiposAtividade, listIndicadores, listMetas, listLancamentos, listHist, serieCalculada, fontesNovas, cronograma, diario,
   criarIndicador, editarIndicador, arquivarIndicador, apagarIndicador, excluirIndicador, apagarLancamentosDoIndicador, contarLancamentos, salvarMeta, apagarMeta,
   lancar, corrigir, apagarLancamento, valoresLigados, ultimoAntes, contarLigados, mudarSetor,
 };
@@ -407,10 +431,16 @@ export const kpisErrorMessage = (e: any, fallback: string, leitura = false): str
   if (e instanceof KpisStaleError || e instanceof KpisJaLancadoError) return m;
   if (NET_RE.test(m)) return leitura ? 'Sem conexão com o servidor — não consegui ler os indicadores. Confira a rede e tente de novo.' : 'Sem conexão com o servidor — nada foi salvo. Confira a rede e tente de novo.';
   if (/jwt expired|invalid jwt|jwserror|pgrst30[0-3]/i.test(m) || /^PGRST30[0-3]$/.test(code)) return leitura ? 'Sua sessão venceu — saia e entre de novo.' : 'Sua sessão venceu — saia e entre de novo. Nada foi salvo.';
-  if (/KPIS_TELA_ANTIGA/.test(m)) return 'Esta tela é de antes dos cálculos novos — recarregue a página (Ctrl+Shift+R) e faça de novo. Nada foi salvo.';
+  if (/KPIS_TELA_ANTIGA/.test(m)) return 'Esta tela é de antes da versão nova — recarregue a página (Ctrl+Shift+R) e faça de novo. Nada foi salvo.';
   if (code === '42703' || code === 'PGRST204') return leitura ? 'O banco acabou de ser atualizado e esta tela ainda não o enxerga — recarregue a página em um minuto.' : 'O banco acabou de ser atualizado e esta tela ainda não o enxerga — recarregue a página em um minuto. Nada foi salvo.';
   if (kpisAusente(e)) return KPIS_NAO_INSTALADO;
   if (/KPIS_PERIODO_FUTURO/.test(m)) return 'Este período ainda não começou — escolha um período até o atual.';
+  // 035: lançar todo dia
+  if (/KPIS_DIA_FUTURO/.test(m)) return 'Este dia ainda não chegou — lance até hoje. Nada foi salvo.';
+  if (/KPIS_NAO_DIARIO/.test(m)) return 'Este indicador é lançado por período, não por dia — atualize a página (F5). Nada foi salvo.';
+  if (/KPIS_LANCAR_POR_DIA/.test(m)) return 'Este indicador é lançado todo dia — atualize a página (F5) e escolha o dia. Nada foi salvo.';
+  if (/KPIS_PERIODO_COM_TOTAL/.test(m)) return 'Este período já tem o valor do período inteiro — para lançar os dias, apague antes aquele valor (no detalhe do indicador). Nada foi salvo.';
+  if (/KPIS_ANTES_DO_DIARIO|KPIS_DIARIO_MISTURA|KPIS_DIARIO_COM_DIAS|KPIS_DIARIO_CALCULADO/.test(m)) return `${m.replace(/^.*?KPIS_[A-Z_]+:\s*/, '')} Nada foi salvo.`;
   if (/KPIS_ANTES_DO_INICIO/.test(m)) return 'Este período é anterior ao início do indicador.';
   if (/KPIS_MOTIVO_LONGO/.test(m)) return 'O motivo vai até 300 letras. Nada foi salvo.';
   if (/KPIS_MOTIVO/.test(m)) return 'Diga o motivo da correção (pelo menos 3 letras). Nada foi salvo.';

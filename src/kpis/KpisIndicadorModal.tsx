@@ -5,8 +5,8 @@ import { useToast } from '../components/Toast';
 import {
   KpisFrequencia, KpisIndicador, KpisIndicadorInput, KpisMedida, KpisEscopo, KpisFonte, KpisSentido, KpisSetor, KpisTipoAtividade,
   AJUDA_FONTE, ESCOPO_ROTULO, FONTE_ROTULO, INOVACAO_STATUS, MEDIDA_ROTULO, MEDIDAS_DA_FONTE, PROJETO_TIPOS,
-  FREQ_ROTULO, PRAZO_PADRAO, UNIDADES, fmtValor, hojeSP, inicioPeriodo, metaVigente, numeroExatoParaCampo, numeroParaCampo, parseNumero,
-  periodosEntre, proximoPeriodo, rotuloPeriodoLongo, setorChave, validarIndicador, rotuloPeriodo, ehSetorDeRepresentante,
+  FECHA_ROTULO, FREQ_ROTULO, PRAZO_PADRAO, UNIDADES, fmtValor, hojeSP, inicioPeriodo, metaVigente, numeroExatoParaCampo, numeroParaCampo, parseNumero,
+  periodosEntre, proximoPeriodo, rotuloDia, rotuloPeriodoLongo, setorChave, validarIndicador, rotuloPeriodo, ehSetorDeRepresentante,
 } from './kpis';
 import { KpisDados } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
@@ -59,6 +59,10 @@ export const KpisIndicadorModal: React.FC<{
   const [soma, setSoma] = useState(ind?.consolidacao === 'soma');
   const [prazo, setPrazo] = useState(ind?.prazoDias === null || ind?.prazoDias === undefined ? '' : String(ind.prazoDias));
   const [inicio, setInicio] = useState(ind?.inicio || inicioPeriodo('mensal', hoje));
+  // 035 — "Todo dia" (Edson, 28 e 29/10/2026): lança-se o número de cada dia e o período (a frequência) soma os dias;
+  // a meta continua sendo a do período ("a meta fecha no mês").
+  const [diario, setDiario] = useState(!!ind?.diarioDesde);
+  const [com035, setCom035] = useState<boolean | null>(null);
   const [tipo, setTipo] = useState<'manual' | 'calculado'>(ind?.tipo || 'manual');
   const [calcTipos, setCalcTipos] = useState<string[]>(ind?.calcTipos || []);
   const [calcMedida, setCalcMedida] = useState<KpisMedida>(ind?.calcMedida || 'horas');
@@ -73,6 +77,7 @@ export const KpisIndicadorModal: React.FC<{
     let vivo = true;
     service.fontesNovas().then(v => { if (vivo) setCom026(v); }).catch(() => { if (vivo) setCom026(null); });   // null: não força nada
     service.cronograma().then(v => { if (vivo) setCom027(v); }).catch(() => { if (vivo) setCom027(null); });
+    service.diario().then(v => { if (vivo) setCom035(v); }).catch(() => { if (vivo) setCom035(null); });
     return () => { vivo = false; };
   }, [service]);
   const fonteEf: KpisFonte = com026 === false ? 'atividades' : calcFonte;
@@ -111,6 +116,17 @@ export const KpisIndicadorModal: React.FC<{
   const [limTxt, setLimTxt] = useState(metaAtual && metaAtual.limiteAlerta !== null ? numeroExatoParaCampo(metaAtual.limiteAlerta) : '');
   const [gravando, setGravando] = useState(false);
 
+  // Desde quando é diário: o indicador novo, do início (ou de hoje, se o início já passou — os dias de antes não se
+  // cobram); o que já existe, de hoje — ou do período seguinte, se o período em curso já tem o valor do período inteiro
+  // (o banco não deixa o mesmo período ter os dois).
+  const lancsInd = ind ? dados.lancs.get(ind.id) || [] : [];
+  const temDias = lancsInd.some(l => !!l.dia);
+  const atualTemTotal = lancsInd.some(l => !l.dia && l.periodo >= inicioPeriodo(frequencia, hoje));
+  const diarioPadrao = ind?.diarioDesde || (!ind ? (inicio && inicio > hoje ? inicio : hoje) : atualTemTotal ? proximoPeriodo(frequencia, inicioPeriodo(frequencia, hoje)) : hoje);
+  const [diarioDesde, setDiarioDesde] = useState(diarioPadrao);
+  // o que se grava (o banco também puxa para o início, se vier antes dele)
+  const diarioBruto = diarioDesde || diarioPadrao;
+  const diarioEf = diario && tipo === 'manual' ? (diarioBruto < inicioAlinhado ? inicioAlinhado : diarioBruto) : null;
   const setor = setorFixo ? setorFixo : setorSel === OUTRO ? setorTxt.trim() : (setorLista.find(s => s.chave === setorSel)?.nome || '');
   const setorSemNinguem = !setorFixo && !!setor && !setorLista.some(s => s.chave === setorChave(setor));
   const unidade = unidadeSel === OUTRO ? unidadeTxt.trim() : unidadeSel;
@@ -120,6 +136,7 @@ export const KpisIndicadorModal: React.FC<{
     calcTipos: tipo === 'calculado' && fonteEf === 'atividades' ? calcTipos : [],
     calcMedida: tipo === 'calculado' ? medidaEf : null, calcEscopo: tipo === 'calculado' ? escopoEf : null,
     calcFonte: fonteEf, calcFiltro: fonteEf === 'projetos' ? filtroProj : fonteEf === 'inovacoes' ? filtroInov : [],
+    diarioDesde: diarioEf,
   };
   const nMeta = parseNumero(metaTxt), nLim = limTxt.trim() ? parseNumero(limTxt) : null;
   const erroMeta = metaTxt.trim() && nMeta === null ? 'A meta não é um número.'
@@ -240,10 +257,24 @@ export const KpisIndicadorModal: React.FC<{
 
           <label className="flex flex-col gap-1">
             <span className={rotulo}>Frequência</span>
-            <select value={frequencia} onChange={e => setFrequencia(e.target.value as KpisFrequencia)} disabled={temLanc} className={campo}>
-              {(Object.keys(FREQ_ROTULO) as KpisFrequencia[]).map(f => <option key={f} value={f}>{FREQ_ROTULO[f]}</option>)}
+            {/* 035: "Todo dia" lança por dia; a meta fecha no período escolhido ao lado. Com lançamentos, o período trava,
+                mas ainda dá para passar a lançar todo dia (e o que já tem dias lançados não volta). */}
+            <select value={diario && tipo === 'manual' ? 'diario' : frequencia} onChange={e => { if (e.target.value === 'diario') setDiario(true); else { setDiario(false); setFrequencia(e.target.value as KpisFrequencia); } }} className={campo}>
+              {(com035 !== false || !!ind?.diarioDesde) && <option value="diario" disabled={tipo !== 'manual'}>Todo dia{tipo !== 'manual' ? ' (só o lançado pelo setor)' : ''}</option>}
+              {(Object.keys(FREQ_ROTULO) as KpisFrequencia[]).map(f => <option key={f} value={f} disabled={(temLanc && f !== frequencia) || temDias}>{FREQ_ROTULO[f]}</option>)}
             </select>
-            {temLanc && <span className="text-[11px] text-slate-400">Travada: já há lançamentos (mudar a frequência baralharia os períodos).{BotaoLimpar ? <> Para mudar,{BotaoLimpar} — ou crie outro e arquive este.</> : ' Para mudar, crie outro e arquive este.'}</span>}
+            {diario && tipo === 'manual' && (
+              <div className="flex flex-col gap-1 mt-1 rounded-lg bg-blue-50/60 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/40 p-2">
+                <span className={rotulo}>A meta fecha</span>
+                <select value={frequencia} onChange={e => setFrequencia(e.target.value as KpisFrequencia)} disabled={temLanc} className={campo}>
+                  {(Object.keys(FREQ_ROTULO) as KpisFrequencia[]).map(f => <option key={f} value={f}>{FECHA_ROTULO[f]}</option>)}
+                </select>
+                <span className={rotulo}>Lança todo dia desde</span>
+                <input type="date" min="2000-01-01" max="2100-12-31" value={diarioDesde} onChange={e => setDiarioDesde(e.target.value)} disabled={!!ind?.diarioDesde && temDias} className={campo} />
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">Lança-se o número de cada dia; {FECHA_ROTULO[frequencia]} os dias {soma && !naoSoma ? 'se somam' : 'fazem a média'} e a meta fecha {FECHA_ROTULO[frequencia]}. Cobra-se de segunda a sexta, até o dia útil seguinte{diarioEf ? ` — a partir de ${rotuloDia(diarioEf)}` : ''}.{diarioEf && !ind?.diarioDesde && diarioEf > inicioPeriodo(frequencia, diarioEf) && !atualTemTotal ? ` Os dias de ${rotuloPeriodo(frequencia, inicioPeriodo(frequencia, diarioEf))} antes disso não são cobrados, mas contam: lance o que já foi feito no período (dia a dia, ou o acumulado num dia só) — dia útil vencido sem valor conta como zero.` : ''}{atualTemTotal && !ind?.diarioDesde ? ` ${rotuloPeriodo(frequencia, inicioPeriodo(frequencia, hoje))} já tem o valor do período inteiro: o diário começa no período seguinte.` : ''}</span>
+              </div>
+            )}
+            {temLanc && <span className="text-[11px] text-slate-400">{diario ? 'O período da meta' : 'A frequência'} está travad{diario ? 'o' : 'a'}: já há lançamentos (mudar baralharia os períodos).{BotaoLimpar ? <> Para mudar,{BotaoLimpar} — ou crie outro e arquive este.</> : ' Para mudar, crie outro e arquive este.'}</span>}
           </label>
           <label className="flex flex-col gap-1">
             <span className={rotulo}>A partir de</span>
@@ -361,7 +392,7 @@ export const KpisIndicadorModal: React.FC<{
             )}
           </div>
 
-          {tipo === 'manual' && (
+          {tipo === 'manual' && !diarioEf && (
             <label className="flex flex-col gap-1">
               <span className={rotulo}>Prazo para lançar (dias depois do fim do período)</span>
               <input value={prazo} onChange={e => setPrazo(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" placeholder={`padrão: ${PRAZO_PADRAO[frequencia]}`} className={campo} />

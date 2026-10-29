@@ -43,6 +43,7 @@ export interface KpisIndicador {
   podeLancar: boolean;            // kpis_pode_lancar — o banco diz
   doSetor: boolean;               // 025: criado pelo próprio setor (só registro: desde a 028 o setor cuida de todos os seus)
   podeGerir: boolean | null;      // kpis_pode_gerir — editar/meta/arquivar/excluir (028: o setor em todos os seus); null = banco sem a 025
+  diarioDesde: string | null;     // 035: lança TODO DIA desde este dia (a frequência vira o período em que a meta fecha); null = um valor por período
 }
 
 export interface KpisMeta {
@@ -65,6 +66,7 @@ export interface KpisLancamento {
   alteradoPor: string | null;
   alteradoEm: string | null;
   atualizadoEm: string;           // versão da linha
+  dia: string | null;             // 035: o dia do lançamento diário; null = o valor do período inteiro (periodo é sempre o início do período)
 }
 
 export interface KpisHist {
@@ -72,6 +74,7 @@ export interface KpisHist {
   lancamentoId: string;
   indicadorId: string;
   periodo: string;
+  dia: string | null;             // 035: o dia, quando o lançamento era de um dia
   acao: 'corrigiu' | 'apagou';
   valorAntes: number | null;
   valorDepois: number | null;
@@ -168,6 +171,7 @@ export interface KpisIndicadorInput {
   calcEscopo: KpisEscopo | null;
   calcFonte: KpisFonte;           // 026 (sem a 026 no banco, só 'atividades')
   calcFiltro: string[];
+  diarioDesde: string | null;     // 035: "Todo dia" — desde quando (só o lançado pelo setor)
 }
 
 // ---- Colunas (nunca select('*')) ------------------------------------------
@@ -175,8 +179,11 @@ export const KPIS_IND_COLS_023 = 'id, setor, nome, descricao, unidade, casas, se
 export const KPIS_IND_COLS_025 = KPIS_IND_COLS_023 + ', do_setor, kpis_pode_gerir';   // 025
 export const KPIS_IND_COLS = KPIS_IND_COLS_025 + ', calc_fonte, calc_filtro';          // 026
 export const KPIS_META_COLS = 'indicador_id, vale_desde, meta, limite_alerta, por, em';
+export const KPIS_IND_COLS_035 = KPIS_IND_COLS + ', diario_desde';                    // 035
 export const KPIS_LANC_COLS = 'id, indicador_id, periodo, valor, comentario, lancado_por, lancado_em, alterado_por, alterado_em, atualizado_em';
 export const KPIS_HIST_COLS = 'id, lancamento_id, indicador_id, periodo, acao, valor_antes, valor_depois, comentario_antes, motivo, por, em';
+export const KPIS_LANC_COLS_035 = KPIS_LANC_COLS + ', dia';                             // 035
+export const KPIS_HIST_COLS_035 = KPIS_HIST_COLS + ', dia';                             // 035
 
 const s = (v: unknown): string => typeof v === 'string' ? v : v == null ? '' : String(v);
 const n = (v: unknown, def = 0): number => { const x = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN; return Number.isFinite(x) ? x : def; };
@@ -201,6 +208,7 @@ export const mapIndicador = (r: any): KpisIndicador => ({
   podeLancar: r.kpis_pode_lancar === true,
   doSetor: r.do_setor === true,
   podeGerir: typeof r.kpis_pode_gerir === 'boolean' ? r.kpis_pode_gerir : null,
+  diarioDesde: r.tipo !== 'calculado' && r.diario_desde ? dia(r.diario_desde) : null,
 });
 // Editar, pôr meta, arquivar e excluir: o banco diz (025); sem a 025, só quem administra.
 export const gerencia = (i: Pick<KpisIndicador, 'podeGerir'>, acesso: Pick<KpisAcesso, 'administra'> | null | undefined): boolean =>
@@ -213,11 +221,11 @@ export const mapLancamento = (r: any): KpisLancamento => ({
   id: s(r.id), indicadorId: s(r.indicador_id), periodo: dia(r.periodo), valor: n(r.valor), comentario: s(r.comentario),
   lancadoPor: r.lancado_por ? s(r.lancado_por) : null, lancadoEm: s(r.lancado_em),
   alteradoPor: r.alterado_por ? s(r.alterado_por) : null, alteradoEm: r.alterado_em ? s(r.alterado_em) : null,
-  atualizadoEm: s(r.atualizado_em),
+  atualizadoEm: s(r.atualizado_em), dia: r.dia ? dia(r.dia) : null,
 });
 export const mapHist = (r: any): KpisHist => ({
   id: n(r.id), lancamentoId: s(r.lancamento_id), indicadorId: s(r.indicador_id), periodo: dia(r.periodo),
-  acao: r.acao === 'apagou' ? 'apagou' : 'corrigiu', valorAntes: nn(r.valor_antes), valorDepois: nn(r.valor_depois),
+  dia: r.dia ? dia(r.dia) : null, acao: r.acao === 'apagou' ? 'apagou' : 'corrigiu', valorAntes: nn(r.valor_antes), valorDepois: nn(r.valor_depois),
   comentarioAntes: s(r.comentario_antes), motivo: s(r.motivo), por: r.por ? s(r.por) : null, em: s(r.em),
 });
 export const mapAcesso = (r: any): KpisAcesso => ({
@@ -228,7 +236,8 @@ export const mapAcesso = (r: any): KpisAcesso => ({
 });
 
 // com026 = o banco tem calc_fonte/calc_filtro (sem a 026, mandar essas colunas daria erro — e só 'atividades' existe).
-export const toIndicadorRow = (i: KpisIndicadorInput, com026 = true): Record<string, unknown> => {
+// com035 = o banco tem diario_desde (sem a 035 a coluna não vai — e "Todo dia" é recusado antes, no serviço).
+export const toIndicadorRow = (i: KpisIndicadorInput, com026 = true, com035 = false): Record<string, unknown> => {
   const fonte: KpisFonte | null = i.tipo === 'calculado' ? (i.calcFonte || 'atividades') : null;
   return {
     setor: i.setor.trim(), nome: i.nome.trim(), descricao: i.descricao.trim() || null, unidade: i.unidade.trim(),
@@ -238,6 +247,7 @@ export const toIndicadorRow = (i: KpisIndicadorInput, com026 = true): Record<str
     calc_medida: fonte ? i.calcMedida : null,
     calc_escopo: fonte ? i.calcEscopo : null,
     ...(com026 ? { calc_fonte: fonte, calc_filtro: fonte && fonte !== 'atividades' && i.calcFiltro.length ? i.calcFiltro : null } : {}),
+    ...(com035 ? { diario_desde: fonte ? null : i.diarioDesde } : {}),
   };
 };
 // O cálculo pede a 026 (fonte nova, escopo engenharia, média ou %)?
@@ -257,6 +267,10 @@ export const validarIndicador = (i: KpisIndicadorInput): string => {
   if (i.unidade.trim().length > 12) return 'A unidade é longa demais (até 12 letras).';
   if (!parseDia(i.inicio)) return 'Escolha a data de início.';
   if (i.prazoDias !== null && (i.prazoDias < 0 || i.prazoDias > 60)) return 'O prazo para lançar vai de 0 a 60 dias.';
+  if (i.diarioDesde !== null) {
+    if (i.tipo !== 'manual') return 'Só o indicador lançado pelo setor pode ser lançado todo dia (o calculado já vem da base).';
+    if (!parseDia(i.diarioDesde)) return 'Diga desde que dia o lançamento é diário.';
+  }
   if (i.tipo === 'calculado') {
     const fonte = i.calcFonte || 'atividades';
     if (fonte === 'atividades') {
@@ -373,6 +387,30 @@ export const rotuloPeriodoLongo = (f: KpisFrequencia, inicio: string): string =>
   f === 'semanal' ? `${rotuloPeriodo(f, inicio)} (${ddmm(inicio)}–${ddmm(fimPeriodo(f, inicio))})` : rotuloPeriodo(f, inicio);
 
 export const FREQ_ROTULO: Record<KpisFrequencia, string> = { semanal: 'Toda semana', mensal: 'Todo mês', trimestral: 'A cada trimestre' };
+// 035: "Todo dia" — lança por dia e a meta fecha no período (a frequência).
+export const FECHA_ROTULO: Record<KpisFrequencia, string> = { semanal: 'na semana', mensal: 'no mês', trimestral: 'no trimestre' };
+export const rotuloFrequencia = (i: Pick<KpisIndicador, 'frequencia' | 'diarioDesde'>): string =>
+  i.diarioDesde ? `Todo dia (a meta fecha ${FECHA_ROTULO[i.frequencia]})` : FREQ_ROTULO[i.frequencia];
+// O período é lançado por DIA? (os de antes do diário guardam o valor do período inteiro)
+export const periodoDiario = (i: Pick<KpisIndicador, 'frequencia' | 'diarioDesde'>, periodo: string): boolean =>
+  !!i.diarioDesde && periodo >= inicioPeriodo(i.frequencia, i.diarioDesde);
+
+// ---- Dias (035) -------------------------------------------------------------------
+// Cobra-se de segunda a sexta: sábado e domingo lançam se houver, mas não atrasam. Feriado atrasa — lança-se 0,
+// com o comentário. O dia se lança até o fim do dia útil seguinte.
+const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+export const diaUtil = (iso: string): boolean => { const d = parseDia(iso); return !!d && d.getDay() >= 1 && d.getDay() <= 5; };
+export const proximoDia = (iso: string, k = 1): string => somaDias(iso, k);
+export const diasEntre = (de: string, ate: string, max = 800): string[] => {
+  const out: string[] = [];
+  if (!parseDia(de) || !parseDia(ate)) return out;
+  for (let d = de; d <= ate && out.length < max; d = somaDias(d, 1)) out.push(d);
+  return out;
+};
+export const uteisEntre = (de: string, ate: string): number => diasEntre(de, ate).filter(diaUtil).length;
+export const proximoDiaUtil = (iso: string): string => { let d = somaDias(iso, 1); for (let k = 0; k < 7 && !diaUtil(d); k++) d = somaDias(d, 1); return d; };
+// "qui 29/10"
+export const rotuloDia = (iso: string): string => { const d = parseDia(iso); return d ? `${SEMANA[d.getDay()]} ${ddmm(iso)}` : iso || '—'; };
 export const SENTIDO_ROTULO: Record<KpisSentido, string> = { maior: 'quanto maior, melhor', menor: 'quanto menor, melhor' };
 
 // ---- Prazo de lançar e atraso -------------------------------------------------
@@ -389,21 +427,33 @@ export interface KpisPendencias {
   noPrazo: string[];       // períodos fechados, sem valor, ainda no prazo
   atual: string;           // o período em curso (pode lançar, ainda não é cobrado)
   proximoPrazo: string | null; // até quando lançar o mais antigo que falta (no prazo)
+  diasAtrasados: string[]; // 035: dias úteis sem valor, passado o dia útil seguinte (o período diário não se cobra inteiro)
+  diasNoPrazo: string[];   // 035: dias úteis sem valor, ainda no prazo (o dia útil seguinte é hoje)
 }
 // Calculado nunca atrasa (quem calcula é o banco); arquivado não cobra nada.
-export const pendencias = (i: KpisIndicador, comValor: Set<string>, hoje: string = hojeSP()): KpisPendencias => {
+// 035: no indicador diário, `diasComValor` são os dias lançados; o período diário não se cobra inteiro — os dias é que são.
+export const pendencias = (i: KpisIndicador, comValor: Set<string>, hoje: string = hojeSP(), diasComValor: Set<string> = new Set()): KpisPendencias => {
   const atual = inicioPeriodo(i.frequencia, hoje);
-  const vazio: KpisPendencias = { situacao: 'em_dia', atrasados: [], noPrazo: [], atual, proximoPrazo: null };
+  const vazio: KpisPendencias = { situacao: 'em_dia', atrasados: [], noPrazo: [], atual, proximoPrazo: null, diasAtrasados: [], diasNoPrazo: [] };
   if (i.tipo === 'calculado' || !i.ativo || i.inicio > atual) return vazio;
   const atrasados: string[] = [], noPrazo: string[] = [];
   for (const p of periodosEntre(i.frequencia, i.inicio, hoje)) {
-    if (p >= atual || comValor.has(p)) continue;
+    if (p >= atual || comValor.has(p) || periodoDiario(i, p)) continue;
     (prazoDoPeriodo(i, p) < hoje ? atrasados : noPrazo).push(p);
   }
+  const diasAtrasados: string[] = [], diasNoPrazo: string[] = [];
+  if (i.diarioDesde) {
+    const de = i.diarioDesde > i.inicio ? i.diarioDesde : i.inicio;
+    for (const d of diasEntre(de, somaDias(hoje, -1), 1200)) {   // a tela lê 36 meses (~1.096 dias)
+      if (!diaUtil(d) || diasComValor.has(d)) continue;
+      (proximoDiaUtil(d) < hoje ? diasAtrasados : diasNoPrazo).push(d);
+    }
+  }
   return {
-    situacao: atrasados.length ? 'atrasado' : noPrazo.length ? 'no_prazo' : 'em_dia',
+    situacao: atrasados.length || diasAtrasados.length ? 'atrasado' : noPrazo.length || diasNoPrazo.length ? 'no_prazo' : 'em_dia',
     atrasados, noPrazo, atual,
-    proximoPrazo: noPrazo.length ? prazoDoPeriodo(i, noPrazo[0]) : null,
+    proximoPrazo: noPrazo.length ? prazoDoPeriodo(i, noPrazo[0]) : diasNoPrazo.length ? proximoDiaUtil(diasNoPrazo[0]) : null,
+    diasAtrasados, diasNoPrazo,
   };
 };
 
