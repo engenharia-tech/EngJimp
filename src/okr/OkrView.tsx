@@ -16,6 +16,7 @@ import { useToast } from '../components/Toast';
 import { useKpisNoOkr, aplicarKpis, estadoKpi, krLigado, mapaDoServidor, KpisMapa, KpiEstado } from '../kpis/kpisNoOkr';
 import { fmtValor, fmtDia, rotuloPeriodo } from '../kpis/kpis';
 import { KpisLigarDialog, KpisDonoOkr, KpisLigacao } from './KpisLigarDialog';
+import { KpisPublicoPainel, KpisSetorPublico, setorKpiDoServidor } from '../kpis/KpisPublico';
 import { useAvisosParecidos } from './ParecidosAviso';
 import { textoDoPortfolio } from './parecidosService';
 
@@ -404,7 +405,7 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
       const token = await enableOkrShare(ownerKey);
       const link = `${window.location.origin}/?okr=${token}`;
       setShareLink(link);
-      try { await navigator.clipboard.writeText(link); addToast('Link copiado! Quem abrir só visualiza.', 'success'); } catch { addToast('Link gerado.', 'success'); }
+      try { await navigator.clipboard.writeText(link); addToast('Link copiado! Quem abrir só visualiza o OKR e o KPI do setor.', 'success'); } catch { addToast('Link gerado.', 'success'); }
     } catch { addToast('Não consegui gerar o link.', 'error'); } finally { setSharing(false); }
   };
   const handleExport = () => window.print();
@@ -995,16 +996,40 @@ const CheckinsPanel: React.FC<{ period: OkrPeriod; allKrs: OkrKeyResult[]; onAdd
 };
 
 // Página pública (sem login): abre o OKR pelo token do link, somente leitura.
+// 30/10/2026: o mesmo link traz também o KPI do setor do dono (aba "KPI"); `&aba=kpi` no link já abre nela.
 export const OkrPublicPage: React.FC<{ token: string }> = ({ token }) => {
-  const [data, setData] = useState<{ store: OkrStore; kpi: KpisMapa } | null>(null);
+  const [data, setData] = useState<{ store: OkrStore; kpi: KpisMapa; setorKpi: KpisSetorPublico | null } | null>(null);
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
-  useEffect(() => { (async () => { const d = await fetchPublicOkrComKpi(token); if (d && d.store.periods?.length) { setData({ store: d.store, kpi: mapaDoServidor(d.kpi) }); setState('ok'); } else setState('error'); })(); }, [token]);
+  const [aba, setAba] = useState<'okr' | 'kpi'>(() => {
+    try { return new URLSearchParams(window.location.search).get('aba') === 'kpi' ? 'kpi' : 'okr'; } catch { return 'okr'; }
+  });
+  useEffect(() => { (async () => { const d = await fetchPublicOkrComKpi(token); if (d && d.store.periods?.length) { setData({ store: d.store, kpi: mapaDoServidor(d.kpi), setorKpi: setorKpiDoServidor(d.setorKpi) }); setState('ok'); } else setState('error'); })(); }, [token]);
   if (state === 'loading') return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-400"><RefreshCw className="animate-spin" size={20} /></div>;
   if (state === 'error' || !data) return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-500 p-6 text-center">Link inválido ou indisponível.</div>;
+  const comKpi = !!data.setorKpi;
+  const abaVista = comKpi ? aba : 'okr';
+  const trocar = (a: 'okr' | 'kpi') => {
+    setAba(a);
+    try { const u = new URL(window.location.href); if (a === 'kpi') u.searchParams.set('aba', 'kpi'); else u.searchParams.delete('aba'); window.history.replaceState(null, '', u.toString()); } catch { /* só o endereço */ }
+  };
+  const botao = (a: 'okr' | 'kpi', rotulo: string, Icone: typeof Target) => (
+    <button type="button" onClick={() => trocar(a)} aria-pressed={abaVista === a}
+      className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${abaVista === a ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+      <Icone size={15} /> {rotulo}
+    </button>
+  );
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-8">
       <div className="max-w-6xl mx-auto">
-        <OkrView external={data.store} readOnly currentUser={{ id: '', name: data.store.owner } as User} kpiMapaExterno={data.kpi} kpiDonoExterno="" />
+        {comKpi && (
+          <div className="flex gap-1 p-1 mb-4 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm sm:w-fit" role="group" aria-label="O que ver">
+            {botao('okr', 'OKR', Target)}
+            {botao('kpi', 'KPI', Gauge)}
+          </div>
+        )}
+        {abaVista === 'kpi' && data.setorKpi
+          ? <KpisPublicoPainel kpi={data.setorKpi} />
+          : <OkrView external={data.store} readOnly currentUser={{ id: '', name: data.store.owner } as User} kpiMapaExterno={data.kpi} kpiDonoExterno="" />}
         <p className="text-center text-[11px] text-slate-400 mt-6">Visualização somente leitura · JimpNexus</p>
       </div>
     </div>

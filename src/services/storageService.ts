@@ -1171,12 +1171,13 @@ export const fetchPublicOkrPanel = async (token: string): Promise<{ rows: { owne
 
 // Lê o OKR pelo token público (sem login), via servidor. `kpi` = o valor dos KRs ligados ao
 // KPI dos setores (mesmo formato do painel, com dono ''); null = o servidor não mandou.
-export const fetchPublicOkrComKpi = async (token: string): Promise<{ store: OkrStore; kpi: unknown } | null> => {
+// `setorKpi` (30/10/2026) = os indicadores do setor do dono, para a aba KPI do link; null = sem KPI.
+export const fetchPublicOkrComKpi = async (token: string): Promise<{ store: OkrStore; kpi: unknown; setorKpi: unknown } | null> => {
   try {
     const res = await fetch(`/api/okr/public?token=${encodeURIComponent(token)}`);
     const out = await res.json().catch(() => ({}));
     if (!res.ok || !out.success) return null;
-    return { store: migrateToStore(out.data), kpi: Array.isArray(out.kpi) ? out.kpi : null };
+    return { store: migrateToStore(out.data), kpi: Array.isArray(out.kpi) ? out.kpi : null, setorKpi: out.setorKpi ?? null };
   } catch { return null; }
 };
 export const fetchPublicOkr = async (token: string): Promise<OkrStore | null> => (await fetchPublicOkrComKpi(token))?.store ?? null;

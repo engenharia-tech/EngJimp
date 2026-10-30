@@ -2140,6 +2140,57 @@ app.get("/api/okr/panel/public", async (req, res) => {
   return res.json({ success: true, rows, kpi });
 });
 
+// ---- KPI DO SETOR no link público do OKR (30/10/2026) ---------------------------------------
+// Edson, 30/10, a pedido do Leonardo: "conseguimos uma versão onde eu consiga compartilhar os KPIs também?" — um link
+// só, com OKR e KPI. O link do OKR passa a levar os indicadores ATIVOS do setor do DONO (só o setor dele, nunca "todos",
+// nem para o Edson), com metas e valores, para os mesmos cartões da aba. Faturamento (R$) vai junto: decisão do Edson
+// (30/10, "Com faturamento"). Do lançamento só período, dia e valor — nada de comentário nem de quem lançou.
+// Falhou (banco fora, dono sem setor)? setorKpi = null e o link mostra só o OKR, como antes.
+const KPI_IND_PUBLICO = ["id", "setor", "nome", "descricao", "unidade", "casas", "sentido", "frequencia", "consolidacao",
+  "prazo_dias", "inicio", "ativo", "tipo", "calc_medida", "calc_escopo", "calc_fonte", "diario_desde"];
+const kpiDesdePublico = (): string => {   // o mesmo corte da tela (kpisDesde): 36 meses, no fuso de Joinville
+  const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const d = new Date(Date.UTC(+hoje.slice(0, 4), +hoje.slice(5, 7) - 1 - 36, 1));
+  return d.toISOString().slice(0, 10);
+};
+const lerKpiDoSetorPublico = async (admin: any, dono: string): Promise<any | null> => {
+  try {
+    const { data: us, error: eu } = await lerComUsuarioTeste((c) => admin.from("users").select(c), "username, sector");
+    if (eu) return null;
+    const u = (us || []).find((x: any) => String(x.username || "").trim().toLowerCase() === dono);
+    if (!u || u.usuario_teste) return null;
+    const chave = setorChaveSrv(u.sector);
+    if (!chave) return null;
+    const { data: todos, error: ei } = await admin.from("kpis_indicador").select("*");
+    if (ei) return null;
+    const inds = (todos || []).filter((i: any) => i.ativo !== false && setorChaveSrv(i.setor) === chave)
+      .map((i: any) => Object.fromEntries(KPI_IND_PUBLICO.map(c => [c, i[c] ?? null])));
+    if (!inds.length) return null;
+    const ids = inds.map((i: any) => String(i.id));
+    const desde = kpiDesdePublico();
+    const { data: metas, error: em } = await admin.from("kpis_meta").select("indicador_id, vale_desde, meta, limite_alerta").in("indicador_id", ids);
+    if (em) return null;
+    const lancs: any[] = [];
+    for (let de = 0; ; de += 1000) {
+      const { data, error } = await admin.from("kpis_lancamento").select("id, indicador_id, periodo, valor, dia")
+        .in("indicador_id", ids).gte("periodo", desde).order("periodo").order("id").range(de, de + 999);
+      if (error) return null;
+      lancs.push(...(data || []));
+      if ((data || []).length < 1000) break;
+      if (de >= 50000) return null;
+    }
+    const calc: Record<string, any[]> = {}; const calcErro: string[] = [];
+    await Promise.all(inds.filter((i: any) => i.tipo === "calculado").map(async (i: any) => {
+      const { data, error } = await admin.rpc("kpis_calc_interno", { p_indicador: i.id, p_de: desde, p_ate: null });
+      if (error) calcErro.push(String(i.id)); else calc[String(i.id)] = Array.isArray(data) ? data : [];
+    }));
+    return { setor: String(u.sector || ""), desde, indicadores: inds, metas: metas || [], lancamentos: lancs, calc, calcErro };
+  } catch (e: any) {
+    console.warn("[okr/public] KPI do setor não lido:", String(e?.message || e).slice(0, 120));
+    return null;
+  }
+};
+
 // GET /api/okr/public?token=... — leitura PUBLICA (sem login) do OKR. So leitura.
 app.get("/api/okr/public", async (req, res) => {
   const token = String((req.query && (req.query as any).token) || "").trim();
@@ -2168,7 +2219,8 @@ app.get("/api/okr/public", async (req, res) => {
     kpi = vals ? pedidos.filter(p => vals.has(`${p.dono}|${p.id}|${p.de}|${p.ate}`))
       .map(p => ({ dono: "", k: p.id, de: p.de, ate: p.ate, ...vals.get(`${p.dono}|${p.id}|${p.de}|${p.ate}`)! })) : null;
   }
-  return res.json({ success: true, data: row.data, kpi });
+  const setorKpi = dono ? await lerKpiDoSetorPublico(admin, dono) : null;
+  return res.json({ success: true, data: row.data, kpi, setorKpi });
 });
 
 // ========================= OKR PARECIDOS =========================
