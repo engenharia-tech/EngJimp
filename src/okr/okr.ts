@@ -2,6 +2,8 @@
 // OKR_Q4_2026_Edson_Farias) e helpers de progresso/cor. Guardado no banco
 // (tabela okr_state, RLS só-Edson) — ver storageService.fetchOkr/saveOkr.
 
+import { CausaTipo, ehCausaTipo } from '../utils/causaDesvio';
+
 export type OkrFormat = 'bin' | 'pct' | 'num';
 export type OkrStatus = 'Não iniciado' | 'Em andamento' | 'Concluído' | 'Em risco';
 
@@ -42,6 +44,19 @@ export interface OkrKeyResult {
   // gravado; o "atual" é lido na hora do KPI (src/kpis/kpisNoOkr.ts) e nunca volta para cá.
   // No link público do painel o servidor troca o uuid por uma chave opaca "k<n>".
   kpiId?: string;
+  // ---- Causa do desvio (03/11/2026) ----
+  // Por que o KR está em risco ou não foi atingido: processo, pessoas ou pontual (as mesmas três do KPI, 036).
+  desvio?: OkrDesvio;
+}
+
+export interface OkrDesvio {
+  causa: CausaTipo;
+  texto: string;         // o que aconteceu
+  acao?: string;         // a ação corretiva
+  prazo?: string;        // ISO yyyy-mm-dd, da ação
+  feita?: boolean;
+  em?: string;           // carimbo ISO da última mudança
+  por?: string;          // o nome de quem registrou (o OKR guarda nome, como os executores)
 }
 
 // Referência a alguém do cadastro de executores: id (para acompanhar renomeação)
@@ -168,9 +183,18 @@ const saneRef = (r: any) => isObj(r) ? { ...r, name: str(r.name), ...(r.id != nu
 const KPI_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const saneKpiId = (v: any): string | undefined =>
   typeof v !== 'string' ? undefined : KPI_UUID.test(v.trim()) ? v.trim().toLowerCase() : /^k\d{1,5}$/.test(v) ? v : undefined;
-const saneKr = ({ kpiId, ...k }: any): OkrKeyResult => ({
+// Causa torta (sem um dos três tipos) some: a tela pede de novo, nunca mostra "undefined".
+const saneDesvio = (d: any): OkrDesvio | undefined => !isObj(d) || !ehCausaTipo(d.causa) ? undefined : {
+  causa: d.causa, texto: str(d.texto),
+  ...(d.acao != null && str(d.acao).trim() ? { acao: str(d.acao) } : {}),
+  ...(d.prazo != null && str(d.prazo) ? { prazo: str(d.prazo) } : {}),
+  ...(d.feita ? { feita: true } : {}),
+  ...(d.em != null ? { em: str(d.em) } : {}), ...(d.por != null ? { por: str(d.por) } : {}),
+};
+const saneKr = ({ kpiId, desvio, ...k }: any): OkrKeyResult => ({
   ...k,
   ...(saneKpiId(kpiId) ? { kpiId: saneKpiId(kpiId) } : {}),
+  ...(saneDesvio(desvio) ? { desvio: saneDesvio(desvio) } : {}),
   id: str(k.id), title: str(k.title), metric: str(k.metric), initiatives: str(k.initiatives), status: str(k.status, 'Não iniciado'),
   notes: optStr(k.notes), uid: optStr(k.uid),
   format: FORMATS.has(k.format) ? k.format : 'num',
@@ -409,6 +433,15 @@ export const krProgress = (kr: OkrKeyResult): number => {
   if (denom === 0) return kr.current >= kr.target ? 1 : 0;
   const p = (kr.current - kr.baseline) / denom;
   return Math.max(0, Math.min(1, p));
+};
+
+// Causa do desvio (03/11/2026): o KR pede a causa quando está EM RISCO, ou quando o prazo passou sem chegar à meta.
+// Concluído e arquivado não pedem. `hoje` = yyyy-mm-dd.
+export const krPedeCausa = (kr: OkrKeyResult, hoje: string): boolean => {
+  if (kr.archived || kr.status === 'Concluído' || krProgress(kr) >= 1) return false;
+  if (kr.status === 'Em risco') return true;
+  const due = parseIsoDay(kr.due);
+  return !!due && kr.due.slice(0, 10) < hoje;
 };
 
 export const objProgress = (o: OkrObjective): number => {

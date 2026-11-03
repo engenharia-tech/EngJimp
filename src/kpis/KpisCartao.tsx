@@ -1,7 +1,8 @@
 import React from 'react';
 import { ArrowDown, ArrowUp, Clock, Minus, TrendingDown, TrendingUp, Link2, Calculator, Archive } from 'lucide-react';
-import { FAROL_CLASSE, FAROL_ROTULO, FECHA_ROTULO, KpisFarol, KpisIndicador, KpisTendencia, SENTIDO_ROTULO, fmtDia, fmtValor, rotuloDia, rotuloPeriodo } from './kpis';
+import { KpisCausa, FAROL_CLASSE, FAROL_ROTULO, FECHA_ROTULO, KpisFarol, KpisIndicador, KpisTendencia, SENTIDO_ROTULO, fmtDia, fmtValor, rotuloDia, rotuloPeriodo } from './kpis';
 import { KpisResumo } from './kpisDados';
+import { CausaChip, SemCausaChip } from './KpisCausa';
 
 // Peças pequenas da aba, usadas no painel, no detalhe e no lançar.
 
@@ -99,7 +100,8 @@ const CorpoDiario: React.FC<{ i: KpisIndicador; r: KpisResumo }> = ({ i, r }) =>
   );
 };
 
-export const KpisCartao: React.FC<{ i: KpisIndicador; r: KpisResumo; ligados?: number; mostrarSetor?: boolean; onAbrir: () => void }> = ({ i, r, ligados, mostrarSetor, onAbrir }) => {
+// causa (036): a do período que o farol mostra; semCausa: o farol está FORA DA META e ninguém registrou a causa.
+export const KpisCartao: React.FC<{ i: KpisIndicador; r: KpisResumo; ligados?: number; mostrarSetor?: boolean; causa?: KpisCausa | null; semCausa?: boolean; onAbrir: () => void }> = ({ i, r, ligados, mostrarSetor, causa, semCausa, onAbrir }) => {
   const cor = FAROL_CLASSE[r.farol];
   return (
     <button type="button" onClick={onAbrir}
@@ -114,6 +116,7 @@ export const KpisCartao: React.FC<{ i: KpisIndicador; r: KpisResumo; ligados?: n
             {mostrarSetor && <SetorChip setor={i.setor} />}
             {i.tipo === 'calculado' && <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400"><Calculator size={11} /> calculado</span>}
             {!i.ativo && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400"><Archive size={11} /> arquivado</span>}
+            {causa ? <CausaChip tipo={causa.causa} acaoAberta={!!causa.acao && !causa.acaoFeita} /> : semCausa ? <SemCausaChip /> : null}
           </div>
         </div>
         {!r.erroCalculo && <FarolChip f={r.farol} className="shrink-0" />}

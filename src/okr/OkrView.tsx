@@ -14,7 +14,13 @@ import { ExecutorMultiPicker, ExecutorSinglePicker } from './ExecutorPicker';
 import { useOkrWriter, OkrWriteStatus } from './useOkrWriter';
 import { useToast } from '../components/Toast';
 import { useKpisNoOkr, aplicarKpis, estadoKpi, krLigado, mapaDoServidor, KpisMapa, KpiEstado } from '../kpis/kpisNoOkr';
-import { fmtValor, fmtDia, rotuloPeriodo } from '../kpis/kpis';
+import { fmtValor, fmtDia, rotuloPeriodo, inicioPeriodo, KpisCausa } from '../kpis/kpis';
+import { kpisService } from '../kpis/kpisService';
+import { kpisDesde } from '../kpis/kpisDados';
+import { CausasResumo } from '../kpis/KpisCausa';
+import { contarCausas } from '../utils/causaDesvio';
+import { KrDesvio } from './KrDesvio';
+import { krPedeCausa } from './okr';
 import { KpisLigarDialog, KpisDonoOkr, KpisLigacao } from './KpisLigarDialog';
 import { KpisPublicoPainel, KpisSetorPublico, setorKpiDoServidor } from '../kpis/KpisPublico';
 import { useAvisosParecidos } from './ParecidosAviso';
@@ -440,6 +446,29 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
   }, [active]);
   const pfChart = useMemo(() => { const b: Record<string, number> = {}; (store?.portfolio || []).forEach(i => { b[i.status] = (b[i.status] || 0) + 1; }); return Object.entries(b).map(([name, value]) => ({ name, value })); }, [store]);
   const totals = useMemo(() => { const krs = (active?.objectives || []).flatMap(o => o.keyResults); return { krs: krs.length, done: krs.filter(k => krProgress(k) >= 1 || k.status === 'Concluído').length, risk: krs.filter(k => k.status === 'Em risco').length }; }, [active]);
+  // Causa do desvio (03/11/2026): o resumo do período (KRs com causa, os que pedem e não têm, as ações em aberto)…
+  const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const causasOkr = useMemo(() => {
+    const krs = (active?.objectives || []).flatMap(o => o.keyResults).filter(k => !k.archived);
+    const com = krs.filter(k => k.desvio);
+    return { c: contarCausas(com.map(k => ({ causa: k.desvio!.causa }))), sem: krs.filter(k => !k.desvio && krPedeCausa(k, hoje)).length,
+      abertas: com.filter(k => k.desvio!.acao && !k.desvio!.feita).length };
+  }, [active, hoje]);
+  // …e as causas que o setor registrou nos indicadores LIGADOS (036). Falhou ou sem a 036: nada aparece, o OKR segue.
+  const idsLigados = useMemo(() => Array.from(new Set((active?.objectives || []).flatMap(o => o.keyResults)
+    .map(k => (typeof k.kpiId === 'string' && /^[0-9a-f-]{36}$/i.test(k.kpiId) ? k.kpiId : '')).filter(Boolean))).sort(), [active]);
+  const [kpiCausas, setKpiCausas] = useState<Map<string, KpisCausa[]>>(new Map());
+  useEffect(() => {
+    if (external || !idsLigados.length) { setKpiCausas(new Map()); return; }
+    let vivo = true;
+    kpisService.listCausas(kpisDesde(), idsLigados).then(xs => {
+      if (!vivo) return;
+      const m = new Map<string, KpisCausa[]>();
+      (xs || []).forEach(c => { const l = m.get(c.indicadorId); if (l) l.push(c); else m.set(c.indicadorId, [c]); });
+      setKpiCausas(m);
+    }).catch(() => { if (vivo) setKpiCausas(new Map()); });
+    return () => { vivo = false; };
+  }, [external, idsLigados.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <div className="p-10 text-center text-slate-400"><RefreshCw className="animate-spin inline mr-2" size={18} /> Carregando o OKR…</div>;
   if (!store || !active) return (
@@ -565,6 +594,10 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
         </>)}
       </div>
 
+      {(causasOkr.c.processo + causasOkr.c.pessoas + causasOkr.c.pontual > 0 || causasOkr.sem > 0) && (
+        <CausasResumo c={causasOkr.c} semCausa={causasOkr.sem} acoesAbertas={causasOkr.abertas} titulo={`Por que não bateu · ${active.label}`} />
+      )}
+
       {/* Objetivos (editáveis) */}
       <div className="flex items-center justify-between px-1">
         <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Objetivos & resultados-chave</h3>
@@ -669,6 +702,18 @@ const OkrViewInner: React.FC<OkrViewProps> = ({ currentUser, projects = [], acti
                         ? <button onClick={() => updateKr(o.id, k, { archived: false })} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"><ArchiveRestore size={13} /> Desarquivar</button>
                         : <button onClick={() => { if (window.confirm(`Arquivar o ${k.id}? Ele some da lista e para de contar no progresso — dá para desarquivar depois.`)) updateKr(o.id, k, { archived: true }); }} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40"><Archive size={13} /> Arquivar</button>)}
                     </div>
+
+                    {(() => {
+                      // Causa do desvio: a do KR e, se ligado ao KPI, as do indicador dentro do período do KR (a mais nova primeiro).
+                      const est = krLigado(k) ? estadoKpi(k, kpiDono, kpiMapa, kpiLendo) : null;
+                      const freq = est?.info?.frequencia || 'mensal';
+                      const de = parseIsoDay(k.start) ? inicioPeriodo(freq, String(k.start).slice(0, 10)) : '';
+                      const ate = parseIsoDay(k.due) ? String(k.due).slice(0, 10) : '9999-12-31';
+                      const kcs = k.kpiId ? (kpiCausas.get(k.kpiId) || []).filter(c => c.periodo >= de && c.periodo <= ate).sort((a, b) => b.periodo.localeCompare(a.periodo)) : [];
+                      return <KrDesvio k={k} pede={krPedeCausa(k, hoje)} readOnly={readOnly} nomeQuem={[currentUser.name, (currentUser as any).surname].filter(Boolean).join(' ')}
+                        kpiCausas={kcs} rotuloPeriodoKpi={est?.info?.frequencia ? (per => rotuloPeriodo(freq, per)) : undefined}
+                        onSalvar={d => updateKr(o.id, k, { desvio: d })} />;
+                    })()}
 
                     {/* Iniciativas e Observações (editáveis) */}
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">

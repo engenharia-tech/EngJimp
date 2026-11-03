@@ -7,9 +7,9 @@
 import { supabase, fetchAllOkr } from '../services/storageService';
 import { authHeaders } from '../services/authToken';
 import {
-  KpisAcesso, KpisFrequencia, KpisHist, KpisIndicador, KpisIndicadorInput, KpisLancamento, KpisMeta, KpisPontoCalculado, KpisSetor, KpisTipoAtividade,
-  KPIS_HIST_COLS, KPIS_HIST_COLS_035, KPIS_IND_COLS, KPIS_IND_COLS_023, KPIS_IND_COLS_025, KPIS_IND_COLS_035, KPIS_LANC_COLS, KPIS_LANC_COLS_035, KPIS_META_COLS,
-  mapAcesso, mapHist, mapIndicador, mapLancamento, mapMeta, precisa026, precisa027, toIndicadorRow, validarIndicador,
+  KpisAcesso, KpisCausa, KpisCausaInput, KpisFrequencia, KpisHist, KpisIndicador, KpisIndicadorInput, KpisLancamento, KpisMeta, KpisPontoCalculado, KpisSetor, KpisTipoAtividade,
+  KPIS_CAUSA_COLS, KPIS_HIST_COLS, KPIS_HIST_COLS_035, KPIS_IND_COLS, KPIS_IND_COLS_023, KPIS_IND_COLS_025, KPIS_IND_COLS_035, KPIS_LANC_COLS, KPIS_LANC_COLS_035, KPIS_META_COLS,
+  mapAcesso, mapCausa, mapHist, mapIndicador, mapLancamento, mapMeta, precisa026, precisa027, toIndicadorRow, validarIndicador,
 } from './kpis';
 
 // A mudança não se aplica mais (sumiu, mudou por outra pessoa). A mensagem é para a pessoa.
@@ -53,7 +53,11 @@ export interface KpisService {
   valoresLigados(pedidos: KpisPedido[]): Promise<KpisValorLigado[] | null>; // null = 023 ausente
   ultimoAntes(indicadorId: string, antesDe: string): Promise<KpisLancamento | null>; // sugestão da partida do KR
   contarLigados(): Promise<Map<string, number> | null>;  // quantos KRs apontam para cada indicador (quem vê todos)
-  mudarSetor(userId: string, setor: string, setorAntes?: string): Promise<{ gravou: boolean }>; // só o Edson e os admins de OKR (o servidor confere); setorAntes = o que a tela via (409 se outro mudou no meio)
+  mudarSetor(userId: string, setor: string, setorAntes?: string): Promise<{ gravou: boolean }>;
+  // 036: a causa do desvio. listCausas: null = a 036 não está no banco (a tela não mostra a causa).
+  listCausas(desde: string, indicadores?: string[]): Promise<KpisCausa[] | null>;
+  salvarCausa(indicadorId: string, periodo: string, input: KpisCausaInput, existente: { id: string; versao: string } | null): Promise<KpisCausa>;
+  apagarCausa(id: string, versao: string): Promise<void>; // só o Edson e os admins de OKR (o servidor confere); setorAntes = o que a tela via (409 se outro mudou no meio)
 }
 
 // A 023 não está no banco (ou faltou o reload do PostgREST): PGRST202 (função) /
@@ -187,6 +191,52 @@ const listHist = async (indicadorId: string): Promise<KpisHist[]> => {
     .eq('indicador_id', indicadorId).order('em', { ascending: false }).order('id', { ascending: false }).limit(300);
   if (error) throw erro(error);
   return (data || []).map(mapHist);
+};
+
+// ---- 036: causa do desvio ------------------------------------------------------------------
+// Tabela que não existe = a 036 não rodou: null (a tela segue sem a causa), nunca "não tem nenhuma".
+const listCausas = async (desde: string, indicadores?: string[]): Promise<KpisCausa[] | null> => {
+  if (indicadores && !indicadores.length) return [];
+  try {
+    return (await todas((a, b) => {
+      let q = supabase.from('kpis_causa').select(KPIS_CAUSA_COLS).gte('periodo', desde);
+      if (indicadores) q = q.in('indicador_id', indicadores.slice(0, 300));
+      return q.order('periodo').order('id').range(a, b);
+    })).map(mapCausa);
+  } catch (e: any) {
+    if (['PGRST205', '42P01'].includes(String(e?.code || '')) || /kpis_causa/.test(String(e?.message || '')) && /could not find|does not exist|schema cache/i.test(String(e?.message || ''))) return null;
+    throw e;
+  }
+};
+const linhaCausa = (x: KpisCausaInput) => ({
+  causa: x.causa, descricao: x.descricao.trim(), acao: x.acao.trim() || null, acao_prazo: x.acaoPrazo || null, acao_feita: !!x.acaoFeita,
+});
+const porQueCausa = async (id: string, versao?: string): Promise<Error> => {
+  const { data, error } = await supabase.from('kpis_causa').select('id, atualizado_em').eq('id', id).limit(1);
+  if (error) return erro(error);
+  if (!data || !data.length) return new KpisStaleError('Esta causa foi apagada por outra pessoa (ou você não tem mais acesso a este setor) — atualizei a tela.');
+  if (versao && (data[0] as any).atualizado_em !== versao) return new KpisStaleError('Esta causa foi alterada por outra pessoa enquanto a tela estava aberta — atualizei; confira e faça de novo.');
+  return new Error('Sem permissão: a causa é registrada pelas pessoas do setor do indicador, pelo Edson ou por um admin de OKR.');
+};
+const salvarCausa = async (indicadorId: string, periodo: string, input: KpisCausaInput, existente: { id: string; versao: string } | null): Promise<KpisCausa> => {
+  if (existente) {
+    const { data, error } = await supabase.from('kpis_causa').update(linhaCausa(input)).eq('id', existente.id).eq('atualizado_em', existente.versao).select(KPIS_CAUSA_COLS);
+    if (error) throw erro(error);
+    if (!data || !data.length) throw await porQueCausa(existente.id, existente.versao);
+    return mapCausa(data[0]);
+  }
+  const { data, error } = await supabase.from('kpis_causa').insert({ indicador_id: indicadorId, periodo, ...linhaCausa(input) }).select(KPIS_CAUSA_COLS);
+  if (error) {
+    if (String(error.code) === '23505') throw new KpisStaleError('Outra pessoa registrou a causa deste período enquanto a tela estava aberta — atualizei; confira e corrija se precisar.');
+    throw erro(error);
+  }
+  if (!data || !data.length) throw new Error('Sem permissão: a causa é registrada pelas pessoas do setor do indicador, pelo Edson ou por um admin de OKR.');
+  return mapCausa(data[0]);
+};
+const apagarCausa = async (id: string, versao: string): Promise<void> => {
+  const { data, error } = await supabase.from('kpis_causa').delete().eq('id', id).eq('atualizado_em', versao).select('id');
+  if (error) throw erro(error);
+  if (!data || !data.length) { const why = await porQueCausa(id, versao); if (why instanceof KpisStaleError && /apagada/.test(why.message)) return; throw why; }
 };
 
 const serieCalculada = async (indicadorId: string, de: string | null, ate: string | null): Promise<KpisPontoCalculado[]> => {
@@ -418,7 +468,7 @@ const mudarSetor = async (userId: string, setor: string, setorAntes?: string): P
 export const kpisService: KpisService = {
   acesso, setores, tiposAtividade, listIndicadores, listMetas, listLancamentos, listHist, serieCalculada, fontesNovas, cronograma, diario,
   criarIndicador, editarIndicador, arquivarIndicador, apagarIndicador, excluirIndicador, apagarLancamentosDoIndicador, contarLancamentos, salvarMeta, apagarMeta,
-  lancar, corrigir, apagarLancamento, valoresLigados, ultimoAntes, contarLigados, mudarSetor,
+  lancar, corrigir, apagarLancamento, valoresLigados, ultimoAntes, contarLigados, mudarSetor, listCausas, salvarCausa, apagarCausa,
 };
 
 const NET_RE = /failed to fetch|fetch failed|networkerror|load failed|network request failed|timed? ?out|aborted/i;
@@ -441,6 +491,8 @@ export const kpisErrorMessage = (e: any, fallback: string, leitura = false): str
   if (/KPIS_LANCAR_POR_DIA/.test(m)) return 'Este indicador é lançado todo dia — atualize a página (F5) e escolha o dia. Nada foi salvo.';
   if (/KPIS_PERIODO_COM_TOTAL/.test(m)) return 'Este período já tem o valor do período inteiro — para lançar os dias, apague antes aquele valor (no detalhe do indicador). Nada foi salvo.';
   if (/KPIS_ANTES_DO_DIARIO|KPIS_DIARIO_MISTURA|KPIS_DIARIO_COM_DIAS|KPIS_DIARIO_CALCULADO/.test(m)) return `${m.replace(/^.*?KPIS_[A-Z_]+:\s*/, '')} Nada foi salvo.`;
+  if (/KPIS_CAUSA_FUTURO/.test(m)) return 'Este período ainda não começou — a causa é de um período que já está correndo ou fechou. Nada foi salvo.';
+  if (/kpis_causa_descricao/.test(m)) return 'Diga o que aconteceu (de 3 a 500 letras). Nada foi salvo.';
   if (/KPIS_ANTES_DO_INICIO/.test(m)) return 'Este período é anterior ao início do indicador.';
   if (/KPIS_MOTIVO_LONGO/.test(m)) return 'O motivo vai até 300 letras. Nada foi salvo.';
   if (/KPIS_MOTIVO/.test(m)) return 'Diga o motivo da correção (pelo menos 3 letras). Nada foi salvo.';

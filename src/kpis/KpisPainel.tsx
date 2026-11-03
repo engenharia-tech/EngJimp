@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Gauge, CheckCircle2, AlertTriangle, XCircle, Clock, Layers, Archive } from 'lucide-react';
-import { KpisIndicador, setorChave } from './kpis';
-import { KpisDados, KpisResumo, resumoDo } from './kpisDados';
+import { KpisIndicador, inicioPeriodo, hojeSP, setorChave } from './kpis';
+import { KpisDados, KpisResumo, causaDoPeriodo, resumoDo } from './kpisDados';
+import { CausasResumo } from './KpisCausa';
+import { contarCausas } from '../utils/causaDesvio';
 import { KpisCartao } from './KpisCartao';
 
 // PAINEL: os quadros do topo, a visão por setor (para quem vê todos) e um cartão por
@@ -23,7 +25,21 @@ export const KpisPainel: React.FC<{
   onFiltrarSetor: (chave: string) => void;
 }> = ({ dados, inds, visaoPorSetor, mostrarSetor, onAbrir, onFiltrarSetor }) => {
   const [verArquivados, setVerArquivados] = useState(false);
-  const itens = useMemo(() => inds.map(i => ({ i, r: resumoDo(i, dados) })), [inds, dados]);
+  const itens = useMemo(() => inds.map(i => {
+    const r = resumoDo(i, dados);
+    // 036: a causa do período que o farol mostra (o em curso, no diário; senão o último com valor).
+    const per = r.ritmo ? inicioPeriodo(i.frequencia, hojeSP()) : r.ultimo?.periodo;
+    const causa = dados.causas && per ? causaDoPeriodo(dados, i.id, per) ?? null : null;
+    return { i, r, causa, semCausa: !!dados.causas && i.ativo && r.farol === 'vermelho' && !causa };
+  }), [inds, dados]);
+  // 036: as causas dos indicadores daqui, dos últimos 12 meses.
+  const causas = useMemo(() => {
+    if (!dados.causas) return null;
+    const ids = new Set(inds.filter(i => i.ativo).map(i => i.id));
+    const h = hojeSP(); const corte = `${+h.slice(0, 4) - 1}${h.slice(4, 7)}-01`;
+    const xs = inds.flatMap(i => ids.has(i.id) ? (dados.causas!.get(i.id) || []) : []).filter(c => c.periodo >= corte);
+    return { c: contarCausas(xs), abertas: xs.filter(x => x.acao && !x.acaoFeita).length };
+  }, [inds, dados]);
   const ativos = itens.filter(x => x.i.ativo);
   const conta = (f: (r: KpisResumo) => boolean) => ativos.filter(x => f(x.r)).length;
 
@@ -53,6 +69,10 @@ export const KpisPainel: React.FC<{
         <Quadro label="Fora da meta" value={conta(r => r.farol === 'vermelho')} icon={<XCircle size={14} />} cls="text-rose-600 dark:text-rose-400" />
         <Quadro label="Atrasados" value={conta(r => r.pend.situacao === 'atrasado')} icon={<Clock size={14} />} cls="text-orange-600 dark:text-orange-400" />
       </div>
+
+      {causas && (causas.c.processo + causas.c.pessoas + causas.c.pontual > 0 || itens.some(x => x.semCausa)) && (
+        <CausasResumo c={causas.c} semCausa={itens.filter(x => x.semCausa).length} acoesAbertas={causas.abertas} titulo="Por que não bateu (12 meses)" />
+      )}
 
       {visaoPorSetor && setores.length > 0 && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden">
@@ -87,8 +107,8 @@ export const KpisPainel: React.FC<{
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {mostrados.map(({ i, r }) => (
-            <KpisCartao key={i.id} i={i} r={r} mostrarSetor={mostrarSetor} ligados={dados.ligados?.get(i.id)} onAbrir={() => onAbrir(i)} />
+          {mostrados.map(({ i, r, causa, semCausa }) => (
+            <KpisCartao key={i.id} i={i} r={r} mostrarSetor={mostrarSetor} ligados={dados.ligados?.get(i.id)} causa={causa} semCausa={semCausa} onAbrir={() => onAbrir(i)} />
           ))}
         </div>
       )}

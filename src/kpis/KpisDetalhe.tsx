@@ -7,10 +7,11 @@ import {
   KpisHist, KpisIndicador, KpisLancamento, SENTIDO_ROTULO, farol, fmtCarimbo, fmtValor, limiteEfetivo, metaVigente,
   numeroExatoParaCampo, parseNumero, prazoDias, rotuloDia, rotuloFrequencia, rotuloPeriodo, rotuloPeriodoLongo, rotuloBase, rotuloCalculo,
 } from './kpis';
-import { KpisDados, resumoDo } from './kpisDados';
+import { KpisDados, causaDoPeriodo, resumoDo } from './kpisDados';
 import { KpisService, kpisErrorMessage } from './kpisService';
 import { FarolChip, SetorChip, AtrasoSelo, TendenciaIcon } from './KpisCartao';
 import { KpisDiario } from './KpisDiario';
+import { CausaChip, KpisCausaEditor, SemCausaChip } from './KpisCausa';
 
 // DETALHE de um indicador: o gráfico (até 36 períodos, com a meta em degrau e a faixa de
 // atenção), a tabela período a período (quem lançou, quando, se foi corrigido) e o histórico
@@ -34,6 +35,10 @@ export const KpisDetalhe: React.FC<{
   const [gravando, setGravando] = useState(false);
   const [abrirHist, setAbrirHist] = useState<string | null>(null);  // período cujo histórico está aberto
   const [diarioPer, setDiarioPer] = useState<string | null>(null);  // 035: o período diário aberto embaixo (null = o em curso)
+  const [abrirCausa, setAbrirCausa] = useState<string | null>(null); // 036: o período cuja causa está aberta embaixo
+  // 036: a causa existe no banco (null = a 036 não rodou: nada de causa na tela). Registra quem é do setor, ou quem administra.
+  const comCausa = !!dados.causas;
+  const podeCausa = i.ativo && (i.podeLancar || !!i.podeGerir || administra);
 
   const lerHist = () => {
     if (i.tipo === 'calculado') { setHist([]); return; }
@@ -171,6 +176,12 @@ export const KpisDetalhe: React.FC<{
                   {linhas.map(p => {
                     const m = metaVigente(metas, p.periodo); const l = p.lanc;
                     const hs = histDoPeriodo(p.periodo);
+                    // 036: fora da meta (fechado) ou correndo fora do ritmo (diário em curso) → a causa aparece aqui.
+                    const fr = p.valor !== null && !emCurso(p.periodo) ? farol(i.sentido, p.valor, m) : null;
+                    const frCurso = r.ritmo && r.parcial && r.parcial.periodo === p.periodo ? r.ritmo.farol : null;
+                    const desvio = [fr, frCurso].some(f => f === 'vermelho' || f === 'amarelo');
+                    const cz = comCausa ? causaDoPeriodo(dados, i.id, p.periodo) : undefined;
+                    const abreCausa = () => setAbrirCausa(a => a === p.periodo ? null : p.periodo);
                     return (
                       <React.Fragment key={p.periodo}>
                         <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
@@ -182,7 +193,14 @@ export const KpisDetalhe: React.FC<{
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{m ? fmtValor(m.meta, i.unidade, i.casas) : '—'}</td>
                           <td className="px-4 py-2">{emCurso(p.periodo) ? <span className="text-[11px] font-semibold text-slate-400" title="O período ainda não fechou: o farol sai quando ele terminar">em curso</span>
-                            : p.valor !== null ? <FarolChip f={farol(i.sentido, p.valor, m)} /> : <span className="text-[11px] text-slate-400">—</span>}</td>
+                            : p.valor !== null ? <FarolChip f={farol(i.sentido, p.valor, m)} /> : <span className="text-[11px] text-slate-400">—</span>}
+                            {comCausa && (cz || desvio) && (
+                              <button type="button" onClick={abreCausa} className="block mt-1" title={cz ? 'Ver a causa' : 'Registrar a causa'}>
+                                {cz ? <CausaChip tipo={cz.causa} acaoAberta={!!cz.acao && !cz.acaoFeita} />
+                                  : fr === 'vermelho' ? <SemCausaChip />
+                                  : podeCausa ? <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">+ causa</span> : null}
+                              </button>
+                            )}</td>
                           <td className="px-4 py-2 text-[11px] text-slate-500 dark:text-slate-400">
                             {i.tipo === 'calculado' ? rotuloBase(i, p.atividades ?? 0) : p.dias && p.dias.length ? (
                               <button type="button" onClick={() => setDiarioPer(p.periodo)} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline" title="Ver os dias deste período (no quadro acima)">{p.dias.length} dia(s) lançado(s) — ver</button>
@@ -206,6 +224,14 @@ export const KpisDetalhe: React.FC<{
                             {l && (podeEditar ?? administra) && editando !== l.id && <button onClick={() => apagar(l)} disabled={gravando} className="ml-2 text-slate-300 hover:text-rose-500" title="Apagar este lançamento (fica no histórico)"><Trash2 size={13} /></button>}
                           </td>
                         </tr>
+                        {abrirCausa === p.periodo && comCausa && (
+                          <tr className="bg-blue-50/40 dark:bg-blue-900/10">
+                            <td colSpan={6} className="px-4 py-3">
+                              <KpisCausaEditor key={`${p.periodo}|${cz?.atualizadoEm || ''}`} i={i} periodo={p.periodo} causa={cz} pode={podeCausa} service={service} nomes={nomes}
+                                onGravou={onGravou} onFechar={() => setAbrirCausa(null)} />
+                            </td>
+                          </tr>
+                        )}
                         {abrirHist === p.periodo && hs.length > 0 && (
                           <tr className="bg-amber-50/50 dark:bg-amber-900/10">
                             <td colSpan={6} className="px-4 py-2">

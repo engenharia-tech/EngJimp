@@ -8,6 +8,7 @@
 // período gravado não é o que a tela mostrou", nunca como dado torto no banco.
 
 import { PREFIXO_SETOR_REPRESENTANTE } from '../utils/cargos';
+import { CausaTipo, ehCausaTipo } from '../utils/causaDesvio';
 
 export type KpisFrequencia = 'semanal' | 'mensal' | 'trimestral';
 export type KpisSentido = 'maior' | 'menor';
@@ -83,6 +84,23 @@ export interface KpisHist {
   por: string | null;
   em: string;
 }
+
+// 036: por que o período não bateu a meta (processo, pessoas ou pontual) e a ação corretiva. Uma por indicador e período.
+export interface KpisCausa {
+  id: string;
+  indicadorId: string;
+  periodo: string;                // o início do período
+  causa: CausaTipo;
+  descricao: string;              // o que aconteceu
+  acao: string;                   // a ação corretiva ('' = nenhuma)
+  acaoPrazo: string | null;
+  acaoFeita: boolean;
+  criadoPor: string | null;
+  criadoEm: string;
+  atualizadoPor: string | null;
+  atualizadoEm: string;           // versão da linha
+}
+export interface KpisCausaInput { causa: CausaTipo; descricao: string; acao: string; acaoPrazo: string | null; acaoFeita: boolean; }
 
 // Um período de indicador CALCULADO (kpis_serie_calculada): o valor e quantos registros entraram.
 // valor null = sem base (média ou % num período sem projeto concluído) — nunca vira 0.
@@ -184,6 +202,7 @@ export const KPIS_LANC_COLS = 'id, indicador_id, periodo, valor, comentario, lan
 export const KPIS_HIST_COLS = 'id, lancamento_id, indicador_id, periodo, acao, valor_antes, valor_depois, comentario_antes, motivo, por, em';
 export const KPIS_LANC_COLS_035 = KPIS_LANC_COLS + ', dia';                             // 035
 export const KPIS_HIST_COLS_035 = KPIS_HIST_COLS + ', dia';                             // 035
+export const KPIS_CAUSA_COLS = 'id, indicador_id, periodo, causa, descricao, acao, acao_prazo, acao_feita, criado_por, criado_em, atualizado_por, atualizado_em'; // 036
 
 const s = (v: unknown): string => typeof v === 'string' ? v : v == null ? '' : String(v);
 const n = (v: unknown, def = 0): number => { const x = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN; return Number.isFinite(x) ? x : def; };
@@ -227,6 +246,12 @@ export const mapHist = (r: any): KpisHist => ({
   id: n(r.id), lancamentoId: s(r.lancamento_id), indicadorId: s(r.indicador_id), periodo: dia(r.periodo),
   dia: r.dia ? dia(r.dia) : null, acao: r.acao === 'apagou' ? 'apagou' : 'corrigiu', valorAntes: nn(r.valor_antes), valorDepois: nn(r.valor_depois),
   comentarioAntes: s(r.comentario_antes), motivo: s(r.motivo), por: r.por ? s(r.por) : null, em: s(r.em),
+});
+export const mapCausa = (r: any): KpisCausa => ({
+  id: s(r.id), indicadorId: s(r.indicador_id), periodo: dia(r.periodo), causa: ehCausaTipo(r.causa) ? r.causa : 'pontual',
+  descricao: s(r.descricao), acao: s(r.acao), acaoPrazo: r.acao_prazo ? dia(r.acao_prazo) : null, acaoFeita: r.acao_feita === true,
+  criadoPor: r.criado_por ? s(r.criado_por) : null, criadoEm: s(r.criado_em),
+  atualizadoPor: r.atualizado_por ? s(r.atualizado_por) : null, atualizadoEm: s(r.atualizado_em),
 });
 export const mapAcesso = (r: any): KpisAcesso => ({
   cadastrado: r?.cadastrado === true, visualizador: r?.visualizador !== false, veTodos: r?.ve_todos === true,

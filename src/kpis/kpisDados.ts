@@ -2,7 +2,7 @@
 // cada gravação (só o que mudou) — estado local, sem fetchAppState e sem Realtime.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  KpisIndicador, KpisLancamento, KpisMeta, KpisPontoCalculado, KpisFarol, KpisPendencias, KpisTendencia,
+  KpisCausa, KpisIndicador, KpisLancamento, KpisMeta, KpisPontoCalculado, KpisFarol, KpisPendencias, KpisTendencia,
   diaUtil, diasEntre, farol, fimPeriodo, fmtDia, hojeSP, inicioPeriodo, metaVigente, pendencias, periodoAnterior, periodoDiario, periodosEntre, proximoDia, proximoDiaUtil,
   proximoPeriodo, rotuloDia, rotuloPeriodo, semanaIso, tendencia, uteisEntre,
 } from './kpis';
@@ -21,6 +21,7 @@ export interface KpisDados {
   calc: Map<string, KpisPontoCalculado[]>;   // série dos indicadores calculados
   calcErro: Set<string>;                     // calculados cuja série não deu para ler
   ligados: Map<string, number> | null;       // quantos KRs apontam para cada indicador (só quem vê tudo)
+  causas?: Map<string, KpisCausa[]> | null;  // 036: a causa do desvio por indicador (por período); null = a 036 não está no banco
   desde: string;
   lidoEm: number;
 }
@@ -43,8 +44,9 @@ export function useKpisDados(service: KpisService, ativo: boolean, veTodos: bool
     setLendo(true);
     try {
       const desde = kpisDesde();
-      const [indicadores, metas, lancs, ligados] = await Promise.all([
+      const [indicadores, metas, lancs, ligados, causas] = await Promise.all([
         service.listIndicadores(), service.listMetas(), service.listLancamentos(desde), veTodos ? service.contarLigados() : Promise.resolve(null),
+        (service.listCausas ? service.listCausas(desde).catch(() => null) : Promise.resolve(null)) as Promise<KpisCausa[] | null>,   // a causa nunca derruba a aba
       ]);
       const calc = new Map<string, KpisPontoCalculado[]>(); const calcErro = new Set<string>();
       await Promise.all(indicadores.filter(i => i.tipo === 'calculado').map(async i => {
@@ -56,6 +58,7 @@ export function useKpisDados(service: KpisService, ativo: boolean, veTodos: bool
         metas: agrupa(metas.sort((a, b) => a.valeDesde.localeCompare(b.valeDesde)), m => m.indicadorId),
         lancs: agrupa(lancs.sort((a, b) => a.periodo.localeCompare(b.periodo)), l => l.indicadorId),
         calc, calcErro, ligados, desde, lidoEm: Date.now(),
+        causas: causas ? agrupa(causas, c => c.indicadorId) : null,
       });
       setErro(null);
     } catch (e) {
@@ -66,6 +69,11 @@ export function useKpisDados(service: KpisService, ativo: boolean, veTodos: bool
   useEffect(() => { ler(); }, [ler]);
   return { dados, erro, lendo, reler: ler };
 }
+
+// 036: a causa registrada para um período (undefined = nenhuma). O período fechado que ficou FORA DA META e
+// ainda não tem causa — o cartão e o detalhe pedem ("sem causa"). Amarelo pode ter causa, mas não é cobrado.
+export const causaDoPeriodo = (d: KpisDados, indicadorId: string, periodo: string): KpisCausa | undefined =>
+  (d.causas?.get(indicadorId) || []).find(c => c.periodo === periodo);
 
 // ---- A leitura de UM indicador, pronta para o cartão, o detalhe e o lançar -------------
 
